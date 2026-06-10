@@ -5,12 +5,6 @@ const dropZoneHint = document.querySelector("#dropZoneHint");
 const statusEl = document.querySelector("#status");
 const statusBar = document.querySelector("#statusBar");
 const dnaAreaSelect = document.querySelector("#dnaAreaSelect");
-const heightSelect = document.querySelector("#heightSelect");
-const widthSelect = document.querySelector("#widthSelect");
-const debrisMultiSelect = document.querySelector("#debrisMultiSelect");
-const debrisToggle = document.querySelector("#debrisToggle");
-const debrisChannels = document.querySelector("#debrisChannels");
-const timeQcSelect = document.querySelector("#timeQcSelect");
 const fileTable = document.querySelector("#fileTable");
 const startAnalysisButton = document.querySelector("#startAnalysisButton");
 const progressOverlay = document.querySelector("#progressOverlay");
@@ -20,6 +14,28 @@ const progressPercent = document.querySelector("#progressPercent");
 const progressDetail = document.querySelector("#progressDetail");
 
 let parsedFiles = [];
+
+// Metadata table columns. `name` is the read-only filename; the rest are the
+// editable annotation fields. All are sortable; filterable columns get a
+// per-header dropdown of their unique values.
+const TABLE_COLUMNS = [
+  { field: "name", label: "Filename", editable: false, filterable: false },
+  { field: "strain", label: "Strain", editable: true, filterable: true },
+  { field: "replicate", label: "Replicate", editable: true, filterable: true },
+  { field: "nocodazoleArrest", label: "Nocodazole Arrest", editable: true, filterable: true },
+  { field: "timepoint", label: "Timepoint", editable: true, filterable: true },
+];
+
+// IDs of files whose row checkbox is ticked. Persists across re-renders so
+// sorting/filtering don't drop the selection.
+const selectedFileIds = new Set();
+// field -> Set of values ticked in that column's filter dropdown. A row passes
+// the column when the set is empty (no filter) or contains the row's value.
+const columnFilters = {};
+let sortState = { field: null, direction: "asc" };
+// Field whose filter dropdown is currently open, or null. Kept in state so the
+// menu stays open across table re-renders triggered by ticking its checkboxes.
+let openFilterField = null;
 
 function createId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -78,16 +94,14 @@ function nextFrame() {
 }
 
 function clearChannelControls() {
-  [dnaAreaSelect, heightSelect, widthSelect, timeQcSelect].forEach((select) => {
-    select.innerHTML = "";
-    select.add(new Option("", "", true, true));
-    select.disabled = true;
-  });
-  debrisChannels.innerHTML = "";
-  debrisChannels.hidden = true;
-  debrisToggle.disabled = true;
-  debrisToggle.setAttribute("aria-expanded", "false");
-  debrisToggle.textContent = "";
+  dnaAreaSelect.innerHTML = "";
+  dnaAreaSelect.add(new Option("", "", true, true));
+  dnaAreaSelect.disabled = true;
+
+  selectedFileIds.clear();
+  Object.keys(columnFilters).forEach((field) => delete columnFilters[field]);
+  sortState = { field: null, direction: "asc" };
+  openFilterField = null;
 }
 
 function uniqueColumns() {
@@ -106,6 +120,28 @@ function uniqueColumns() {
   return columns;
 }
 
+function columnValue(entry, field) {
+  return field === "name" ? entry.name : entry.annotations[field];
+}
+
+// Unique, sorted, non-blank values for a column across all loaded files.
+// Used to build the header filter dropdowns.
+function uniqueColumnValues(field) {
+  const seen = new Set();
+  const values = [];
+
+  parsedFiles.forEach((entry) => {
+    const value = columnValue(entry, field).trim();
+    if (value && !seen.has(value)) {
+      seen.add(value);
+      values.push(value);
+    }
+  });
+
+  values.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+  return values;
+}
+
 function populateSingleSelect(select, columns, placeholder, suggestedValue = "") {
   select.innerHTML = "";
   select.disabled = columns.length === 0;
@@ -114,67 +150,6 @@ function populateSingleSelect(select, columns, placeholder, suggestedValue = "")
   columns.forEach((column) => {
     select.add(new Option(column, column, column === suggestedValue, column === suggestedValue));
   });
-}
-
-function populateDebrisChannels(columns) {
-  debrisChannels.innerHTML = "";
-  debrisToggle.disabled = columns.length === 0;
-  debrisToggle.textContent = "";
-  debrisToggle.setAttribute("aria-expanded", "false");
-  debrisChannels.hidden = true;
-
-  if (!columns.length) {
-    return;
-  }
-
-  columns.forEach((column) => {
-    const id = `debris-${column.replace(/[^a-z0-9_-]+/gi, "-")}`;
-    const label = document.createElement("label");
-    label.className = "checkbox-option";
-    label.htmlFor = id;
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.id = id;
-    checkbox.value = column;
-
-    const text = document.createElement("span");
-    text.textContent = column;
-
-    label.append(checkbox, text);
-    debrisChannels.append(label);
-  });
-}
-
-function selectedDebrisChannels() {
-  return Array.from(debrisChannels.querySelectorAll('input[type="checkbox"]:checked')).map(
-    (input) => input.value,
-  );
-}
-
-function updateDebrisToggleLabel() {
-  const selected = selectedDebrisChannels();
-  debrisToggle.textContent = selected.join(", ");
-  debrisToggle.title = selected.join(", ");
-}
-
-function toggleDebrisMenu() {
-  if (debrisToggle.disabled) {
-    return;
-  }
-
-  const willOpen = debrisChannels.hidden;
-  debrisChannels.hidden = !willOpen;
-  debrisToggle.setAttribute("aria-expanded", String(willOpen));
-}
-
-function closeDebrisMenu(event) {
-  if (debrisMultiSelect.contains(event.target)) {
-    return;
-  }
-
-  debrisChannels.hidden = true;
-  debrisToggle.setAttribute("aria-expanded", "false");
 }
 
 function suggestColumn(columns, patterns) {
@@ -194,46 +169,6 @@ function populateChannelControls() {
     "Choose DNA-content area channel",
     suggestColumn(columns, ["DAPI_A", "DNA_A", "AREA", "_A"]),
   );
-  populateSingleSelect(
-    heightSelect,
-    columns,
-    "Choose matching height channel",
-    suggestColumn(columns, ["DAPI_H", "DNA_H", "HEIGHT", "_H"]),
-  );
-  populateSingleSelect(
-    widthSelect,
-    columns,
-    "Choose matching width channel",
-    suggestColumn(columns, ["DAPI_W", "DNA_W", "WIDTH", "_W"]),
-  );
-  populateSingleSelect(
-    timeQcSelect,
-    columns,
-    "None selected",
-    suggestColumn(columns, ["TIME", "QC"]),
-  );
-  populateDebrisChannels(columns);
-}
-
-function channelVariants(areaChannel) {
-  if (!areaChannel) {
-    return { height: "", width: "" };
-  }
-
-  const suffixPatterns = [/-A$/i, /_A$/i, / Area$/i, / AREA$/i];
-  for (const pattern of suffixPatterns) {
-    if (pattern.test(areaChannel)) {
-      return {
-        height: areaChannel.replace(pattern, (match) => match.replace(/A/i, "H")),
-        width: areaChannel.replace(pattern, (match) => match.replace(/A/i, "W")),
-      };
-    }
-  }
-
-  return {
-    height: `${areaChannel}-H`,
-    width: `${areaChannel}-W`,
-  };
 }
 
 function selectIfOptionExists(select, value) {
@@ -250,37 +185,93 @@ function selectIfOptionExists(select, value) {
   return true;
 }
 
-function autoSetMatchingHeightWidth() {
-  const variants = channelVariants(dnaAreaSelect.value);
-  selectIfOptionExists(heightSelect, variants.height);
-  selectIfOptionExists(widthSelect, variants.width);
-  updateStartButtonState();
-}
-
 function updateStartButtonState() {
-  const ready = Boolean(dnaAreaSelect.value && heightSelect.value && widthSelect.value);
-  startAnalysisButton.disabled = !ready;
+  startAnalysisButton.disabled = !dnaAreaSelect.value || selectedFileIds.size === 0;
 }
 
-// DEBUG: force a known channel selection after FCS metadata has been read so the
-// analysis flow can be exercised without manual clicking. Remove for production.
+// DEBUG: force a known DNA-content area channel after FCS metadata has been read
+// so the analysis flow can be exercised without manual clicking. Remove for
+// production.
 function applyDebugChannelDefaults() {
   selectIfOptionExists(dnaAreaSelect, "GFP/FITC-A");
-  selectIfOptionExists(heightSelect, "GFP/FITC-H");
-  selectIfOptionExists(widthSelect, "GFP/FITC-W");
-  selectIfOptionExists(timeQcSelect, "HDR-T");
-
-  ["FSC-A", "SSC-A"].forEach((channel) => {
-    const checkbox = debrisChannels.querySelector(
-      `input[type="checkbox"][value="${CSS.escape(channel)}"]`,
-    );
-    if (checkbox) {
-      checkbox.checked = true;
-    }
-  });
-  updateDebrisToggleLabel();
 }
 
+
+// Files shown in the table: those matching every active column filter,
+// ordered by the current sort. Used for both rendering and "select all".
+function displayedFiles() {
+  const filtered = parsedFiles.filter((entry) =>
+    TABLE_COLUMNS.every((column) => {
+      const selected = columnFilters[column.field];
+      return !selected || selected.size === 0 || selected.has(columnValue(entry, column.field).trim());
+    }),
+  );
+
+  if (!sortState.field) {
+    return filtered;
+  }
+
+  const { field, direction } = sortState;
+  const factor = direction === "desc" ? -1 : 1;
+  return [...filtered].sort((a, b) => {
+    let comparison;
+    if (field === "timepoint") {
+      comparison = timepointSortValue(columnValue(a, field)) - timepointSortValue(columnValue(b, field));
+      if (Number.isNaN(comparison)) {
+        comparison = 0;
+      }
+    } else {
+      comparison = columnValue(a, field).localeCompare(columnValue(b, field), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    }
+    return comparison * factor;
+  });
+}
+
+function sortIndicator(field) {
+  const active = sortState.field === field;
+  const ascClass = active && sortState.direction === "asc" ? "sort-arrow active" : "sort-arrow";
+  const descClass = active && sortState.direction === "desc" ? "sort-arrow active" : "sort-arrow";
+  return `<span class="sort-indicator"><span class="${ascClass}">▲</span><span class="${descClass}">▼</span></span>`;
+}
+
+function filterControl(column) {
+  const selected = columnFilters[column.field] || new Set();
+  const summary = [...selected].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
+  );
+  const isOpen = openFilterField === column.field;
+
+  const options = uniqueColumnValues(column.field)
+    .map(
+      (value) => `
+            <label class="checkbox-option">
+              <input type="checkbox" class="th-filter-option" data-filter-field="${column.field}" value="${escapeHtml(value)}"${selected.has(value) ? " checked" : ""} />
+              <span title="${escapeHtml(value)}">${escapeHtml(value)}</span>
+            </label>`,
+    )
+    .join("");
+
+  return `
+          <div class="th-filter multi-select">
+            <button type="button" class="th-filter-toggle multi-select-toggle" data-filter-field="${column.field}" aria-expanded="${isOpen}" title="Filter by ${escapeHtml(column.label)}">${escapeHtml(summary.join(", "))}</button>
+            <div class="multi-select-menu" data-filter-menu="${column.field}"${isOpen ? "" : " hidden"}>${options}</div>
+          </div>`;
+}
+
+function headerCell(column) {
+  const filter = column.filterable ? filterControl(column) : "";
+
+  return `
+        <th>
+          <div class="th-inner">
+            <button type="button" class="th-sort" data-sort-field="${column.field}">${escapeHtml(column.label)}${sortIndicator(column.field)}</button>
+            ${filter}
+          </div>
+        </th>`;
+}
 
 function renderFileTable() {
   if (!parsedFiles.length) {
@@ -293,10 +284,25 @@ function renderFileTable() {
     return `<td><input data-file-id="${entry.id}" data-field="${field}" type="text" size="${annotationInputSize(value)}" value="${escapeHtml(value)}" /></td>`;
   };
 
-  const rows = parsedFiles
-    .map(
-      (entry) => `
+  const visibleFiles = displayedFiles();
+
+  // A row filtered out of the display is automatically deselected, so only
+  // files that are both visible and checked stay selected (and get analyzed).
+  const visibleIds = new Set(visibleFiles.map((entry) => entry.id));
+  selectedFileIds.forEach((id) => {
+    if (!visibleIds.has(id)) {
+      selectedFileIds.delete(id);
+    }
+  });
+
+  const headers = TABLE_COLUMNS.map(headerCell).join("");
+
+  const body = visibleFiles.length
+    ? visibleFiles
+        .map(
+          (entry) => `
         <tr>
+          <td class="checkbox-col"><input type="checkbox" class="row-select" data-file-id="${entry.id}"${selectedFileIds.has(entry.id) ? " checked" : ""} /></td>
           <td class="filename-cell" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</td>
           ${cell(entry, "strain")}
           ${cell(entry, "replicate")}
@@ -304,23 +310,113 @@ function renderFileTable() {
           ${cell(entry, "timepoint")}
         </tr>
       `,
-    )
-    .join("");
+        )
+        .join("")
+    : `<tr><td class="empty-note" colspan="${TABLE_COLUMNS.length + 1}">No files match the current filters.</td></tr>`;
 
   fileTable.innerHTML = `
     <table class="file-table">
       <thead>
         <tr>
-          <th>Filename</th>
-          <th>Strain</th>
-          <th>Replicate</th>
-          <th>Nocodazole Arrest</th>
-          <th>Timepoint</th>
+          <th class="checkbox-col"><input type="checkbox" id="selectAllFiles" title="Select all displayed files" /></th>
+          ${headers}
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
+      <tbody>${body}</tbody>
     </table>
   `;
+
+  updateSelectAllCheckbox();
+  updateStartButtonState();
+}
+
+// Reflect how many displayed files are selected: checked when all are,
+// indeterminate when only some are. The checked attribute can't express the
+// indeterminate state in HTML, so it's set here after each render.
+function updateSelectAllCheckbox() {
+  const checkbox = document.querySelector("#selectAllFiles");
+  if (!checkbox) {
+    return;
+  }
+
+  const displayed = displayedFiles();
+  const selectedCount = displayed.reduce(
+    (count, entry) => count + (selectedFileIds.has(entry.id) ? 1 : 0),
+    0,
+  );
+  checkbox.checked = displayed.length > 0 && selectedCount === displayed.length;
+  checkbox.indeterminate = selectedCount > 0 && selectedCount < displayed.length;
+}
+
+function handleTableChange(event) {
+  const target = event.target;
+
+  if (target.classList.contains("th-filter-option")) {
+    const field = target.dataset.filterField;
+    const selected = columnFilters[field] || (columnFilters[field] = new Set());
+    if (target.checked) {
+      selected.add(target.value);
+    } else {
+      selected.delete(target.value);
+    }
+    renderFileTable();
+    return;
+  }
+
+  if (target.id === "selectAllFiles") {
+    displayedFiles().forEach((entry) => {
+      if (target.checked) {
+        selectedFileIds.add(entry.id);
+      } else {
+        selectedFileIds.delete(entry.id);
+      }
+    });
+    renderFileTable();
+    updateStartButtonState();
+    return;
+  }
+
+  if (target.classList.contains("row-select")) {
+    if (target.checked) {
+      selectedFileIds.add(target.dataset.fileId);
+    } else {
+      selectedFileIds.delete(target.dataset.fileId);
+    }
+    updateSelectAllCheckbox();
+    updateStartButtonState();
+  }
+}
+
+function handleTableClick(event) {
+  const filterToggle = event.target.closest(".th-filter-toggle");
+  if (filterToggle) {
+    const field = filterToggle.dataset.filterField;
+    openFilterField = openFilterField === field ? null : field;
+    renderFileTable();
+    return;
+  }
+
+  const sortButton = event.target.closest(".th-sort");
+  if (!sortButton) {
+    return;
+  }
+
+  const field = sortButton.dataset.sortField;
+  if (sortState.field === field) {
+    sortState.direction = sortState.direction === "asc" ? "desc" : "asc";
+  } else {
+    sortState = { field, direction: "asc" };
+  }
+  renderFileTable();
+}
+
+// Close an open filter dropdown when clicking anywhere outside a filter control.
+function handleDocumentClick(event) {
+  if (openFilterField === null || event.target.closest(".th-filter")) {
+    return;
+  }
+  openFilterField = null;
+  renderFileTable();
 }
 
 // Width (in characters) for an annotation input so each column hugs its
@@ -456,6 +552,7 @@ async function loadFiles(files) {
     try {
       const entry = await readFcsHeader(file);
       parsedFiles.push(entry);
+      selectedFileIds.add(entry.id);
       queuedNames.add(file.name);
       loaded += 1;
     } catch (error) {
@@ -523,14 +620,12 @@ function escapeHtml(value) {
 }
 
 fileInput.addEventListener("change", () => loadFiles(fileInput.files));
-dnaAreaSelect.addEventListener("change", autoSetMatchingHeightWidth);
-heightSelect.addEventListener("change", updateStartButtonState);
-widthSelect.addEventListener("change", updateStartButtonState);
+dnaAreaSelect.addEventListener("change", updateStartButtonState);
 dropZone.addEventListener("click", () => fileInput.click());
 fileTable.addEventListener("input", updateAnnotation);
-debrisToggle.addEventListener("click", toggleDebrisMenu);
-debrisChannels.addEventListener("change", updateDebrisToggleLabel);
-document.addEventListener("click", closeDebrisMenu);
+fileTable.addEventListener("change", handleTableChange);
+fileTable.addEventListener("click", handleTableClick);
+document.addEventListener("click", handleDocumentClick);
 
 ["dragenter", "dragover"].forEach((eventName) => {
   dropZone.addEventListener(eventName, (event) => {
@@ -553,15 +648,12 @@ dropZone.addEventListener("drop", (event) => {
 function getSelectedChannels() {
   return {
     dnaArea: dnaAreaSelect.value,
-    dnaHeight: heightSelect.value,
-    dnaWidth: widthSelect.value,
-    timeChannel: timeQcSelect.value,
-    debris: selectedDebrisChannels(),
   };
 }
 
 window.FlowPlotterApp = {
   getParsedFiles: () => parsedFiles,
+  getSelectedFiles: () => parsedFiles.filter((entry) => selectedFileIds.has(entry.id)),
   getSelectedChannels,
   setStatus,
   setStatusBar,
@@ -574,6 +666,6 @@ window.FlowPlotterApp = {
 clearChannelControls();
 renderFileTable();
 updateDropZoneText();
-setStatus("No file loaded.");
+setStatus("No file(s) loaded.");
 setStatusBar("Ready: Load FCS files by dragging them to the drop zone or using the file selector above.");
  

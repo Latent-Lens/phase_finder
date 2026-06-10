@@ -165,12 +165,21 @@
         display: flex;
         min-height: 0;
         flex-direction: column;
+        gap: 16px;
+      }
+
+      /* display:flex on .parsed-files-panel would otherwise defeat [hidden]. */
+      .plot-panel[hidden] {
+        display: none !important;
       }
 
       .parsed-files-panel {
         display: flex;
         flex: 1;
-        min-height: calc(100vh - 214px);
+        /* Modest min so that when both the Plot and table panels are shown they
+           share the workspace (flex: 1 each) instead of each demanding most of
+           the viewport. A lone panel still fills via flex-grow. */
+        min-height: 220px;
         flex-direction: column;
       }
 
@@ -326,6 +335,110 @@
   border-radius: 6px;
   padding: 6px 8px;
   font: inherit;
+}
+
+.file-table input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.checkbox-col {
+  width: 1%;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Header checkbox sits at the top of the cell, level with the column labels. */
+.file-table th.checkbox-col {
+  vertical-align: top;
+}
+
+.file-table th.checkbox-col input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.file-table th {
+  vertical-align: top;
+  /* Shrink the header band; the label pins to the top and the filter dropdown
+     to the bottom of this height (see .th-inner / .th-filter). */
+  height: 54px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  /* Let the filter dropdown escape the cell instead of being clipped. */
+  overflow: visible;
+}
+
+/* Flex column so the label stays at the top and the dropdown drops to the
+   bottom of the (fixed-height) header cell. */
+.th-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 1rem;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: var(--accent);
+}
+
+/* Always-visible up/down sort arrows; the active direction is highlighted. */
+.sort-indicator {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0.78;
+  font-size: 0.85rem;
+}
+
+.sort-arrow {
+  color: var(--muted);
+  opacity: 0.45;
+}
+
+.sort-arrow.active {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.th-filter {
+  margin-top: auto;
+  max-width: 180px;
+  font-weight: 400;
+}
+
+.th-filter-toggle {
+  min-height: 26px;
+  font-size: 0.8rem;
+}
+
+/* Filter menu checkboxes use the global 17px size, so let the first grid
+   column fit the checkbox instead of clamping it to 16px. */
+.th-filter .checkbox-option {
+  grid-template-columns: auto minmax(0, 1fr);
+  font-size: 0.85rem;
 }
 
 .empty-note {
