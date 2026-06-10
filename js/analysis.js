@@ -74,50 +74,6 @@ function selectedIndexesForFile(summary, selected) {
   return indexes;
 }
 
-// Top-of-scale for the DNA-content parameter. Prefer the declared $PnR range;
-// fall back to the observed maximum when the keyword is missing so saturation is
-// never measured against an arbitrary magic number.
-function dnaContentRange(summary, dnaIndex, values) {
-  const declared = Number.parseFloat(summary.metadata[`P${dnaIndex}R`]);
-  if (Number.isFinite(declared) && declared > 0) {
-    return declared;
-  }
-
-  let max = 0;
-  for (let i = 0; i < values.length; i += 1) {
-    if (values[i] > max) {
-      max = values[i];
-    }
-  }
-  return max + 1;
-}
-
-function summarizeFile(data, dnaRange) {
-  const n = data.dnaA.length;
-  if (!n) {
-    return { totalEvents: 0, saturatedEvents: 0, saturatedPct: 0, lowSignalEvents: 0, lowSignalPct: 0 };
-  }
-
-  const satThreshold = dnaRange - 1;
-  const lowThreshold = dnaRange * 0.01;
-  let saturated = 0;
-  let low = 0;
-
-  for (let i = 0; i < n; i += 1) {
-    const v = data.dnaA[i];
-    if (v >= satThreshold) saturated += 1;
-    if (v <= lowThreshold) low += 1;
-  }
-
-  return {
-    totalEvents: n,
-    saturatedEvents: saturated,
-    saturatedPct: (saturated / n) * 100,
-    lowSignalEvents: low,
-    lowSignalPct: (low / n) * 100,
-  };
-}
-
 async function loadAnalysisRow(row, selected) {
   const indexes = selectedIndexesForFile(row.summary, selected);
   const columns = await loadSelectedFcsColumns(row.file, row.summary, uniqueIndexes(Object.values(indexes)));
@@ -131,9 +87,6 @@ async function loadAnalysisRow(row, selected) {
     time: indexes.time ? columns[indexes.time] : null,
     indexes,
   };
-
-  const dnaRange = dnaContentRange(row.summary, indexes.dnaA, row.data.dnaA);
-  row.qc = summarizeFile(row.data, dnaRange);
 }
 
 async function loadAnalysisBatch(batch, selected, app, completed, total) {
@@ -172,15 +125,10 @@ async function loadAnalysisData() {
     await loadAnalysisBatch(batch, selected, app, completed, rows.length);
   }
 
-  const totalEvents = rows.reduce((sum, row) => sum + (row.qc ? row.qc.totalEvents : 0), 0);
-  const totalSaturated = rows.reduce((sum, row) => sum + (row.qc ? row.qc.saturatedEvents : 0), 0);
-  const saturatedPct = totalEvents ? (totalSaturated / totalEvents) * 100 : 0;
-
-  // DEBUG: per-file QC breakdown while the preview plots don't exist yet.
-  console.table(rows.map((row) => ({ file: row.name, ...row.qc })));
+  const totalEvents = rows.reduce((sum, row) => sum + (row.data ? row.data.dnaA.length : 0), 0);
 
   app.setStatus(
-    `Loaded ${rows.length} file(s) · ${totalEvents.toLocaleString()} events · ${saturatedPct.toFixed(1)}% saturated. QC summary ready.`,
+    `Loaded ${rows.length} file(s) · ${totalEvents.toLocaleString()} events.`,
   );
   app.setStatusBar(`Finished loading selected data for ${rows.length} file(s).`);
   app.updateProgress(100, "Loading Selected FCS Data", `Finished loading selected data for ${rows.length} file(s).`);
@@ -192,9 +140,6 @@ async function startAnalysis() {
 
   try {
     await loadAnalysisData();
-    if (window.FlowPlotterQC) {
-      window.FlowPlotterQC.enter();
-    }
   } catch (error) {
     window.FlowPlotterApp.setStatus(error.message, true);
     window.FlowPlotterApp.setStatusBar("Selected data loading failed.", true);

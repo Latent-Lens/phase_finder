@@ -79,80 +79,6 @@
       </section>
     </main>
 
-    <main id="qcView" class="qc-view" hidden>
-      <aside class="qc-controls panel">
-        <div class="panel-title"><h2>QC Gates</h2><div class="panel-title-rule"></div></div>
-
-        <div class="qc-field">
-          <label for="qcScopeSelect">Showing</label>
-          <select id="qcScopeSelect"></select>
-        </div>
-
-        <div class="qc-field">
-          <label for="dnaMinRange">DNA area min</label>
-          <div class="qc-control-row">
-            <input id="dnaMinRange" class="qc-range" type="range" />
-            <input id="dnaMinNumber" class="qc-number" type="number" />
-          </div>
-        </div>
-
-        <div class="qc-field">
-          <label for="dnaMaxRange">DNA area max (saturation)</label>
-          <div class="qc-control-row">
-            <input id="dnaMaxRange" class="qc-range" type="range" />
-            <input id="dnaMaxNumber" class="qc-number" type="number" />
-          </div>
-        </div>
-
-        <div class="qc-field">
-          <label for="ratioLowRange">Singlet ratio low (H/A)</label>
-          <div class="qc-control-row">
-            <input id="ratioLowRange" class="qc-range" type="range" />
-            <input id="ratioLowNumber" class="qc-number" type="number" />
-          </div>
-        </div>
-
-        <div class="qc-field">
-          <label for="ratioHighRange">Singlet ratio high (H/A)</label>
-          <div class="qc-control-row">
-            <input id="ratioHighRange" class="qc-range" type="range" />
-            <input id="ratioHighNumber" class="qc-number" type="number" />
-          </div>
-        </div>
-
-        <div class="qc-actions">
-          <button id="qcResetButton" class="qc-secondary-button" type="button">Reset gates</button>
-          <button id="qcBackButton" class="qc-secondary-button" type="button">Back to setup</button>
-        </div>
-        <button id="qcRunDjfButton" class="start-analysis-button qc-run-djf" type="button" disabled>
-          Run DJF
-        </button>
-      </aside>
-
-      <section class="qc-main panel">
-        <div class="panel-title"><h2 id="dnaHistTitle">DNA Area — Before vs After Gate</h2><div class="panel-title-rule"></div></div>
-        <div id="dnaHistPlot" class="qc-plot"></div>
-        <p class="qc-hint">Drag the red lines (min) and orange lines (max) to set the DNA-area cutoffs.</p>
-      </section>
-
-      <section class="qc-secondary panel">
-        <div class="panel-title"><h2 id="singletTitle">DNA-A vs DNA-H — Singlet Gate</h2><div class="panel-title-rule"></div></div>
-        <div id="singletPlot" class="qc-plot"></div>
-        <p class="qc-hint">The diagonal band is the kept singlet region; adjust it with the ratio sliders.</p>
-      </section>
-
-      <aside class="qc-summary panel">
-        <div class="panel-title"><h2>Summary</h2><div class="panel-title-rule"></div></div>
-        <dl class="qc-stats">
-          <div class="qc-stat"><dt>Total events</dt><dd id="statTotal">0</dd></div>
-          <div class="qc-stat"><dt>Retained</dt><dd id="statRetained">0</dd></div>
-          <div class="qc-stat qc-stat-accent"><dt>% retained</dt><dd id="statRetainedPct">0%</dd></div>
-          <div class="qc-stat"><dt>Saturated removed</dt><dd id="statSaturated">0</dd></div>
-          <div class="qc-stat"><dt>Low-signal removed</dt><dd id="statLow">0</dd></div>
-        </dl>
-      </aside>
-    </main>
-
     <div id="progressOverlay" class="progress-overlay" hidden aria-live="polite" aria-busy="false">
       <div class="progress-card" role="status">
         <div class="progress-track" aria-hidden="true">
@@ -171,6 +97,5 @@
     <script src="./js/fcs-parser.js"></script>
     <script src="./js/main.js"></script>
     <script src="./js/analysis.js"></script>
-    <script src="./js/qc.js"></script>
   </body>
 </html>
