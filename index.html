@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flow Plotter</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <img class="site-logo" src="./assets/img/logo.png" alt="Flow Plotter" />
+      <button
+        id="startAnalysisButton"
+        class="start-analysis-button"
+        type="button"
+        title="Load FCS files and select DNA-content area, matching height, and matching width channels first."
+        disabled
+      >
+        Start Analysis
+      </button>
+    </header>
+
+    <main class="app">
+      <aside class="sidebar">
+        <section class="panel">
+          <div class="panel-title"><h2>Files</h2><div class="panel-title-rule"></div></div>
+          <div id="dropZone" class="drop-zone">
+            <div>
+              <strong id="dropZoneTitle">Drop FCS files here</strong>
+              <span id="dropZoneHint">or choose files from disk</span>
+            </div>
+          </div>
+          <input id="fileInput" class="visually-hidden-file" type="file" accept=".fcs" multiple />
+        </section>
+
+        <section class="panel controls">
+          <div>
+            <label for="dnaAreaSelect">Select DNA-content area channel</label>
+            <select id="dnaAreaSelect"></select>
+          </div>
+          <div>
+            <label for="heightSelect">Select matching height channel</label>
+            <select id="heightSelect"></select>
+          </div>
+          <div>
+            <label for="widthSelect">Select matching width channel</label>
+            <select id="widthSelect"></select>
+          </div>
+          <div>
+            <label for="debrisToggle">Debris gate channels [Optional]</label>
+            <div id="debrisMultiSelect" class="multi-select">
+              <button id="debrisToggle" class="multi-select-toggle" type="button" aria-expanded="false" aria-controls="debrisChannels">
+              </button>
+              <div id="debrisChannels" class="multi-select-menu" hidden></div>
+            </div>
+          </div>
+          <div>
+            <label for="timeQcSelect">Time/QC channel [Optional]</label>
+            <select id="timeQcSelect"></select>
+          </div>
+          <p id="status" class="status">No file(s) loaded.</p>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <section id="metadataPanel" class="panel parsed-files-panel">
+          <button id="metadataPanelToggle" class="panel-title metadata-title panel-title-toggle" type="button" aria-expanded="true" aria-controls="metadataPanelBody">
+            <span class="metadata-title-row">
+              <img id="metadataPanelChevron" class="panel-chevron" src="./assets/img/chevron-down-icon.svg" alt="" aria-hidden="true" />
+              <span class="metadata-title-text">Loaded FCS Files Metadata Table</span>
+            </span>
+            <span class="panel-title-rule"></span>
+          </button>
+          <div id="metadataPanelBody" class="metadata-panel-body">
+            <div id="fileTable" class="table-wrap"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <main id="qcView" class="qc-view" hidden>
+      <aside class="qc-controls panel">
+        <div class="panel-title"><h2>QC Gates</h2><div class="panel-title-rule"></div></div>
+
+        <div class="qc-field">
+          <label for="qcScopeSelect">Showing</label>
+          <select id="qcScopeSelect"></select>
+        </div>
+
+        <div class="qc-field">
+          <label for="dnaMinRange">DNA area min</label>
+          <div class="qc-control-row">
+            <input id="dnaMinRange" class="qc-range" type="range" />
+            <input id="dnaMinNumber" class="qc-number" type="number" />
+          </div>
+        </div>
+
+        <div class="qc-field">
+          <label for="dnaMaxRange">DNA area max (saturation)</label>
+          <div class="qc-control-row">
+            <input id="dnaMaxRange" class="qc-range" type="range" />
+            <input id="dnaMaxNumber" class="qc-number" type="number" />
+          </div>
+        </div>
+
+        <div class="qc-field">
+          <label for="ratioLowRange">Singlet ratio low (H/A)</label>
+          <div class="qc-control-row">
+            <input id="ratioLowRange" class="qc-range" type="range" />
+            <input id="ratioLowNumber" class="qc-number" type="number" />
+          </div>
+        </div>
+
+        <div class="qc-field">
+          <label for="ratioHighRange">Singlet ratio high (H/A)</label>
+          <div class="qc-control-row">
+            <input id="ratioHighRange" class="qc-range" type="range" />
+            <input id="ratioHighNumber" class="qc-number" type="number" />
+          </div>
+        </div>
+
+        <div class="qc-actions">
+          <button id="qcResetButton" class="qc-secondary-button" type="button">Reset gates</button>
+          <button id="qcBackButton" class="qc-secondary-button" type="button">Back to setup</button>
+        </div>
+        <button id="qcRunDjfButton" class="start-analysis-button qc-run-djf" type="button" disabled>
+          Run DJF
+        </button>
+      </aside>
+
+      <section class="qc-main panel">
+        <div class="panel-title"><h2 id="dnaHistTitle">DNA Area — Before vs After Gate</h2><div class="panel-title-rule"></div></div>
+        <div id="dnaHistPlot" class="qc-plot"></div>
+        <p class="qc-hint">Drag the red lines (min) and orange lines (max) to set the DNA-area cutoffs.</p>
+      </section>
+
+      <section class="qc-secondary panel">
+        <div class="panel-title"><h2 id="singletTitle">DNA-A vs DNA-H — Singlet Gate</h2><div class="panel-title-rule"></div></div>
+        <div id="singletPlot" class="qc-plot"></div>
+        <p class="qc-hint">The diagonal band is the kept singlet region; adjust it with the ratio sliders.</p>
+      </section>
+
+      <aside class="qc-summary panel">
+        <div class="panel-title"><h2>Summary</h2><div class="panel-title-rule"></div></div>
+        <dl class="qc-stats">
+          <div class="qc-stat"><dt>Total events</dt><dd id="statTotal">0</dd></div>
+          <div class="qc-stat"><dt>Retained</dt><dd id="statRetained">0</dd></div>
+          <div class="qc-stat qc-stat-accent"><dt>% retained</dt><dd id="statRetainedPct">0%</dd></div>
+          <div class="qc-stat"><dt>Saturated removed</dt><dd id="statSaturated">0</dd></div>
+          <div class="qc-stat"><dt>Low-signal removed</dt><dd id="statLow">0</dd></div>
+        </dl>
+      </aside>
+    </main>
+
+    <div id="progressOverlay" class="progress-overlay" hidden aria-live="polite" aria-busy="false">
+      <div class="progress-card" role="status">
+        <div class="progress-track" aria-hidden="true">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+        <div class="progress-meta">
+          <span id="progressLabel">Loading FCS Metadata</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div id="progressDetail" class="progress-detail"></div>
+      </div>
+    </div>
+
+    <footer id="statusBar" class="status-bar">Ready.</footer>
+
+    <script src="./js/fcs-parser.js"></script>
+    <script src="./js/main.js"></script>
+    <script src="./js/analysis.js"></script>
+    <script src="./js/qc.js"></script>
+  </body>
+</html>
