@@ -288,14 +288,20 @@ function renderFileTable() {
     return;
   }
 
+  const cell = (entry, field) => {
+    const value = entry.annotations[field];
+    return `<td><input data-file-id="${entry.id}" data-field="${field}" type="text" size="${annotationInputSize(value)}" value="${escapeHtml(value)}" /></td>`;
+  };
+
   const rows = parsedFiles
     .map(
       (entry) => `
         <tr>
-          <td title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</td>
-          <td><input data-file-id="${entry.id}" data-field="strain" type="text" value="${escapeHtml(entry.annotations.strain)}" /></td>
-          <td><input data-file-id="${entry.id}" data-field="timepoint" type="text" value="${escapeHtml(entry.annotations.timepoint)}" /></td>
-          <td><input data-file-id="${entry.id}" data-field="replicate" type="text" value="${escapeHtml(entry.annotations.replicate)}" /></td>
+          <td class="filename-cell" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</td>
+          ${cell(entry, "strain")}
+          ${cell(entry, "replicate")}
+          ${cell(entry, "nocodazoleArrest")}
+          ${cell(entry, "timepoint")}
         </tr>
       `,
     )
@@ -307,13 +313,20 @@ function renderFileTable() {
         <tr>
           <th>Filename</th>
           <th>Strain</th>
-          <th>Timepoint</th>
           <th>Replicate</th>
+          <th>Nocodazole Arrest</th>
+          <th>Timepoint</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
   `;
+}
+
+// Width (in characters) for an annotation input so each column hugs its
+// content; clamped so empty cells stay clickable and long values stay readable.
+function annotationInputSize(value) {
+  return Math.min(28, Math.max(4, String(value).length + 1));
 }
 
 
@@ -328,10 +341,23 @@ function guessAnnotationsFromFilename(filename) {
   const basename = filename.replace(/\.[^.]+$/, "");
   const guess = {
     strain: "",
-    timepoint: "",
     replicate: "",
+    nocodazoleArrest: "",
+    timepoint: "",
   };
 
+  // Sample token, e.g. "76aN t55": strain digits + replicate letter +
+  // nocodazole-arrest letter, then "t" + time since release.
+  const coreMatch = basename.match(/(?:^|[_\s-])(\d+)([A-Za-z])([A-Za-z])\s+t(\d+)(?:[_\s.-]|$)/i);
+  if (coreMatch) {
+    guess.strain = coreMatch[1];
+    guess.replicate = coreMatch[2];
+    guess.nocodazoleArrest = coreMatch[3];
+    guess.timepoint = coreMatch[4];
+    return guess;
+  }
+
+  // Fallbacks for filenames that don't follow the strain/replicate/arrest token.
   const strainTimepointMatch = basename.match(/(?:^|[_\s-])([^_\s-]+)\s+t(\d+)(?:[_\s-]|$)/i);
   if (strainTimepointMatch) {
     guess.strain = strainTimepointMatch[1];
@@ -359,6 +385,14 @@ function sortParsedFiles() {
     });
     if (strainCompare !== 0) {
       return strainCompare;
+    }
+
+    const replicateCompare = a.annotations.replicate.localeCompare(b.annotations.replicate, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    if (replicateCompare !== 0) {
+      return replicateCompare;
     }
 
     const timepointCompare = timepointSortValue(a.annotations.timepoint) - timepointSortValue(b.annotations.timepoint);
@@ -476,6 +510,7 @@ function updateAnnotation(event) {
   }
 
   entry.annotations[input.dataset.field] = input.value;
+  input.size = annotationInputSize(input.value);
 }
 
 function escapeHtml(value) {
