@@ -21,6 +21,44 @@ const DJF_S_COLOR = "#d5eec8";
 const DJF_G2_COLOR = "#ef8b8d";
 // Fill opacity for the DJF component areas (0 = transparent, 1 = solid).
 const DJF_FILL_OPACITY = 0.2;
+const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
+const DJF_TOTAL_LINE_WIDTH = 2; // fitted total
+const DJF_TOTAL_COLOR = "#111827";
+
+// ---- Plot layout & styling (tweak here) ----
+const PLOT_MARGIN = { top: 14, right: 250, bottom: 48, left: 70 };
+const PLOT_FALLBACK_WIDTH = 800;
+const PLOT_FALLBACK_HEIGHT = 420;
+
+const AXIS_LINE_WIDTH = 1;
+const AXIS_TICK_FONT_SIZE = 11;
+const AXIS_TITLE_FONT_SIZE = 12;
+const AXIS_LABEL_COLOR = "#172033";
+const X_AXIS_TICKS = 6;
+const Y_AXIS_TICKS = 5;
+const X_TITLE_OFFSET = 10; // px above the bottom edge
+const Y_TITLE_OFFSET = 16; // px from the left edge
+
+const SAMPLE_LINE_WIDTH = 1.5; // per-sample histogram curves
+
+const LEGEND_OFFSET_X = 14; // gap right of the plot area
+const LEGEND_ROW_HEIGHT = 18;
+const LEGEND_SWATCH_WIDTH = 18;
+const LEGEND_TEXT_OFFSET = 24;
+const LEGEND_LINE_WIDTH = 2;
+const LEGEND_FONT_SIZE = 11;
+const LEGEND_SWATCH_Y = 6; // swatch line vertical position within a row
+const LEGEND_TEXT_Y = 9; // label baseline within a row
+
+const THRESHOLD_COLOR = "#9ca3af";
+const THRESHOLD_LINE_WIDTH = 1.5;
+const THRESHOLD_FILL_OPACITY = 0.12;
+const THRESHOLD_HANDLE_WIDTH = 14; // invisible drag target thickness
+const THRESHOLD_LABEL_FONT_SIZE = 10;
+const THRESHOLD_LABEL_COLOR = "#6b7280";
+const THRESHOLD_LABEL_X_OFFSET = 6; // label inset from the left edge
+const THRESHOLD_LABEL_Y_OFFSET = 5; // label sits this far above the line
+const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot top
 
 // DNA-content channel(s) of the most recent analysis; null until analysis runs.
 let plotChannels = null;
@@ -423,9 +461,9 @@ function renderDensityPlot() {
     }
   }
 
-  const width = plotArea.clientWidth || 800;
-  const height = plotArea.clientHeight || 420;
-  const margin = { top: 14, right: 250, bottom: 48, left: 70 };
+  const width = plotArea.clientWidth || PLOT_FALLBACK_WIDTH;
+  const height = plotArea.clientHeight || PLOT_FALLBACK_HEIGHT;
+  const margin = PLOT_MARGIN;
 
   const xScale = (isLog ? d3.scaleLog() : d3.scaleLinear())
     .domain(range)
@@ -436,27 +474,34 @@ function renderDensityPlot() {
 
   const svg = d3.select(plotArea).append("svg").attr("width", width).attr("height", height);
 
-  svg.append("g")
+  // Apply tick font size + axis line width to a rendered axis group.
+  const styleAxis = (g) => {
+    g.style("font-size", `${AXIS_TICK_FONT_SIZE}px`);
+    g.selectAll(".domain, .tick line").attr("stroke-width", AXIS_LINE_WIDTH);
+    return g;
+  };
+
+  styleAxis(svg.append("g")
     .attr("transform", `translate(0,${height - margin.bottom})`)
-    .call(d3.axisBottom(xScale).ticks(6, isLog ? "~s" : undefined));
-  svg.append("g")
+    .call(d3.axisBottom(xScale).ticks(X_AXIS_TICKS, isLog ? "~s" : undefined)));
+  styleAxis(svg.append("g")
     .attr("transform", `translate(${margin.left},0)`)
-    .call(d3.axisLeft(yScale).ticks(5, "~s"));
+    .call(d3.axisLeft(yScale).ticks(Y_AXIS_TICKS, "~s")));
 
   svg.append("text")
     .attr("x", (margin.left + width - margin.right) / 2)
-    .attr("y", height - 10)
+    .attr("y", height - X_TITLE_OFFSET)
     .attr("text-anchor", "middle")
-    .attr("font-size", 12)
-    .attr("fill", "#172033")
+    .attr("font-size", AXIS_TITLE_FONT_SIZE)
+    .attr("fill", AXIS_LABEL_COLOR)
     .text(plotChannels.dnaArea || "DNA-content area");
   svg.append("text")
     .attr("transform", "rotate(-90)")
     .attr("x", -(margin.top + height - margin.bottom) / 2)
-    .attr("y", 16)
+    .attr("y", Y_TITLE_OFFSET)
     .attr("text-anchor", "middle")
-    .attr("font-size", 12)
-    .attr("fill", "#172033")
+    .attr("font-size", AXIS_TITLE_FONT_SIZE)
+    .attr("fill", AXIS_LABEL_COLOR)
     .text("Number of Events");
 
   const line = d3.line()
@@ -471,7 +516,7 @@ function renderDensityPlot() {
     .join("path")
     .attr("fill", "none")
     .attr("stroke", (d) => d.color)
-    .attr("stroke-width", 1.5)
+    .attr("stroke-width", SAMPLE_LINE_WIDTH)
     .attr("d", (d) => line(d.points));
 
   if (djf) {
@@ -487,13 +532,13 @@ function renderDensityPlot() {
     // show) with a solid outline.
     const component = (data, color) => {
       overlay.append("path").attr("fill", color).attr("fill-opacity", DJF_FILL_OPACITY).attr("stroke", "none").attr("d", area(data));
-      overlay.append("path").attr("fill", "none").attr("stroke", color).attr("stroke-width", 1.5).attr("d", line(data));
+      overlay.append("path").attr("fill", "none").attr("stroke", color).attr("stroke-width", DJF_COMPONENT_LINE_WIDTH).attr("d", line(data));
     };
     component(djf.g1, DJF_G1_COLOR);
     component(djf.s, DJF_S_COLOR);
     component(djf.g2, DJF_G2_COLOR);
     // Fitted total on top as a solid line.
-    overlay.append("path").attr("fill", "none").attr("stroke", "#111827").attr("stroke-width", 2).attr("d", line(djf.total));
+    overlay.append("path").attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", DJF_TOTAL_LINE_WIDTH).attr("d", line(djf.total));
   }
 
   // Draggable peak-detection threshold (only when the "Peak threshold" box is
@@ -509,21 +554,21 @@ function renderDensityPlot() {
     const positionAt = (yPix) => {
       group.select(".threshold-fill").attr("y", yPix).attr("height", Math.max(0, baseY - yPix));
       group.selectAll(".threshold-line").attr("y1", yPix).attr("y2", yPix);
-      group.select(".threshold-label").attr("y", Math.max(margin.top + 10, yPix - 5));
+      group.select(".threshold-label").attr("y", Math.max(margin.top + THRESHOLD_LABEL_TOP_PAD, yPix - THRESHOLD_LABEL_Y_OFFSET));
     };
 
     group.append("rect").attr("class", "threshold-fill")
       .attr("x", x0).attr("width", x1 - x0)
-      .attr("fill", "#9ca3af").attr("opacity", 0.12).attr("pointer-events", "none");
+      .attr("fill", THRESHOLD_COLOR).attr("opacity", THRESHOLD_FILL_OPACITY).attr("pointer-events", "none");
     group.append("line").attr("class", "threshold-line")
       .attr("x1", x0).attr("x2", x1)
-      .attr("stroke", "#9ca3af").attr("stroke-width", 1.5).attr("pointer-events", "none");
+      .attr("stroke", THRESHOLD_COLOR).attr("stroke-width", THRESHOLD_LINE_WIDTH).attr("pointer-events", "none");
     group.append("text").attr("class", "threshold-label")
-      .attr("x", x0 + 6).attr("font-size", 10).attr("fill", "#6b7280")
+      .attr("x", x0 + THRESHOLD_LABEL_X_OFFSET).attr("font-size", THRESHOLD_LABEL_FONT_SIZE).attr("fill", THRESHOLD_LABEL_COLOR)
       .text(`peak threshold: ${Math.round(thresholdValue).toLocaleString()} events`);
     const handle = group.append("line").attr("class", "threshold-line")
       .attr("x1", x0).attr("x2", x1)
-      .attr("stroke", "transparent").attr("stroke-width", 14).attr("cursor", "ns-resize");
+      .attr("stroke", "transparent").attr("stroke-width", THRESHOLD_HANDLE_WIDTH).attr("cursor", "ns-resize");
 
     positionAt(yScale(Math.min(thresholdValue, yMax)));
 
@@ -547,16 +592,16 @@ function renderDensityPlot() {
   const legendData = series.map((s) => ({ label: stripFcs(s.name), color: s.color }));
   if (djf) {
     legendData.push(
-      { label: "DJF fit", color: "#111827" },
+      { label: "DJF fit", color: DJF_TOTAL_COLOR },
       { label: "G1", color: DJF_G1_COLOR },
       { label: "S", color: DJF_S_COLOR },
       { label: "G2", color: DJF_G2_COLOR },
     );
   }
-  const legend = svg.append("g").attr("transform", `translate(${width - margin.right + 14},${margin.top})`);
-  const items = legend.selectAll("g").data(legendData).join("g").attr("transform", (d, i) => `translate(0,${i * 18})`);
-  items.append("line").attr("x1", 0).attr("x2", 18).attr("y1", 6).attr("y2", 6).attr("stroke", (d) => d.color).attr("stroke-width", 2);
-  items.append("text").attr("x", 24).attr("y", 9).attr("font-size", 11).attr("fill", "#172033").text((d) => d.label);
+  const legend = svg.append("g").attr("transform", `translate(${width - margin.right + LEGEND_OFFSET_X},${margin.top})`);
+  const items = legend.selectAll("g").data(legendData).join("g").attr("transform", (d, i) => `translate(0,${i * LEGEND_ROW_HEIGHT})`);
+  items.append("line").attr("x1", 0).attr("x2", LEGEND_SWATCH_WIDTH).attr("y1", LEGEND_SWATCH_Y).attr("y2", LEGEND_SWATCH_Y).attr("stroke", (d) => d.color).attr("stroke-width", LEGEND_LINE_WIDTH);
+  items.append("text").attr("x", LEGEND_TEXT_OFFSET).attr("y", LEGEND_TEXT_Y).attr("font-size", LEGEND_FONT_SIZE).attr("fill", AXIS_LABEL_COLOR).text((d) => d.label);
 }
 
 /* ---------- Listeners ---------- */
