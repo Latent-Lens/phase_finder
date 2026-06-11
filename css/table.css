@@ -196,17 +196,23 @@ th {
   color: var(--accent);
 }
 
-/* Always-visible up/down sort arrows; the active direction is highlighted. */
+/* Always-visible up/down sort arrows, side by side; the active one highlights. */
 .sort-indicator {
   display: inline-flex;
-  flex-direction: column;
-  line-height: 0.78;
+  flex-direction: row;
+  gap: 1px;
   font-size: 0.85rem;
 }
 
 .sort-arrow {
   color: var(--muted);
   opacity: 0.45;
+  cursor: pointer;
+}
+
+.sort-arrow:hover {
+  color: var(--accent);
+  opacity: 1;
 }
 
 .sort-arrow.active {
