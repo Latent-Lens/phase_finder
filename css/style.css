@@ -183,6 +183,19 @@
         flex-direction: column;
       }
 
+      .plot-panel {
+        min-height: 460px;
+      }
+
+      .plot-panel .table-wrap {
+        max-height: none;
+        overflow: hidden;
+      }
+
+      .plot-panel #plotArea {
+        min-height: 420px;
+      }
+
       .table-wrap {
         flex: 1;
         min-height: 0;
@@ -453,6 +466,9 @@
   right: 0;
   bottom: 0;
   left: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   z-index: 20;
   min-height: 36px;
   border-top: 4px solid #01a5af;
@@ -461,9 +477,22 @@
   color: #ffffff;
   padding: 9px 16px;
   overflow: hidden;
+  font-size: 0.9rem;
+}
+
+.status-bar-message {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.9rem;
+}
+
+.status-bar-copyright {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+  opacity: 0.9;
 }
 
 .status-bar.error {

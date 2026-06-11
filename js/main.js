@@ -4,6 +4,7 @@ const dropZoneTitle = document.querySelector("#dropZoneTitle");
 const dropZoneHint = document.querySelector("#dropZoneHint");
 const statusEl = document.querySelector("#status");
 const statusBar = document.querySelector("#statusBar");
+const statusBarMessage = document.querySelector("#statusBarMessage");
 const dnaAreaSelect = document.querySelector("#dnaAreaSelect");
 const fileTable = document.querySelector("#fileTable");
 const startAnalysisButton = document.querySelector("#startAnalysisButton");
@@ -50,7 +51,7 @@ function setStatus(message, isError = false) {
 }
 
 function setStatusBar(message, isError = false) {
-  statusBar.textContent = message;
+  statusBarMessage.textContent = message;
   statusBar.classList.toggle("error", isError);
 }
 
@@ -377,13 +378,59 @@ function handleTableChange(event) {
   }
 
   if (target.classList.contains("row-select")) {
+    const fileId = target.dataset.fileId;
     if (target.checked) {
-      selectedFileIds.add(target.dataset.fileId);
+      selectedFileIds.add(fileId);
     } else {
-      selectedFileIds.delete(target.dataset.fileId);
+      selectedFileIds.delete(fileId);
     }
     updateSelectAllCheckbox();
     updateStartButtonState();
+
+    // If the plot panel is visible, update the plot.
+    try {
+      const isPlotVisible = typeof plotPanel !== "undefined" && plotPanel && !plotPanel.hidden;
+      if (!isPlotVisible) return;
+
+      const rows = window.FlowPlotterApp.getSelectedFiles();
+      const selected = window.FlowPlotterApp.getSelectedChannels();
+
+      if (!target.checked) {
+        // Unchecked: remove the corresponding trace by name (lighter-weight).
+        if (window.Plotly && typeof plotArea !== "undefined" && plotArea) {
+          const parsed = window.FlowPlotterApp.getParsedFiles();
+          const entry = parsed.find((p) => p.id === fileId);
+          if (entry && plotArea.data && plotArea.data.length) {
+            const traceIndex = plotArea.data.findIndex((t) => t && t.name === entry.name);
+            if (traceIndex !== -1) {
+              try {
+                window.Plotly.deleteTraces(plotArea, traceIndex);
+              } catch (e) {
+                // fallback to full re-render if deleteTraces fails
+                if (rows.length) renderDensityPlot(rows, selected);
+              }
+            }
+          }
+
+          const remaining = plotArea.data ? plotArea.data.length : 0;
+          if (remaining === 0) {
+            try {
+              window.Plotly.purge(plotArea);
+            } catch (e) {
+              plotArea.innerHTML = "";
+            }
+            plotPanel.hidden = true;
+          }
+        }
+      } else {
+        // Checked: re-render the full plot to ensure shared axis/ranges are correct.
+        if (rows.length) {
+          renderDensityPlot(rows, selected);
+        }
+      }
+    } catch (err) {
+      // Swallow errors to avoid breaking table interactions.
+    }
   }
 }
 
