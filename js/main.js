@@ -190,6 +190,12 @@ function updateStartButtonState() {
   startAnalysisButton.disabled = !dnaAreaSelect.value || selectedFileIds.size === 0;
 }
 
+// Tell the plot (plotting.js) that the checked-sample set changed so it can
+// add/remove curves live. Custom name avoids the native "selectionchange".
+function notifySelectionChanged() {
+  document.dispatchEvent(new CustomEvent("fcs-selection-change"));
+}
+
 // DEBUG: force a known DNA-content area channel after FCS metadata has been read
 // so the analysis flow can be exercised without manual clicking. Remove for
 // production.
@@ -274,6 +280,12 @@ function headerCell(column) {
         </th>`;
 }
 
+// Filename shown to the user, without the .fcs extension (entry.name keeps it
+// for dedup/matching).
+function displayName(name) {
+  return name.replace(/\.fcs$/i, "");
+}
+
 function renderFileTable() {
   if (!parsedFiles.length) {
     fileTable.innerHTML = '<p class="empty-note">Upload FCS files to initialize the table.</p>';
@@ -290,11 +302,16 @@ function renderFileTable() {
   // A row filtered out of the display is automatically deselected, so only
   // files that are both visible and checked stay selected (and get analyzed).
   const visibleIds = new Set(visibleFiles.map((entry) => entry.id));
+  let prunedSelection = false;
   selectedFileIds.forEach((id) => {
     if (!visibleIds.has(id)) {
       selectedFileIds.delete(id);
+      prunedSelection = true;
     }
   });
+  if (prunedSelection) {
+    notifySelectionChanged();
+  }
 
   const headers = TABLE_COLUMNS.map(headerCell).join("");
 
@@ -304,7 +321,7 @@ function renderFileTable() {
           (entry) => `
         <tr>
           <td class="checkbox-col"><input type="checkbox" class="row-select" data-file-id="${entry.id}"${selectedFileIds.has(entry.id) ? " checked" : ""} /></td>
-          <td class="filename-cell" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</td>
+          <td class="filename-cell" title="${escapeHtml(entry.name)}">${escapeHtml(displayName(entry.name))}</td>
           ${cell(entry, "strain")}
           ${cell(entry, "replicate")}
           ${cell(entry, "nocodazoleArrest")}
@@ -374,6 +391,7 @@ function handleTableChange(event) {
     });
     renderFileTable();
     updateStartButtonState();
+    notifySelectionChanged();
     return;
   }
 
@@ -386,51 +404,7 @@ function handleTableChange(event) {
     }
     updateSelectAllCheckbox();
     updateStartButtonState();
-
-    // If the plot panel is visible, update the plot.
-    try {
-      const isPlotVisible = typeof plotPanel !== "undefined" && plotPanel && !plotPanel.hidden;
-      if (!isPlotVisible) return;
-
-      const rows = window.FlowPlotterApp.getSelectedFiles();
-      const selected = window.FlowPlotterApp.getSelectedChannels();
-
-      if (!target.checked) {
-        // Unchecked: remove the corresponding trace by name (lighter-weight).
-        if (window.Plotly && typeof plotArea !== "undefined" && plotArea) {
-          const parsed = window.FlowPlotterApp.getParsedFiles();
-          const entry = parsed.find((p) => p.id === fileId);
-          if (entry && plotArea.data && plotArea.data.length) {
-            const traceIndex = plotArea.data.findIndex((t) => t && t.name === entry.name);
-            if (traceIndex !== -1) {
-              try {
-                window.Plotly.deleteTraces(plotArea, traceIndex);
-              } catch (e) {
-                // fallback to full re-render if deleteTraces fails
-                if (rows.length) renderDensityPlot(rows, selected);
-              }
-            }
-          }
-
-          const remaining = plotArea.data ? plotArea.data.length : 0;
-          if (remaining === 0) {
-            try {
-              window.Plotly.purge(plotArea);
-            } catch (e) {
-              plotArea.innerHTML = "";
-            }
-            plotPanel.hidden = true;
-          }
-        }
-      } else {
-        // Checked: re-render the full plot to ensure shared axis/ranges are correct.
-        if (rows.length) {
-          renderDensityPlot(rows, selected);
-        }
-      }
-    } catch (err) {
-      // Swallow errors to avoid breaking table interactions.
-    }
+    notifySelectionChanged();
   }
 }
 
