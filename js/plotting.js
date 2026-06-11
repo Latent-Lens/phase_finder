@@ -62,6 +62,10 @@ const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot to
 
 // DNA-content channel(s) of the most recent analysis; null until analysis runs.
 let plotChannels = null;
+// Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
+// when no samples are selected.
+let lastRange = null;
+let lastYMax = null;
 // Absolute event-count cutoff for peak detection, set by dragging the threshold
 // line on the plot. Tracks which sample it belongs to so switching the modeled
 // sample resets it to that sample's default.
@@ -707,12 +711,22 @@ function renderDensityPlot() {
 
   plotArea.innerHTML = "";
   if (djfReadout) djfReadout.textContent = "";
-  if (!rows.length) return;
 
   const isLog = plotXScaleSelect && plotXScaleSelect.value === "log";
   const colorBy = plotColorBySelect ? plotColorBySelect.value : "file";
   const bins = plotBinCount();
-  const range = sharedRange(rows, isLog);
+
+  // With samples, compute the range and remember it; with none, keep the axes
+  // by reusing the last range (or a sensible default) instead of bailing out.
+  let range;
+  if (rows.length) {
+    range = sharedRange(rows, isLog);
+    lastRange = range;
+  } else if (lastRange && (!isLog || lastRange[0] > 0)) {
+    range = lastRange;
+  } else {
+    range = isLog ? [1, 10] : [0, 1];
+  }
   const opts = axisOpts(range, isLog, bins);
 
   const assign = buildColorAssigner(rows, colorBy);
@@ -765,8 +779,14 @@ function renderDensityPlot() {
   const xScale = (isLog ? d3.scaleLog() : d3.scaleLinear())
     .domain(range)
     .range([margin.left, width - margin.right]);
-  let yMax = d3.max(series, (s) => d3.max(s.points, (pt) => pt.y)) || 1;
+  let yMax = d3.max(series, (s) => d3.max(s.points, (pt) => pt.y)) || 0;
   if (djf) yMax = Math.max(yMax, d3.max(djf.total, (pt) => pt.y) || 0);
+  // Remember the populated y-max so an empty plot keeps the same y-scale.
+  if (yMax > 0) {
+    lastYMax = yMax;
+  } else {
+    yMax = lastYMax || 1;
+  }
   const yScale = d3.scaleLinear().domain([0, yMax]).nice().range([height - margin.bottom, margin.top]);
 
   const svg = d3.select(plotArea).append("svg").attr("width", width).attr("height", height);

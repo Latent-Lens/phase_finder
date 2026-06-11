@@ -512,7 +512,7 @@ function sortIndicator(field) {
   const active = sortState.field === field;
   const ascClass = active && sortState.direction === "asc" ? "sort-arrow active" : "sort-arrow";
   const descClass = active && sortState.direction === "desc" ? "sort-arrow active" : "sort-arrow";
-  return `<span class="sort-indicator"><span class="${ascClass}">▲</span><span class="${descClass}">▼</span></span>`;
+  return `<span class="sort-indicator"><span class="${ascClass}" data-sort-dir="asc" title="Sort ascending">▲</span><span class="${descClass}" data-sort-dir="desc" title="Sort descending">▼</span></span>`;
 }
 
 /*
@@ -779,6 +779,19 @@ function handleTableClick(event) {
     return;
   }
 
+  // Clicking a specific arrow sorts that column in that direction (up = asc,
+  // down = desc).
+  const sortArrow = event.target.closest(".sort-arrow");
+  if (sortArrow) {
+    const arrowButton = sortArrow.closest(".th-sort");
+    if (arrowButton) {
+      sortState = { field: arrowButton.dataset.sortField, direction: sortArrow.dataset.sortDir };
+      renderFileTable();
+    }
+    return;
+  }
+
+  // Clicking the label (not an arrow) toggles the direction.
   const sortButton = event.target.closest(".th-sort");
   if (!sortButton) {
     return;
