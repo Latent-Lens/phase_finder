@@ -1,0 +1,100 @@
+/* Plot panel: panel layout overrides, the controls bar, the DJF fractions
+   readout, and the peak-threshold checkbox with its info icon. */
+
+/* display:flex on .parsed-files-panel would otherwise defeat [hidden]. */
+.plot-panel[hidden] {
+  display: none !important;
+}
+
+.plot-panel {
+  min-height: 460px;
+}
+
+/* Stack the controls bar above the plot area. */
+.plot-panel .metadata-panel-body {
+  flex-direction: column;
+}
+
+.plot-panel .table-wrap {
+  max-height: none;
+  overflow: hidden;
+}
+
+/* Let the plot area size to the space the panel gives it (flex:1) instead of
+   forcing a height, which overflowed the panel and clipped the x-axis. */
+.plot-panel #plotArea {
+  min-height: 0;
+}
+
+.plot-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.plot-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.plot-control select,
+.plot-control input {
+  width: auto;
+  min-height: 30px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.plot-control input {
+  width: 88px;
+}
+
+.djf-readout {
+  align-self: center;
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.plot-check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.plot-check-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  min-height: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}

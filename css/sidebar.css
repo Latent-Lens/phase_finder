@@ -1,0 +1,48 @@
+/* Sidebar: FCS file drop zone, channel-select controls, and status text. */
+
+.drop-zone {
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  min-height: 168px;
+  border: 1px dashed #8ea0bd;
+  border-radius: 8px;
+  padding: 18px;
+  text-align: center;
+  background: #fbfcff;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.drop-zone.dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.drop-zone strong,
+.drop-zone span {
+  display: block;
+}
+
+.drop-zone span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.controls {
+  display: grid;
+  gap: 12px;
+}
+
+.status {
+  min-height: 42px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.status.error {
+  color: var(--danger);
+}

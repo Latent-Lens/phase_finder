@@ -1,0 +1,240 @@
+/* Metadata table: base table styling, the file table, sortable headers, the
+   per-column filter dropdowns (multi-select), and the empty-state note. */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+th,
+td {
+  max-width: 260px;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: #f2f5fa;
+  text-align: left;
+}
+
+/* ---- Multi-select dropdown (column filters) ---- */
+
+.multi-select {
+  position: relative;
+}
+
+.multi-select-toggle {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 8px 32px 8px 10px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  cursor: pointer;
+}
+
+.multi-select-toggle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.multi-select-toggle:disabled {
+  cursor: default;
+  color: var(--muted);
+  background: #f8fafc;
+}
+
+.multi-select-menu {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 10px;
+  max-height: 220px;
+  margin-top: 4px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
+  padding: 8px;
+}
+
+.multi-select-menu[hidden] {
+  display: none;
+}
+
+.checkbox-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.checkbox-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.checkbox-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- File table ---- */
+
+/* Let columns widen to fit their content instead of stretching to fill. */
+.file-table {
+  width: auto;
+}
+
+.file-table th,
+.file-table td {
+  max-width: none;
+}
+
+.file-table input {
+  width: auto;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.file-table input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.checkbox-col {
+  width: 1%;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Header checkbox sits at the top of the cell, level with the column labels. */
+.file-table th.checkbox-col {
+  vertical-align: top;
+}
+
+.file-table th.checkbox-col input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.file-table th {
+  vertical-align: top;
+  /* Shrink the header band; the label pins to the top and the filter dropdown
+     to the bottom of this height (see .th-inner / .th-filter). */
+  height: 54px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  /* Let the filter dropdown escape the cell instead of being clipped. */
+  overflow: visible;
+}
+
+/* Flex column so the label stays at the top and the dropdown drops to the
+   bottom of the (fixed-height) header cell. */
+.th-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 1rem;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: var(--accent);
+}
+
+/* Always-visible up/down sort arrows; the active direction is highlighted. */
+.sort-indicator {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0.78;
+  font-size: 0.85rem;
+}
+
+.sort-arrow {
+  color: var(--muted);
+  opacity: 0.45;
+}
+
+.sort-arrow.active {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.th-filter {
+  margin-top: auto;
+  max-width: 180px;
+  font-weight: 400;
+}
+
+.th-filter-toggle {
+  min-height: 26px;
+  font-size: 0.8rem;
+}
+
+/* Filter menu checkboxes use the global 17px size, so let the first grid
+   column fit the checkbox instead of clamping it to 16px. */
+.th-filter .checkbox-option {
+  grid-template-columns: auto minmax(0, 1fr);
+  font-size: 0.85rem;
+}
+
+.empty-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}

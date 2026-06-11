@@ -21,7 +21,13 @@
         })
         .catch((error) => console.warn("ml-gsd failed to load:", error));
     </script>
-    <link rel="stylesheet" href="./css/style.css" />
+    <link rel="stylesheet" href="./css/base.css" />
+    <link rel="stylesheet" href="./css/layout.css" />
+    <link rel="stylesheet" href="./css/sidebar.css" />
+    <link rel="stylesheet" href="./css/table.css" />
+    <link rel="stylesheet" href="./css/plot.css" />
+    <link rel="stylesheet" href="./css/feedback.css" />
+    <link rel="stylesheet" href="./css/responsive.css" />
 
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/img/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon/favicon-32x32.png">
@@ -141,7 +147,9 @@
 
     <footer id="statusBar" class="status-bar">
       <span id="statusBarMessage" class="status-bar-message">Ready.</span>
-      <span class="status-bar-copyright">© 2026 LatentLens. All rights reserved</span>
+      <span class="status-bar-copyright">
+        © 2026 <a href="https://latentlens.org">LatentLens</a>. All rights reserved
+      </span>
     </footer>
 
     <script src="./js/fcs-parser.js"></script>

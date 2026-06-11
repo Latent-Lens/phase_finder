@@ -1,0 +1,25 @@
+/* Responsive overrides — loaded last so these win at the breakpoint. */
+
+@media (max-width: 820px) {
+  .app {
+    grid-template-columns: 1fr;
+    padding: 12px 12px 56px;
+  }
+
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .parsed-files-panel {
+    min-height: 55vh;
+  }
+
+  .table-wrap {
+    max-height: 55vh;
+  }
+
+  .start-analysis-button {
+    width: 100%;
+  }
+}
