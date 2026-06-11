@@ -68,32 +68,97 @@ let plotChannels = null;
 let peakThreshold = null;
 let peakThresholdSample = null;
 
-// Display name without the .fcs extension (the real row.name is kept for
-// matching/selection).
+/*
+
+Purpose:
+	Strips a trailing ".fcs" extension from a filename for display. The full
+	row.name is kept elsewhere for matching/selection, so only the shown label
+	changes.
+
+Input:
+	name [string]: a sample filename, possibly ending in ".fcs"
+
+Output:
+	label [string]: the filename with any trailing ".fcs" (case-insensitive) removed
+
+*/
 function stripFcs(name) {
   return name.replace(/\.fcs$/i, "");
 }
 
+/*
+
+Purpose:
+	Reads the bin count from the "Bins" input and clamps it to a safe range.
+	Falls back to the default when the field is empty or non-numeric.
+
+Input:
+	(none)
+
+Output:
+	bins [number]: the bin count, clamped to [16, 1024] (default 256)
+
+*/
 function plotBinCount() {
   const raw = Number.parseInt(plotBinsInput && plotBinsInput.value, 10);
   if (!Number.isFinite(raw)) return DEFAULT_BINS;
   return Math.max(16, Math.min(1024, raw));
 }
 
-// Files that are both checked and have loaded event data.
+/*
+
+Purpose:
+	Returns the samples that should be drawn: those currently checked in the
+	table AND already loaded with event data. Reads the selection through
+	window.FlowPlotterApp.
+
+Input:
+	(none)
+
+Output:
+	rows [Array<Object>]: checked sample objects whose row.data.dnaA is loaded
+
+*/
 function plottableRows() {
   const app = window.FlowPlotterApp;
   if (!app) return [];
   return app.getSelectedFiles().filter((row) => row.data && row.data.dnaA);
 }
 
-// Evenly spaced, distinct hue so many overlaid curves stay readable.
+/*
+
+Purpose:
+	Picks a distinct color for one curve by spreading hues evenly around the
+	color wheel, so many overlaid samples stay distinguishable.
+
+Input:
+	index [number]: this curve's position in the set
+	total [number]: number of samples sharing the palette
+
+Output:
+	color [string]: an HSL color string
+
+*/
 function sampleColor(index, total) {
   const hue = total > 1 ? Math.round((index * 360) / total) % 360 : 210;
   return `hsl(${hue}, 70%, 45%)`;
 }
 
-// Returns (row, index) -> { color, group }: a hue per file, or per strain.
+/*
+
+Purpose:
+	Builds a function that assigns a color and a legend group to each sample.
+	When coloring by strain, all samples of a strain share one hue; otherwise
+	every file gets its own hue.
+
+Input:
+	rows [Array<Object>]: the samples to be plotted
+	colorBy [string]:     "file" or "strain"
+
+Output:
+	assign [Function]: (row, index) => { color [string], group [string] }
+
+*/
 function buildColorAssigner(rows, colorBy) {
   if (colorBy === "strain") {
     const strainOf = (row) => (row.annotations.strain || "").trim() || "(none)";
@@ -106,8 +171,21 @@ function buildColorAssigner(rows, colorBy) {
   return (row, index) => ({ color: sampleColor(index, rows.length), group: row.name });
 }
 
-// Shared x-range from the 0.5th–99.5th percentiles of a downsample of all
-// plotted events. With positiveOnly (log axis) non-positive values are dropped.
+/*
+
+Purpose:
+	Computes a shared x-range for all plotted samples from the 0.5th–99.5th
+	percentiles of a downsample of their events, so a few extreme outliers
+	don't squash the curves.
+
+Input:
+	rows [Array<Object>]:   the plotted samples (uses row.data.dnaA)
+	positiveOnly [boolean]: drop values <= 0 first (needed for a log axis)
+
+Output:
+	range [Array<number>]: the [lo, hi] x-range
+
+*/
 function sharedRange(rows, positiveOnly) {
   const total = rows.reduce((sum, row) => sum + row.data.dnaA.length, 0);
   const stride = Math.max(1, Math.floor(total / 50000));
@@ -129,8 +207,21 @@ function sharedRange(rows, positiveOnly) {
   return [lo, hi];
 }
 
-// Binning transform: identity for linear, log10 for a log axis (so log bins are
-// evenly spaced on screen).
+/*
+
+Purpose:
+	Builds the binning transform for the histogram: identity for a linear axis,
+	log10 for a log axis (so log bins are evenly spaced on screen).
+
+Input:
+	range [Array<number>]: the [lo, hi] data range
+	isLog [boolean]:       true for a log x-axis
+	bins [number]:         number of histogram bins
+
+Output:
+	opts [Object]: { tLo, tHi, bins, toData, toT } used by histogramCurve
+
+*/
 function axisOpts(range, isLog, bins) {
   const [lo, hi] = range;
   if (isLog) {
@@ -139,7 +230,20 @@ function axisOpts(range, isLog, bins) {
   return { tLo: lo, tHi: hi, bins, toData: (t) => t, toT: (v) => v };
 }
 
-// Per-bin event counts as {x, y} points — a histogram drawn as a smooth curve.
+/*
+
+Purpose:
+	Bins a sample's event values into per-bin counts and returns them as points,
+	producing a histogram that is later drawn as a smooth curve.
+
+Input:
+	values [Float64Array]: the channel's event values (one per event)
+	opts [Object]:         binning transform from axisOpts()
+
+Output:
+	points [Array<{x,y}>]: per-bin { x: bin center, y: event count } points
+
+*/
 function histogramCurve(values, opts) {
   const { tLo, tHi, bins, toData, toT } = opts;
   const width = (tHi - tLo) / bins;
@@ -161,13 +265,40 @@ function histogramCurve(values, opts) {
 
 /* ---------- Dean–Jett–Fox model (Full Fox broadening) ---------- */
 
+/*
+
+Purpose:
+	Evaluates a unit-area (normalized) Gaussian at a given distance from its
+	mean. Used as the building block for the DJF G1/G2 peaks and S broadening.
+
+Input:
+	distance [number]: distance from the Gaussian's mean (x - mean)
+	sigma [number]:    standard deviation
+
+Output:
+	density [number]: the normalized Gaussian value at that distance
+
+*/
 function gaussian(distance, sigma) {
   return Math.exp(-(distance * distance) / (2 * sigma * sigma)) / (sigma * Math.sqrt(2 * Math.PI));
 }
 
-// p = [M1, sigma1, aG1, aG2, s0, s1, s2]; M2 = 2*M1, sigma2 = 2*sigma1 (constant
-// CV). S phase: a quadratic in normalized position, broadened by a Gaussian
-// whose SD varies linearly from sigma1 (at G1) to sigma2 (at G2/M) — Full Fox.
+/*
+
+Purpose:
+	Evaluates the three DJF cell-cycle components at one channel value. G1 and
+	G2 are Gaussians with M2 = 2*M1 and sigma2 = 2*sigma1 (constant CV); the S
+	phase is a quadratic in normalized position broadened by a Gaussian whose
+	width varies linearly from sigma1 to sigma2 (Full Fox).
+
+Input:
+	value [number]:    the channel value (x position) to evaluate
+	p [Array<number>]: [M1, sigma1, aG1, aG2, s0, s1, s2] fit parameters
+
+Output:
+	components [Object]: { g1, s, g2 } component heights at that x
+
+*/
 function djfComponents(value, p) {
   const [M1, sigma1, aG1, aG2, s0, s1, s2] = p;
   const M2 = 2 * M1;
@@ -188,14 +319,40 @@ function djfComponents(value, p) {
   return { g1, s, g2 };
 }
 
+/*
+
+Purpose:
+	Evaluates the full DJF model (the sum of the G1, S and G2 components) at one
+	channel value. This is the function the least-squares fit is run against.
+
+Input:
+	value [number]:    the channel value (x position) to evaluate
+	p [Array<number>]: the DJF fit parameters (see djfComponents)
+
+Output:
+	total [number]: the summed model height (G1 + S + G2) at that x
+
+*/
 function djfModel(value, p) {
   const c = djfComponents(value, p);
   return c.g1 + c.s + c.g2;
 }
 
-// Detect histogram peaks (left to right) above an absolute event-count
-// threshold. Uses the ml-gsd library when present; falls back to a local-maxima
-// scan otherwise. The threshold is the height of the draggable line on the plot.
+/*
+
+Purpose:
+	Finds histogram peaks (left to right) above an absolute event-count cutoff.
+	Uses the ml-gsd library when present and falls back to a simple local-maxima
+	scan otherwise.
+
+Input:
+	points [Array<{x,y}>]:   the sample's histogram points
+	threshold [number|null]: absolute event-count cutoff; null = 5% of the max bin
+
+Output:
+	peaks [Array<{x,y}>]: detected peaks, sorted left to right (may be empty)
+
+*/
 function detectPeaks(points, threshold) {
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
@@ -234,12 +391,20 @@ function detectPeaks(points, threshold) {
   return peaks;
 }
 
-// Seed M1 (G1 mean) from the histogram peaks. Because G2/M sits at ~2x G1, the
-// strongest signal is a PAIR of peaks at a ~2x ratio — pick the tallest such
-// pair and take the lower one as G1. This is robust when G2/M is the dominant
-// peak and G1 is small (e.g. just after release from arrest), where the
-// leftmost or tallest peak alone would mislead.
-// Tallest pair of peaks at a ~2x ratio (G1, G2/M), or null.
+/*
+
+Purpose:
+	Among the detected peaks, finds the tallest pair whose positions sit at a
+	~2x ratio — the G1 (2N) and G2 (4N) peaks. Using the pair is robust even
+	when G2 is the dominant peak and G1 is small.
+
+Input:
+	peaks [Array<{x,y}>]: detected histogram peaks
+
+Output:
+	pair [Object|null]: { g1, g2 } peak points, or null if no ~2x pair exists
+
+*/
 function bestG1G2Pair(peaks) {
   let best = null;
   let bestScore = -Infinity;
@@ -258,6 +423,20 @@ function bestG1G2Pair(peaks) {
   return best;
 }
 
+/*
+
+Purpose:
+	Returns the y value of the histogram point nearest a given x. Used to seed
+	component amplitudes from the actual counts at the G1 and G2 positions.
+
+Input:
+	points [Array<{x,y}>]: the sample's histogram points
+	x [number]:            the x position to look up
+
+Output:
+	y [number]: the count at the nearest bin (0 if there are no points)
+
+*/
 function valueAt(points, x) {
   let best = 0;
   let bestDist = Infinity;
@@ -268,9 +447,22 @@ function valueAt(points, x) {
   return best;
 }
 
-// The 2N (G1) channel is a property of the stain/run, so estimate it once from
-// the samples that DO show a clear G1/G2 pair (median). Samples that only show
-// a G2/M peak (e.g. fully arrested) can then be seeded with this shared G1.
+/*
+
+Purpose:
+	Estimates the shared 2N (G1) channel position for the run. Since the 2N
+	position is fixed by the stain, it takes the median G1 across the samples
+	that show a clear G1/G2 pair; samples that only show a G2 peak (e.g. fully
+	arrested) can then be seeded with this shared value.
+
+Input:
+	rows [Array<Object>]: all plotted samples
+	opts [Object]:        binning transform from axisOpts()
+
+Output:
+	g1 [number|null]: the run-wide G1 position, or null if no pair was found
+
+*/
 function estimateRunG1(rows, opts) {
   const positions = [];
   for (const row of rows) {
@@ -282,6 +474,24 @@ function estimateRunG1(rows, opts) {
   return positions[Math.floor((positions.length - 1) / 2)];
 }
 
+/*
+
+Purpose:
+	Produces an initial DJF parameter guess for the fit by locating G1 from the
+	histogram peaks. Prefers the tallest peak pair at a ~2x ratio; otherwise
+	falls back to a run-wide G1 hint, then to the most prominent peak. Getting
+	G1 right matters most because G2 is pinned at 2x G1.
+
+Input:
+	points [Array<{x,y}>]:   the modeled sample's histogram points
+	range [Array<number>]:   the [lo, hi] x-range
+	threshold [number|null]: peak-detection cutoff (the draggable line height)
+	g1Hint [number|null]:    run-wide G1 position to fall back on, or null
+
+Output:
+	seed [Array<number>]: [M1, sigma1, aG1, aG2, s0, s1, s2] initial guess
+
+*/
 function seedDJF(points, range, threshold, g1Hint) {
   const [lo, hi] = range;
   const peaks = detectPeaks(points, threshold);
@@ -322,6 +532,24 @@ function seedDJF(points, range, threshold, g1Hint) {
   return [M1, sigma1, aG1, aG2, 0.05 * Math.max(peakY, 1e-9), 0, 0];
 }
 
+/*
+
+Purpose:
+	Fits the DJF model to a sample's histogram with Levenberg–Marquardt
+	(ml-levenberg-marquardt). Seeds from seedDJF and bounds the parameters,
+	pinning M1 near the run G1 when known so the fit can't mistake a dominant
+	G2 peak for G1.
+
+Input:
+	points [Array<{x,y}>]:   the modeled sample's histogram points
+	range [Array<number>]:   the [lo, hi] x-range
+	threshold [number|null]: peak-detection cutoff used for seeding
+	g1Hint [number|null]:    run-wide G1 position to pin M1 near, or null
+
+Output:
+	params [Array<number>|null]: fitted [M1, sigma1, aG1, aG2, s0, s1, s2], or null if the fit fails or the library is missing
+
+*/
 function fitDJF(points, range, threshold, g1Hint) {
   const LM = window.levenbergMarquardt;
   if (!LM) return null;
@@ -360,6 +588,20 @@ function fitDJF(points, range, threshold, g1Hint) {
   }
 }
 
+/*
+
+Purpose:
+	Integrates the fitted G1, S and G2 components over the histogram and returns
+	each as a percentage of the total — the cell-cycle phase fractions.
+
+Input:
+	points [Array<{x,y}>]: the modeled sample's histogram points
+	p [Array<number>]:     the fitted DJF parameters
+
+Output:
+	fractions [Object]: { g1, s, g2 } as percentages summing to 100
+
+*/
 function djfFractions(points, p) {
   let g1 = 0;
   let s = 0;
@@ -376,12 +618,39 @@ function djfFractions(points, p) {
 
 /* ---------- Rendering ---------- */
 
+/*
+
+Purpose:
+	Updates the plot panel title to show the number of plotted samples and the
+	total number of events across them.
+
+Input:
+	rows [Array<Object>]: the currently plotted samples
+
+Output:
+	(none) [void]: sets the #plotTitle text
+
+*/
 function updatePlotTitle(rows) {
   if (!plotTitle) return;
   const events = rows.reduce((sum, row) => sum + row.data.dnaA.length, 0);
   plotTitle.textContent = `Histogram of Events: ${rows.length} Samples, ${events.toLocaleString()} Events`;
 }
 
+/*
+
+Purpose:
+	Rebuilds the "Model (DJF)" dropdown from the currently plottable samples,
+	preserving the current selection when possible. Option labels drop the .fcs
+	extension while option values keep the full name for matching.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: repopulates the #plotModelSample dropdown
+
+*/
 function populateModelSelect() {
   if (!plotModelSelect) return;
   const previous = plotModelSelect.value;
@@ -393,14 +662,42 @@ function populateModelSelect() {
   }
 }
 
-// Called once after analysis loads data; subsequent re-renders are driven by
-// control changes and table selection changes.
+/*
+
+Purpose:
+	Initializes the plot once analysis has loaded data: stores the selected
+	channel info, populates the model dropdown, and renders. Subsequent redraws
+	are driven by control changes and table selection changes.
+
+Input:
+	channels [Object]: the selected channels, e.g. { dnaArea }
+
+Output:
+	(none) [void]: stores plot state and triggers the first render
+
+*/
 function initPlot(channels) {
   plotChannels = channels;
   populateModelSelect();
   renderDensityPlot();
 }
 
+/*
+
+Purpose:
+	The main render. Draws the overlaid event histograms for the currently
+	checked samples with D3, applying the controls (color-by, axis scale, bins).
+	When a sample is chosen under Model (DJF) it overlays the fitted curve and
+	filled G1/S/G2 components, a draggable peak-threshold line, and a fraction
+	readout. Also draws the legend and updates the title.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: rebuilds the #plotArea SVG
+
+*/
 function renderDensityPlot() {
   const d3 = window.d3;
   if (!d3 || !plotArea || !plotChannels) return;

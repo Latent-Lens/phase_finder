@@ -1,12 +1,52 @@
+/*
+
+Purpose:
+	Decodes a byte range of an ArrayBuffer as ASCII text.
+
+Input:
+	buffer [ArrayBuffer]:  the file bytes
+	begin [number]:        start byte offset (inclusive)
+	endInclusive [number]: end byte offset (inclusive)
+
+Output:
+	text [string]: the decoded ASCII string
+
+*/
 function readAscii(buffer, begin, endInclusive) {
   return new TextDecoder("ascii").decode(buffer.slice(begin, endInclusive + 1));
 }
 
+/*
+
+Purpose:
+	Parses a header offset field into an integer, returning 0 when it is not a
+	valid number.
+
+Input:
+	value [string|number]: a raw header offset field
+
+Output:
+	offset [number]: the parsed integer, or 0 if invalid
+
+*/
 function parseOffset(value) {
   const parsed = Number.parseInt(String(value).trim(), 10);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/*
+
+Purpose:
+	Reads the fixed 58-byte FCS HEADER and extracts the TEXT/DATA/ANALYSIS
+	segment offsets. Throws if the buffer is too small or is not an FCS file.
+
+Input:
+	buffer [ArrayBuffer]: the FCS file bytes
+
+Output:
+	header [Object]: { version, textBegin, textEnd, dataBegin, dataEnd, analysisBegin, analysisEnd }
+
+*/
 function parseHeader(buffer) {
   if (buffer.byteLength < 58) {
     throw new Error("FCS file is too small to contain a valid header.");
@@ -30,6 +70,19 @@ function parseHeader(buffer) {
   };
 }
 
+/*
+
+Purpose:
+	Parses an FCS TEXT segment (delimiter-separated key/value pairs, where the
+	delimiter is escaped by doubling) into a normalized metadata object.
+
+Input:
+	text [string]: the raw TEXT segment, with the delimiter as its first char
+
+Output:
+	metadata [Object]: normalized keyword -> value pairs
+
+*/
 function parseTextSegment(text) {
   const delimiter = text[0];
   const values = [];
@@ -65,6 +118,19 @@ function parseTextSegment(text) {
   return metadata;
 }
 
+/*
+
+Purpose:
+	Normalizes an FCS keyword to a canonical form: trimmed, leading "$" removed,
+	spaces converted to underscores, and uppercased.
+
+Input:
+	key [string]: a raw FCS keyword
+
+Output:
+	normalized [string]: the canonical keyword (e.g. "PAR", "P1N")
+
+*/
 function normalizeKeyword(key) {
   return String(key || "")
     .trim()
@@ -73,15 +139,56 @@ function normalizeKeyword(key) {
     .toUpperCase();
 }
 
+/*
+
+Purpose:
+	Looks up a metadata value by keyword (normalizing the name first), returning
+	a fallback when the keyword is absent.
+
+Input:
+	metadata [Object]: normalized metadata map
+	name [string]:     the keyword to look up
+	fallback [string]: value returned when the keyword is missing (default "")
+
+Output:
+	value [string]: the metadata value, or the fallback
+
+*/
 function keyword(metadata, name, fallback = "") {
   return metadata[normalizeKeyword(name)] ?? fallback;
 }
 
+/*
+
+Purpose:
+	Determines the data byte order from $BYTEORD, defaulting to little-endian.
+
+Input:
+	metadata [Object]: normalized metadata map
+
+Output:
+	littleEndian [boolean]: true if the data is little-endian
+
+*/
 function isLittleEndian(metadata) {
   const byteOrder = keyword(metadata, "$BYTEORD", keyword(metadata, "BYTEORD", "1,2,3,4"));
   return byteOrder === "1,2,3,4" || byteOrder === "1,2";
 }
 
+/*
+
+Purpose:
+	Builds the display label for each parameter, preferring $PnS, then $PnN,
+	then a generated "P<n>" fallback.
+
+Input:
+	metadata [Object]:       normalized metadata map
+	parameterCount [number]: number of parameters ($PAR)
+
+Output:
+	columns [Array<string>]: one label per parameter
+
+*/
 function parameterColumns(metadata, parameterCount) {
   return Array.from({ length: parameterCount }, (_, index) => {
     const number = index + 1;
@@ -93,6 +200,22 @@ function parameterColumns(metadata, parameterCount) {
   });
 }
 
+/*
+
+Purpose:
+	Reads an unsigned integer of a given byte width from a DataView, honoring
+	endianness. Has fast paths for 1/2/4-byte widths and a loop for others.
+
+Input:
+	view [DataView]:        the data view over the DATA segment
+	byteOffset [number]:    where to read from
+	byteWidth [number]:     integer width in bytes
+	littleEndian [boolean]: byte order
+
+Output:
+	value [number]: the unsigned integer value
+
+*/
 function integerReader(view, byteOffset, byteWidth, littleEndian) {
   if (byteWidth === 1) {
     return view.getUint8(byteOffset);
@@ -117,6 +240,22 @@ function integerReader(view, byteOffset, byteWidth, littleEndian) {
   return value;
 }
 
+/*
+
+Purpose:
+	Reads the full list-mode DATA segment into per-event rows, supporting the
+	F/D/I data types. Throws on missing $PAR/$TOT or an unsupported $DATATYPE.
+
+Input:
+	buffer [ArrayBuffer]: the FCS file bytes
+	metadata [Object]:    normalized metadata map
+	dataBegin [number]:   DATA segment start offset
+	dataEnd [number]:     DATA segment end offset (inclusive)
+
+Output:
+	result [Object]: { rows [Array<Object>], columns [Array<string>] }
+
+*/
 function parseData(buffer, metadata, dataBegin, dataEnd) {
   const parameterCount = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
   const eventCount = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
@@ -163,6 +302,21 @@ function parseData(buffer, metadata, dataBegin, dataEnd) {
   return { rows, columns };
 }
 
+/*
+
+Purpose:
+	Computes the byte width of each parameter for the given data type: 4 for F,
+	8 for D, ceil($PnB/8) for I. Throws on unsupported types.
+
+Input:
+	metadata [Object]:       normalized metadata map
+	parameterCount [number]: number of parameters
+	dataType [string]:       "F", "D", or "I"
+
+Output:
+	widths [Array<number>]: byte width per parameter
+
+*/
 function parameterByteWidths(metadata, parameterCount, dataType) {
   if (dataType === "F") {
     return Array.from({ length: parameterCount }, () => 4);
@@ -180,6 +334,23 @@ function parameterByteWidths(metadata, parameterCount, dataType) {
   throw new Error(`Unsupported FCS $DATATYPE: ${dataType}`);
 }
 
+/*
+
+Purpose:
+	Reads a single parameter value from the DATA view for the given data type.
+	Throws on unsupported types.
+
+Input:
+	view [DataView]:        the data view
+	offset [number]:        byte offset to read from
+	byteWidth [number]:     width in bytes (for integer types)
+	dataType [string]:      "F", "D", or "I"
+	littleEndian [boolean]: byte order
+
+Output:
+	value [number]: the parameter value
+
+*/
 function readDataValue(view, offset, byteWidth, dataType, littleEndian) {
   if (dataType === "F") {
     return view.getFloat32(offset, littleEndian);
@@ -194,6 +365,22 @@ function readDataValue(view, offset, byteWidth, dataType, littleEndian) {
   throw new Error(`Unsupported FCS $DATATYPE: ${dataType}`);
 }
 
+/*
+
+Purpose:
+	Reads only the requested parameter columns from a DATA-segment buffer,
+	walking each event's fixed-width stride and pulling just the selected
+	offsets. Used during analysis to avoid loading unused channels.
+
+Input:
+	dataBuffer [ArrayBuffer]:        the DATA segment bytes
+	metadata [Object]:               normalized metadata map
+	selectedIndexes [Array<number>]: 1-based parameter indexes to read
+
+Output:
+	columns [Object]: parameter index -> Array of per-event values
+
+*/
 function parseSelectedColumns(dataBuffer, metadata, selectedIndexes) {
   const parameterCount = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
   const eventCount = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
@@ -240,6 +427,18 @@ function parseSelectedColumns(dataBuffer, metadata, selectedIndexes) {
   return columns;
 }
 
+/*
+
+Purpose:
+	Full parse of an FCS file: header, TEXT metadata, and all event data.
+
+Input:
+	buffer [ArrayBuffer]: the FCS file bytes
+
+Output:
+	result [Object]: { header, metadata, rows, columns }
+
+*/
 function parseFCS(buffer) {
   const header = parseHeader(buffer);
   const text = readAscii(buffer, header.textBegin, header.textEnd);
@@ -256,6 +455,20 @@ function parseFCS(buffer) {
   };
 }
 
+/*
+
+Purpose:
+	Builds a lightweight summary (no event data) from a parsed header and
+	metadata — columns, counts, and DATA offsets — used for fast initial loading.
+
+Input:
+	header [Object]:   parsed FCS header
+	metadata [Object]: normalized metadata map
+
+Output:
+	summary [Object]: { header, metadata, columns, eventCount, parameterCount, dataBegin, dataEnd }
+
+*/
 function summarizeFCSHeader(header, metadata) {
   const parameterCount = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
   const eventCount = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
@@ -274,6 +487,19 @@ function summarizeFCSHeader(header, metadata) {
   };
 }
 
+/*
+
+Purpose:
+	Parses just the header and TEXT metadata of an FCS buffer and returns the
+	lightweight summary (no event data).
+
+Input:
+	buffer [ArrayBuffer]: the FCS file bytes
+
+Output:
+	summary [Object]: the metadata summary from summarizeFCSHeader
+
+*/
 function parseFCSHeader(buffer) {
   const header = parseHeader(buffer);
   const text = readAscii(buffer, header.textBegin, header.textEnd);
@@ -281,6 +507,20 @@ function parseFCSHeader(buffer) {
   return summarizeFCSHeader(header, metadata);
 }
 
+/*
+
+Purpose:
+	Builds the metadata summary from separately sliced HEADER and TEXT buffers,
+	so only those small segments need to be read from disk (fast loading).
+
+Input:
+	headerBuffer [ArrayBuffer]: the 58-byte HEADER bytes
+	textBuffer [ArrayBuffer]:   the TEXT segment bytes
+
+Output:
+	summary [Object]: the metadata summary from summarizeFCSHeader
+
+*/
 function parseFCSHeaderFromSegments(headerBuffer, textBuffer) {
   const header = parseHeader(headerBuffer);
   const text = readAscii(textBuffer, 0, textBuffer.byteLength - 1);

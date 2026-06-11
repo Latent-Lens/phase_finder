@@ -38,6 +38,19 @@ let sortState = { field: null, direction: "asc" };
 // menu stays open across table re-renders triggered by ticking its checkboxes.
 let openFilterField = null;
 
+/*
+
+Purpose:
+	Generates a unique id for a loaded file, using crypto.randomUUID when
+	available and a timestamp+random fallback otherwise.
+
+Input:
+	(none)
+
+Output:
+	id [string]: a unique file identifier
+
+*/
 function createId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
@@ -45,16 +58,54 @@ function createId() {
   return `file-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/*
+
+Purpose:
+	Sets the sidebar status text and toggles its error styling.
+
+Input:
+	message [string]:  the status text
+	isError [boolean]: true to apply error styling (default false)
+
+Output:
+	(none) [void]: updates the #status element
+
+*/
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.classList.toggle("error", isError);
 }
 
+/*
+
+Purpose:
+	Sets the footer status-bar text and toggles its error styling.
+
+Input:
+	message [string]:  the status-bar text
+	isError [boolean]: true to apply error styling (default false)
+
+Output:
+	(none) [void]: updates the status bar
+
+*/
 function setStatusBar(message, isError = false) {
   statusBarMessage.textContent = message;
   statusBar.classList.toggle("error", isError);
 }
 
+/*
+
+Purpose:
+	Updates the drop zone's title and hint to reflect how many files are loaded.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: updates the drop zone text
+
+*/
 function updateDropZoneText() {
   const count = parsedFiles.length;
   if (!count) {
@@ -67,12 +118,40 @@ function updateDropZoneText() {
   dropZoneHint.textContent = "Drop or click to add more files";
 }
 
+/*
+
+Purpose:
+	Reveals the progress overlay and resets it to 0%.
+
+Input:
+	label [string]: the heading shown in the overlay (default "Loading FCS Metadata")
+
+Output:
+	(none) [void]: shows the progress overlay
+
+*/
 function showProgress(label = "Loading FCS Metadata") {
   progressOverlay.hidden = false;
   progressOverlay.setAttribute("aria-busy", "true");
   updateProgress(0, label, "Preparing files...");
 }
 
+/*
+
+Purpose:
+	Updates the progress overlay's bar width, percentage, heading, and detail
+	line (optionally with a bold filename).
+
+Input:
+	percent [number]:  completion from 0 to 100 (clamped)
+	label [string]:    the heading (default "Loading FCS Metadata")
+	detail [string]:   the detail line (default "")
+	filename [string]: optional filename shown in bold (default "")
+
+Output:
+	(none) [void]: updates the progress overlay
+
+*/
 function updateProgress(percent, label = "Loading FCS Metadata", detail = "", filename = "") {
   const boundedPercent = Math.max(0, Math.min(100, percent));
   progressFill.style.width = `${boundedPercent}%`;
@@ -83,6 +162,18 @@ function updateProgress(percent, label = "Loading FCS Metadata", detail = "", fi
     : escapeHtml(detail);
 }
 
+/*
+
+Purpose:
+	Hides the progress overlay after a short delay.
+
+Input:
+	delay [number]: milliseconds to wait before hiding (default 500)
+
+Output:
+	(none) [void]: hides the progress overlay after the delay
+
+*/
 function hideProgress(delay = 500) {
   window.setTimeout(() => {
     progressOverlay.hidden = true;
@@ -90,10 +181,36 @@ function hideProgress(delay = 500) {
   }, delay);
 }
 
+/*
+
+Purpose:
+	Returns a Promise that resolves on the next animation frame, used to yield
+	so the progress UI can paint between steps.
+
+Input:
+	(none)
+
+Output:
+	frame [Promise<void>]: resolves on the next animation frame
+
+*/
 function nextFrame() {
   return new Promise((resolve) => window.requestAnimationFrame(resolve));
 }
 
+/*
+
+Purpose:
+	Resets the channel selector and all table state (selection, filters, sort,
+	open filter menu) back to their empty defaults.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: clears the channel selector and table state
+
+*/
 function clearChannelControls() {
   dnaAreaSelect.innerHTML = "";
   dnaAreaSelect.add(new Option("", "", true, true));
@@ -105,6 +222,19 @@ function clearChannelControls() {
   openFilterField = null;
 }
 
+/*
+
+Purpose:
+	Collects the distinct FCS parameter labels across all loaded files
+	(first-seen order) to populate the channel selector.
+
+Input:
+	(none)
+
+Output:
+	columns [Array<string>]: the distinct parameter labels
+
+*/
 function uniqueColumns() {
   const seen = new Set();
   const columns = [];
@@ -121,12 +251,37 @@ function uniqueColumns() {
   return columns;
 }
 
+/*
+
+Purpose:
+	Returns a table cell's value for a file: the filename for the "name" column,
+	otherwise the matching editable annotation.
+
+Input:
+	entry [Object]: a loaded file
+	field [string]: the column field key
+
+Output:
+	value [string]: the cell value
+
+*/
 function columnValue(entry, field) {
   return field === "name" ? entry.name : entry.annotations[field];
 }
 
-// Unique, sorted, non-blank values for a column across all loaded files.
-// Used to build the header filter dropdowns.
+/*
+
+Purpose:
+	Returns the distinct, sorted, non-blank values of a column across all loaded
+	files. Used to build the header filter dropdowns.
+
+Input:
+	field [string]: the column field key
+
+Output:
+	values [Array<string>]: the sorted distinct values
+
+*/
 function uniqueColumnValues(field) {
   const seen = new Set();
   const values = [];
@@ -143,6 +298,22 @@ function uniqueColumnValues(field) {
   return values;
 }
 
+/*
+
+Purpose:
+	Fills a <select> with a placeholder option plus one option per column,
+	optionally pre-selecting a suggested value.
+
+Input:
+	select [HTMLSelectElement]: the select to populate
+	columns [Array<string>]:    the option values/labels
+	placeholder [string]:       the leading empty option's label
+	suggestedValue [string]:    value to pre-select, if present (default "")
+
+Output:
+	(none) [void]: replaces the select's options
+
+*/
 function populateSingleSelect(select, columns, placeholder, suggestedValue = "") {
   select.innerHTML = "";
   select.disabled = columns.length === 0;
@@ -153,6 +324,20 @@ function populateSingleSelect(select, columns, placeholder, suggestedValue = "")
   });
 }
 
+/*
+
+Purpose:
+	Picks the first column whose normalized name contains any of the given
+	patterns — used to guess a default DNA-content channel.
+
+Input:
+	columns [Array<string>]:  the candidate column labels
+	patterns [Array<string>]: substrings to look for (case-insensitive)
+
+Output:
+	match [string]: the first matching column, or "" if none match
+
+*/
 function suggestColumn(columns, patterns) {
   const upperPatterns = patterns.map((pattern) => pattern.toUpperCase());
   return columns.find((column) => {
@@ -161,6 +346,19 @@ function suggestColumn(columns, patterns) {
   }) || "";
 }
 
+/*
+
+Purpose:
+	Populates the DNA-content area channel selector from the loaded files'
+	parameters, suggesting a likely DNA/area channel.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: fills the channel selector
+
+*/
 function populateChannelControls() {
   const columns = uniqueColumns();
 
@@ -172,6 +370,20 @@ function populateChannelControls() {
   );
 }
 
+/*
+
+Purpose:
+	Selects a value in a <select> only if a matching option exists, and reports
+	whether it did.
+
+Input:
+	select [HTMLSelectElement]: the select element
+	value [string]:             the value to select
+
+Output:
+	selected [boolean]: true if the value existed and was selected
+
+*/
 function selectIfOptionExists(select, value) {
   if (!value) {
     return false;
@@ -186,26 +398,72 @@ function selectIfOptionExists(select, value) {
   return true;
 }
 
+/*
+
+Purpose:
+	Enables the Start Analysis button only when a DNA channel is chosen and at
+	least one row is checked.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: sets the button's disabled state
+
+*/
 function updateStartButtonState() {
   startAnalysisButton.disabled = !dnaAreaSelect.value || selectedFileIds.size === 0;
 }
 
-// Tell the plot (plotting.js) that the checked-sample set changed so it can
-// add/remove curves live. Custom name avoids the native "selectionchange".
+/*
+
+Purpose:
+	Dispatches the custom "fcs-selection-change" event so the plot (plotting.js)
+	can add/remove curves when the checked set changes. A custom name avoids the
+	native "selectionchange".
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: dispatches a document event
+
+*/
 function notifySelectionChanged() {
   document.dispatchEvent(new CustomEvent("fcs-selection-change"));
 }
 
-// DEBUG: force a known DNA-content area channel after FCS metadata has been read
-// so the analysis flow can be exercised without manual clicking. Remove for
-// production.
+/*
+
+Purpose:
+	DEBUG helper — auto-selects the "GFP/FITC-A" channel when present so the
+	analysis flow can be exercised without manual clicking. Remove for production.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: may select a default channel
+
+*/
 function applyDebugChannelDefaults() {
   selectIfOptionExists(dnaAreaSelect, "GFP/FITC-A");
 }
 
 
-// Files shown in the table: those matching every active column filter,
-// ordered by the current sort. Used for both rendering and "select all".
+/*
+
+Purpose:
+	Returns the files shown in the table: those passing every active column
+	filter, ordered by the current sort. Used for both rendering and "select all".
+
+Input:
+	(none)
+
+Output:
+	files [Array<Object>]: the filtered and sorted loaded files
+
+*/
 function displayedFiles() {
   const filtered = parsedFiles.filter((entry) =>
     TABLE_COLUMNS.every((column) => {
@@ -237,6 +495,19 @@ function displayedFiles() {
   });
 }
 
+/*
+
+Purpose:
+	Builds the up/down sort-arrow HTML for a column header, highlighting the
+	active sort direction.
+
+Input:
+	field [string]: the column field key
+
+Output:
+	html [string]: the sort-indicator markup
+
+*/
 function sortIndicator(field) {
   const active = sortState.field === field;
   const ascClass = active && sortState.direction === "asc" ? "sort-arrow active" : "sort-arrow";
@@ -244,6 +515,20 @@ function sortIndicator(field) {
   return `<span class="sort-indicator"><span class="${ascClass}">▲</span><span class="${descClass}">▼</span></span>`;
 }
 
+/*
+
+Purpose:
+	Builds the per-column filter dropdown markup — a toggle button plus a
+	checkbox menu of the column's unique values — reflecting the current
+	selections and open/closed state.
+
+Input:
+	column [Object]: a TABLE_COLUMNS entry
+
+Output:
+	html [string]: the filter control markup
+
+*/
 function filterControl(column) {
   const selected = columnFilters[column.field] || new Set();
   const summary = [...selected].sort((a, b) =>
@@ -268,6 +553,19 @@ function filterControl(column) {
           </div>`;
 }
 
+/*
+
+Purpose:
+	Builds one <th> for a column: a sortable label and, for filterable columns,
+	the filter dropdown.
+
+Input:
+	column [Object]: a TABLE_COLUMNS entry
+
+Output:
+	html [string]: the header cell markup
+
+*/
 function headerCell(column) {
   const filter = column.filterable ? filterControl(column) : "";
 
@@ -280,12 +578,38 @@ function headerCell(column) {
         </th>`;
 }
 
-// Filename shown to the user, without the .fcs extension (entry.name keeps it
-// for dedup/matching).
+/*
+
+Purpose:
+	Returns the filename shown to the user, without the .fcs extension. The full
+	entry.name is kept for dedup/matching.
+
+Input:
+	name [string]: a sample filename
+
+Output:
+	label [string]: the filename without a trailing ".fcs"
+
+*/
 function displayName(name) {
   return name.replace(/\.fcs$/i, "");
 }
 
+/*
+
+Purpose:
+	Renders the metadata table from the loaded files: header cells with
+	sort/filter controls and one row per displayed file with a select checkbox
+	and editable annotation inputs. Also prunes any selection that is no longer
+	visible and refreshes the select-all and Start button state.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: rebuilds the #fileTable markup
+
+*/
 function renderFileTable() {
   if (!parsedFiles.length) {
     fileTable.innerHTML = '<p class="empty-note">Upload FCS files to initialize the table.</p>';
@@ -348,9 +672,20 @@ function renderFileTable() {
   updateStartButtonState();
 }
 
-// Reflect how many displayed files are selected: checked when all are,
-// indeterminate when only some are. The checked attribute can't express the
-// indeterminate state in HTML, so it's set here after each render.
+/*
+
+Purpose:
+	Sets the header "select all" checkbox to checked when every displayed row is
+	selected and indeterminate when only some are. The indeterminate state can't
+	be expressed in HTML, so it's set here after each render.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: updates the select-all checkbox state
+
+*/
 function updateSelectAllCheckbox() {
   const checkbox = document.querySelector("#selectAllFiles");
   if (!checkbox) {
@@ -366,6 +701,20 @@ function updateSelectAllCheckbox() {
   checkbox.indeterminate = selectedCount > 0 && selectedCount < displayed.length;
 }
 
+/*
+
+Purpose:
+	Delegated change handler for the table: applies filter-checkbox toggles, the
+	select-all checkbox, and per-row selection, re-rendering and notifying the
+	plot as needed.
+
+Input:
+	event [Event]: a change event from the file table
+
+Output:
+	(none) [void]: updates selection/filter state and re-renders
+
+*/
 function handleTableChange(event) {
   const target = event.target;
 
@@ -408,6 +757,19 @@ function handleTableChange(event) {
   }
 }
 
+/*
+
+Purpose:
+	Delegated click handler for the table: opens/closes a column's filter
+	dropdown, or toggles the sort column and direction.
+
+Input:
+	event [Event]: a click event from the file table
+
+Output:
+	(none) [void]: updates sort/filter state and re-renders
+
+*/
 function handleTableClick(event) {
   const filterToggle = event.target.closest(".th-filter-toggle");
   if (filterToggle) {
@@ -431,7 +793,19 @@ function handleTableClick(event) {
   renderFileTable();
 }
 
-// Close an open filter dropdown when clicking anywhere outside a filter control.
+/*
+
+Purpose:
+	Closes an open filter dropdown when the user clicks anywhere outside a filter
+	control.
+
+Input:
+	event [Event]: a document click event
+
+Output:
+	(none) [void]: may close the open filter menu and re-render
+
+*/
 function handleDocumentClick(event) {
   if (openFilterField === null || event.target.closest(".th-filter")) {
     return;
@@ -440,13 +814,37 @@ function handleDocumentClick(event) {
   renderFileTable();
 }
 
-// Width (in characters) for an annotation input so each column hugs its
-// content; clamped so empty cells stay clickable and long values stay readable.
+/*
+
+Purpose:
+	Computes the character width for an annotation input so each cell hugs its
+	content, clamped so empty cells stay clickable and long values stay readable.
+
+Input:
+	value [string]: the cell's current value
+
+Output:
+	size [number]: the input's size attribute (4–28)
+
+*/
 function annotationInputSize(value) {
   return Math.min(28, Math.max(4, String(value).length + 1));
 }
 
 
+/*
+
+Purpose:
+	Re-renders the table, refreshes the channel selector, applies debug defaults,
+	and updates the Start button. Run after files load.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: refreshes the table and channel controls
+
+*/
 function updateViews() {
   renderFileTable();
   populateChannelControls();
@@ -454,6 +852,20 @@ function updateViews() {
   updateStartButtonState();
 }
 
+/*
+
+Purpose:
+	Guesses initial strain/replicate/nocodazole/timepoint annotations by
+	pattern-matching the filename, with fallbacks for names that don't follow
+	the main strain/replicate/arrest token format.
+
+Input:
+	filename [string]: the FCS file name
+
+Output:
+	guess [Object]: { strain, replicate, nocodazoleArrest, timepoint }
+
+*/
 function guessAnnotationsFromFilename(filename) {
   const basename = filename.replace(/\.[^.]+$/, "");
   const guess = {
@@ -489,11 +901,37 @@ function guessAnnotationsFromFilename(filename) {
   return guess;
 }
 
+/*
+
+Purpose:
+	Converts a timepoint annotation to a number for sorting; non-numeric values
+	sort last.
+
+Input:
+	value [string]: the timepoint annotation
+
+Output:
+	sortValue [number]: the numeric value, or +Infinity if not numeric
+
+*/
 function timepointSortValue(value) {
   const numeric = Number.parseFloat(value);
   return Number.isFinite(numeric) ? numeric : Number.POSITIVE_INFINITY;
 }
 
+/*
+
+Purpose:
+	Sorts the loaded files in place by strain, then replicate, then timepoint,
+	then filename (natural, case-insensitive).
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: sorts parsedFiles in place
+
+*/
 function sortParsedFiles() {
   parsedFiles.sort((a, b) => {
     const strainCompare = a.annotations.strain.localeCompare(b.annotations.strain, undefined, {
@@ -521,6 +959,20 @@ function sortParsedFiles() {
   });
 }
 
+/*
+
+Purpose:
+	Reads only an FCS file's HEADER and TEXT segments to build a loaded-file
+	entry (id, name, file, summary, guessed annotations) without loading event
+	data.
+
+Input:
+	file [File]: the FCS File object
+
+Output:
+	entry [Promise<Object>]: resolves to a loaded-file entry
+
+*/
 async function readFcsHeader(file) {
   const headerBuffer = await file.slice(0, 58).arrayBuffer();
   const header = window.FCSParser.parseHeader(headerBuffer);
@@ -541,6 +993,21 @@ async function readFcsHeader(file) {
   };
 }
 
+/*
+
+Purpose:
+	Loads metadata for dropped/selected FCS files: reads each file's header,
+	skips duplicates, records failures, sorts and re-renders, and reports the
+	outcome through the status/progress UI. Newly loaded files are checked by
+	default.
+
+Input:
+	files [FileList|Array<File>]: the files to load
+
+Output:
+	(none) [Promise<void>]: loads metadata and updates the UI
+
+*/
 async function loadFiles(files) {
   const selectedFiles = Array.from(files || []);
   if (!selectedFiles.length) {
@@ -616,6 +1083,19 @@ async function loadFiles(files) {
   }
 }
 
+/*
+
+Purpose:
+	Writes an edited annotation input back to its file entry and resizes the
+	input to fit. Ignores events from non-annotation inputs.
+
+Input:
+	event [Event]: an input event from the file table
+
+Output:
+	(none) [void]: updates the file's annotation in place
+
+*/
 function updateAnnotation(event) {
   const input = event.target.closest("input[data-file-id][data-field]");
   if (!input) {
@@ -631,6 +1111,19 @@ function updateAnnotation(event) {
   input.size = annotationInputSize(input.value);
 }
 
+/*
+
+Purpose:
+	Escapes HTML-special characters in a value so it can be safely interpolated
+	into table/markup strings.
+
+Input:
+	value [any]: the value to escape (coerced to a string)
+
+Output:
+	escaped [string]: the HTML-escaped string
+
+*/
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -666,6 +1159,19 @@ dropZone.addEventListener("drop", (event) => {
   loadFiles(event.dataTransfer.files);
 });
 
+/*
+
+Purpose:
+	Returns the currently selected analysis channels (the DNA-content area
+	channel chosen in the sidebar).
+
+Input:
+	(none)
+
+Output:
+	channels [Object]: { dnaArea }
+
+*/
 function getSelectedChannels() {
   return {
     dnaArea: dnaAreaSelect.value,
