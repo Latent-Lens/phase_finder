@@ -1,0 +1,2 @@
+# Generated e2e artifacts (screenshots, etc.) — keep the dir, ignore the output.
+tests/e2e/results/*
