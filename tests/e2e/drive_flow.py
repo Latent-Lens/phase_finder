@@ -97,8 +97,8 @@ def main():
         page.wait_for_selector("#plotArea svg path", timeout=120000)
 
         title = page.eval_on_selector("#plotTitle", "e => e.textContent")
-        check("title is 'Histogram of Events: n Samples, m Events'",
-              title.startswith(f"Histogram of Events: {len(files)} Samples,"), repr(title))
+        check("title is 'Histogram of Events:  n Samples  |  m Events'",
+              title.startswith(f"Histogram of Events:  {len(files)} Samples  |  "), repr(title))
         check("y-axis label 'Number of Events'",
               page.eval_on_selector_all("#plotArea svg text", "els => els.some(t => t.textContent === 'Number of Events')"))
         check("one curve per checked sample", density_curve_count(page) == len(files),
@@ -109,7 +109,7 @@ def main():
         time.sleep(0.3)
         check("uncheck removes a curve", density_curve_count(page) == len(files) - 1)
         check("uncheck updates title count",
-              page.eval_on_selector("#plotTitle", "e => e.textContent").startswith(f"Histogram of Events: {len(files) - 1} Samples,"))
+              page.eval_on_selector("#plotTitle", "e => e.textContent").startswith(f"Histogram of Events:  {len(files) - 1} Samples  |  "))
         check("unchecked row keeps its loaded data",
               page.evaluate("window.FlowPlotterApp.getParsedFiles().filter(r => r.data).length") == len(files))
         page.query_selector_all(".file-table tbody .row-select")[0].check()
@@ -122,17 +122,34 @@ def main():
         page.fill("#plotBins", "64"); page.dispatch_event("#plotBins", "change"); time.sleep(0.2)
         check("controls (color/log/bins) keep curves", density_curve_count(page) == len(files))
         # Reset to the default bin count so the DJF checks below reflect normal use.
-        page.fill("#plotBins", "256"); page.dispatch_event("#plotBins", "change"); time.sleep(0.2)
+        page.fill("#plotBins", "512"); page.dispatch_event("#plotBins", "change"); time.sleep(0.2)
 
-        # DJF fit for each sample: readout present, fractions finite and ~100%
-        for name in page.eval_on_selector_all("#plotModelSample option", "els => els.map(o => o.value).filter(Boolean)"):
-            page.select_option("#plotModelSample", name)
-            page.wait_for_function("() => /G1/.test(document.querySelector('#djfReadout').textContent)", timeout=30000)
-            text = page.eval_on_selector("#djfReadout", "e => e.textContent")
-            print(f"       DJF {text}", flush=True)
-            import re
-            nums = [float(x) for x in re.findall(r"([\d.]+)%", text)]
-            check(f"DJF fractions sum ~100% ({name[:28]})", len(nums) == 3 and abs(sum(nums) - 100) < 0.5, str(nums))
+        # After analysis the button becomes "Start Modeling (DJF)" (blue).
+        check("button switched to Start Modeling (DJF)",
+              page.eval_on_selector("#startAnalysisButton", "e => e.textContent.trim()") == "Start Modeling (DJF)"
+              and page.eval_on_selector("#startAnalysisButton", "e => e.classList.contains('modeling')"))
+        check("Model (DJF) dropdown removed", page.query_selector("#plotModelSample") is None)
+
+        # Start modeling: fits the first plotted sample; readout shows its fractions.
+        import re
+        fit_totals = "() => [...document.querySelectorAll('#plotArea svg path')].filter(p => p.getAttribute('stroke') === '#111827' && p.getAttribute('stroke-width') === '2').length"
+        page.click("#startAnalysisButton")
+        page.wait_for_function("() => /G1/.test(document.querySelector('#djfReadout').textContent)", timeout=30000)
+        time.sleep(0.3)
+        check("one fit shown after Start Modeling", page.evaluate(fit_totals) == 1, str(page.evaluate(fit_totals)))
+        text = page.eval_on_selector("#djfReadout", "e => e.textContent")
+        print(f"       DJF {text}", flush=True)
+        nums = [float(x) for x in re.findall(r"([\d.]+)%", text)]
+        check("DJF fractions sum ~100%", len(nums) == 3 and abs(sum(nums) - 100) < 0.5, str(nums))
+
+        # A second sample's legend checkbox adds its fit; clicking again removes it.
+        second = next(f.split("/")[-1][:-4] for f in files if "t105" in f)
+        click_legend = """(name) => { const t=[...document.querySelectorAll('#plotArea svg text')].find(t=>t.textContent===name); if(t) t.parentNode.dispatchEvent(new MouseEvent('click',{bubbles:true})); }"""
+        page.evaluate(click_legend, second); time.sleep(0.3)
+        check("legend checkbox adds a 2nd fit", page.evaluate(fit_totals) == 2, str(page.evaluate(fit_totals)))
+        page.evaluate(click_legend, second); time.sleep(0.3)
+        check("legend checkbox removes the fit", page.evaluate(fit_totals) == 1, str(page.evaluate(fit_totals)))
+        check("data curves untouched by fit toggling", density_curve_count(page) == len(files))
 
         # Threshold line: hidden until the checkbox is ticked, then draggable.
         threshold_sel = "#plotArea svg .threshold-line, #plotArea svg .threshold-fill"

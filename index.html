@@ -36,16 +36,26 @@
   </head>
   <body>
     <header class="page-header">
-      <img class="site-logo" src="./assets/img/logo.png" alt="FlowPlotter" />
-      <button
-        id="startAnalysisButton"
-        class="start-analysis-button"
-        type="button"
-        title="Load FCS files, select a DNA-content area channel, and check at least one file row first."
-        disabled
-      >
-        Start Analysis
-      </button>
+      <img id="siteLogo" class="site-logo" src="./assets/img/logo.png" alt="FlowPlotter" title="Reload Flow Plotter" />
+      <div class="header-actions">
+        <button
+          id="startAnalysisButton"
+          class="start-analysis-button"
+          type="button"
+          title="Load FCS files, select a DNA-content area channel, and check at least one file row first."
+          disabled
+        >
+          Start Analysis
+        </button>
+        <button
+          id="restartButton"
+          class="restart-button"
+          type="button"
+          title="Reload the page and start over"
+        >
+          Restart
+        </button>
+      </div>
     </header>
 
     <main class="app">
@@ -91,12 +101,7 @@
                 </select>
               </label>
               <label class="plot-control">Bins
-                <input id="plotBins" type="number" min="16" max="1024" step="16" value="256" />
-              </label>
-              <label class="plot-control">Model (DJF)
-                <select id="plotModelSample">
-                  <option value="">Off</option>
-                </select>
+                <input id="plotBins" type="number" min="16" max="1024" step="16" value="512" />
               </label>
               <label class="plot-control plot-control-check">
                 <span class="plot-check-row">

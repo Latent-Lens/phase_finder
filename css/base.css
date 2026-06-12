@@ -1,17 +1,54 @@
 /* Design tokens, reset, base typography and form controls. */
 
+/* All app colors are defined here as custom properties; the rest of the CSS
+   references them via var(). Change a color once, here. */
 :root {
   color-scheme: light;
+
+  /* Surfaces & neutrals */
   --bg: #f7f8fb;
   --panel: #ffffff;
   --text: #172033;
   --muted: #647086;
   --border: #d9dee8;
+
+  /* Brand / accent (blue) */
   --accent: #2563eb;
+  --accent-strong: #1d4ed8;
   --accent-soft: #e7efff;
-  --danger: #b42318;
   --logo-teal: #01a5af;
   --logo-blue: #072c67;
+
+  /* Status / action colors */
+  --danger: #b42318;
+  --success: #059669;
+  --success-strong: #047857;
+  --restart: #dc2626;
+  --restart-strong: #b91c1c;
+
+  /* Focus rings */
+  --focus-success: rgba(5, 150, 105, 0.28);
+  --focus-restart: rgba(220, 38, 38, 0.28);
+
+  /* Component-specific surfaces */
+  --dropzone-border: #8ea0bd;
+  --th-bg: #f2f5fa;
+  --progress-track-bg: #e5edf6;
+  --progress-track-border: #b8c5d6;
+  --progress-card-border: rgba(1, 165, 175, 0.45);
+
+  /* Shadows */
+  --shadow-soft: rgba(15, 23, 42, 0.12);
+  --shadow-medium: rgba(15, 23, 42, 0.16);
+  --shadow-strong: rgba(15, 23, 42, 0.2);
+
+  /* Plot (D3) — read by plotting.js via getComputedStyle */
+  --djf-g1: #95c1dc;
+  --djf-s: #d5eec8;
+  --djf-g2: #ef8b8d;
+  --djf-total: #111827;
+  --threshold: #9ca3af;
+  --threshold-label: #6b7280;
 }
 
 * {
@@ -56,7 +93,7 @@ select {
   min-height: 38px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--panel);
   color: var(--text);
   font: inherit;
 }
@@ -64,7 +101,7 @@ select {
 button {
   cursor: pointer;
   background: var(--accent);
-  color: #ffffff;
+  color: var(--panel);
   border-color: var(--accent);
   font-weight: 650;
 }

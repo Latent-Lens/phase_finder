@@ -8,22 +8,27 @@ const plotTitle = document.querySelector("#plotTitle");
 const plotColorBySelect = document.querySelector("#plotColorBy");
 const plotXScaleSelect = document.querySelector("#plotXScale");
 const plotBinsInput = document.querySelector("#plotBins");
-const plotModelSelect = document.querySelector("#plotModelSample");
 const plotThresholdToggle = document.querySelector("#plotThresholdToggle");
 const djfReadout = document.querySelector("#djfReadout");
 
-const DEFAULT_BINS = 256;
+const DEFAULT_BINS = 512;
 const DJF_S_NODES = 48;
 
-// Colors for the Dean–Jett–Fox cell-cycle components (change here).
-const DJF_G1_COLOR = "#95c1dc";
-const DJF_S_COLOR = "#d5eec8";
-const DJF_G2_COLOR = "#ef8b8d";
+// Colors come from the CSS custom properties in base.css so there is a single
+// source of truth for the whole app; the fallback is used only if a token is
+// missing. (Numeric sizes/widths below stay here as plain JS.)
+const cssColor = (name, fallback) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+
+// Dean–Jett–Fox cell-cycle component colors.
+const DJF_G1_COLOR = cssColor("--djf-g1", "#95c1dc");
+const DJF_S_COLOR = cssColor("--djf-s", "#d5eec8");
+const DJF_G2_COLOR = cssColor("--djf-g2", "#ef8b8d");
+const DJF_TOTAL_COLOR = cssColor("--djf-total", "#111827");
 // Fill opacity for the DJF component areas (0 = transparent, 1 = solid).
-const DJF_FILL_OPACITY = 0.2;
+const DJF_FILL_OPACITY = 0.8;
 const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
 const DJF_TOTAL_LINE_WIDTH = 2; // fitted total
-const DJF_TOTAL_COLOR = "#111827";
 
 // ---- Plot layout & styling (tweak here) ----
 const PLOT_MARGIN = { top: 14, right: 250, bottom: 48, left: 70 };
@@ -33,7 +38,7 @@ const PLOT_FALLBACK_HEIGHT = 420;
 const AXIS_LINE_WIDTH = 1;
 const AXIS_TICK_FONT_SIZE = 11;
 const AXIS_TITLE_FONT_SIZE = 12;
-const AXIS_LABEL_COLOR = "#172033";
+const AXIS_LABEL_COLOR = cssColor("--text", "#172033");
 const X_AXIS_TICKS = 6;
 const Y_AXIS_TICKS = 5;
 const X_TITLE_OFFSET = 10; // px above the bottom edge
@@ -49,13 +54,14 @@ const LEGEND_LINE_WIDTH = 2;
 const LEGEND_FONT_SIZE = 11;
 const LEGEND_SWATCH_Y = 6; // swatch line vertical position within a row
 const LEGEND_TEXT_Y = 9; // label baseline within a row
+const LEGEND_CHECKBOX_SIZE = 11; // fit-toggle checkbox on sample legend rows
 
-const THRESHOLD_COLOR = "#9ca3af";
+const THRESHOLD_COLOR = cssColor("--threshold", "#9ca3af");
 const THRESHOLD_LINE_WIDTH = 1.5;
 const THRESHOLD_FILL_OPACITY = 0.12;
 const THRESHOLD_HANDLE_WIDTH = 14; // invisible drag target thickness
 const THRESHOLD_LABEL_FONT_SIZE = 10;
-const THRESHOLD_LABEL_COLOR = "#6b7280";
+const THRESHOLD_LABEL_COLOR = cssColor("--threshold-label", "#6b7280");
 const THRESHOLD_LABEL_X_OFFSET = 6; // label inset from the left edge
 const THRESHOLD_LABEL_Y_OFFSET = 5; // label sits this far above the line
 const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot top
@@ -66,11 +72,13 @@ let plotChannels = null;
 // when no samples are selected.
 let lastRange = null;
 let lastYMax = null;
-// Absolute event-count cutoff for peak detection, set by dragging the threshold
-// line on the plot. Tracks which sample it belongs to so switching the modeled
-// sample resets it to that sample's default.
+// Global event-count cutoff for peak detection, set by dragging the threshold
+// line on the plot; applies to every sample's fit.
 let peakThreshold = null;
-let peakThresholdSample = null;
+// DJF modeling state: whether the user has started modeling, and the set of
+// sample names whose fit is shown (toggled via the legend checkboxes).
+let modelingStarted = false;
+const shownFits = new Set();
 
 /*
 
@@ -638,40 +646,15 @@ Output:
 function updatePlotTitle(rows) {
   if (!plotTitle) return;
   const events = rows.reduce((sum, row) => sum + row.data.dnaA.length, 0);
-  plotTitle.textContent = `Histogram of Events: ${rows.length} Samples, ${events.toLocaleString()} Events`;
-}
-
-/*
-
-Purpose:
-	Rebuilds the "Model (DJF)" dropdown from the currently plottable samples,
-	preserving the current selection when possible. Option labels drop the .fcs
-	extension while option values keep the full name for matching.
-
-Input:
-	(none)
-
-Output:
-	(none) [void]: repopulates the #plotModelSample dropdown
-
-*/
-function populateModelSelect() {
-  if (!plotModelSelect) return;
-  const previous = plotModelSelect.value;
-  plotModelSelect.innerHTML = "";
-  plotModelSelect.add(new Option("Off", ""));
-  plottableRows().forEach((row) => plotModelSelect.add(new Option(stripFcs(row.name), row.name)));
-  if ([...plotModelSelect.options].some((o) => o.value === previous)) {
-    plotModelSelect.value = previous;
-  }
+  plotTitle.textContent = `Histogram of Events:  ${rows.length} Samples  |  ${events.toLocaleString()} Events`;
 }
 
 /*
 
 Purpose:
 	Initializes the plot once analysis has loaded data: stores the selected
-	channel info, populates the model dropdown, and renders. Subsequent redraws
-	are driven by control changes and table selection changes.
+	channel info and renders. Subsequent redraws are driven by control changes
+	and table selection changes.
 
 Input:
 	channels [Object]: the selected channels, e.g. { dnaArea }
@@ -682,7 +665,51 @@ Output:
 */
 function initPlot(channels) {
   plotChannels = channels;
-  populateModelSelect();
+  renderDensityPlot();
+}
+
+/*
+
+Purpose:
+	Begins DJF modeling (triggered by the "Start Modeling (DJF)" button). Shows
+	only the first plotted sample's fit; the rest are toggled on via their legend
+	checkboxes.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: enables modeling and re-renders
+
+*/
+function startModeling() {
+  if (!plotChannels) return;
+  modelingStarted = true;
+  const rows = plottableRows();
+  shownFits.clear();
+  if (rows.length) shownFits.add(rows[0].name);
+  renderDensityPlot();
+}
+
+/*
+
+Purpose:
+	Toggles whether a sample's DJF fit is shown, from its legend checkbox. The
+	sample's data curve is unaffected (it follows the table selection).
+
+Input:
+	name [string]: the sample's full row.name
+
+Output:
+	(none) [void]: updates shownFits and re-renders
+
+*/
+function toggleFit(name) {
+  if (shownFits.has(name)) {
+    shownFits.delete(name);
+  } else {
+    shownFits.add(name);
+  }
   renderDensityPlot();
 }
 
@@ -735,39 +762,39 @@ function renderDensityPlot() {
     return { name: row.name, color, group, points: histogramCurve(row.data.dnaA, opts) };
   });
 
-  // Dean–Jett–Fox overlay for one selected sample (linear axis only). The peak
-  // detection threshold is the draggable line's height; default 5% of the
-  // modeled sample's tallest bin, reset when the modeled sample changes.
-  let djf = null;
+  // Dean–Jett–Fox: one independent fit per shown sample (linear axis only). The
+  // peak-detection threshold is a single draggable line shared by all fits;
+  // default 5% of the tallest shown bin.
+  const fits = [];
   let thresholdValue = null;
-  const modelName = plotModelSelect ? plotModelSelect.value : "";
-  if (modelName && isLog) {
-    if (djfReadout) djfReadout.textContent = "DJF requires a linear X-axis.";
-  } else if (modelName) {
-    const target = series.find((s) => s.name === modelName);
-    if (target) {
-      const modeledMax = target.points.reduce((m, pt) => Math.max(m, pt.y), 1);
-      if (peakThresholdSample !== modelName || peakThreshold == null) {
-        peakThreshold = 0.05 * modeledMax;
-        peakThresholdSample = modelName;
-      }
-      thresholdValue = peakThreshold;
-      const runG1 = estimateRunG1(rows, opts);
-      const params = fitDJF(target.points, range, thresholdValue, runG1);
-      if (params) {
-        const comps = target.points.map((pt) => ({ x: pt.x, c: djfComponents(pt.x, params) }));
-        djf = {
-          total: comps.map((o) => ({ x: o.x, y: o.c.g1 + o.c.s + o.c.g2 })),
-          g1: comps.map((o) => ({ x: o.x, y: o.c.g1 })),
-          s: comps.map((o) => ({ x: o.x, y: o.c.s })),
-          g2: comps.map((o) => ({ x: o.x, y: o.c.g2 })),
-        };
-        const f = djfFractions(target.points, params);
-        if (djfReadout) {
-          djfReadout.textContent = `${stripFcs(modelName)} — G1 ${f.g1.toFixed(1)}% · S ${f.s.toFixed(1)}% · G2 ${f.g2.toFixed(1)}%`;
+  if (modelingStarted && rows.length) {
+    if (isLog) {
+      if (djfReadout) djfReadout.textContent = "DJF requires a linear X-axis.";
+    } else {
+      const shownSeries = series.filter((s) => shownFits.has(s.name));
+      if (shownSeries.length) {
+        const shownMax = d3.max(shownSeries, (s) => d3.max(s.points, (pt) => pt.y)) || 1;
+        if (peakThreshold == null) peakThreshold = 0.05 * shownMax;
+        thresholdValue = peakThreshold;
+        const runG1 = estimateRunG1(rows, opts);
+        for (const s of shownSeries) {
+          const params = fitDJF(s.points, range, thresholdValue, runG1);
+          if (!params) continue;
+          const comps = s.points.map((pt) => ({ x: pt.x, c: djfComponents(pt.x, params) }));
+          fits.push({
+            name: s.name,
+            total: comps.map((o) => ({ x: o.x, y: o.c.g1 + o.c.s + o.c.g2 })),
+            g1: comps.map((o) => ({ x: o.x, y: o.c.g1 })),
+            s: comps.map((o) => ({ x: o.x, y: o.c.s })),
+            g2: comps.map((o) => ({ x: o.x, y: o.c.g2 })),
+            fractions: djfFractions(s.points, params),
+          });
         }
-      } else if (djfReadout) {
-        djfReadout.textContent = "DJF fit did not converge.";
+      }
+      if (djfReadout) {
+        djfReadout.textContent = fits
+          .map((fit) => `${stripFcs(fit.name)}: G1 ${fit.fractions.g1.toFixed(1)}% · S ${fit.fractions.s.toFixed(1)}% · G2 ${fit.fractions.g2.toFixed(1)}%`)
+          .join("     |     ");
       }
     }
   }
@@ -780,7 +807,7 @@ function renderDensityPlot() {
     .domain(range)
     .range([margin.left, width - margin.right]);
   let yMax = d3.max(series, (s) => d3.max(s.points, (pt) => pt.y)) || 0;
-  if (djf) yMax = Math.max(yMax, d3.max(djf.total, (pt) => pt.y) || 0);
+  for (const fit of fits) yMax = Math.max(yMax, d3.max(fit.total, (pt) => pt.y) || 0);
   // Remember the populated y-max so an empty plot keeps the same y-scale.
   if (yMax > 0) {
     lastYMax = yMax;
@@ -836,27 +863,26 @@ function renderDensityPlot() {
     .attr("stroke-width", SAMPLE_LINE_WIDTH)
     .attr("d", (d) => line(d.points));
 
-  if (djf) {
-    const overlay = svg.append("g");
-    const area = d3.area()
-      .defined((d) => !isLog || d.x > 0)
-      .x((d) => xScale(d.x))
-      .y0(yScale(0))
-      .y1((d) => yScale(d.y))
-      .curve(d3.curveBasis);
+  // Each shown fit: filled G1/S/G2 components (semi-transparent so overlaps
+  // show) with solid outlines, plus the fitted total on top.
+  const area = d3.area()
+    .defined((d) => !isLog || d.x > 0)
+    .x((d) => xScale(d.x))
+    .y0(yScale(0))
+    .y1((d) => yScale(d.y))
+    .curve(d3.curveBasis);
 
-    // G1 / S / G2/M components: filled to baseline (semi-transparent so overlaps
-    // show) with a solid outline.
+  fits.forEach((fit) => {
+    const overlay = svg.append("g");
     const component = (data, color) => {
       overlay.append("path").attr("fill", color).attr("fill-opacity", DJF_FILL_OPACITY).attr("stroke", "none").attr("d", area(data));
       overlay.append("path").attr("fill", "none").attr("stroke", color).attr("stroke-width", DJF_COMPONENT_LINE_WIDTH).attr("d", line(data));
     };
-    component(djf.g1, DJF_G1_COLOR);
-    component(djf.s, DJF_S_COLOR);
-    component(djf.g2, DJF_G2_COLOR);
-    // Fitted total on top as a solid line.
-    overlay.append("path").attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", DJF_TOTAL_LINE_WIDTH).attr("d", line(djf.total));
-  }
+    component(fit.g1, DJF_G1_COLOR);
+    component(fit.s, DJF_S_COLOR);
+    component(fit.g2, DJF_G2_COLOR);
+    overlay.append("path").attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", DJF_TOTAL_LINE_WIDTH).attr("d", line(fit.total));
+  });
 
   // Draggable peak-detection threshold (only when the "Peak threshold" box is
   // checked): a grey line with a light fill down to 0. Drag to set the
@@ -899,41 +925,62 @@ function renderDensityPlot() {
         })
         .on("end", (event) => {
           peakThreshold = clampValue(event.y);
-          peakThresholdSample = modelName;
           renderDensityPlot();
         }),
     );
   }
 
-  // Legend labels without the .fcs extension (s.name keeps it for matching).
-  const legendData = series.map((s) => ({ label: stripFcs(s.name), color: s.color }));
-  if (djf) {
-    legendData.push(
-      { label: "DJF fit", color: DJF_TOTAL_COLOR },
-      { label: "G1", color: DJF_G1_COLOR },
-      { label: "S", color: DJF_S_COLOR },
-      { label: "G2", color: DJF_G2_COLOR },
+  // Legend: one row per sample (each gets a fit checkbox once modeling has
+  // started), then the fitted-component rows for every shown fit. With more than
+  // one fit shown, component labels are prefixed with the sample name.
+  const legendItems = series.map((s) => ({ type: "sample", name: s.name, color: s.color }));
+  const multipleFits = fits.length > 1;
+  fits.forEach((fit) => {
+    const prefix = multipleFits ? `${stripFcs(fit.name)} ` : "";
+    legendItems.push(
+      { type: "component", label: `${prefix}DJF fit`, color: DJF_TOTAL_COLOR },
+      { type: "component", label: `${prefix}G1`, color: DJF_G1_COLOR },
+      { type: "component", label: `${prefix}S`, color: DJF_S_COLOR },
+      { type: "component", label: `${prefix}G2`, color: DJF_G2_COLOR },
     );
-  }
+  });
+
+  const checkboxCol = modelingStarted ? LEGEND_CHECKBOX_SIZE + 6 : 0;
   const legend = svg.append("g").attr("transform", `translate(${width - margin.right + LEGEND_OFFSET_X},${margin.top})`);
-  const items = legend.selectAll("g").data(legendData).join("g").attr("transform", (d, i) => `translate(0,${i * LEGEND_ROW_HEIGHT})`);
-  items.append("line").attr("x1", 0).attr("x2", LEGEND_SWATCH_WIDTH).attr("y1", LEGEND_SWATCH_Y).attr("y2", LEGEND_SWATCH_Y).attr("stroke", (d) => d.color).attr("stroke-width", LEGEND_LINE_WIDTH);
-  items.append("text").attr("x", LEGEND_TEXT_OFFSET).attr("y", LEGEND_TEXT_Y).attr("font-size", LEGEND_FONT_SIZE).attr("fill", AXIS_LABEL_COLOR).text((d) => d.label);
+  const items = legend.selectAll("g").data(legendItems).join("g").attr("transform", (d, i) => `translate(0,${i * LEGEND_ROW_HEIGHT})`);
+
+  if (modelingStarted) {
+    // Clickable checkbox on each sample row to show/hide that sample's fit.
+    const sampleRows = items.filter((d) => d.type === "sample").attr("cursor", "pointer").on("click", (event, d) => toggleFit(d.name));
+    sampleRows.append("rect")
+      .attr("x", 0).attr("y", LEGEND_SWATCH_Y - LEGEND_CHECKBOX_SIZE / 2)
+      .attr("width", LEGEND_CHECKBOX_SIZE).attr("height", LEGEND_CHECKBOX_SIZE).attr("rx", 2)
+      .attr("fill", "#fff").attr("stroke", THRESHOLD_COLOR);
+    sampleRows.filter((d) => shownFits.has(d.name)).append("path")
+      .attr("d", `M2,${LEGEND_SWATCH_Y} l2.5,2.5 l5,-5`)
+      .attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", 1.6).attr("pointer-events", "none");
+  }
+
+  items.append("line")
+    .attr("x1", checkboxCol).attr("x2", checkboxCol + LEGEND_SWATCH_WIDTH)
+    .attr("y1", LEGEND_SWATCH_Y).attr("y2", LEGEND_SWATCH_Y)
+    .attr("stroke", (d) => d.color).attr("stroke-width", LEGEND_LINE_WIDTH);
+  items.append("text")
+    .attr("x", checkboxCol + LEGEND_TEXT_OFFSET).attr("y", LEGEND_TEXT_Y)
+    .attr("font-size", LEGEND_FONT_SIZE).attr("fill", AXIS_LABEL_COLOR)
+    .text((d) => (d.type === "sample" ? stripFcs(d.name) : d.label));
 }
 
 /* ---------- Listeners ---------- */
 
-[plotColorBySelect, plotXScaleSelect, plotBinsInput, plotModelSelect, plotThresholdToggle].forEach((el) => {
+[plotColorBySelect, plotXScaleSelect, plotBinsInput, plotThresholdToggle].forEach((el) => {
   if (el) el.addEventListener("change", renderDensityPlot);
 });
 
 // Live-update when the table checkbox selection changes (uncheck removes a
 // curve, re-check restores it from the still-loaded data).
 document.addEventListener("fcs-selection-change", () => {
-  if (plotChannels) {
-    populateModelSelect();
-    renderDensityPlot();
-  }
+  if (plotChannels) renderDensityPlot();
 });
 
 // Redraw on resize so the SVG tracks the panel size.

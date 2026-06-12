@@ -1149,6 +1149,11 @@ function escapeHtml(value) {
 fileInput.addEventListener("change", () => loadFiles(fileInput.files));
 dnaAreaSelect.addEventListener("change", updateStartButtonState);
 dropZone.addEventListener("click", () => fileInput.click());
+
+// Restart button and the logo both reload the page, clearing all in-memory
+// state (loaded files, selections, plot, fits) for a clean start.
+document.querySelector("#restartButton").addEventListener("click", () => window.location.reload());
+document.querySelector("#siteLogo").addEventListener("click", () => window.location.reload());
 fileTable.addEventListener("input", updateAnnotation);
 fileTable.addEventListener("change", handleTableChange);
 fileTable.addEventListener("click", handleTableClick);

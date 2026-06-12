@@ -14,6 +14,35 @@
   width: min(260px, 100%);
   height: auto;
   margin-bottom: 0px;
+  cursor: pointer;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.restart-button {
+  width: auto;
+  min-height: 48px;
+  border: 1px solid var(--restart-strong);
+  border-radius: 8px;
+  background: var(--restart);
+  color: var(--panel);
+  padding: 0 14px;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.restart-button:hover {
+  background: var(--restart-strong);
+}
+
+.restart-button:focus-visible {
+  outline: 3px solid var(--focus-restart);
+  outline-offset: 2px;
 }
 
 .app {
@@ -163,34 +192,39 @@
 
 .start-analysis-button {
   width: auto;
-  min-width: 220px;
+  min-width: 150px;
   min-height: 48px;
-  border: 1px solid #047857;
+  border: 1px solid var(--success-strong);
   border-radius: 8px;
-  background: #059669;
-  color: #ffffff;
-  padding: 0 24px;
+  background: var(--success);
+  color: var(--panel);
+  padding: 0 14px;
   font-size: 1rem;
   font-weight: 800;
   cursor: pointer;
 }
 
-.start-analysis-button:hover {
-  background: #047857;
+.start-analysis-button:hover:not(:disabled) {
+  background: var(--success-strong);
+}
+
+/* Once analysis has run the button becomes "Start Modeling (DJF)" in blue. */
+.start-analysis-button.modeling {
+  border-color: var(--accent-strong);
+  background: var(--accent);
+}
+
+.start-analysis-button.modeling:hover:not(:disabled) {
+  background: var(--accent-strong);
 }
 
 .start-analysis-button:focus-visible {
-  outline: 3px solid rgba(5, 150, 105, 0.28);
+  outline: 3px solid var(--focus-success);
   outline-offset: 2px;
 }
 
+/* Keep the button's color when disabled, just dimmed (less washed-out). */
 .start-analysis-button:disabled {
-  border-color: #cbd5e1;
-  background: #94a3b8;
-  color: #e2e8f0;
+  opacity: 0.55;
   cursor: not-allowed;
-}
-
-.start-analysis-button:disabled:hover {
-  background: #94a3b8;
 }

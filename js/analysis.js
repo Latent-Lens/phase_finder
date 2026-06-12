@@ -275,24 +275,53 @@ async function loadAnalysisData() {
   app.hideProgress(700);
 }
 
+// Whether analysis has run; once true the button drives DJF modeling instead.
+let modelingMode = false;
+
 /*
 
 Purpose:
-	Entry point for the Start Analysis button: reveals the plot panel and runs
-	loadAnalysisData, surfacing any error to the status UI.
+	Turns the Start Analysis button into the blue "Start Modeling (DJF)" button
+	after analysis has run, so clicking it next starts cell-cycle modeling.
 
 Input:
 	(none)
 
 Output:
-	(none) [Promise<void>]: runs the analysis workflow
+	(none) [void]: updates the button text/style and the modeling flag
+
+*/
+function enterModelingMode() {
+  modelingMode = true;
+  analysisStartButton.textContent = "Start Modeling (DJF)";
+  analysisStartButton.classList.add("modeling");
+}
+
+/*
+
+Purpose:
+	Click handler for the header button. Before analysis it loads the selected
+	data and reveals the plot (then flips the button to modeling mode); after
+	that it starts DJF modeling (plotting.js startModeling).
+
+Input:
+	(none)
+
+Output:
+	(none) [Promise<void>]: runs analysis or starts modeling
 
 */
 async function startAnalysis() {
+  if (modelingMode) {
+    startModeling();
+    return;
+  }
+
   plotPanel.hidden = false;
 
   try {
     await loadAnalysisData();
+    enterModelingMode();
   } catch (error) {
     window.FlowPlotterApp.setStatus(error.message, true);
     window.FlowPlotterApp.setStatusBar("Selected data loading failed.", true);

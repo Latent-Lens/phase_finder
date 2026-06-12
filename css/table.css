@@ -20,7 +20,7 @@ td {
 th {
   position: sticky;
   top: 0;
-  background: #f2f5fa;
+  background: var(--th-bg);
   text-align: left;
 }
 
@@ -35,7 +35,7 @@ th {
   min-height: 38px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--panel);
   color: var(--text);
   padding: 8px 32px 8px 10px;
   overflow: hidden;
@@ -61,7 +61,7 @@ th {
 .multi-select-toggle:disabled {
   cursor: default;
   color: var(--muted);
-  background: #f8fafc;
+  background: var(--bg);
 }
 
 .multi-select-menu {
@@ -76,8 +76,8 @@ th {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #ffffff;
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
+  background: var(--panel);
+  box-shadow: 0 14px 28px var(--shadow-medium);
   padding: 8px;
 }
 
