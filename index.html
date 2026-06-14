@@ -60,25 +60,35 @@
     </header>
 
     <main class="app">
-      <aside class="sidebar">
-        <section class="panel">
-          <div class="panel-title"><h2>FCS Files</h2><div class="panel-title-rule"></div></div>
-          <div id="dropZone" class="drop-zone">
-            <div>
-              <strong id="dropZoneTitle">Drop FCS files here</strong>
-              <span id="dropZoneHint">or choose files from disk</span>
+      <aside id="sidebar" class="sidebar panel">
+        <div class="sidebar-header panel-title">
+          <div class="sidebar-title-row">
+            <h2>FCS Files</h2>
+            <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-controls="sidebarContent" aria-expanded="true" title="Collapse sidebar" aria-label="Collapse sidebar">
+              <img id="sidebarToggleIcon" class="sidebar-toggle-icon" src="./assets/img/panel-left-close.svg" alt="" aria-hidden="true" />
+            </button>
+          </div>
+          <div class="panel-title-rule"></div>
+        </div>
+        <div id="sidebarContent" class="sidebar-content">
+          <section class="sidebar-section">
+            <div id="dropZone" class="drop-zone">
+              <div>
+                <strong id="dropZoneTitle">Drop FCS files here</strong>
+                <span id="dropZoneHint">or choose files from disk</span>
+              </div>
             </div>
-          </div>
-          <input id="fileInput" class="visually-hidden-file" type="file" accept=".fcs" multiple />
-        </section>
+            <input id="fileInput" class="visually-hidden-file" type="file" accept=".fcs" multiple />
+          </section>
 
-        <section class="panel controls">
-          <div>
-            <label for="dnaAreaSelect">Select DNA-content area channel</label>
-            <select id="dnaAreaSelect"></select>
-          </div>
-          <p id="status" class="status">No file(s) loaded.</p>
-        </section>
+          <section class="sidebar-section controls">
+            <div>
+              <label for="dnaAreaSelect">Select channel</label>
+              <select id="dnaAreaSelect"></select>
+            </div>
+            <p id="status" class="status">No file(s) loaded.</p>
+          </section>
+        </div>
       </aside>
 
       <section class="workspace">

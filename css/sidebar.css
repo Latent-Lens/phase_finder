@@ -1,5 +1,111 @@
 /* Sidebar: FCS file drop zone, channel-select controls, and status text. */
 
+.sidebar {
+  position: relative;
+}
+
+.sidebar-header {
+  margin-bottom: 16px;
+  transition: margin 120ms ease;
+}
+
+.sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: var(--panel-title-row-height);
+  margin-bottom: 8px;
+}
+
+.sidebar-title-row h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.sidebar-content {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  transition:
+    opacity 120ms ease,
+    visibility 120ms ease;
+}
+
+.sidebar-section {
+  min-width: 0;
+}
+
+.sidebar-section + .sidebar-section {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.sidebar-toggle {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  min-height: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 6px 14px var(--shadow-soft);
+  color: var(--text);
+  padding: 0;
+}
+
+.sidebar-toggle:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sidebar-toggle:focus-visible {
+  outline: 3px solid var(--focus-success);
+  outline-offset: 2px;
+}
+
+.sidebar-toggle-icon {
+  display: block;
+  width: 26px;
+  height: 26px;
+}
+
+.app.sidebar-collapsed .sidebar {
+  align-items: center;
+  padding: 2px 8px;
+}
+
+.app.sidebar-collapsed .sidebar-header {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.app.sidebar-collapsed .sidebar-title-row {
+  justify-content: center;
+  min-height: var(--panel-title-row-height);
+  margin-bottom: 8px;
+}
+
+.app.sidebar-collapsed .sidebar-title-row h2 {
+  display: none;
+}
+
+.app.sidebar-collapsed .sidebar-header .panel-title-rule {
+  width: 100%;
+}
+
+.app.sidebar-collapsed .sidebar-content {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .drop-zone {
   cursor: pointer;
   display: grid;

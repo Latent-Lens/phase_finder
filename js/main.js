@@ -13,6 +13,15 @@ const progressFill = document.querySelector("#progressFill");
 const progressLabel = document.querySelector("#progressLabel");
 const progressPercent = document.querySelector("#progressPercent");
 const progressDetail = document.querySelector("#progressDetail");
+const appShell = document.querySelector(".app");
+const sidebar = document.querySelector("#sidebar");
+const sidebarContent = document.querySelector("#sidebarContent");
+const sidebarToggle = document.querySelector("#sidebarToggle");
+const sidebarToggleIcon = document.querySelector("#sidebarToggleIcon");
+
+const SIDEBAR_CLOSE_ICON = "./assets/img/panel-left-close.svg";
+const SIDEBAR_OPEN_ICON = "./assets/img/panel-left-open.svg";
+const SIDEBAR_TRANSITION_MS = 220;
 
 let parsedFiles = [];
 
@@ -431,6 +440,51 @@ Output:
 */
 function notifySelectionChanged() {
   document.dispatchEvent(new CustomEvent("fcs-selection-change"));
+}
+
+/*
+
+Purpose:
+	Collapses or expands the left sidebar and asks plot code to recalculate after
+	the grid column transition changes the workspace width.
+
+Input:
+	isCollapsed [boolean]: true to collapse the sidebar, false to expand it
+
+Output:
+	(none) [void]: updates sidebar state and layout-dependent controls
+
+*/
+function setSidebarCollapsed(isCollapsed) {
+  appShell.classList.toggle("sidebar-collapsed", isCollapsed);
+  sidebar.classList.toggle("is-collapsed", isCollapsed);
+  sidebarContent.setAttribute("aria-hidden", String(isCollapsed));
+  if ("inert" in sidebarContent) sidebarContent.inert = isCollapsed;
+
+  sidebarToggle.setAttribute("aria-expanded", String(!isCollapsed));
+  sidebarToggle.title = isCollapsed ? "Expand sidebar" : "Collapse sidebar";
+  sidebarToggle.setAttribute("aria-label", isCollapsed ? "Expand sidebar" : "Collapse sidebar");
+  sidebarToggleIcon.src = isCollapsed ? SIDEBAR_OPEN_ICON : SIDEBAR_CLOSE_ICON;
+
+  const notifyLayoutChanged = () => window.dispatchEvent(new Event("resize"));
+  window.requestAnimationFrame(notifyLayoutChanged);
+  window.setTimeout(notifyLayoutChanged, SIDEBAR_TRANSITION_MS);
+}
+
+/*
+
+Purpose:
+	Click handler for the sidebar edge button.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: toggles the sidebar collapsed state
+
+*/
+function toggleSidebar() {
+  setSidebarCollapsed(!appShell.classList.contains("sidebar-collapsed"));
 }
 
 /*
@@ -1147,6 +1201,7 @@ function escapeHtml(value) {
 }
 
 fileInput.addEventListener("change", () => loadFiles(fileInput.files));
+sidebarToggle.addEventListener("click", toggleSidebar);
 dnaAreaSelect.addEventListener("change", updateStartButtonState);
 dropZone.addEventListener("click", () => fileInput.click());
 
