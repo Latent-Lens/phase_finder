@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Flow Plotter</title>
+    <meta name="description" content="PhaseFinder: A browser-based tool for inspecting and plotting flow cytometry FCS files with Dean-Jett-Fox cell-cycle modeling." />
+    <title>PhaseFinder</title>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script type="module">
       // Levenberg–Marquardt solver for Dean–Jett–Fox curve fitting. Loaded
@@ -36,7 +37,7 @@
   </head>
   <body>
     <header class="page-header">
-      <img id="siteLogo" class="site-logo" src="./assets/img/logo.png" alt="FlowPlotter" title="Reload Flow Plotter" />
+      <img id="siteLogo" class="site-logo" src="./assets/img/logo.png" alt="PhaseFinder" title="Reload PhaseFinder" />
       <div class="header-actions">
         <button
           id="startAnalysisButton"
@@ -94,14 +95,38 @@
                   <option value="strain">Strain</option>
                 </select>
               </label>
-              <label class="plot-control">X-axis
-                <select id="plotXScale">
-                  <option value="linear">Linear</option>
-                  <option value="log">Log</option>
-                </select>
-              </label>
               <label class="plot-control">Bins
                 <input id="plotBins" type="number" min="16" max="1024" step="16" value="512" />
+              </label>
+              <label class="plot-control plot-control-check">
+                <span class="plot-check-row">
+                  <input type="checkbox" id="plotDebrisCorrection" />
+                  Remove debris/background
+                  <span
+                    class="info-icon"
+                    tabindex="0"
+                    role="img"
+                    aria-label="Debris and background correction help"
+                    data-tooltip="Removes low/high DNA-content debris before plotting and fitting.
+
+Method: build a 256-bin positive DNA-area histogram over the 0.2-99.8 percentile range, detect G1/G2 peaks, estimate each peak sigma from FWHM, then keep events within max(q0.1%, G1 - 4 sigma1, 0.45*G1) and min(q99.9%, G2 + 4 sigma2, 2.65*G1)."
+                  >?</span>
+                </span>
+              </label>
+              <label class="plot-control plot-control-check">
+                <span class="plot-check-row">
+                  <input type="checkbox" id="plotDoubletCorrection" />
+                  Remove aggregates/doublets
+                  <span
+                    class="info-icon"
+                    tabindex="0"
+                    role="img"
+                    aria-label="Aggregate and doublet correction help"
+                    data-tooltip="Removes aggregate/doublet-like events before plotting and fitting when matching DNA-H and/or DNA-W channels are available.
+
+Method: on eligible events, compute log(A/H) for height and/or log(W) for width, estimate a robust median and MAD sigma, and keep singlet-like events within median +/- 4*MAD sigma."
+                  >?</span>
+                </span>
               </label>
               <label class="plot-control plot-control-check">
                 <span class="plot-check-row">
@@ -112,8 +137,10 @@
                     tabindex="0"
                     role="img"
                     aria-label="Peak threshold help"
-                    title="Shows a draggable grey line marking the minimum event count for a histogram peak to be counted when seeding the Dean–Jett–Fox fit. Drag it up to ignore small/noisy peaks, down to include more; release to re-detect peaks and refit. Affects only the modeled (DJF) sample."
-                  >i</span>
+                    data-tooltip="Shows a draggable grey line marking the minimum event count for a histogram peak to be counted when seeding the Dean-Jett-Fox fit.
+
+Drag it up to ignore small/noisy peaks or down to include more; release to re-detect peaks and refit."
+                  >?</span>
                 </span>
               </label>
               <span id="djfReadout" class="djf-readout"></span>
@@ -159,6 +186,7 @@
 
     <script src="./js/fcs-parser.js"></script>
     <script src="./js/main.js"></script>
+    <script src="./js/djf_gpt.js"></script>
     <script src="./js/plotting.js"></script>
     <script src="./js/analysis.js"></script>
   </body>

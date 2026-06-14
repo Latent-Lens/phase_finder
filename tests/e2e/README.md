@@ -39,7 +39,8 @@ tracked but its contents are git-ignored.
 - One curve per checked sample
 - Unchecking a row removes its curve and updates the title, **without** dropping
   its loaded data; re-checking restores the curve
-- Color-by / log-axis / bins controls don't error
+- Color-by / bins controls don't error; x-axis log selector is absent
 - DJF fit produces a readout whose G1/S/G2M fractions sum to ~100%
+- DJF fit results table groups metadata in a title row with one row per phase
 
 Sample FCS data lives outside the repo (see the `--data` default).

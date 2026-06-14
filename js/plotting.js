@@ -8,11 +8,13 @@ const plotTitle = document.querySelector("#plotTitle");
 const plotColorBySelect = document.querySelector("#plotColorBy");
 const plotXScaleSelect = document.querySelector("#plotXScale");
 const plotBinsInput = document.querySelector("#plotBins");
+let djfFitTable = null;
+const plotDebrisCorrectionToggle = document.querySelector("#plotDebrisCorrection");
+const plotDoubletCorrectionToggle = document.querySelector("#plotDoubletCorrection");
 const plotThresholdToggle = document.querySelector("#plotThresholdToggle");
 const djfReadout = document.querySelector("#djfReadout");
 
 const DEFAULT_BINS = 512;
-const DJF_S_NODES = 48;
 
 // Colors come from the CSS custom properties in base.css so there is a single
 // source of truth for the whole app; the fallback is used only if a token is
@@ -101,6 +103,46 @@ function stripFcs(name) {
 /*
 
 Purpose:
+	Escapes text before building the DJF fit-results table.
+
+Input:
+	value [any]: text-ish value to escape
+
+Output:
+	text [string]: HTML-safe text
+
+*/
+function plotEscapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+/*
+
+Purpose:
+	Formats numeric fit table values with stable precision and thousands
+	separators.
+
+Input:
+	value [number]: number to format
+	digits [number]: max decimal places
+
+Output:
+	text [string]: formatted number, or blank for non-finite values
+
+*/
+function formatFitNumber(value, digits = 2) {
+  if (!Number.isFinite(value)) return "";
+  return value.toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+/*
+
+Purpose:
 	Reads the bin count from the "Bins" input and clamps it to a safe range.
 	Falls back to the default when the field is empty or non-numeric.
 
@@ -120,19 +162,39 @@ function plotBinCount() {
 /*
 
 Purpose:
-	Returns the samples that should be drawn: those currently checked in the
-	table AND already loaded with event data. Reads the selection through
-	window.FlowPlotterApp.
+	Reads the correction toggles that control event preprocessing before plotting
+	and DJF fitting.
 
 Input:
 	(none)
 
 Output:
-	rows [Array<Object>]: checked sample objects whose row.data.dnaA is loaded
+	state [Object]: { removeDebris, removeDoublets }
+
+*/
+function correctionState() {
+  return {
+    removeDebris: Boolean(plotDebrisCorrectionToggle && plotDebrisCorrectionToggle.checked),
+    removeDoublets: Boolean(plotDoubletCorrectionToggle && plotDoubletCorrectionToggle.checked),
+  };
+}
+
+/*
+
+Purpose:
+  Returns the samples that should be drawn: those currently checked in the
+  table AND already loaded with event data. Reads the selection through
+  window.PhaseFinderApp.
+
+Input:
+  (none)
+
+Output:
+  rows [Array<Object>]: checked sample objects whose row.data.dnaA is loaded
 
 */
 function plottableRows() {
-  const app = window.FlowPlotterApp;
+  const app = window.PhaseFinderApp;
   if (!app) return [];
   return app.getSelectedFiles().filter((row) => row.data && row.data.dnaA);
 }
@@ -199,14 +261,31 @@ Output:
 
 */
 function sharedRange(rows, positiveOnly) {
-  const total = rows.reduce((sum, row) => sum + row.data.dnaA.length, 0);
+  return sharedRangeForValues(rows.map((row) => row.data.dnaA), positiveOnly);
+}
+
+/*
+
+Purpose:
+	Computes the shared x-range from already-prepared event arrays. This lets the
+	plot range follow the correction checkboxes instead of always using raw events.
+
+Input:
+	valueSets [Array<Array<number>>]: per-sample event arrays
+	positiveOnly [boolean]:          drop values <= 0 first (needed for a log axis)
+
+Output:
+	range [Array<number>]: the [lo, hi] x-range
+
+*/
+function sharedRangeForValues(valueSets, positiveOnly) {
+  const total = valueSets.reduce((sum, values) => sum + values.length, 0);
   const stride = Math.max(1, Math.floor(total / 50000));
   const sample = [];
-  for (const row of rows) {
-    const values = row.data.dnaA;
+  for (const values of valueSets) {
     for (let i = 0; i < values.length; i += stride) {
       const v = values[i];
-      if (!positiveOnly || v > 0) sample.push(v);
+      if (Number.isFinite(v) && (!positiveOnly || v > 0)) sample.push(v);
     }
   }
   if (!sample.length) return positiveOnly ? [1, 10] : [0, 1];
@@ -216,6 +295,10 @@ function sharedRange(rows, positiveOnly) {
   let hi = at(0.995);
   if (!(hi > lo)) { lo = sample[0]; hi = sample[sample.length - 1]; }
   if (!(hi > lo)) { hi = lo + 1; }
+  if (!positiveOnly) {
+    lo = 0;
+    if (!(hi > lo)) hi = 1;
+  }
   return [lo, hi];
 }
 
@@ -275,359 +358,6 @@ function histogramCurve(values, opts) {
   return points;
 }
 
-/* ---------- Dean–Jett–Fox model (Full Fox broadening) ---------- */
-
-/*
-
-Purpose:
-	Evaluates a unit-area (normalized) Gaussian at a given distance from its
-	mean. Used as the building block for the DJF G1/G2 peaks and S broadening.
-
-Input:
-	distance [number]: distance from the Gaussian's mean (x - mean)
-	sigma [number]:    standard deviation
-
-Output:
-	density [number]: the normalized Gaussian value at that distance
-
-*/
-function gaussian(distance, sigma) {
-  return Math.exp(-(distance * distance) / (2 * sigma * sigma)) / (sigma * Math.sqrt(2 * Math.PI));
-}
-
-/*
-
-Purpose:
-	Evaluates the three DJF cell-cycle components at one channel value. G1 and
-	G2 are Gaussians with M2 = 2*M1 and sigma2 = 2*sigma1 (constant CV); the S
-	phase is a quadratic in normalized position broadened by a Gaussian whose
-	width varies linearly from sigma1 to sigma2 (Full Fox).
-
-Input:
-	value [number]:    the channel value (x position) to evaluate
-	p [Array<number>]: [M1, sigma1, aG1, aG2, s0, s1, s2] fit parameters
-
-Output:
-	components [Object]: { g1, s, g2 } component heights at that x
-
-*/
-function djfComponents(value, p) {
-  const [M1, sigma1, aG1, aG2, s0, s1, s2] = p;
-  const M2 = 2 * M1;
-  const sigma2 = 2 * sigma1;
-  const g1 = aG1 * gaussian(value - M1, sigma1);
-  const g2 = aG2 * gaussian(value - M2, sigma2);
-  let s = 0;
-  const span = M2 - M1;
-  const du = span / DJF_S_NODES;
-  for (let k = 0; k < DJF_S_NODES; k++) {
-    const pos = (k + 0.5) / DJF_S_NODES;
-    let height = s0 + s1 * pos + s2 * pos * pos;
-    if (height < 0) height = 0;
-    const u = M1 + pos * span;
-    const sigU = sigma1 + (sigma2 - sigma1) * pos;
-    s += height * gaussian(value - u, sigU) * du;
-  }
-  return { g1, s, g2 };
-}
-
-/*
-
-Purpose:
-	Evaluates the full DJF model (the sum of the G1, S and G2 components) at one
-	channel value. This is the function the least-squares fit is run against.
-
-Input:
-	value [number]:    the channel value (x position) to evaluate
-	p [Array<number>]: the DJF fit parameters (see djfComponents)
-
-Output:
-	total [number]: the summed model height (G1 + S + G2) at that x
-
-*/
-function djfModel(value, p) {
-  const c = djfComponents(value, p);
-  return c.g1 + c.s + c.g2;
-}
-
-/*
-
-Purpose:
-	Finds histogram peaks (left to right) above an absolute event-count cutoff.
-	Uses the ml-gsd library when present and falls back to a simple local-maxima
-	scan otherwise.
-
-Input:
-	points [Array<{x,y}>]:   the sample's histogram points
-	threshold [number|null]: absolute event-count cutoff; null = 5% of the max bin
-
-Output:
-	peaks [Array<{x,y}>]: detected peaks, sorted left to right (may be empty)
-
-*/
-function detectPeaks(points, threshold) {
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const maxY = ys.reduce((m, v) => Math.max(m, v), 0) || 1;
-  const cutoff = threshold != null ? threshold : 0.05 * maxY;
-
-  if (typeof window.gsd === "function") {
-    try {
-      const minMaxRatio = Math.min(0.99, Math.max(1e-4, cutoff / maxY));
-      const found = window.gsd({ x: xs, y: ys }, { minMaxRatio, smoothY: true, realTopDetection: true });
-      const peaks = (found || [])
-        .map((pk) => ({ x: pk.x, y: pk.y != null ? pk.y : pk.height }))
-        .filter((pk) => Number.isFinite(pk.x) && Number.isFinite(pk.y) && pk.y >= cutoff);
-      if (peaks.length) {
-        peaks.sort((a, b) => a.x - b.x);
-        return peaks;
-      }
-    } catch (error) {
-      // fall through to the manual scan
-    }
-  }
-
-  const win = Math.max(2, Math.floor(points.length / 48));
-  const peaks = [];
-  for (let i = 0; i < points.length; i++) {
-    if (ys[i] < cutoff) continue;
-    let isMax = true;
-    for (let j = Math.max(0, i - win); j <= Math.min(points.length - 1, i + win); j++) {
-      if (ys[j] > ys[i]) { isMax = false; break; }
-    }
-    if (isMax) {
-      peaks.push({ x: xs[i], y: ys[i] });
-      i += win;
-    }
-  }
-  return peaks;
-}
-
-/*
-
-Purpose:
-	Among the detected peaks, finds the tallest pair whose positions sit at a
-	~2x ratio — the G1 (2N) and G2 (4N) peaks. Using the pair is robust even
-	when G2 is the dominant peak and G1 is small.
-
-Input:
-	peaks [Array<{x,y}>]: detected histogram peaks
-
-Output:
-	pair [Object|null]: { g1, g2 } peak points, or null if no ~2x pair exists
-
-*/
-function bestG1G2Pair(peaks) {
-  let best = null;
-  let bestScore = -Infinity;
-  for (let i = 0; i < peaks.length; i++) {
-    for (let j = 0; j < peaks.length; j++) {
-      if (i === j || peaks[j].x <= peaks[i].x) continue;
-      const ratio = peaks[j].x / peaks[i].x;
-      if (ratio < 1.7 || ratio > 2.3) continue;
-      const score = peaks[i].y + peaks[j].y;
-      if (score > bestScore) {
-        bestScore = score;
-        best = { g1: peaks[i], g2: peaks[j] };
-      }
-    }
-  }
-  return best;
-}
-
-/*
-
-Purpose:
-	Returns the y value of the histogram point nearest a given x. Used to seed
-	component amplitudes from the actual counts at the G1 and G2 positions.
-
-Input:
-	points [Array<{x,y}>]: the sample's histogram points
-	x [number]:            the x position to look up
-
-Output:
-	y [number]: the count at the nearest bin (0 if there are no points)
-
-*/
-function valueAt(points, x) {
-  let best = 0;
-  let bestDist = Infinity;
-  for (const p of points) {
-    const dist = Math.abs(p.x - x);
-    if (dist < bestDist) { bestDist = dist; best = p.y; }
-  }
-  return best;
-}
-
-/*
-
-Purpose:
-	Estimates the shared 2N (G1) channel position for the run. Since the 2N
-	position is fixed by the stain, it takes the median G1 across the samples
-	that show a clear G1/G2 pair; samples that only show a G2 peak (e.g. fully
-	arrested) can then be seeded with this shared value.
-
-Input:
-	rows [Array<Object>]: all plotted samples
-	opts [Object]:        binning transform from axisOpts()
-
-Output:
-	g1 [number|null]: the run-wide G1 position, or null if no pair was found
-
-*/
-function estimateRunG1(rows, opts) {
-  const positions = [];
-  for (const row of rows) {
-    const pair = bestG1G2Pair(detectPeaks(histogramCurve(row.data.dnaA, opts)));
-    if (pair) positions.push(pair.g1.x);
-  }
-  if (!positions.length) return null;
-  positions.sort((a, b) => a - b);
-  return positions[Math.floor((positions.length - 1) / 2)];
-}
-
-/*
-
-Purpose:
-	Produces an initial DJF parameter guess for the fit by locating G1 from the
-	histogram peaks. Prefers the tallest peak pair at a ~2x ratio; otherwise
-	falls back to a run-wide G1 hint, then to the most prominent peak. Getting
-	G1 right matters most because G2 is pinned at 2x G1.
-
-Input:
-	points [Array<{x,y}>]:   the modeled sample's histogram points
-	range [Array<number>]:   the [lo, hi] x-range
-	threshold [number|null]: peak-detection cutoff (the draggable line height)
-	g1Hint [number|null]:    run-wide G1 position to fall back on, or null
-
-Output:
-	seed [Array<number>]: [M1, sigma1, aG1, aG2, s0, s1, s2] initial guess
-
-*/
-function seedDJF(points, range, threshold, g1Hint) {
-  const [lo, hi] = range;
-  const peaks = detectPeaks(points, threshold);
-  const globalMax = points.reduce((m, p) => Math.max(m, p.y), 1);
-
-  let M1 = null;
-  let peakY = null;
-  let g2Y = null;
-
-  const pair = bestG1G2Pair(peaks);
-  if (pair) {
-    M1 = pair.g1.x;
-    peakY = pair.g1.y;
-    g2Y = pair.g2.y;
-  } else if (g1Hint != null) {
-    // No pair in THIS sample (e.g. only the G2/M peak): use the run-wide G1
-    // position and seed amplitudes from the actual counts at G1 and 2*G1.
-    M1 = g1Hint;
-    peakY = valueAt(points, M1);
-    g2Y = valueAt(points, 2 * M1);
-  } else if (peaks.length) {
-    const tallest = peaks.reduce((t, p) => (p.y > t.y ? p : t), peaks[0]);
-    const halfMate = peaks.find((p) => Math.abs(p.x - tallest.x / 2) < 0.2 * tallest.x);
-    if (halfMate) {
-      M1 = halfMate.x; peakY = halfMate.y; g2Y = tallest.y;
-    } else {
-      M1 = tallest.x; peakY = tallest.y;
-    }
-  } else {
-    M1 = lo + 0.25 * (hi - lo);
-    peakY = globalMax;
-  }
-
-  const sigma1 = Math.max((hi - lo) * 0.015, 0.03 * M1);
-  const aG1 = Math.max(peakY, 1e-9) * sigma1 * Math.sqrt(2 * Math.PI);
-  const aG2 = g2Y != null ? Math.max(g2Y, 1e-9) * (2 * sigma1) * Math.sqrt(2 * Math.PI) : 0.3 * aG1;
-
-  return [M1, sigma1, aG1, aG2, 0.05 * Math.max(peakY, 1e-9), 0, 0];
-}
-
-/*
-
-Purpose:
-	Fits the DJF model to a sample's histogram with Levenberg–Marquardt
-	(ml-levenberg-marquardt). Seeds from seedDJF and bounds the parameters,
-	pinning M1 near the run G1 when known so the fit can't mistake a dominant
-	G2 peak for G1.
-
-Input:
-	points [Array<{x,y}>]:   the modeled sample's histogram points
-	range [Array<number>]:   the [lo, hi] x-range
-	threshold [number|null]: peak-detection cutoff used for seeding
-	g1Hint [number|null]:    run-wide G1 position to pin M1 near, or null
-
-Output:
-	params [Array<number>|null]: fitted [M1, sigma1, aG1, aG2, s0, s1, s2], or null if the fit fails or the library is missing
-
-*/
-function fitDJF(points, range, threshold, g1Hint) {
-  const LM = window.levenbergMarquardt;
-  if (!LM) return null;
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const initial = seedDJF(points, range, threshold, g1Hint);
-  const [lo, hi] = range;
-  const span = hi - lo;
-  const maxY = Math.max(...ys, 1);
-  const bigA = maxY * span * 10 + 10;
-  const bigS = maxY * 10 + 10;
-  // The 2N (G1) channel is fixed by the stain/run, so when we know it, pin M1
-  // tightly around it. Otherwise the free fit can park G1 on a dominant G2/M
-  // peak (calling it G1) and absorb the rest into S.
-  const m1Lo = g1Hint != null ? g1Hint * 0.85 : lo;
-  const m1Hi = g1Hint != null ? g1Hint * 1.15 : lo + 0.7 * span;
-  const minValues = [m1Lo, span * 0.002, 0, 0, -bigS, -bigS, -bigS];
-  const maxValues = [m1Hi, span * 0.25, bigA, bigA, bigS, bigS, bigS];
-  try {
-    const result = LM(
-      { x: xs, y: ys },
-      (p) => (x) => djfModel(x, p),
-      {
-        initialValues: initial,
-        minValues,
-        maxValues,
-        damping: 1e-2,
-        gradientDifference: 1e-4,
-        maxIterations: 120,
-        errorTolerance: 1e-9,
-      },
-    );
-    return result.parameterValues;
-  } catch (error) {
-    return null;
-  }
-}
-
-/*
-
-Purpose:
-	Integrates the fitted G1, S and G2 components over the histogram and returns
-	each as a percentage of the total — the cell-cycle phase fractions.
-
-Input:
-	points [Array<{x,y}>]: the modeled sample's histogram points
-	p [Array<number>]:     the fitted DJF parameters
-
-Output:
-	fractions [Object]: { g1, s, g2 } as percentages summing to 100
-
-*/
-function djfFractions(points, p) {
-  let g1 = 0;
-  let s = 0;
-  let g2 = 0;
-  for (const pt of points) {
-    const c = djfComponents(pt.x, p);
-    g1 += c.g1;
-    s += c.s;
-    g2 += c.g2;
-  }
-  const total = g1 + s + g2 || 1;
-  return { g1: (g1 / total) * 100, s: (s / total) * 100, g2: (g2 / total) * 100 };
-}
-
 /* ---------- Rendering ---------- */
 
 /*
@@ -643,11 +373,88 @@ Output:
 	(none) [void]: sets the #plotTitle text
 
 */
-function updatePlotTitle(rows) {
+function updatePlotTitle(rows, eventCount = null) {
   if (!plotTitle) return;
-  const events = rows.reduce((sum, row) => sum + row.data.dnaA.length, 0);
+  const events = eventCount == null
+    ? rows.reduce((sum, row) => sum + row.data.dnaA.length, 0)
+    : eventCount;
   plotTitle.textContent = `Histogram of Events:  ${rows.length} Samples  |  ${events.toLocaleString()} Events`;
 }
+
+/*
+
+Purpose:
+	Renders a tabular summary of the currently visible DJF fits. Each fitted
+	sample contributes one row per phase with metadata and component moments.
+
+Input:
+	fits [Array<Object>]: visible DJF fit objects
+
+Output:
+	(none) [void]: updates #djfFitTable
+
+*/
+function renderFitResultsTable(fits, placement = {}) {
+  if (!plotArea) return;
+  if (!fits.length) {
+    if (djfFitTable) {
+      djfFitTable.hidden = true;
+      djfFitTable.innerHTML = "";
+    }
+    return;
+  }
+  djfFitTable = document.createElement("div");
+  djfFitTable.id = "djfFitTable";
+  djfFitTable.className = "djf-fit-table-wrap";
+  djfFitTable.style.top = `${Math.round(placement.top || 0)}px`;
+  djfFitTable.style.right = `${Math.round(placement.right || 8)}px`;
+  if (placement.maxWidth) djfFitTable.style.maxWidth = `${Math.round(placement.maxWidth)}px`;
+
+  const fitGroups = [];
+  fits.forEach((fit) => {
+    const annotations = fit.row && fit.row.annotations ? fit.row.annotations : {};
+    const meta = [
+      `Strain: ${annotations.strain || ""}`,
+      `Replicate: ${annotations.replicate || ""}`,
+      `Nocodazole Arrest: ${annotations.nocodazoleArrest || ""}`,
+      `Timepoint: ${annotations.timepoint || ""}`,
+    ];
+    const phaseRows = [fit.phaseStats.g1, fit.phaseStats.s, fit.phaseStats.g2]
+      .map((phase) => `
+        <tr class="djf-fit-phase-row">
+          <td>${plotEscapeHtml(phase.phase)}</td>
+          <td class="numeric-cell">${formatFitNumber(phase.percent, 1)}%</td>
+          <td class="numeric-cell">${formatFitNumber(phase.mean, 2)}</td>
+          <td class="numeric-cell">${formatFitNumber(phase.stdev, 2)}</td>
+        </tr>`)
+      .join("");
+
+    fitGroups.push(`
+      <tbody class="djf-fit-group">
+        <tr class="djf-fit-title-row">
+          <th colspan="4">
+            <span class="djf-fit-sample" title="${plotEscapeHtml(fit.name)}">${plotEscapeHtml(stripFcs(fit.name))}</span>
+            <span class="djf-fit-meta">${plotEscapeHtml(meta.join("  |  "))}</span>
+          </th>
+        </tr>
+        <tr class="djf-fit-column-row">
+          <th>Phase</th>
+          <th class="numeric-cell">Percent</th>
+          <th class="numeric-cell">Mean</th>
+          <th class="numeric-cell">Std Dev</th>
+        </tr>
+        ${phaseRows}
+      </tbody>`);
+  });
+
+  djfFitTable.innerHTML = `
+    <table class="djf-fit-table">
+      ${fitGroups.join("")}
+    </table>`;
+  djfFitTable.hidden = false;
+  plotArea.appendChild(djfFitTable);
+}
+
 
 /*
 
@@ -733,70 +540,85 @@ function renderDensityPlot() {
   const d3 = window.d3;
   if (!d3 || !plotArea || !plotChannels) return;
 
+  const djf = window.PhaseFinderDJF;
   const rows = plottableRows();
-  updatePlotTitle(rows);
 
   plotArea.innerHTML = "";
   if (djfReadout) djfReadout.textContent = "";
 
-  const isLog = plotXScaleSelect && plotXScaleSelect.value === "log";
+  const isLog = false;
   const colorBy = plotColorBySelect ? plotColorBySelect.value : "file";
   const bins = plotBinCount();
+  const corrections = correctionState();
+  const preparedRows = rows.map((row) => ({
+    row,
+    prepared: djf ? djf.prepareRow(row, corrections) : { values: row.data.dnaA, stats: { raw: row.data.dnaA.length, plotted: row.data.dnaA.length } },
+  }));
 
-  // With samples, compute the range and remember it; with none, keep the axes
-  // by reusing the last range (or a sensible default) instead of bailing out.
+  // With samples, compute the range from the plotted events and remember it;
+  // with none, keep the axes by reusing the last range.
   let range;
-  if (rows.length) {
-    range = sharedRange(rows, isLog);
+  if (preparedRows.length) {
+    range = sharedRangeForValues(preparedRows.map((entry) => entry.prepared.values), isLog);
     lastRange = range;
   } else if (lastRange && (!isLog || lastRange[0] > 0)) {
-    range = lastRange;
+    range = isLog ? lastRange : [0, Math.max(lastRange[1], 1)];
   } else {
     range = isLog ? [1, 10] : [0, 1];
   }
   const opts = axisOpts(range, isLog, bins);
 
   const assign = buildColorAssigner(rows, colorBy);
-  const series = rows.map((row, index) => {
+  const series = preparedRows.map(({ row, prepared }, index) => {
     const { color, group } = assign(row, index);
-    return { name: row.name, color, group, points: histogramCurve(row.data.dnaA, opts) };
+    return { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points: histogramCurve(prepared.values, opts) };
   });
+  updatePlotTitle(rows, series.reduce((sum, item) => sum + item.values.length, 0));
 
-  // Dean–Jett–Fox: one independent fit per shown sample (linear axis only). The
+  // Dean-Jett-Fox: one independent fit per shown sample (linear axis only). The
   // peak-detection threshold is a single draggable line shared by all fits;
   // default 5% of the tallest shown bin.
   const fits = [];
   let thresholdValue = null;
+  const correctionText = djf ? djf.correctionSummary(preparedRows, corrections) : "";
   if (modelingStarted && rows.length) {
     if (isLog) {
       if (djfReadout) djfReadout.textContent = "DJF requires a linear X-axis.";
+    } else if (!djf) {
+      if (djfReadout) djfReadout.textContent = "Corrected DJF module is unavailable.";
     } else {
       const shownSeries = series.filter((s) => shownFits.has(s.name));
       if (shownSeries.length) {
         const shownMax = d3.max(shownSeries, (s) => d3.max(s.points, (pt) => pt.y)) || 1;
         if (peakThreshold == null) peakThreshold = 0.05 * shownMax;
         thresholdValue = peakThreshold;
-        const runG1 = estimateRunG1(rows, opts);
+        const runG1 = djf.estimateRunG1(series, thresholdValue);
         for (const s of shownSeries) {
-          const params = fitDJF(s.points, range, thresholdValue, runG1);
+          const params = djf.fit(s.points, range, thresholdValue, runG1);
           if (!params) continue;
-          const comps = s.points.map((pt) => ({ x: pt.x, c: djfComponents(pt.x, params) }));
+          const comps = s.points.map((pt) => ({ x: pt.x, c: djf.components(pt.x, params) }));
+          const phaseStats = djf.phaseStats(s.points, params);
           fits.push({
+            row: s.row,
             name: s.name,
             total: comps.map((o) => ({ x: o.x, y: o.c.g1 + o.c.s + o.c.g2 })),
             g1: comps.map((o) => ({ x: o.x, y: o.c.g1 })),
             s: comps.map((o) => ({ x: o.x, y: o.c.s })),
             g2: comps.map((o) => ({ x: o.x, y: o.c.g2 })),
-            fractions: djfFractions(s.points, params),
+            fractions: { g1: phaseStats.g1.percent, s: phaseStats.s.percent, g2: phaseStats.g2.percent },
+            phaseStats,
           });
         }
       }
       if (djfReadout) {
-        djfReadout.textContent = fits
+        const fitText = fits
           .map((fit) => `${stripFcs(fit.name)}: G1 ${fit.fractions.g1.toFixed(1)}% · S ${fit.fractions.s.toFixed(1)}% · G2 ${fit.fractions.g2.toFixed(1)}%`)
-          .join("     |     ");
+          .join("\n");
+        djfReadout.textContent = [fitText, correctionText].filter(Boolean).join("\n");
       }
     }
+  } else if (djfReadout && correctionText) {
+    djfReadout.textContent = correctionText;
   }
 
   const width = plotArea.clientWidth || PLOT_FALLBACK_WIDTH;
@@ -969,12 +791,27 @@ function renderDensityPlot() {
     .attr("x", checkboxCol + LEGEND_TEXT_OFFSET).attr("y", LEGEND_TEXT_Y)
     .attr("font-size", LEGEND_FONT_SIZE).attr("fill", AXIS_LABEL_COLOR)
     .text((d) => (d.type === "sample" ? stripFcs(d.name) : d.label));
+
+  renderFitResultsTable(fits, {
+    top: margin.top + legendItems.length * LEGEND_ROW_HEIGHT + 12,
+    right: 8,
+    maxWidth: Math.max(190, margin.right - 18),
+  });
 }
 
 /* ---------- Listeners ---------- */
 
-[plotColorBySelect, plotXScaleSelect, plotBinsInput, plotThresholdToggle].forEach((el) => {
+[plotColorBySelect, plotBinsInput, plotThresholdToggle].forEach((el) => {
   if (el) el.addEventListener("change", renderDensityPlot);
+});
+
+[plotDebrisCorrectionToggle, plotDoubletCorrectionToggle].forEach((el) => {
+  if (el) {
+    el.addEventListener("change", () => {
+      peakThreshold = null;
+      renderDensityPlot();
+    });
+  }
 });
 
 // Live-update when the table checkbox selection changes (uncheck removes a

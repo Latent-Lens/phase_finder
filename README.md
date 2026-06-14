@@ -1,6 +1,6 @@
-# Flow Plotter
+# PhaseFinder
 
-Flow Plotter is a browser-based tool for inspecting and plotting flow cytometry
+PhaseFinder is a browser-based tool for inspecting and plotting flow cytometry
 `.fcs` files. It is designed as a lightweight, local-first workspace: users drop
 FCS files into the page, the app reads the FCS header and TEXT metadata in the
 browser, and selected samples can then be loaded into an overlaid DNA-content
@@ -42,7 +42,7 @@ pipeline in this repository.
 │   └── responsive.css   # @media overrides (loaded last)
 ├── js/
 │   ├── fcs-parser.js    # window.FCSParser — FCS reading
-│   ├── main.js          # window.FlowPlotterApp — file/table/selection UI
+│   ├── main.js          # window.PhaseFinderApp — file/table/selection UI
 │   ├── plotting.js      # D3 histogram + DJF modeling
 │   └── analysis.js      # selected-data loading + plot panel orchestration
 ├── tests/
@@ -63,10 +63,10 @@ The runtime order matters:
 
 1. `js/fcs-parser.js` creates `window.FCSParser`.
 2. `js/main.js` creates the file-loading/table UI state and exposes
-   `window.FlowPlotterApp`.
+  `window.PhaseFinderApp`.
 3. `js/plotting.js` defines the plot renderer (`initPlot`, `renderDensityPlot`)
    and the DJF model; it listens for selection changes to redraw live.
-4. `js/analysis.js` uses `window.FlowPlotterApp` and `window.FCSParser` to load
+4. `js/analysis.js` uses `window.PhaseFinderApp` and `window.FCSParser` to load
    selected event data, then calls `initPlot` to draw the plot.
 
 The third-party libraries are loaded from:
@@ -88,7 +88,7 @@ require network access unless these libraries are vendored locally.
 
 The HTML entry point. It contains:
 
-- A header with the Flow Plotter logo and the `Start Analysis` button.
+- A header with the PhaseFinder logo and the `Start Analysis` button.
 - A sidebar with the FCS file drop zone and DNA-content channel selector.
 - A workspace with two panels:
   - `plotPanel`, hidden until analysis starts, containing the plot controls bar
@@ -148,7 +148,7 @@ Important responsibilities:
   channel is chosen.
 - Dispatches a `fcs-selection-change` event when the checked set changes so the
   plot can add/remove curves live without re-running analysis.
-- Exposes `window.FlowPlotterApp` (e.g. `getSelectedFiles`, `getParsedFiles`,
+- Exposes `window.PhaseFinderApp` (e.g. `getSelectedFiles`, `getParsedFiles`,
   `getSelectedChannels`, plus progress/status helpers).
 
 Metadata table columns: Filename (read-only), Strain, Replicate,
@@ -162,8 +162,9 @@ Important responsibilities:
 
 - Builds per-sample **event histograms** (per-bin event counts) drawn as smooth
   curves; the y-axis is "Number of Events".
-- Honors the plot controls bar: **Color by** (file / strain), **X-axis**
-  (linear / log), **Bins**, and **Model (DJF)** sample picker.
+- Honors the plot controls bar: **Color by** (file / strain), **Bins**,
+  correction toggles, and the **Model (DJF)** sample picker. The x-axis is
+  always linear and starts at 0.
 - Keeps the plot in sync with the table: it renders the currently checked +
   loaded samples and redraws on `fcs-selection-change` (unchecking a row removes
   its curve without discarding its loaded data; re-checking restores it).
@@ -173,7 +174,10 @@ Important responsibilities:
   ratio, estimates a run-wide G1 (2N) position shared across samples, fits with
   `ml-levenberg-marquardt` (M1 pinned near the run G1, G2 mean fixed at 2×M1),
   and overlays the fitted total plus filled G1/S/G2 components with a
-  `%G1 · %S · %G2` readout. DJF is linear-axis only.
+  `%G1 · %S · %G2` readout. Visible fits also populate a grouped results table:
+  each sample has a metadata title row, followed by G1/S/G2 rows with phase
+  percentages, fitted means, and fitted standard deviations. DJF is linear-axis
+  only.
 - A **draggable peak-detection threshold** (a grey line with a fill below it),
   shown only when the "Peak threshold" checkbox is ticked; dragging it re-detects
   peaks and refits on release.
@@ -185,7 +189,7 @@ Important responsibilities:
 ### `js/analysis.js`
 
 The selected-data loading and panel orchestration layer, loaded after
-`plotting.js`. It uses the public `window.FlowPlotterApp` methods.
+`plotting.js`. It uses the public `window.PhaseFinderApp` methods.
 
 Important responsibilities:
 
@@ -255,9 +259,10 @@ are vendored locally and the tags in `index.html` are changed.
 6. Confirm the DNA-content area channel selection.
 7. Check the rows that should be included in the plot.
 8. Click `Start Analysis`.
-9. Review the overlaid event histogram; adjust Color by / X-axis / Bins.
+9. Review the overlaid event histogram; adjust Color by / Bins.
 10. Optionally choose a sample under **Model (DJF)** to fit and read its cell-cycle
-    fractions; tick **Peak threshold** to fine-tune peak detection.
+    fractions plus per-phase mean/std-dev in the fit results table; tick
+    **Peak threshold** to fine-tune peak detection.
 11. Check or uncheck rows to add or remove plotted samples live.
 
 ## Development Notes

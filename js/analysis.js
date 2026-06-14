@@ -162,8 +162,17 @@ Output:
 */
 function selectedIndexesForFile(summary, selected) {
   const params = parameterMap(summary);
+  const dnaA = findParamIndex(params, selected.dnaArea);
+  const aux = window.PhaseFinderDJF && typeof window.PhaseFinderDJF.findAuxiliaryIndexes === "function"
+    ? window.PhaseFinderDJF.findAuxiliaryIndexes(summary, selected.dnaArea)
+    : {};
+
   return {
-    dnaA: findParamIndex(params, selected.dnaArea),
+    dnaA,
+    dnaH: aux.dnaH || null,
+    dnaW: aux.dnaW || null,
+    dnaHeightLabel: aux.dnaHeightLabel || "",
+    dnaWidthLabel: aux.dnaWidthLabel || "",
   };
 }
 
@@ -183,10 +192,12 @@ Output:
 */
 async function loadAnalysisRow(row, selected) {
   const indexes = selectedIndexesForFile(row.summary, selected);
-  const columns = await loadSelectedFcsColumns(row.file, row.summary, uniqueIndexes(Object.values(indexes)));
+  const columns = await loadSelectedFcsColumns(row.file, row.summary, uniqueIndexes([indexes.dnaA, indexes.dnaH, indexes.dnaW]));
 
   row.data = {
     dnaA: columns[indexes.dnaA],
+    dnaH: indexes.dnaH ? columns[indexes.dnaH] : null,
+    dnaW: indexes.dnaW ? columns[indexes.dnaW] : null,
     indexes,
   };
 }
@@ -198,11 +209,11 @@ Purpose:
 	through the app's progress UI.
 
 Input:
-	batch [Array<Object>]: { row, index } entries to load
-	selected [Object]:     the selected channels
-	app [Object]:          window.FlowPlotterApp (progress/status helpers)
-	completed [Object]:    shared { count } progress counter (mutated)
-	total [number]:        total number of files being loaded
+  batch [Array<Object>]: { row, index } entries to load
+  selected [Object]:     the selected channels
+  app [Object]:          window.PhaseFinderApp (progress/status helpers)
+  completed [Object]:    shared { count } progress counter (mutated)
+  total [number]:        total number of files being loaded
 
 Output:
 	(none) [Promise<void>]: loads each row's data and advances progress
@@ -240,7 +251,7 @@ Output:
 
 */
 async function loadAnalysisData() {
-  const app = window.FlowPlotterApp;
+  const app = window.PhaseFinderApp;
   const rows = app.getSelectedFiles();
   const selected = app.getSelectedChannels();
   const completed = { count: 0 };
@@ -323,10 +334,10 @@ async function startAnalysis() {
     await loadAnalysisData();
     enterModelingMode();
   } catch (error) {
-    window.FlowPlotterApp.setStatus(error.message, true);
-    window.FlowPlotterApp.setStatusBar("Selected data loading failed.", true);
-    window.FlowPlotterApp.updateProgress(100, "Loading Selected FCS Data", error.message);
-    window.FlowPlotterApp.hideProgress(1400);
+    window.PhaseFinderApp.setStatus(error.message, true);
+    window.PhaseFinderApp.setStatusBar("Selected data loading failed.", true);
+    window.PhaseFinderApp.updateProgress(100, "Loading Selected FCS Data", error.message);
+    window.PhaseFinderApp.hideProgress(1400);
   }
 }
 

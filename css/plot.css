@@ -7,6 +7,7 @@
 }
 
 .plot-panel {
+  flex: 0 0 auto;
   min-height: 460px;
 }
 
@@ -20,10 +21,13 @@
   overflow: hidden;
 }
 
-/* Let the plot area size to the space the panel gives it (flex:1) instead of
-   forcing a height, which overflowed the panel and clipped the x-axis. */
+/* Keep the plot canvas stable; the DJF fit table is positioned inside the
+   right-side legend margin and does not take height away from the SVG. */
 .plot-panel #plotArea {
-  min-height: 0;
+  position: relative;
+  flex: 0 0 clamp(360px, 42vh, 520px);
+  height: clamp(360px, 42vh, 520px);
+  min-height: 360px;
 }
 
 .plot-controls {
@@ -62,6 +66,8 @@
   margin-left: auto;
   font-size: 0.85rem;
   font-weight: 650;
+  line-height: 1.35;
+  white-space: pre-line;
   color: var(--text);
 }
 
@@ -84,6 +90,7 @@
 }
 
 .info-icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -93,8 +100,130 @@
   border: 1px solid var(--muted);
   color: var(--muted);
   font-size: 10px;
-  font-style: italic;
+  font-style: normal;
   font-weight: 700;
   line-height: 1;
   cursor: help;
+}
+
+.info-icon::after {
+  position: absolute;
+  z-index: 100;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: min(360px, 80vw);
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--panel);
+  box-shadow: 0 10px 24px var(--shadow-medium);
+  content: attr(data-tooltip);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%) translateY(2px);
+  transition: opacity 70ms ease, transform 70ms ease, visibility 70ms ease;
+  visibility: hidden;
+  white-space: pre-line;
+}
+
+.info-icon::before {
+  position: absolute;
+  z-index: 101;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  background: var(--text);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) rotate(45deg);
+  transition: opacity 70ms ease, visibility 70ms ease;
+  visibility: hidden;
+}
+
+.info-icon:hover::after,
+.info-icon:focus-visible::after,
+.info-icon:hover::before,
+.info-icon:focus-visible::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  visibility: visible;
+}
+
+.info-icon:hover::before,
+.info-icon:focus-visible::before {
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.djf-fit-table-wrap {
+  position: absolute;
+  z-index: 6;
+  overflow: auto;
+  width: max-content;
+  max-height: 210px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 8px 20px var(--shadow-soft);
+}
+
+.djf-fit-table-wrap[hidden] {
+  display: none;
+}
+
+.djf-fit-table {
+  width: max-content;
+  min-width: 0;
+  font-size: 0.72rem;
+}
+
+.djf-fit-table th,
+.djf-fit-table td {
+  max-width: 210px;
+  padding: 4px 6px;
+}
+
+.djf-fit-title-row th {
+  position: static;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.djf-fit-column-row th {
+  position: static;
+  background: var(--th-bg);
+  color: var(--text);
+}
+
+.djf-fit-group + .djf-fit-group .djf-fit-title-row th {
+  border-top: 2px solid var(--border);
+}
+
+.djf-fit-sample {
+  display: block;
+  max-width: 210px;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.djf-fit-meta {
+  display: block;
+  max-width: 210px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.djf-fit-table .numeric-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

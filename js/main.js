@@ -1196,7 +1196,7 @@ function getSelectedChannels() {
   };
 }
 
-window.FlowPlotterApp = {
+window.PhaseFinderApp = {
   getParsedFiles: () => parsedFiles,
   getSelectedFiles: () => parsedFiles.filter((entry) => selectedFileIds.has(entry.id)),
   getSelectedChannels,
