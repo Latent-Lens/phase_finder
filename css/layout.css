@@ -1,5 +1,5 @@
 /* Page scaffolding: header, app grid, sidebar/workspace, panels and their
-   titles/collapse behavior, and the header's Start Analysis button. */
+   titles/collapse behavior, and the primary plot action button. */
 
 .page-header {
   display: flex;
@@ -54,8 +54,9 @@
      table panels) uses the full viewport instead of sizing to content. */
   grid-template-rows: minmax(0, 1fr);
   gap: 20px;
-  min-height: calc(100vh - 88px);
-  padding: 8px 10px 10px;
+  --fixed-footer-clearance: 28px;
+  min-height: calc(100vh - 88px - var(--fixed-footer-clearance));
+  padding: 8px 10px 0;
   transition: grid-template-columns 180ms ease;
 }
 
@@ -86,7 +87,8 @@
 
 .panel {
   --panel-title-row-height: 44px;
-  --panel-title-font-size: 1.08rem;
+  --panel-title-font-size: 20px;
+  --panel-title-rule-gap: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -116,6 +118,27 @@
   min-height: 0;
 }
 
+#metadataPanelBody {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    grid-template-rows 220ms ease,
+    opacity 160ms ease;
+}
+
+#metadataPanelBody > .table-wrap {
+  min-height: 0;
+}
+
+#metadataPanel.is-collapsed #metadataPanelBody {
+  flex: 0 0 auto;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .metadata-panel-body[hidden] {
   display: none !important;
 }
@@ -139,42 +162,51 @@
   font-size: var(--panel-title-font-size);
 }
 
-/* Flex column keeps the metadata title text/chevron vertically stable when
-   expanding/collapsing. */
-.panel-title-toggle {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  width: 100%;
-  min-height: var(--panel-title-row-height);
+.panel-icon-toggle {
+  display: grid;
+  flex: 0 0 42px;
+  place-items: center;
+  width: 42px;
+  min-height: 42px;
+  height: 42px;
   border: 0;
   background: transparent;
   color: var(--text);
   padding: 0;
-  text-align: left;
   cursor: pointer;
+}
+
+.panel-icon-toggle:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+.panel-icon-toggle:focus-visible {
+  outline: 3px solid var(--focus-success);
+  outline-offset: 2px;
 }
 
 .metadata-title-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  min-height: var(--panel-title-row-height);
-  margin-bottom: 8px;
+  min-height: calc(var(--panel-title-row-height) + var(--panel-title-rule-gap));
+  margin-bottom: 0;
   font-size: var(--panel-title-font-size);
   font-weight: 700;
 }
 
 .metadata-title-text {
+  min-width: 0;
   line-height: 1.2;
 }
 
-.panel-chevron {
+.panel-toggle-icon {
   display: inline-block;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
 }
 
 .panel-title-rule {
@@ -184,6 +216,80 @@
   border-radius: 999px;
   background: var(--logo-teal);
 }
+
+.quick-tooltip {
+  position: relative;
+}
+
+.quick-tooltip::after {
+  position: absolute;
+  z-index: 120;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: min(280px, 80vw);
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--text);
+  box-shadow: 0 8px 20px var(--shadow-medium);
+  color: var(--panel);
+  content: attr(data-tooltip);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%) translateY(2px);
+  transition: opacity 70ms ease, transform 70ms ease, visibility 70ms ease;
+  transition-delay: 0ms;
+  visibility: hidden;
+  white-space: normal;
+}
+
+.quick-tooltip::before {
+  position: absolute;
+  z-index: 121;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  background: var(--text);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) rotate(45deg);
+  transition: opacity 70ms ease, visibility 70ms ease;
+  transition-delay: 0ms;
+  visibility: hidden;
+}
+
+.quick-tooltip:hover::after,
+.quick-tooltip:focus-visible::after,
+.quick-tooltip:focus-within::after,
+.quick-tooltip:hover::before,
+.quick-tooltip:focus-visible::before,
+.quick-tooltip:focus-within::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+.quick-tooltip:hover::after,
+.quick-tooltip:focus-visible::after,
+.quick-tooltip:focus-within::after,
+.quick-tooltip:hover::before,
+.quick-tooltip:focus-visible::before,
+.quick-tooltip:focus-within::before {
+  transition-delay: 80ms;
+}
+
+.quick-tooltip:hover::after,
+.quick-tooltip:focus-visible::after,
+.quick-tooltip:focus-within::after {
+  transform: translateX(-50%) translateY(0);
+}
+
 
 .parsed-files-panel.is-collapsed .panel-title {
   margin-bottom: 0;
@@ -236,8 +342,10 @@
   outline-offset: 2px;
 }
 
-/* Keep the button's color when disabled, just dimmed (less washed-out). */
 .start-analysis-button:disabled {
-  opacity: 0.55;
+  border-color: #cbd5e1;
+  background: #e5e7eb;
+  color: var(--muted);
+  opacity: 1;
   cursor: not-allowed;
 }
