@@ -528,7 +528,7 @@ function parseFCSHeaderFromSegments(headerBuffer, textBuffer) {
   return summarizeFCSHeader(header, metadata);
 }
 
-window.FCSParser = {
+globalThis.FCSParser = {
   parseFCS,
   parseFCSHeader,
   parseFCSHeaderFromSegments,
