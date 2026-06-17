@@ -196,7 +196,10 @@ Output:
 function plottableRows() {
   const app = window.PhaseFinderApp;
   if (!app) return [];
-  return app.getSelectedFiles().filter((row) => row.data && row.data.dnaA);
+  const activeChannel = plotChannels && plotChannels.dnaArea;
+  return app.getSelectedFiles().filter((row) =>
+    row.data && row.data.dnaA && (!row.data.channelKey || row.data.channelKey === activeChannel)
+  );
 }
 
 /*
@@ -455,6 +458,28 @@ function renderFitResultsTable(fits, placement = {}) {
   plotArea.appendChild(djfFitTable);
 }
 
+
+/*
+
+Purpose:
+	Clears DJF modeling state so a newly selected channel starts as a plain
+	event plot until the user starts modeling again.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: resets modeling flags and fit selections
+
+*/
+function resetModelingState() {
+  modelingStarted = false;
+  shownFits.clear();
+  peakThreshold = null;
+  if (djfReadout) {
+    djfReadout.textContent = "";
+  }
+}
 
 /*
 

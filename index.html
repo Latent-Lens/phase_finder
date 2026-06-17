@@ -37,22 +37,13 @@
   </head>
   <body>
     <header class="page-header">
-      <img id="siteLogo" class="site-logo" src="./assets/img/logo.png" alt="PhaseFinder" title="Reload PhaseFinder" />
+      <img id="siteLogo" class="site-logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
       <div class="header-actions">
-        <button
-          id="startAnalysisButton"
-          class="start-analysis-button"
-          type="button"
-          title="Load FCS files, select a DNA-content area channel, and check at least one file row first."
-          disabled
-        >
-          Start Analysis
-        </button>
         <button
           id="restartButton"
           class="restart-button"
           type="button"
-          title="Reload the page and start over"
+          data-title-key="restart"
         >
           Restart
         </button>
@@ -64,8 +55,8 @@
         <div class="sidebar-header panel-title">
           <div class="sidebar-title-row">
             <h2>FCS Files</h2>
-            <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-controls="sidebarContent" aria-expanded="true" title="Collapse sidebar" aria-label="Collapse sidebar">
-              <img id="sidebarToggleIcon" class="sidebar-toggle-icon" src="./assets/img/panel-left-close.svg" alt="" aria-hidden="true" />
+            <button id="sidebarToggle" class="sidebar-toggle quick-tooltip" type="button" aria-controls="sidebarContent" aria-expanded="true" data-tooltip-key="sidebarCollapse" aria-label="Collapse sidebar">
+              <img id="sidebarToggleIcon" class="sidebar-toggle-icon" src="./assets/img/sidepanel_close.svg" alt="" aria-hidden="true" />
             </button>
           </div>
           <div class="panel-title-rule"></div>
@@ -75,10 +66,9 @@
             <div id="dropZone" class="drop-zone">
               <div>
                 <strong id="dropZoneTitle">Drop FCS files here</strong>
-                <span id="dropZoneHint">or choose files from disk</span>
+                <span id="dropZoneHint">or click to choose files from disk</span>
               </div>
             </div>
-            <input id="fileInput" class="visually-hidden-file" type="file" accept=".fcs" multiple />
           </section>
 
           <section class="sidebar-section controls">
@@ -86,8 +76,30 @@
               <label for="dnaAreaSelect">Select channel</label>
               <select id="dnaAreaSelect"></select>
             </div>
-            <p id="status" class="status">No file(s) loaded.</p>
+            <p id="status" class="status">No files loaded.</p>
+            <button
+              id="startAnalysisButton"
+              class="start-analysis-button sidebar-plot-button quick-tooltip"
+              type="button"
+              data-tooltip-key="plotChannelEventsRequirements"
+              disabled
+            >
+              Plot Channel Events
+            </button>
           </section>
+        </div>
+        <input id="fileInput" class="visually-hidden-file" type="file" accept=".fcs" multiple />
+        <div class="sidebar-collapsed-actions">
+          <button id="collapsedUploadTarget" class="sidebar-collapsed-upload-target quick-tooltip" type="button" data-tooltip-key="uploadFiles" aria-label="Drop FCS files here or click to choose files from disk">
+            <img class="sidebar-collapsed-upload-icon" src="./assets/img/file_upload.svg" alt="" aria-hidden="true" />
+          </button>
+          <div class="sidebar-collapsed-channel-control quick-tooltip" data-tooltip-key="selectChannel">
+            <img class="sidebar-collapsed-checklist-icon" src="./assets/img/checklist.svg" alt="" aria-hidden="true" />
+            <select id="collapsedDnaAreaSelect" class="sidebar-collapsed-channel-select" aria-label="Select channel"></select>
+          </div>
+          <button id="collapsedPlotButton" class="sidebar-collapsed-plot-button quick-tooltip" type="button" data-tooltip-key="plotChannelEvents" aria-label="Plot channel events" disabled>
+            <img class="sidebar-collapsed-histogram-icon" src="./assets/img/histogram.svg" alt="" aria-hidden="true" />
+          </button>
         </div>
       </aside>
 
@@ -117,9 +129,7 @@
                     tabindex="0"
                     role="img"
                     aria-label="Debris and background correction help"
-                    data-tooltip="Removes low/high DNA-content debris before plotting and fitting.
-
-Method: build a 256-bin positive DNA-area histogram over the 0.2-99.8 percentile range, detect G1/G2 peaks, estimate each peak sigma from FWHM, then keep events within max(q0.1%, G1 - 4 sigma1, 0.45*G1) and min(q99.9%, G2 + 4 sigma2, 2.65*G1)."
+                    data-tooltip-key="debrisHelp"
                   >?</span>
                 </span>
               </label>
@@ -132,9 +142,7 @@ Method: build a 256-bin positive DNA-area histogram over the 0.2-99.8 percentile
                     tabindex="0"
                     role="img"
                     aria-label="Aggregate and doublet correction help"
-                    data-tooltip="Removes aggregate/doublet-like events before plotting and fitting when matching DNA-H and/or DNA-W channels are available.
-
-Method: on eligible events, compute log(A/H) for height and/or log(W) for width, estimate a robust median and MAD sigma, and keep singlet-like events within median +/- 4*MAD sigma."
+                    data-tooltip-key="doubletHelp"
                   >?</span>
                 </span>
               </label>
@@ -147,9 +155,7 @@ Method: on eligible events, compute log(A/H) for height and/or log(W) for width,
                     tabindex="0"
                     role="img"
                     aria-label="Peak threshold help"
-                    data-tooltip="Shows a draggable grey line marking the minimum event count for a histogram peak to be counted when seeding the Dean-Jett-Fox fit.
-
-Drag it up to ignore small/noisy peaks or down to include more; release to re-detect peaks and refit."
+                    data-tooltip-key="peakThresholdHelp"
                   >?</span>
                 </span>
               </label>
@@ -160,13 +166,15 @@ Drag it up to ignore small/noisy peaks or down to include more; release to re-de
         </section>
 
         <section id="metadataPanel" class="panel parsed-files-panel">
-          <button id="metadataPanelToggle" class="panel-title metadata-title panel-title-toggle" type="button" aria-expanded="true" aria-controls="metadataPanelBody">
-            <span class="metadata-title-row">
-              <img id="metadataPanelChevron" class="panel-chevron" src="./assets/img/chevron-down-icon.svg" alt="" aria-hidden="true" />
-              <span class="metadata-title-text">Loaded FCS Samples</span>
-            </span>
+          <div class="panel-title metadata-title">
+            <div class="metadata-title-row">
+              <span class="metadata-title-text">Table of Loaded FCS Samples</span>
+              <button id="metadataPanelToggle" class="panel-icon-toggle quick-tooltip" type="button" aria-expanded="true" aria-controls="metadataPanelBody" data-tooltip-key="tableCollapse" aria-label="Collapse table">
+                <img id="metadataPanelToggleIcon" class="panel-toggle-icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
+              </button>
+            </div>
             <span class="panel-title-rule"></span>
-          </button>
+          </div>
           <div id="metadataPanelBody" class="metadata-panel-body">
             <div id="fileTable" class="table-wrap"></div>
           </div>
@@ -195,6 +203,8 @@ Drag it up to ignore small/noisy peaks or down to include more; release to re-de
     </footer>
 
     <script src="./js/fcs-parser.js"></script>
+    <script src="./js/hover_text.js"></script>
+    <script src="./js/ui_controls.js"></script>
     <script src="./js/main.js"></script>
     <script src="./js/djf_gpt.js"></script>
     <script src="./js/plotting.js"></script>

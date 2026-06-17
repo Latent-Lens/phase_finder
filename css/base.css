@@ -106,6 +106,10 @@ button {
   font-weight: 650;
 }
 
+select:disabled {
+  cursor: not-allowed;
+}
+
 label {
   display: block;
   margin-bottom: 6px;

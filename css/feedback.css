@@ -10,13 +10,14 @@
   gap: 16px;
   z-index: 20;
   min-height: 36px;
-  border-top: 4px solid var(--logo-teal);
+  border-top: 3.5px solid var(--logo-teal);
   box-shadow: 0 -4px 12px var(--shadow-soft);
   background: var(--logo-blue);
   color: var(--panel);
-  padding: 9px 16px;
+  padding: 2px 16px;
   overflow: hidden;
-  font-size: 0.9rem;
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .status-bar.error {

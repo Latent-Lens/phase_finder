@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="19.318287"
+   height="16.541639"
+   viewBox="0 0 19.318287 16.541639"
+   fill="none"
+   stroke="currentColor"
+   stroke-width="2"
+   stroke-linecap="round"
+   stroke-linejoin="round"
+   class="icon icon-tabler icons-tabler-outline icon-tabler-chart-histogram"
+   version="1.1"
+   id="svg7"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs7" />
+  <path
+     stroke="none"
+     d="M -0.14101044,-0.05640414 H 23.85899 V 23.943596 H -0.14101044 Z"
+     fill="none"
+     id="path1" />
+  <g
+     id="g7"
+     transform="translate(-2.4250019,-5.0477986)">
+    <path
+       d="m 20,17.970833 v 2.883334"
+       id="path3"
+       style="stroke:#01a5af;stroke-width:1.47054;stroke-linecap:square;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       d="m 16,15.979808 v 4.865384"
+       id="path4"
+       style="stroke:#01a5af;stroke-width:1.47967;stroke-linecap:square;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       d="m 12,12.986184 v 7.852632"
+       id="path5"
+       style="stroke:#01a5af;stroke-width:1.48612;stroke-linecap:square;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       d="m 8,15.979808 v 4.865384"
+       id="path6"
+       style="stroke:#01a5af;stroke-width:1.47967;stroke-linecap:square;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       d="m 3.1719317,15.082985 c 5.9437122,0 4.9530935,-8.296394 8.9155683,-8.296394 3.962475,0 2.971856,8.296394 8.915568,8.296394"
+       id="path7"
+       style="stroke:#01a5af;stroke-width:1.48044;stroke-dasharray:none;stroke-opacity:1" />
+    <path
+       d="M 2.9590819,5.5818786 V 21.040918 H 21.040918"
+       id="path2"
+       style="stroke:#072c67;stroke-width:1.06816;stroke-dasharray:none;stroke-opacity:1" />
+  </g>
+</svg>
