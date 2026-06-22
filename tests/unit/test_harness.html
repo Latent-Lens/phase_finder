@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PhaseFinder Unit Test Harness</title>
+  <!--
+    Minimal page that loads the same CDN libraries and app JS files as index.html
+    so that Playwright's page.evaluate() can invoke window.FCSParser and
+    window.PhaseFinderDJF without spinning up the full app UI.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script type="module">
+    Promise.all([
+      import("https://esm.sh/ml-levenberg-marquardt@4")
+        .then(m => { window.levenbergMarquardt = m.default || m.levenbergMarquardt || m; }),
+      import("https://esm.sh/ml-gsd@13")
+        .then(m => { window.gsd = m.gsd || m.default || m; }),
+    ])
+    .then(() => { window.__libsReady = true; })
+    .catch(e => {
+      window.__libsError = String(e);
+      console.error("[test-harness] CDN import failed:", e);
+    });
+  </script>
+  <script src="/js/fcs-parser.js"></script>
+  <script src="/js/djf_gpt.js"></script>
+
+  <script>
+    // ---------------------------------------------------------------------------
+    // Test utilities — helpers used by the Python unit test modules via evaluate()
+    // ---------------------------------------------------------------------------
+    window.TestUtils = {
+
+      /**
+       * Build a minimal but fully valid FCS3.1 ArrayBuffer with 6 parameters
+       * (GFP/FITC-A through mCherry/PE-W) and `events` synthetic events.
+       * Mirrors the Python write_synthetic_fcs() format exactly.
+       */
+      buildSyntheticFCS: function(events) {
+        events = events || 6000;
+        const paramNames = [
+          "GFP/FITC-A", "GFP/FITC-H", "GFP/FITC-W",
+          "mCherry/PE-A", "mCherry/PE-H", "mCherry/PE-W",
+        ];
+        const numParams = paramNames.length;
+        const dataSize = events * numParams * 4; // float32 per value
+
+        // Build raw data bytes (little-endian float32 values, G1-ish around 64000)
+        const dataBuffer = new ArrayBuffer(dataSize);
+        const dataView = new DataView(dataBuffer);
+        for (let i = 0; i < events * numParams; i++) {
+          // Simple bimodal: 10% at ~128000, rest at ~64000
+          const val = (i % 10 === 0) ? 128000 + (Math.random() - 0.5) * 14000
+                                      : 64000 + (Math.random() - 0.5) * 9000;
+          dataView.setFloat32(i * 4, Math.max(1000, val), true);
+        }
+
+        // Build TEXT key/value pairs
+        const pairs = [
+          "$BEGINANALYSIS", "0", "$ENDANALYSIS", "0",
+          "$BYTEORD", "1,2,3,4", "$DATATYPE", "F", "$MODE", "L",
+          "$NEXTDATA", "0", "$PAR", String(numParams), "$TOT", String(events),
+        ];
+        paramNames.forEach((name, idx) => {
+          const p = idx + 1;
+          pairs.push(`$P${p}B`, "32", `$P${p}E`, "0,0", `$P${p}N`, name,
+                     `$P${p}R`, "262144", `$P${p}S`, name);
+        });
+
+        // Iterate to find stable BEGINDATA / ENDDATA offsets
+        const textBegin = 58;
+        let dataBegin = 0, dataEnd = 0;
+        let textBytes;
+        for (let iter = 0; iter < 20; iter++) {
+          const tokens = [...pairs, "$BEGINDATA", String(dataBegin), "$ENDDATA", String(dataEnd)];
+          const text = "|" + tokens.join("|") + "|";
+          textBytes = new TextEncoder().encode(text);
+          const textEnd = textBegin + textBytes.length - 1;
+          const nextDataBegin = textEnd + 1;
+          const nextDataEnd = nextDataBegin + dataSize - 1;
+          if (nextDataBegin === dataBegin && nextDataEnd === dataEnd) break;
+          dataBegin = nextDataBegin;
+          dataEnd = nextDataEnd;
+        }
+
+        const textEnd = textBegin + textBytes.length - 1;
+
+        // Build the 58-byte header
+        function pad8(n) { return String(n).padStart(8, " "); }
+        const headerStr = "FCS3.1    " + pad8(textBegin) + pad8(textEnd)
+                        + pad8(dataBegin) + pad8(dataEnd) + pad8(0) + pad8(0);
+        const headerBytes = new TextEncoder().encode(headerStr);
+
+        // Assemble: header + text + data
+        const total = 58 + textBytes.length + dataSize;
+        const buf = new ArrayBuffer(total);
+        const view = new Uint8Array(buf);
+        view.set(new Uint8Array(headerBytes.buffer).subarray(0, 58), 0);
+        view.set(textBytes, 58);
+        view.set(new Uint8Array(dataBuffer), 58 + textBytes.length);
+        return buf;
+      },
+
+      /**
+       * Build a synthetic bimodal histogram suitable for PhaseFinderDJF.fit().
+       * Two Gaussian peaks: G1 at ~64000 (height 800) and G2 at ~128000 (height 400).
+       */
+      buildBimodalHistogram: function(bins) {
+        bins = bins || 256;
+        const lo = 20000, hi = 200000;
+        const width = (hi - lo) / bins;
+        const points = [];
+        for (let i = 0; i < bins; i++) {
+          const x = lo + (i + 0.5) * width;
+          const g1 = Math.exp(-0.5 * Math.pow((x - 64000) / 4500, 2)) * 800;
+          const g2 = Math.exp(-0.5 * Math.pow((x - 128000) / 6000, 2)) * 400;
+          const s  = Math.max(0, 60 - Math.abs(x - 96000) / 1500);
+          points.push({ x: x, y: g1 + g2 + s });
+        }
+        return points;
+      },
+    };
+  </script>
+</head>
+<body>
+  <p style="font-family:sans-serif;color:#666">
+    PhaseFinder Unit Test Harness — driven by Playwright, not for manual use.
+  </p>
+</body>
+</html>

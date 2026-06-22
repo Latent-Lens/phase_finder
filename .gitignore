@@ -1,2 +1,14 @@
-# Generated e2e artifacts (screenshots, etc.) — keep the dir, ignore the output.
+# E2E testing artifacts (screenshots, etc.) — keep the dir, ignore the output.
 tests/e2e/results/*
+tests/test_data/*
+!tests/test_data/.gitkeep
+tests/e2e/__pycache__
+tests/unit/__pycache__
+
+
+# Local AI tooling
+.claude/
+
+# Editors and IDEs
+.vscode/
+.idea/

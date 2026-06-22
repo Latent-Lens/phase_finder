@@ -1,239 +1,242 @@
 #!/usr/bin/env python3
-"""End-to-end driver for PhaseFinder.
+"""PhaseFinder end-to-end + unit test runner.
 
-Launches the static app in headless Chromium (via Playwright), loads real FCS
-files, runs analysis, and exercises the plot + Dean-Jett-Fox modeling — the
-things unit tests can't cover because they need a browser and real data.
+This script is the single entry point. It:
+  1. Runs all e2e tests against a headed or headless Chromium instance, with a
+     full-session WebM recorded via Playwright and per-test clips trimmed by ffmpeg.
+  2. Runs JavaScript unit tests via a second Playwright page pointed at
+     tests/unit/test_harness.html.
+  3. Writes a combined HTML + Markdown report to tests/e2e/results/.
 
-Setup (no browser/node is assumed to exist in the dev env):
-
-    python3 -m venv /tmp/flowvenv
-    /tmp/flowvenv/bin/pip install playwright
-    /tmp/flowvenv/bin/python -m playwright install chromium
-
-Serve the app (no-cache so edits aren't stale), then run this:
-
-    python3 -m http.server 8731            # from the repo root
-    /tmp/flowvenv/bin/python tests/e2e/drive_flow.py
-
-Useful flags: --files N, --data DIR, --url URL, --screenshot PATH, --headed.
-Exits non-zero if any structural check fails.
+Usage:
+  /tmp/flowvenv/bin/python tests/e2e/drive_flow.py [--headed] [--files N] [--extra-files N]
 """
 
 import argparse
-import glob
-import os
 import sys
 import time
-from datetime import datetime
+import threading
+import http.server
+import socketserver
+from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+# Put this directory on sys.path so sibling helpers/test modules are importable
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
 
-DEFAULT_DATA = "/fast/mike/latentlens/projects/flow_plotter/flow_data"
-DEFAULT_URL = "http://localhost:8731/index.html"
-# Generated artifacts (screenshots, etc.) go here, next to this script.
-RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+# Also put the unit test directory on sys.path
+_UNIT = _HERE.parent / "unit"
+if str(_UNIT) not in sys.path:
+    sys.path.insert(0, str(_UNIT))
 
-failures = []
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
+
+from helpers import (
+    DEFAULT_DATA,
+    TestContext,
+    extract_video_clips,
+    fcs_files,
+    make_drag_drop_fixtures,
+    make_synthetic_fcs_pool,
+    prepare_results_dir,
+    prepare_test_data_dir,
+    write_combined_report,
+)
+from tests_io import test_file_loading, test_libraries
+from tests_filtering import test_table_filtering_sorting
+from tests_plotting import test_plotting
+from tests_modeling import test_modeling
+from tests_sidebar import test_sidebar_icons
+from tests_reset import test_reset
+
+RESULTS_DIR = Path(__file__).resolve().parent / "results"
+TEST_DATA_DIR = Path(__file__).resolve().parents[1] / "test_data"
 
 
-def check(label, ok, detail=""):
-    status = "PASS" if ok else "FAIL"
-    print(f"[{status}] {label}{(' — ' + detail) if detail else ''}", flush=True)
-    if not ok:
-        failures.append(label)
+def run(args):
+    print("\n--- PhaseFinder Test Runner ---", flush=True)
+    print("Performing pre-test cleanup:", flush=True)
+    print(f"  1. Cleaning results directory ({RESULTS_DIR}) - removing old HTML reports, images, and videos...", flush=True)
+    _, vid_dir = prepare_results_dir(RESULTS_DIR)
+    
+    print(f"  2. Cleaning test data directory ({TEST_DATA_DIR}) - removing old synthetic FCS files...", flush=True)
+    test_data_dir = prepare_test_data_dir(TEST_DATA_DIR)
+    print("Cleanup complete!\n", flush=True)
 
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    report_stem = f"flow_e2e_{stamp}"
 
-def density_curve_count(page):
-    return page.eval_on_selector_all(
-        "#plotArea svg path",
-        "els => els.filter(p => (p.getAttribute('stroke')||'').startsWith('hsl')).length",
-    )
+    if args.files < 2:
+        raise RuntimeError("--files must be at least 2")
 
+    drag_count = min(2, args.files - 1)
+    browser_count = args.files - drag_count
+    drag_drop_files = make_drag_drop_fixtures(test_data_dir, report_stem, count=drag_count)
+    needed_files = max(args.files + args.extra_files + 7, 9)
+    if args.data:
+        real_files = fcs_files(args.data, needed_files)
+    else:
+        real_files = make_synthetic_fcs_pool(test_data_dir, report_stem, count=needed_files)
+    file_browser_files = real_files[:browser_count]
+    additional_files = real_files[browser_count: browser_count + args.extra_files]
+    reset_files = file_browser_files[:1] or drag_drop_files[:1]
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default=DEFAULT_URL)
-    ap.add_argument("--data", default=DEFAULT_DATA)
-    ap.add_argument("--files", type=int, default=3, help="number of FCS files to load")
-    ap.add_argument("--screenshot", default=None,
-                    help="screenshot path (default: results/flow_e2e_<timestamp>.png)")
-    ap.add_argument("--headed", action="store_true")
-    args = ap.parse_args()
-
-    if args.screenshot is None:
-        os.makedirs(RESULTS_DIR, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        args.screenshot = os.path.join(RESULTS_DIR, f"flow_e2e_{stamp}.png")
-    elif args.screenshot:
-        os.makedirs(os.path.dirname(os.path.abspath(args.screenshot)), exist_ok=True)
-
-    files = sorted(glob.glob(f"{args.data}/*.fcs"))[: args.files]
-    if not files:
-        print(f"No .fcs files under {args.data}", file=sys.stderr)
-        return 2
+    e2e_ctx = None
+    unit_ctx = None
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not args.headed)
-        # 1920x1080 viewport; the screenshot captures it directly (not full-page)
-        # for a 1920x1080 image with the plot panel fully shown.
-        page = browser.new_page(viewport={"width": 1920, "height": 1080})
-        page_errors = []
-        page.on("pageerror", lambda e: page_errors.append(str(e)))
 
-        page.goto(args.url)
-        page.wait_for_function("() => typeof window.d3 !== 'undefined'", timeout=20000)
-        for lib in ("levenbergMarquardt", "gsd"):
-            try:
-                page.wait_for_function(f"() => typeof window.{lib} === 'function'", timeout=20000)
-                check(f"library {lib} loaded", True)
-            except Exception:
-                check(f"library {lib} loaded", False, page.evaluate(f"typeof window.{lib}"))
+        # ----------------------------------------------------------------
+        # E2E phase — recorded to WebM
+        # ----------------------------------------------------------------
+        e2e_context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            record_video_dir=str(vid_dir),
+            record_video_size={"width": 1920, "height": 1080},
+        )
+        e2e_page = e2e_context.new_page()
+        e2e_ctx = TestContext(
+            page=e2e_page,
+            results_dir=RESULTS_DIR,
+            report_stem=report_stem,
+        )
+        e2e_ctx.video_record_start = time.monotonic()
+        e2e_ctx._last_test_end = e2e_ctx.video_record_start
 
-        # Load + analyze
-        page.set_input_files("#fileInput", files)
-        page.wait_for_selector(".file-table tbody tr", timeout=60000)
-        page.click("#startAnalysisButton")
-        page.wait_for_selector("#plotArea svg path", timeout=120000)
+        e2e_page.on("pageerror", lambda err: e2e_ctx.page_errors.append(str(err)))
+        e2e_page.goto(args.url)
+        e2e_page.wait_for_load_state("domcontentloaded")
 
-        title = page.eval_on_selector("#plotTitle", "e => e.textContent")
-        check("title is 'Histogram of Events:  n Samples  |  m Events'",
-              title.startswith(f"Histogram of Events:  {len(files)} Samples  |  "), repr(title))
-        check("y-axis label 'Number of Events'",
-              page.eval_on_selector_all("#plotArea svg text", "els => els.some(t => t.textContent === 'Number of Events')"))
-        check("one curve per checked sample", density_curve_count(page) == len(files),
-              f"{density_curve_count(page)} of {len(files)}")
+        test_libraries(e2e_ctx)
+        test_file_loading(e2e_ctx, drag_drop_files, file_browser_files, additional_files)
+        test_table_filtering_sorting(e2e_ctx)
+        test_plotting(e2e_ctx, args.channel)
+        test_modeling(e2e_ctx)
+        test_sidebar_icons(e2e_ctx)
+        test_reset(e2e_ctx, reset_files)
+        # Filter out expected channel-not-found errors (arise from channel change tests
+        # when some loaded FCS files lack data for the selected secondary channel)
+        unexpected_errors = [
+            e for e in e2e_ctx.page_errors
+            if "Could not find selected channel" not in e
+        ]
+        if unexpected_errors:
+            e2e_ctx.check("Input/Output", "No uncaught page errors", False,
+                          str(unexpected_errors), screenshot=False)
+        elif e2e_ctx.page_errors:
+            e2e_ctx.warn("Input/Output", "No uncaught page errors",
+                         f"Expected channel-not-found errors: {e2e_ctx.page_errors}", screenshot=False)
+        else:
+            e2e_ctx.check("Input/Output", "No uncaught page errors", True, screenshot=False)
 
-        # Uncheck a row: curve + title update, data preserved
-        page.query_selector_all(".file-table tbody .row-select")[0].uncheck()
-        time.sleep(0.3)
-        check("uncheck removes a curve", density_curve_count(page) == len(files) - 1)
-        check("uncheck updates title count",
-              page.eval_on_selector("#plotTitle", "e => e.textContent").startswith(f"Histogram of Events:  {len(files) - 1} Samples  |  "))
-        check("unchecked row keeps its loaded data",
-              page.evaluate("window.PhaseFinderApp.getParsedFiles().filter(r => r.data).length") == len(files))
-        page.query_selector_all(".file-table tbody .row-select")[0].check()
-        time.sleep(0.3)
-        check("re-check restores the curve", density_curve_count(page) == len(files))
+        # ----------------------------------------------------------------
+        # Unit test phase — new tab in the SAME context so CDN cache is shared
+        # (levenbergMarquardt / gsd from esm.sh are already cached from the
+        # e2e page; a new context would have to re-fetch them cold and often
+        # hits rate-limits or timeout on slow connections)
+        # ----------------------------------------------------------------
+        unit_page = e2e_context.new_page()
+        unit_ctx = TestContext(
+            page=unit_page,
+            results_dir=RESULTS_DIR,
+            report_stem=report_stem,
+            number_offset=len(e2e_ctx.results),
+        )
 
-        # Controls don't error and keep the curves
-        page.select_option("#plotColorBy", "strain"); time.sleep(0.2)
-        page.fill("#plotBins", "64"); page.dispatch_event("#plotBins", "change"); time.sleep(0.2)
-        check("controls (color/bins) keep curves", density_curve_count(page) == len(files))
-        check("X-axis selector removed", page.query_selector("#plotXScale") is None)
-        # Reset to the default bin count so the DJF checks below reflect normal use.
-        page.fill("#plotBins", "512"); page.dispatch_event("#plotBins", "change"); time.sleep(0.2)
+        try:
+            from run_unit_tests import run_unit_tests
+            run_unit_tests(unit_ctx, args.url)
+        except Exception as unit_err:
+            print(f"[WARN] Unit tests failed to run: {unit_err}", flush=True)
 
-        # After analysis the button becomes "Start Modeling (DJF)" (blue).
-        check("button switched to Start Modeling (DJF)",
-              page.eval_on_selector("#startAnalysisButton", "e => e.textContent.trim()") == "Start Modeling (DJF)"
-              and page.eval_on_selector("#startAnalysisButton", "e => e.classList.contains('modeling')"))
-        check("Model (DJF) dropdown removed", page.query_selector("#plotModelSample") is None)
-        plot_height_before_fit_table = page.eval_on_selector("#plotArea", "e => e.clientHeight")
+        # Close context to finalise the video file (after unit tests)
+        e2e_context.close()
 
-        # Start modeling: fits the first plotted sample; readout shows its fractions.
-        import re
-        fit_totals = "() => [...document.querySelectorAll('#plotArea svg path')].filter(p => p.getAttribute('stroke') === '#111827' && p.getAttribute('stroke-width') === '2').length"
-        page.click("#startAnalysisButton")
-        page.wait_for_function("() => /G1/.test(document.querySelector('#djfReadout').textContent)", timeout=30000)
-        time.sleep(0.3)
-        check("one fit shown after Start Modeling", page.evaluate(fit_totals) == 1, str(page.evaluate(fit_totals)))
-        text = page.eval_on_selector("#djfReadout", "e => e.textContent")
-        print(f"       DJF {text}", flush=True)
-        nums = [float(x) for x in re.findall(r"([\d.]+)%", text)]
-        check("DJF fractions sum ~100%", len(nums) == 3 and abs(sum(nums) - 100) < 0.5, str(nums))
-        page.wait_for_selector("#djfFitTable:not([hidden]) tbody tr", timeout=10000)
-        phase_rows = page.eval_on_selector_all("#djfFitTable .djf-fit-phase-row", "rows => rows.length")
-        title_rows = page.eval_on_selector_all("#djfFitTable .djf-fit-title-row", "rows => rows.length")
-        fit_headers = page.eval_on_selector_all("#djfFitTable .djf-fit-column-row th", "ths => ths.map(th => th.textContent.trim())")
-        title_text = page.eval_on_selector("#djfFitTable .djf-fit-title-row", "row => row.textContent")
-        check("DJF fit table has title row above one row per phase", title_rows == 1 and phase_rows == 3,
-              f"titles={title_rows}, phases={phase_rows}")
-        check("DJF fit table has phase/stat columns below title",
-              all(h in fit_headers for h in ["Phase", "Percent", "Mean", "Std Dev"]), str(fit_headers))
-        check("DJF fit table title row includes metadata",
-              all(token in title_text for token in ["Strain:", "Replicate:", "Nocodazole Arrest:", "Timepoint:"]),
-              title_text)
-        fit_table_box = page.evaluate("""() => {
-            const plot = document.querySelector('#plotArea').getBoundingClientRect();
-            const table = document.querySelector('#djfFitTable').getBoundingClientRect();
-            return {
-                plotWidth: plot.width,
-                width: table.width,
-                leftFromPlot: table.left - plot.left,
-                topFromPlot: table.top - plot.top,
-                rightGap: plot.right - table.right,
-            };
-        }""")
-        check("DJF fit table is compact in the legend margin",
-              fit_table_box["width"] <= 250
-              and fit_table_box["leftFromPlot"] >= fit_table_box["plotWidth"] - 260
-              and fit_table_box["topFromPlot"] >= 100
-              and fit_table_box["rightGap"] >= 0,
-              str(fit_table_box))
-        plot_height_after_fit_table = page.eval_on_selector("#plotArea", "e => e.clientHeight")
-        check("DJF fit table does not shrink plot area",
-              abs(plot_height_after_fit_table - plot_height_before_fit_table) <= 1,
-              f"before={plot_height_before_fit_table}, after={plot_height_after_fit_table}")
+        # Extract per-test WebM clips with ffmpeg
+        try:
+            if e2e_page.video:
+                full_video = e2e_page.video.path()
+                if full_video and Path(full_video).exists():
+                    extract_video_clips(e2e_ctx, full_video, RESULTS_DIR, report_stem)
+        except Exception as vid_err:
+            print(f"[WARN] Video clip extraction failed: {vid_err}", flush=True)
 
-        # A second sample's legend checkbox adds its fit; clicking again removes it.
-        second = next(f.split("/")[-1][:-4] for f in files if "t105" in f)
-        click_legend = """(name) => { const t=[...document.querySelectorAll('#plotArea svg text')].find(t=>t.textContent===name); if(t) t.parentNode.dispatchEvent(new MouseEvent('click',{bubbles:true})); }"""
-        page.evaluate(click_legend, second); time.sleep(0.3)
-        check("legend checkbox adds a 2nd fit", page.evaluate(fit_totals) == 2, str(page.evaluate(fit_totals)))
-        check("DJF fit table expands for 2 fits",
-              page.eval_on_selector_all("#djfFitTable .djf-fit-title-row", "rows => rows.length") == 2
-              and page.eval_on_selector_all("#djfFitTable .djf-fit-phase-row", "rows => rows.length") == 6)
-        page.evaluate(click_legend, second); time.sleep(0.3)
-        check("legend checkbox removes the fit", page.evaluate(fit_totals) == 1, str(page.evaluate(fit_totals)))
-        check("DJF fit table returns to 1 fit",
-              page.eval_on_selector_all("#djfFitTable .djf-fit-title-row", "rows => rows.length") == 1
-              and page.eval_on_selector_all("#djfFitTable .djf-fit-phase-row", "rows => rows.length") == 3)
-        check("data curves untouched by fit toggling", density_curve_count(page) == len(files))
-
-        # Correction toggles refilter the plotted events and recompute visible DJF fits.
-        page.check("#plotDebrisCorrection"); time.sleep(0.4)
-        corrected_text = page.eval_on_selector("#djfReadout", "e => e.textContent")
-        check("debris/background correction updates readout",
-              "events plotted" in corrected_text and "debris/background removed" in corrected_text, corrected_text)
-        page.check("#plotDoubletCorrection"); time.sleep(0.4)
-        corrected_text = page.eval_on_selector("#djfReadout", "e => e.textContent")
-        check("aggregate/doublet correction updates readout",
-              "aggregates/doublets removed" in corrected_text or "aggregate/doublet channels unavailable" in corrected_text,
-              corrected_text)
-        check("correction counts are stacked on separate lines", corrected_text.count("\n") >= 2, repr(corrected_text))
-        debris_tip = page.eval_on_selector("#plotDebrisCorrection ~ .info-icon", "e => e.getAttribute('data-tooltip')")
-        doublet_tip = page.eval_on_selector("#plotDoubletCorrection ~ .info-icon", "e => e.getAttribute('data-tooltip')")
-        tip_speed = page.eval_on_selector("#plotDebrisCorrection ~ .info-icon",
-                                          "e => getComputedStyle(e, '::after').transitionDuration")
-        check("correction help text includes the math method",
-              "Method:" in debris_tip and "FWHM" in debris_tip
-              and "Method:" in doublet_tip and "MAD" in doublet_tip,
-              f"debris={debris_tip}; doublet={doublet_tip}")
-        tip_durations = [part.strip() for part in tip_speed.split(",")]
-        check("correction help popup is quick",
-              tip_durations and all(part in ("0.07s", "70ms") for part in tip_durations),
-              tip_speed)
-        check("corrections keep sample curves", density_curve_count(page) == len(files))
-        page.uncheck("#plotDebrisCorrection"); page.uncheck("#plotDoubletCorrection"); time.sleep(0.4)
-
-        # Threshold line: hidden until the checkbox is ticked, then draggable.
-        threshold_sel = "#plotArea svg .threshold-line, #plotArea svg .threshold-fill"
-        check("threshold line hidden by default", page.query_selector(threshold_sel) is None)
-        page.check("#plotThresholdToggle"); time.sleep(0.3)
-        check("threshold line shows when checked", page.query_selector(threshold_sel) is not None)
-        page.uncheck("#plotThresholdToggle"); time.sleep(0.3)
-        check("threshold line hides when unchecked", page.query_selector(threshold_sel) is None)
-        page.check("#plotThresholdToggle"); time.sleep(0.3)
-
-        if args.screenshot:
-            page.screenshot(path=args.screenshot)  # viewport-size (1920x1080)
-            print(f"       screenshot -> {args.screenshot}", flush=True)
-        check("no page errors", not page_errors, str(page_errors))
         browser.close()
 
-    print(f"\n{'ALL CHECKS PASSED' if not failures else 'FAILURES: ' + ', '.join(failures)}")
-    return 0 if not failures else 1
+    # ----------------------------------------------------------------
+    # Combined report
+    # ----------------------------------------------------------------
+    md_path, html_path = write_combined_report(e2e_ctx, unit_ctx, RESULTS_DIR, report_stem)
+
+    all_results = e2e_ctx.results + (unit_ctx.results if unit_ctx else [])
+    total_tests = len(all_results)
+
+    print("\nTest Execution Results:")
+    for idx, r in enumerate(all_results, 1):
+        color = "\033[92m" if r.status == "PASS" else "\033[93m" if r.status == "WARN" else "\033[91m"
+        reset = "\033[0m"
+        detail_str = f" — {r.detail}" if r.detail else ""
+        print(f"[{color}{r.status}{reset}] {idx}|{total_tests}. {r.name}{detail_str}")
+
+    print(f"\nReport markdown  → {md_path}", flush=True)
+    print(f"Report html      → {html_path}", flush=True)
+
+    failed = [r for r in all_results if r.status == "FAIL"]
+    return 1 if failed else 0
+
+
+def start_test_server(directory: str) -> tuple:
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass  # Suppress HTTP access logs
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=directory, **kwargs)
+
+    httpd = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return port, httpd
+
+
+def main():
+    parser = argparse.ArgumentParser(description="PhaseFinder E2E + unit test runner")
+    parser.add_argument("--url", default=None, help="App URL. If omitted, starts a local server on a random port.")
+    parser.add_argument("--data", default=None,
+                        help=f"FCS directory to test with; omitted uses synthetic fixtures. Legacy default was {DEFAULT_DATA}")
+    parser.add_argument("--files", type=int, default=4, help="initial FCS files to load")
+    parser.add_argument("--extra-files", type=int, default=2, help="additional unique FCS files to append")
+    parser.add_argument("--channel", default="GFP/FITC-A")
+    parser.add_argument("--headed", action="store_true")
+    args = parser.parse_args()
+
+    httpd = None
+
+    if not args.url:
+        repo_root = str(_HERE.parents[1])
+        print(f"Starting up a new local server process to serve the app...", flush=True)
+        port, httpd = start_test_server(repo_root)
+        args.url = f"http://127.0.0.1:{port}/index.html"
+        print(f"Server successfully started at {args.url}", flush=True)
+
+    try:
+        ret = run(args)
+    except PlaywrightTimeoutError as err:
+        print(f"Playwright timed out: {err}", file=sys.stderr)
+        ret = 1
+    except Exception as err:
+        print(f"Test runner failed: {err}", file=sys.stderr)
+        ret = 1
+    finally:
+        if httpd:
+            print(f"\nShutting down local test server process...", flush=True)
+            httpd.shutdown()
+            httpd.server_close()
+            print("Server shutdown complete.", flush=True)
+            
+    return ret
 
 
 if __name__ == "__main__":

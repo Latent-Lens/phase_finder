@@ -276,3 +276,4 @@ are vendored locally and the tags in `index.html` are changed.
 - `main.js` includes `applyDebugChannelDefaults`, which automatically selects
   `GFP/FITC-A` when that channel exists. The inline comment marks this as a debug
   helper to remove for production.
+- We use Tablericons (https://tabler.io/icons) for a lot of the icons on the site.
