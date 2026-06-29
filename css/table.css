@@ -111,6 +111,9 @@ th {
 /* Let columns widen to fit their content instead of stretching to fill. */
 .file-table {
   width: auto;
+  /* Height of the label row (row 1) when stats columns are present.
+     Used to offset the row-2 sticky headers so they sit just below row 1. */
+  --stats-label-row-height: 34px;
 }
 
 .file-table th,
@@ -243,4 +246,79 @@ th {
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+/* ---- Statistics columns ---- */
+
+/* Teal left border marks the visual boundary between regular and stats columns. */
+.stats-col-start {
+  border-left: 2px solid var(--logo-teal) !important;
+}
+
+/*
+ * When stats are present the regular header splits into two explicit rows:
+ *   Row 1 — column sort labels  +  channel name group header
+ *   Row 2 — column filter dropdowns  +  per-metric sub-headers
+ *
+ * Higher specificity (.file-table th.*) overrides the base .file-table th rules
+ * (height: 54px, position: sticky, vertical-align: top).
+ */
+
+/* Checkbox th spans both rows; center it vertically. */
+.file-table th.stats-checkbox-th {
+  vertical-align: middle;
+}
+
+/* Row-1 label cells: compact, centered, sticky. */
+.file-table th.stats-label-th {
+  height: auto;
+  padding: 7px 10px;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+/* Group header: spans all metric columns, shows channel name with a teal accent. */
+.file-table th.stats-group-th {
+  height: auto;
+  padding: 5px 10px;
+  text-align: center;
+  vertical-align: middle;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--logo-teal);
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Row-2 filter cells: sticky just below the label row. */
+.file-table th.stats-filter-th {
+  height: auto;
+  padding: 4px 10px 6px;
+  vertical-align: top;
+  position: sticky;
+  top: var(--stats-label-row-height);
+  background: var(--th-bg);
+  overflow: visible;
+}
+
+/* Row-2 per-metric sub-headers: sticky just below the label row. */
+.file-table th.stats-sub-th {
+  height: auto;
+  padding: 5px 10px 6px;
+  font-size: 0.94rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+  white-space: nowrap;
+  vertical-align: middle;
+  position: sticky;
+  top: var(--stats-label-row-height);
+  background: var(--th-bg);
+}
+
+/* Data cells: same font/color/spacing as regular data cells, right+middle aligned. */
+.stats-td {
+  text-align: right;
+  vertical-align: middle;
 }

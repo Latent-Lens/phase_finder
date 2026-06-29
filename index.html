@@ -86,6 +86,24 @@
             >
               Plot Channel Events
             </button>
+            <button
+              id="cellCycleModelingButton"
+              class="cell-cycle-modeling-button sidebar-plot-button quick-tooltip"
+              type="button"
+              data-tooltip-key="cellCycleModelingDisabled"
+              disabled
+            >
+              Cell Cycle Modeling
+            </button>
+            <button
+              id="calculateStatsButton"
+              class="calculate-stats-button sidebar-plot-button quick-tooltip"
+              type="button"
+              data-tooltip-key="calculateStats"
+              disabled
+            >
+              Calculate Statistics
+            </button>
           </section>
         </div>
         <input id="fileInput" class="visually-hidden-file" type="file" accept=".fcs" multiple />
@@ -99,6 +117,12 @@
           </div>
           <button id="collapsedPlotButton" class="sidebar-collapsed-plot-button quick-tooltip" type="button" data-tooltip-key="plotChannelEvents" aria-label="Plot channel events" disabled>
             <img class="sidebar-collapsed-histogram-icon" src="./assets/img/histogram.svg" alt="" aria-hidden="true" />
+          </button>
+          <button id="collapsedCellCycleModelingButton" class="sidebar-collapsed-plot-button quick-tooltip" type="button" data-tooltip-key="cellCycleModelingDisabled" aria-label="Cell cycle modeling (disabled until channel is plotted)" disabled>
+            <img class="sidebar-collapsed-function-icon" src="./assets/img/function_icon.svg" alt="" aria-hidden="true" />
+          </button>
+          <button id="collapsedCalculateStatsButton" class="sidebar-collapsed-plot-button quick-tooltip" type="button" data-tooltip-key="calculateStats" aria-label="Calculate statistics" disabled>
+            <img class="sidebar-collapsed-calculator-icon" src="./assets/img/calculator.svg" alt="" aria-hidden="true" />
           </button>
         </div>
       </aside>
@@ -182,6 +206,42 @@
       </section>
     </main>
 
+    <div id="statsModal" class="stats-modal" hidden role="dialog" aria-modal="true" aria-labelledby="statsModalTitle">
+      <div class="stats-modal-backdrop"></div>
+      <div class="stats-modal-card">
+        <div class="stats-modal-header">
+          <h3 id="statsModalTitle" class="stats-modal-title">Calculate Statistics</h3>
+          <button id="statsModalClose" class="stats-modal-close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="stats-modal-body">
+          <div class="stats-form-row">
+            <label for="statsChannelSelect">Channel</label>
+            <select id="statsChannelSelect"></select>
+          </div>
+          <div class="stats-form-row">
+            <span class="stats-label">Statistics</span>
+            <div class="stats-checkboxes">
+              <label class="stats-check"><input type="checkbox" name="stat" value="mean" checked> Mean</label>
+              <label class="stats-check"><input type="checkbox" name="stat" value="stddev" checked> Std Dev</label>
+              <label class="stats-check"><input type="checkbox" name="stat" value="median"> Median</label>
+              <label class="stats-check"><input type="checkbox" name="stat" value="min"> Min</label>
+              <label class="stats-check"><input type="checkbox" name="stat" value="max"> Max</label>
+              <label class="stats-check stats-check-all"><input type="checkbox" name="stat" value="all"> All</label>
+            </div>
+          </div>
+          <div class="stats-modal-actions">
+            <button id="statsCalculateButton" type="button">Calculate</button>
+          </div>
+          <div id="statsProgressIndicator" class="stats-progress" hidden>
+            <div class="stats-progress-track">
+              <div id="statsProgressBar" class="stats-progress-bar"></div>
+            </div>
+            <span id="statsProgressLabel" class="stats-progress-label"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="progressOverlay" class="progress-overlay" hidden aria-live="polite" aria-busy="false">
       <div class="progress-card" role="status">
         <div class="progress-track" aria-hidden="true">
@@ -202,6 +262,7 @@
       </span>
     </footer>
 
+    <script src="./js/debug_cache.js"></script>
     <script src="./js/fcs-parser.js"></script>
     <script src="./js/hover_text.js"></script>
     <script src="./js/ui_controls.js"></script>
@@ -209,5 +270,6 @@
     <script src="./js/djf_gpt.js"></script>
     <script src="./js/plotting.js"></script>
     <script src="./js/analysis.js"></script>
+    <script src="./js/summary_stats.js"></script>
   </body>
 </html>

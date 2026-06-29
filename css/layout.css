@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 16px 10px 0;
+  padding: 5px 10px 0;
 }
 
 .site-logo {
@@ -25,7 +25,7 @@
 
 .restart-button {
   width: auto;
-  min-height: 48px;
+  min-height: 36px;
   border: 1px solid var(--restart-strong);
   border-radius: 8px;
   background: var(--restart);
@@ -48,15 +48,19 @@
 .app {
   --sidebar-width: 320px;
   --sidebar-collapsed-width: 56px;
+  /* Height of the .page-header row (logo + header-actions). */
+  --page-header-height: 60px;
+  /* Actual rendered height of the fixed status bar (36px + 3.5px border). */
+  --status-bar-height: 40px;
+
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  /* Fill the row to the grid's min-height so the workspace (and its plot +
-     table panels) uses the full viewport instead of sizing to content. */
+  /* Fill exactly the space between the page header and status bar — no more,
+     so the page never grows a vertical scrollbar. Panels scroll internally. */
   grid-template-rows: minmax(0, 1fr);
   gap: 20px;
-  --fixed-footer-clearance: 28px;
-  min-height: calc(100vh - 88px - var(--fixed-footer-clearance));
-  padding: 8px 10px 0;
+  height: calc(100vh - var(--page-header-height) - var(--status-bar-height));
+  padding: 8px 10px;
   transition: grid-template-columns 180ms ease;
 }
 
@@ -87,7 +91,7 @@
 
 .panel {
   --panel-title-row-height: 44px;
-  --panel-title-font-size: 20px;
+  --panel-title-font-size: 22px;
   --panel-title-rule-gap: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -108,7 +112,6 @@
 .table-wrap {
   flex: 1;
   min-height: 0;
-  max-height: calc(100vh - 230px);
   overflow: auto;
 }
 
@@ -267,27 +270,28 @@
 
 .quick-tooltip:hover::after,
 .quick-tooltip:focus-visible::after,
-.quick-tooltip:focus-within::after,
 .quick-tooltip:hover::before,
-.quick-tooltip:focus-visible::before,
-.quick-tooltip:focus-within::before {
+.quick-tooltip:focus-visible::before {
   opacity: 1;
   visibility: visible;
 }
 
 .quick-tooltip:hover::after,
 .quick-tooltip:focus-visible::after,
-.quick-tooltip:focus-within::after,
 .quick-tooltip:hover::before,
-.quick-tooltip:focus-visible::before,
-.quick-tooltip:focus-within::before {
+.quick-tooltip:focus-visible::before {
   transition-delay: 80ms;
 }
 
 .quick-tooltip:hover::after,
-.quick-tooltip:focus-visible::after,
-.quick-tooltip:focus-within::after {
+.quick-tooltip:focus-visible::after {
   transform: translateX(-50%) translateY(0);
+}
+
+.quick-tooltip:disabled:hover::after,
+.quick-tooltip:disabled:hover::before {
+  opacity: 1;
+  visibility: visible;
 }
 
 
@@ -342,10 +346,43 @@
   outline-offset: 2px;
 }
 
-.start-analysis-button:disabled {
+.start-analysis-button:disabled,
+.cell-cycle-modeling-button:disabled,
+.calculate-stats-button:disabled {
   border-color: #cbd5e1;
   background: #e5e7eb;
   color: var(--muted);
   opacity: 1;
   cursor: not-allowed;
 }
+
+.cell-cycle-modeling-button {
+  border-color: var(--accent-strong);
+  background: var(--accent);
+  color: var(--panel);
+}
+
+.cell-cycle-modeling-button:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.cell-cycle-modeling-button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+.calculate-stats-button {
+  border-color: var(--logo-teal);
+  background: var(--logo-teal);
+  color: var(--panel);
+}
+
+.calculate-stats-button:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.calculate-stats-button:focus-visible {
+  outline: 3px solid rgba(1, 165, 175, 0.35);
+  outline-offset: 2px;
+}
+

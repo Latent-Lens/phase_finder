@@ -119,3 +119,201 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Statistics modal */
+
+.stats-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.stats-modal[hidden] {
+  display: none;
+}
+
+.stats-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.stats-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--progress-card-border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 45px var(--shadow-strong);
+  overflow: hidden;
+}
+
+.stats-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  border-bottom: 2px solid var(--logo-teal);
+}
+
+.stats-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.stats-modal-close {
+  flex: 0 0 auto;
+  width: 32px;
+  min-height: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.stats-modal-close:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.stats-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.stats-form-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: start;
+  gap: 10px;
+}
+
+.stats-form-row label,
+.stats-label {
+  padding-top: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.stats-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.stats-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.stats-check input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+  height: auto;
+  cursor: pointer;
+}
+
+.stats-check-all {
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+  color: var(--muted);
+}
+
+/* Stat already in the table for the selected channel: dimmed, non-interactive. */
+.stats-check--done {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.stats-check--done input {
+  cursor: not-allowed;
+}
+
+.stats-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.stats-modal-actions button {
+  width: auto;
+  min-height: 36px;
+  padding: 0 20px;
+  background: var(--logo-teal);
+  border-color: var(--logo-teal);
+  color: var(--panel);
+  font-size: 0.9rem;
+}
+
+.stats-modal-actions button:hover {
+  filter: brightness(0.9);
+}
+
+/* Progress indicator shown in the stats modal while calculations run. */
+
+.stats-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.stats-progress[hidden] {
+  display: none;
+}
+
+.stats-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.stats-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--logo-teal);
+  transition: width 120ms ease;
+}
+
+.stats-progress--error .stats-progress-bar {
+  background: var(--danger);
+}
+
+.stats-progress-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+.stats-progress--error .stats-progress-label {
+  color: var(--danger);
+}

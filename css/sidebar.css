@@ -155,14 +155,18 @@
 
 .sidebar-collapsed-upload-target:focus-visible,
 .sidebar-collapsed-channel-select:focus-visible,
-.sidebar-collapsed-plot-button:focus-visible {
+.sidebar-collapsed-plot-button:focus-visible,
+#collapsedCellCycleModelingButton:focus-visible,
+#collapsedCalculateStatsButton:focus-visible {
   outline: 3px solid var(--focus-success);
   outline-offset: 2px;
 }
 
 .sidebar-collapsed-upload-icon,
 .sidebar-collapsed-checklist-icon,
-.sidebar-collapsed-histogram-icon {
+.sidebar-collapsed-histogram-icon,
+.sidebar-collapsed-function-icon,
+.sidebar-collapsed-calculator-icon {
   display: block;
   width: 42px;
   height: 42px;
@@ -212,19 +216,23 @@
 
 .sidebar-collapsed-plot-button:disabled {
   cursor: not-allowed;
+}
+
+.sidebar-collapsed-plot-button:disabled img {
   opacity: 0.45;
 }
 
-.sidebar-collapsed-actions .quick-tooltip::after {
+/* All sidebar tooltips appear to the right of their element. */
+.sidebar .quick-tooltip::after {
   top: 50%;
   right: auto;
   bottom: auto;
   left: calc(100% + 10px);
-  max-width: min(260px, calc(100vw - 88px));
+  max-width: min(260px, calc(100vw - 340px));
   transform: translate(2px, -50%);
 }
 
-.sidebar-collapsed-actions .quick-tooltip::before {
+.sidebar .quick-tooltip::before {
   top: 50%;
   right: auto;
   bottom: auto;
@@ -232,10 +240,21 @@
   transform: translateY(-50%) rotate(45deg);
 }
 
-.sidebar-collapsed-actions .quick-tooltip:hover::after,
-.sidebar-collapsed-actions .quick-tooltip:focus-visible::after,
-.sidebar-collapsed-actions .quick-tooltip:focus-within::after {
+.sidebar .quick-tooltip:hover::after,
+.sidebar .quick-tooltip:focus-visible::after {
   transform: translate(0, -50%);
+}
+
+/* Collapsed sidebar icons: tighter max-width since icon bar is only 56px wide. */
+.sidebar-collapsed-actions .quick-tooltip::after {
+  max-width: min(260px, calc(100vw - 88px));
+}
+
+/* Disabled items still show their tooltip at full opacity. */
+.sidebar .quick-tooltip:disabled:hover::after,
+.sidebar .quick-tooltip:disabled:hover::before {
+  opacity: 1;
+  visibility: visible;
 }
 
 
