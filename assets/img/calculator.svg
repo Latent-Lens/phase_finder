@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="18"
+   height="20"
+   viewBox="0 0 18 20"
+   fill="none"
+   stroke="currentColor"
+   stroke-width="2"
+   stroke-linecap="round"
+   stroke-linejoin="round"
+   class="icon icon-tabler icons-tabler-outline icon-tabler-calculator"
+   version="1.1"
+   id="svg9"
+   sodipodi:docname="calculator.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs9" />
+  <sodipodi:namedview
+     id="namedview9"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="35.458333"
+     inkscape:cx="8.9964747"
+     inkscape:cy="9.9976498"
+     inkscape:window-width="1920"
+     inkscape:window-height="1111"
+     inkscape:window-x="1911"
+     inkscape:window-y="-9"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg9" />
+  <g
+     id="g9"
+     transform="translate(-3,-2)">
+    <path
+       d="M 4,5 A 2,2 0 0 1 6,3 h 12 a 2,2 0 0 1 2,2 v 14 a 2,2 0 0 1 -2,2 H 6 A 2,2 0 0 1 4,19 V 5"
+       id="path2"
+       style="stroke:#072c67;stroke-opacity:1" />
+    <path
+       d="M 8,8 A 1,1 0 0 1 9,7 h 6 a 1,1 0 0 1 1,1 v 1 a 1,1 0 0 1 -1,1 H 9 A 1,1 0 0 1 8,9 V 8"
+       id="path3"
+       style="stroke:#01a5af;stroke-opacity:1" />
+    <path
+       d="m 8,14 v 0.01"
+       id="path4"
+       style="stroke:#01a5af;stroke-opacity:1" />
+    <path
+       d="m 12,14 v 0.01"
+       id="path5"
+       style="stroke:#01a5af;stroke-opacity:1" />
+    <path
+       d="m 16,14 v 0.01"
+       id="path6"
+       style="stroke:#01a5af;stroke-opacity:1" />
+    <path
+       d="m 8,17 v 0.01"
+       id="path7"
+       style="stroke:#01a5af;stroke-opacity:1" />
+    <path
+       d="m 12,17 v 0.01"
+       id="path8"
+       style="stroke:#01a5af;stroke-opacity:1" />
+    <path
+       d="m 16,17 v 0.01"
+       id="path9"
+       style="stroke:#01a5af;stroke-opacity:1" />
+  </g>
+</svg>
