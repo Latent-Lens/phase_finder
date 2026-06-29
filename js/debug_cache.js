@@ -3,11 +3,11 @@
   const STORE_NAME = "files";
   const DB_VERSION = 1;
 
-  function isDebugMode() {
+  function is_debug_mode() {
     return new URLSearchParams(location.search).has("debug");
   }
 
-  function openDb() {
+  function open_db() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = (e) => {
@@ -18,10 +18,10 @@
     });
   }
 
-  async function saveFilesToCache(files) {
-    if (!isDebugMode()) return;
+  async function save_files_to_cache(files) {
+    if (!is_debug_mode()) return;
     try {
-      const db = await openDb();
+      const db = await open_db();
       const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
       for (const file of files) {
@@ -37,18 +37,18 @@
     }
   }
 
-  async function loadFilesFromCache() {
-    if (!isDebugMode()) return [];
+  async function load_files_from_cache() {
+    if (!is_debug_mode()) return [];
     try {
-      const db = await openDb();
+      const db = await open_db();
       const tx = db.transaction(STORE_NAME, "readonly");
       const records = await new Promise((resolve, reject) => {
         const req = tx.objectStore(STORE_NAME).getAll();
         req.onsuccess = (e) => resolve(e.target.result);
         req.onerror = (e) => reject(e.target.error);
       });
-      return records.map(({ name, type, lastModified, buf }) =>
-        new File([buf], name, { type, lastModified })
+      return records.map(({ name, type, lastModified: last_modified, buf }) =>
+        new File([buf], name, { type, lastModified: last_modified })
       );
     } catch (err) {
       console.warn("[debug] Failed to load files from cache:", err);
@@ -56,9 +56,9 @@
     }
   }
 
-  async function clearDebugCache() {
+  async function clear_debug_cache() {
     try {
-      const db = await openDb();
+      const db = await open_db();
       const tx = db.transaction(STORE_NAME, "readwrite");
       tx.objectStore(STORE_NAME).clear();
       await new Promise((resolve, reject) => {
@@ -70,5 +70,10 @@
     }
   }
 
-  window.PhaseFinderDebug = { isDebugMode, saveFilesToCache, loadFilesFromCache, clearDebugCache };
+  window.PhaseFinderDebug = {
+    isDebugMode: is_debug_mode,
+    saveFilesToCache: save_files_to_cache,
+    loadFilesFromCache: load_files_from_cache,
+    clearDebugCache: clear_debug_cache,
+  };
 })();
