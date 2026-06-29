@@ -1,11 +1,12 @@
-const analysisStartButton = document.querySelector("#startAnalysisButton");
-const analysisCollapsedPlotButton = document.querySelector("#collapsedPlotButton");
-const plotPanel = document.querySelector("#plotPanel");
-const metadataPanel = document.querySelector("#metadataPanel");
-const metadataPanelBody = document.querySelector("#metadataPanelBody");
-const metadataPanelToggle = document.querySelector("#metadataPanelToggle");
-const metadataPanelToggleIcon = document.querySelector("#metadataPanelToggleIcon");
-
+const analysis_start_button = document.querySelector("#startAnalysisButton");
+const analysis_collapsed_plot_button = document.querySelector("#collapsedPlotButton");
+const cell_cycle_modeling_button = document.querySelector("#cellCycleModelingButton");
+const collapsed_cell_cycle_modeling_button = document.querySelector("#collapsedCellCycleModelingButton");
+const plot_panel = document.querySelector("#plotPanel");
+const metadata_panel = document.querySelector("#metadataPanel");
+const metadata_panel_body = document.querySelector("#metadataPanelBody");
+const metadata_panel_toggle = document.querySelector("#metadataPanelToggle");
+const metadata_panel_toggle_icon = document.querySelector("#metadataPanelToggleIcon");
 const TABLE_MINIMIZE_ICON = "./assets/img/table_minimize.svg";
 const TABLE_RESTORE_ICON = "./assets/img/table_restore.svg";
 const TABLE_PANEL_TRANSITION_MS = 220;
@@ -13,10 +14,11 @@ const TABLE_PANEL_TRANSITION_MS = 220;
 const ANALYSIS_FILE_CONCURRENCY = 4;
 const FCS_DATA_WORKER_URL = "./js/fcs_data_worker.js";
 
-let fcsDataWorker = null;
-let fcsDataWorkerRequestId = 0;
-let fcsDataWorkerUnavailable = false;
-const fcsDataWorkerRequests = new Map();
+
+let fcs_data_worker = null;
+let fcs_data_worker_request_id = 0;
+let fcs_data_worker_unavailable = false;
+const fcs_data_worker_requests = new Map();
 
 /*
 
@@ -25,30 +27,30 @@ Purpose:
 	CSS class, body accessibility state, aria-expanded state, and toggle icon.
 
 Input:
-	isCollapsed [boolean]: true to collapse the panel, false to expand it
+	is_collapsed [boolean]: true to collapse the panel, false to expand it
 
 Output:
 	(none) [void]: updates the metadata panel DOM
 
 */
-function setMetadataPanelCollapsed(isCollapsed) {
-  if (metadataPanel.classList.contains("is-collapsed") === isCollapsed) {
+function set_metadata_panel_collapsed(is_collapsed) {
+  if (metadata_panel.classList.contains("is-collapsed") === is_collapsed) {
     return;
   }
 
-  metadataPanel.classList.toggle("is-collapsed", isCollapsed);
-  metadataPanelBody.setAttribute("aria-hidden", String(isCollapsed));
-  if ("inert" in metadataPanelBody) metadataPanelBody.inert = isCollapsed;
+  metadata_panel.classList.toggle("is-collapsed", is_collapsed);
+  metadata_panel_body.setAttribute("aria-hidden", String(is_collapsed));
+  if ("inert" in metadata_panel_body) metadata_panel_body.inert = is_collapsed;
 
-  const tableTooltipKey = isCollapsed ? "tableExpand" : "tableCollapse";
-  metadataPanelToggle.setAttribute("aria-expanded", String(!isCollapsed));
-  window.PhaseFinderTooltips.setQuickTooltip(metadataPanelToggle, tableTooltipKey);
-  metadataPanelToggle.setAttribute("aria-label", window.PhaseFinderTooltips.text(tableTooltipKey));
-  metadataPanelToggleIcon.src = isCollapsed ? TABLE_RESTORE_ICON : TABLE_MINIMIZE_ICON;
+  const table_tooltip_key = is_collapsed ? "tableExpand" : "tableCollapse";
+  metadata_panel_toggle.setAttribute("aria-expanded", String(!is_collapsed));
+  window.PhaseFinderTooltips.set_quick_tooltip(metadata_panel_toggle, table_tooltip_key);
+  metadata_panel_toggle.setAttribute("aria-label", window.PhaseFinderTooltips.text(table_tooltip_key));
+  metadata_panel_toggle_icon.src = is_collapsed ? TABLE_RESTORE_ICON : TABLE_MINIMIZE_ICON;
 
-  const notifyLayoutChanged = () => window.dispatchEvent(new Event("resize"));
-  window.requestAnimationFrame(notifyLayoutChanged);
-  window.setTimeout(notifyLayoutChanged, TABLE_PANEL_TRANSITION_MS);
+  const notify_layout_changed = () => window.dispatchEvent(new Event("resize"));
+  window.requestAnimationFrame(notify_layout_changed);
+  window.setTimeout(notify_layout_changed, TABLE_PANEL_TRANSITION_MS);
 }
 
 /*
@@ -63,8 +65,8 @@ Output:
 	(none) [void]: collapses the metadata panel
 
 */
-function collapseMetadataPanel() {
-  setMetadataPanelCollapsed(true);
+function collapse_metadata_panel() {
+  set_metadata_panel_collapsed(true);
 }
 
 /*
@@ -79,8 +81,8 @@ Output:
 	(none) [void]: toggles the metadata panel
 
 */
-function toggleMetadataPanel() {
-  setMetadataPanelCollapsed(!metadataPanel.classList.contains("is-collapsed"));
+function toggle_metadata_panel() {
+  set_metadata_panel_collapsed(!metadata_panel.classList.contains("is-collapsed"));
 }
 
 /*
@@ -96,7 +98,7 @@ Output:
 	params [Array<Object>]: { index, label, name, desc } per parameter
 
 */
-function parameterMap(summary) {
+function parameter_map(summary) {
   return summary.columns.map((label, index) => ({
     index: index + 1,
     label,
@@ -112,20 +114,20 @@ Purpose:
 	the selected channel. Throws if no parameter matches.
 
 Input:
-	params [Array<Object>]: parameter map from parameterMap()
-	selectedLabel [string]: the chosen channel label/name
+	params [Array<Object>]:   parameter map from parameter_map()
+	selected_label [string]:  the chosen channel label/name
 
 Output:
 	index [number]: the 1-based FCS parameter index
 
 */
-function findParamIndex(params, selectedLabel) {
+function find_param_index(params, selected_label) {
   const hit = params.find((param) =>
-    param.label === selectedLabel || param.name === selectedLabel || param.desc === selectedLabel
+    param.label === selected_label || param.name === selected_label || param.desc === selected_label
   );
 
   if (!hit) {
-    throw new Error(`Could not find selected channel: ${selectedLabel}`);
+    throw new Error(`Could not find selected channel: ${selected_label}`);
   }
 
   return hit.index;
@@ -144,7 +146,7 @@ Output:
 	unique [Array<number>]: the distinct integer indexes
 
 */
-function uniqueIndexes(indexes) {
+function unique_indexes(indexes) {
   return Array.from(new Set(indexes.filter((index) => Number.isInteger(index))));
 }
 
@@ -154,14 +156,14 @@ Purpose:
 	Builds a stable cache key for analysis data loaded for a selected channel.
 
 Input:
-	selected [Object]: the selected channels, e.g. { dnaArea }
+	selected [Object]: the selected channels, e.g. { dna_area }
 
 Output:
 	key [string]: the cache key for this analysis channel
 
 */
-function analysisDataKey(selected) {
-  return selected && selected.dnaArea ? selected.dnaArea : "";
+function analysis_data_key(selected) {
+  return selected && selected.dna_area ? selected.dna_area : "";
 }
 
 /*
@@ -178,9 +180,9 @@ Output:
 	data [Object|null]: cached row data for the selected channel
 
 */
-function cachedAnalysisData(row, selected) {
-  const key = analysisDataKey(selected);
-  return row.analysisDataByChannel ? row.analysisDataByChannel.get(key) || null : null;
+function cached_analysis_data(row, selected) {
+  const key = analysis_data_key(selected);
+  return row.analysis_data_by_channel ? row.analysis_data_by_channel.get(key) || null : null;
 }
 
 /*
@@ -199,11 +201,11 @@ Output:
 	data [Object]: the stored row data
 
 */
-function storeAnalysisData(row, selected, data, activate = true) {
-  if (!row.analysisDataByChannel) {
-    row.analysisDataByChannel = new Map();
+function store_analysis_data(row, selected, data, activate = true) {
+  if (!row.analysis_data_by_channel) {
+    row.analysis_data_by_channel = new Map();
   }
-  row.analysisDataByChannel.set(analysisDataKey(selected), data);
+  row.analysis_data_by_channel.set(analysis_data_key(selected), data);
   if (activate) {
     row.data = data;
   }
@@ -223,9 +225,9 @@ Output:
 	loaded [boolean]: true when cached data exists for the selected channel
 
 */
-function isAnalysisDataLoaded(row, selected) {
-  const data = cachedAnalysisData(row, selected);
-  return Boolean(data && data.dnaA);
+function is_analysis_data_loaded(row, selected) {
+  const data = cached_analysis_data(row, selected);
+  return Boolean(data && data.dna_a);
 }
 
 /*
@@ -242,8 +244,8 @@ Output:
 	activated [boolean]: true if cached data was activated
 
 */
-function activateAnalysisData(row, selected) {
-  const data = cachedAnalysisData(row, selected);
+function activate_analysis_data(row, selected) {
+  const data = cached_analysis_data(row, selected);
   if (!data) {
     return false;
   }
@@ -264,48 +266,48 @@ Output:
 	worker [Worker|null]: active worker, or null when unavailable
 
 */
-function getFcsDataWorker() {
-  if (fcsDataWorkerUnavailable || typeof Worker === "undefined") {
+function get_fcs_data_worker() {
+  if (fcs_data_worker_unavailable || typeof Worker === "undefined") {
     return null;
   }
 
-  if (fcsDataWorker) {
-    return fcsDataWorker;
+  if (fcs_data_worker) {
+    return fcs_data_worker;
   }
 
   try {
-    fcsDataWorker = new Worker(FCS_DATA_WORKER_URL);
-    fcsDataWorker.addEventListener("message", (event) => {
-      const { requestId, ok, columns, error } = event.data || {};
-      const request = fcsDataWorkerRequests.get(requestId);
+    fcs_data_worker = new Worker(FCS_DATA_WORKER_URL);
+    fcs_data_worker.addEventListener("message", (event) => {
+      const { request_id, ok, columns, error } = event.data || {};
+      const request = fcs_data_worker_requests.get(request_id);
       if (!request) {
         return;
       }
 
-      fcsDataWorkerRequests.delete(requestId);
+      fcs_data_worker_requests.delete(request_id);
       if (ok) {
         request.resolve(columns);
       } else {
         request.reject(new Error(error || "FCS worker failed to load selected columns."));
       }
     });
-    fcsDataWorker.addEventListener("error", () => {
-      fcsDataWorkerUnavailable = true;
-      fcsDataWorkerRequests.forEach((request) => {
+    fcs_data_worker.addEventListener("error", () => {
+      fcs_data_worker_unavailable = true;
+      fcs_data_worker_requests.forEach((request) => {
         request.reject(new Error("FCS data worker failed. Falling back on future loads."));
       });
-      fcsDataWorkerRequests.clear();
-      if (fcsDataWorker) {
-        fcsDataWorker.terminate();
-        fcsDataWorker = null;
+      fcs_data_worker_requests.clear();
+      if (fcs_data_worker) {
+        fcs_data_worker.terminate();
+        fcs_data_worker = null;
       }
     });
   } catch (error) {
-    fcsDataWorkerUnavailable = true;
-    fcsDataWorker = null;
+    fcs_data_worker_unavailable = true;
+    fcs_data_worker = null;
   }
 
-  return fcsDataWorker;
+  return fcs_data_worker;
 }
 
 /*
@@ -314,29 +316,29 @@ Purpose:
 	Reads requested parameter columns in the FCS data worker.
 
 Input:
-	file [File]:                     the FCS File object
-	summary [Object]:                parsed header/metadata (dataBegin/dataEnd/metadata)
-	selectedIndexes [Array<number>]: 1-based parameter indexes to read
+	file [File]:                       the FCS File object
+	summary [Object]:                  parsed header/metadata (data_begin/data_end/metadata)
+	selected_indexes [Array<number>]:  1-based parameter indexes to read
 
 Output:
 	columns [Promise<Object>|null]: selected parameter arrays keyed by index
 
 */
-function loadSelectedFcsColumnsInWorker(file, summary, selectedIndexes) {
-  const worker = getFcsDataWorker();
+function load_selected_fcs_columns_in_worker(file, summary, selected_indexes) {
+  const worker = get_fcs_data_worker();
   if (!worker) {
     return null;
   }
 
-  const requestId = ++fcsDataWorkerRequestId;
+  const request_id = ++fcs_data_worker_request_id;
   const request = new Promise((resolve, reject) => {
-    fcsDataWorkerRequests.set(requestId, { resolve, reject });
+    fcs_data_worker_requests.set(request_id, { resolve, reject });
   });
 
   try {
-    worker.postMessage({ requestId, file, summary, selectedIndexes });
+    worker.postMessage({ request_id, file, summary, selected_indexes });
   } catch (error) {
-    fcsDataWorkerRequests.delete(requestId);
+    fcs_data_worker_requests.delete(request_id);
     return null;
   }
 
@@ -350,31 +352,32 @@ Purpose:
 	preferring the worker path so large data parsing does not block the UI thread.
 
 Input:
-	file [File]:                     the FCS File object
-	summary [Object]:                parsed header/metadata (dataBegin/dataEnd/metadata)
-	selectedIndexes [Array<number>]: 1-based parameter indexes to read
+	file [File]:                       the FCS File object
+	summary [Object]:                  parsed header/metadata (data_begin/data_end/metadata)
+	selected_indexes [Array<number>]:  1-based parameter indexes to read
 
 Output:
 	columns [Promise<Object>]: resolves to the parsed columns keyed by index
 
 */
-async function loadSelectedFcsColumns(file, summary, selectedIndexes, options = {}) {
-  const { allowMainThreadFallback = true } = options;
-  const workerRequest = loadSelectedFcsColumnsInWorker(file, summary, selectedIndexes);
-  if (workerRequest) {
+async function load_selected_fcs_columns(file, summary, selected_indexes, options = {}) {
+  const { allow_main_thread_fallback = true } = options;
+
+  const worker_request = load_selected_fcs_columns_in_worker(file, summary, selected_indexes);
+  if (worker_request) {
     try {
-      return await workerRequest;
+      return await worker_request;
     } catch (error) {
-      if (!fcsDataWorkerUnavailable || !allowMainThreadFallback) {
+      if (!fcs_data_worker_unavailable || !allow_main_thread_fallback) {
         throw error;
       }
     }
-  } else if (!allowMainThreadFallback) {
+  } else if (!allow_main_thread_fallback) {
     throw new Error("Background worker unavailable; added FCS data will load when selected.");
   }
 
-  const dataBuffer = await file.slice(summary.dataBegin, summary.dataEnd + 1).arrayBuffer();
-  return window.FCSParser.parseSelectedColumns(dataBuffer, summary.metadata, selectedIndexes);
+  const data_buffer = await file.slice(summary.data_begin, summary.data_end + 1).arrayBuffer();
+  return window.FCSParser.parse_selected_columns(data_buffer, summary.metadata, selected_indexes);
 }
 
 /*
@@ -385,25 +388,25 @@ Purpose:
 
 Input:
 	summary [Object]:  parsed header/metadata for the file
-	selected [Object]: the selected channels, e.g. { dnaArea }
+	selected [Object]: the selected channels, e.g. { dna_area }
 
 Output:
-	indexes [Object]: { dnaA } parameter index for the file
+	indexes [Object]: { dna_a } parameter index for the file
 
 */
-function selectedIndexesForFile(summary, selected) {
-  const params = parameterMap(summary);
-  const dnaA = findParamIndex(params, selected.dnaArea);
-  const aux = window.PhaseFinderDJF && typeof window.PhaseFinderDJF.findAuxiliaryIndexes === "function"
-    ? window.PhaseFinderDJF.findAuxiliaryIndexes(summary, selected.dnaArea)
+function selected_indexes_for_file(summary, selected) {
+  const params = parameter_map(summary);
+  const dna_a = find_param_index(params, selected.dna_area);
+  const aux = window.PhaseFinderDJF && typeof window.PhaseFinderDJF.find_auxiliary_indexes === "function"
+    ? window.PhaseFinderDJF.find_auxiliary_indexes(summary, selected.dna_area)
     : {};
 
   return {
-    dnaA,
-    dnaH: aux.dnaH || null,
-    dnaW: aux.dnaW || null,
-    dnaHeightLabel: aux.dnaHeightLabel || "",
-    dnaWidthLabel: aux.dnaWidthLabel || "",
+    dna_a,
+    dna_h: aux.dna_h || null,
+    dna_w: aux.dna_w || null,
+    dna_height_label: aux.dna_height_label || "",
+    dna_width_label: aux.dna_width_label || "",
   };
 }
 
@@ -418,26 +421,26 @@ Input:
 	selected [Object]: the selected channels
 
 Output:
-	(none) [Promise<void>]: sets row.data = { dnaA, indexes }
+	(none) [Promise<void>]: sets row.data = { dna_a, indexes }
 
 */
-async function loadAnalysisRow(row, selected, options = {}) {
+async function load_analysis_row(row, selected, options = {}) {
   const { activate = true } = options;
-  const key = analysisDataKey(selected);
-  const cached = cachedAnalysisData(row, selected);
+  const key = analysis_data_key(selected);
+  const cached = cached_analysis_data(row, selected);
 
-  if (cached && cached.dnaA) {
+  if (cached && cached.dna_a) {
     if (activate) {
       row.data = cached;
     }
     return cached;
   }
 
-  if (!row.analysisDataPromisesByChannel) {
-    row.analysisDataPromisesByChannel = new Map();
+  if (!row.analysis_data_promises_by_channel) {
+    row.analysis_data_promises_by_channel = new Map();
   }
 
-  const pending = row.analysisDataPromisesByChannel.get(key);
+  const pending = row.analysis_data_promises_by_channel.get(key);
   if (pending) {
     try {
       const data = await pending;
@@ -446,28 +449,28 @@ async function loadAnalysisRow(row, selected, options = {}) {
       }
       return data;
     } catch (error) {
-      if (options.allowMainThreadFallback === false || !fcsDataWorkerUnavailable) {
+      if (options.allow_main_thread_fallback === false || !fcs_data_worker_unavailable) {
         throw error;
       }
-      row.analysisDataPromisesByChannel.delete(key);
+      row.analysis_data_promises_by_channel.delete(key);
     }
   }
 
   const promise = (async () => {
-    const indexes = selectedIndexesForFile(row.summary, selected);
-    const columns = await loadSelectedFcsColumns(row.file, row.summary, uniqueIndexes([indexes.dnaA, indexes.dnaH, indexes.dnaW]), options);
+    const indexes = selected_indexes_for_file(row.summary, selected);
+    const columns = await load_selected_fcs_columns(row.file, row.summary, unique_indexes([indexes.dna_a, indexes.dna_h, indexes.dna_w]), options);
     const data = {
-      channelKey: key,
-      channel: selected.dnaArea,
-      dnaA: columns[indexes.dnaA],
-      dnaH: indexes.dnaH ? columns[indexes.dnaH] : null,
-      dnaW: indexes.dnaW ? columns[indexes.dnaW] : null,
+      channel_key: key,
+      channel: selected.dna_area,
+      dna_a: columns[indexes.dna_a],
+      dna_h: indexes.dna_h ? columns[indexes.dna_h] : null,
+      dna_w: indexes.dna_w ? columns[indexes.dna_w] : null,
       indexes,
     };
-    return storeAnalysisData(row, selected, data, activate);
+    return store_analysis_data(row, selected, data, activate);
   })();
 
-  row.analysisDataPromisesByChannel.set(key, promise);
+  row.analysis_data_promises_by_channel.set(key, promise);
 
   try {
     const data = await promise;
@@ -476,7 +479,7 @@ async function loadAnalysisRow(row, selected, options = {}) {
     }
     return data;
   } finally {
-    row.analysisDataPromisesByChannel.delete(key);
+    row.analysis_data_promises_by_channel.delete(key);
   }
 }
 
@@ -497,7 +500,7 @@ Output:
 	(none) [Promise<void>]: loads each row's data and advances progress
 
 */
-async function loadAnalysisBatch(
+async function load_analysis_batch(
   batch,
   selected,
   app,
@@ -507,26 +510,26 @@ async function loadAnalysisBatch(
   options = {},
 ) {
   const {
-    useOverlay = true,
-    detailPrefix = "Loading selected data",
-    allowMainThreadFallback = true,
+    use_overlay = true,
+    detail_prefix = "Loading selected data",
+    allow_main_thread_fallback = true,
     activate = true,
-    displayTotal = total,
-    displaySuffix = "",
+    display_total = total,
+    display_suffix = "",
   } = options;
-  const tasks = batch.map(({ row }) => loadAnalysisRow(row, selected, { allowMainThreadFallback, activate }));
+  const tasks = batch.map(({ row }) => load_analysis_row(row, selected, { allow_main_thread_fallback, activate }));
 
   for (const { row, index } of batch) {
     completed.count += 1;
     const percent = (completed.count / total) * 100;
-    const detail = `${detailPrefix} for file ${index + 1} of ${displayTotal}${displaySuffix}`;
+    const detail = `${detail_prefix} for file ${index + 1} of ${display_total}${display_suffix}`;
 
-    if (useOverlay) {
-      app.updateProgress(percent, label, detail, row.name);
+    if (use_overlay) {
+      app.update_progress(percent, label, detail, row.name);
     } else {
-      app.setStatusBar(`${detail}: ${row.name}`);
+      app.set_status_bar(`${detail}: ${row.name}`);
     }
-    await app.nextFrame();
+    await app.next_frame();
   }
 
   await Promise.all(tasks);
@@ -537,7 +540,7 @@ async function loadAnalysisBatch(
 Purpose:
 	Orchestrates analysis: gathers the checked samples and the selected channel,
 	loads their data in batches with progress feedback, then reveals the plot
-	via initPlot. Bails with a status message if nothing is selected.
+	via init_plot. Bails with a status message if nothing is selected.
 
 Input:
 	(none)
@@ -546,40 +549,40 @@ Output:
 	(none) [Promise<void>]: loads the selected data and initializes the plot
 
 */
-async function loadAnalysisData() {
+async function load_analysis_data() {
   const app = window.PhaseFinderApp;
-  const rows = app.getSelectedFiles();
-  const selected = app.getSelectedChannels();
+  const rows = app.get_selected_files();
+  const selected = app.get_selected_channels();
   const completed = { count: 0 };
 
   if (!rows.length) {
-    app.setStatus("Select at least one file (check its row) before starting analysis.", true);
-    app.setStatusBar("No files selected for analysis.", true);
+    app.set_status("Select at least one file (check its row) before starting analysis.", true);
+    app.set_status_bar("No files selected for analysis.", true);
     return;
   }
 
-  app.showProgress("Loading Selected FCS Data");
-  app.setStatusBar("Working: Loading Selected FCS Data");
-  app.updateProgress(0, "Loading Selected FCS Data", `Preparing ${rows.length} file(s)...`);
-  await app.nextFrame();
+  app.show_progress("Loading Selected FCS Data");
+  app.set_status_bar("Working: Loading Selected FCS Data");
+  app.update_progress(0, "Loading Selected FCS Data", `Preparing ${rows.length} file(s)...`);
+  await app.next_frame();
 
   for (let start = 0; start < rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
     const batch = rows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
       row,
       index: start + offset,
     }));
-    await loadAnalysisBatch(batch, selected, app, completed, rows.length);
+    await load_analysis_batch(batch, selected, app, completed, rows.length);
   }
 
   // The loaded-sample / event counts now live in the plot title (see
-  // updatePlotTitle in plotting.js), so the sidebar just confirms completion.
-  app.setStatus("Analysis complete.");
-  app.setStatusBar(`Finished loading selected data for ${rows.length} file(s).`);
-  app.updateProgress(100, "Loading Selected FCS Data", `Finished loading selected data for ${rows.length} file(s).`);
+  // update_plot_title in plotting.js), so the sidebar just confirms completion.
+  app.set_status("Analysis complete.");
+  app.set_status_bar(`Finished loading selected data for ${rows.length} file(s).`);
+  app.update_progress(100, "Loading Selected FCS Data", `Finished loading selected data for ${rows.length} file(s).`);
 
-  initPlot(selected);
+  init_plot(selected);
 
-  app.hideProgress(700);
+  app.hide_progress(700);
 }
 
 /*
@@ -593,56 +596,56 @@ Input:
 	(none)
 
 Output:
-	result [Promise<Object>]: { refreshed, loadedRows }
+	result [Promise<Object>]: { refreshed, loaded_rows }
 
 */
-async function refreshAnalysisAfterMetadataChange({ redrawIfNoMissing = true } = {}) {
-  if (typeof plotChannels === "undefined" || !plotChannels || typeof initPlot !== "function") {
-    return { refreshed: false, loadedRows: 0 };
+async function refresh_analysis_after_metadata_change({ redraw_if_no_missing = true } = {}) {
+  if (typeof plot_channels === "undefined" || !plot_channels || typeof init_plot !== "function") {
+    return { refreshed: false, loaded_rows: 0 };
   }
 
   const app = window.PhaseFinderApp;
-  const selected = app.getSelectedChannels();
-  const rows = app.getSelectedFiles();
-  const shouldActivatePlot = !plotChannels || selected.dnaArea === plotChannels.dnaArea;
-  const missingRows = rows.filter((row) => !isAnalysisDataLoaded(row, selected));
+  const selected = app.get_selected_channels();
+  const rows = app.get_selected_files();
+  const should_activate_plot = !plot_channels || selected.dna_area === plot_channels.dna_area;
+  const missing_rows = rows.filter((row) => !is_analysis_data_loaded(row, selected));
 
-  if (!missingRows.length) {
-    if (redrawIfNoMissing && shouldActivatePlot) {
-      rows.forEach((row) => activateAnalysisData(row, selected));
-      initPlot(selected);
+  if (!missing_rows.length) {
+    if (redraw_if_no_missing && should_activate_plot) {
+      rows.forEach((row) => activate_analysis_data(row, selected));
+      init_plot(selected);
     }
-    return { refreshed: redrawIfNoMissing && shouldActivatePlot, loadedRows: 0 };
+    return { refreshed: redraw_if_no_missing && should_activate_plot, loaded_rows: 0 };
   }
 
   const completed = { count: 0 };
   const label = "Loading Added FCS Data";
-  app.showProgress(label);
-  app.setStatusBar(`Working: ${label}`);
-  app.updateProgress(0, label, `Preparing ${missingRows.length} added file(s)...`);
-  await app.nextFrame();
+  app.show_progress(label);
+  app.set_status_bar(`Working: ${label}`);
+  app.update_progress(0, label, `Preparing ${missing_rows.length} added file(s)...`);
+  await app.next_frame();
 
   try {
-    for (let start = 0; start < missingRows.length; start += ANALYSIS_FILE_CONCURRENCY) {
-      const batch = missingRows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
+    for (let start = 0; start < missing_rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
+      const batch = missing_rows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
         row,
         index: start + offset,
       }));
-      await loadAnalysisBatch(batch, selected, app, completed, missingRows.length, label, {
-        activate: shouldActivatePlot,
+      await load_analysis_batch(batch, selected, app, completed, missing_rows.length, label, {
+        activate: should_activate_plot,
       });
     }
   } catch (error) {
-    if (typeof renderDensityPlot === "function") {
-      renderDensityPlot();
+    if (typeof render_density_plot === "function") {
+      render_density_plot();
     }
     throw error;
   }
 
-  if (shouldActivatePlot) {
-    initPlot(selected);
+  if (should_activate_plot) {
+    init_plot(selected);
   }
-  return { refreshed: shouldActivatePlot, loadedRows: missingRows.length };
+  return { refreshed: should_activate_plot, loaded_rows: missing_rows.length };
 }
 
 /*
@@ -656,60 +659,60 @@ Input:
 	rows [Array<Object>]: newly added loaded-file entries
 
 Output:
-	result [Promise<Object>]: { preloaded, loadedRows }
+	result [Promise<Object>]: { preloaded, loaded_rows }
 
 */
-async function preloadAnalysisRowsInBackground(rows) {
-  if (typeof plotChannels === "undefined" || !plotChannels || !rows || !rows.length) {
-    return { preloaded: false, loadedRows: 0 };
+async function preload_analysis_rows_in_background(rows) {
+  if (typeof plot_channels === "undefined" || !plot_channels || !rows || !rows.length) {
+    return { preloaded: false, loaded_rows: 0 };
   }
 
   const app = window.PhaseFinderApp;
-  const selected = app.getSelectedChannels();
-  const targets = rows.filter((row) => !isAnalysisDataLoaded(row, selected));
+  const selected = app.get_selected_channels();
+  const targets = rows.filter((row) => !is_analysis_data_loaded(row, selected));
 
   if (!targets.length) {
-    return { preloaded: false, loadedRows: 0 };
+    return { preloaded: false, loaded_rows: 0 };
   }
 
-  if (!getFcsDataWorker()) {
-    app.setStatusBar("Background worker unavailable; added FCS data will load when selected.");
-    return { preloaded: false, loadedRows: 0 };
+  if (!get_fcs_data_worker()) {
+    app.set_status_bar("Background worker unavailable; added FCS data will load when selected.");
+    return { preloaded: false, loaded_rows: 0 };
   }
 
   const completed = { count: 0 };
   const label = "Loading Added FCS Data";
-  const allRows = typeof app.getParsedFiles === "function" ? app.getParsedFiles() : targets;
-  const overallIndexByRow = new Map(allRows.map((row, index) => [row, index]));
-  app.setStatusBar(`Preparing ${targets.length} added FCS file(s) for background loading...`);
+  const all_rows = typeof app.get_parsed_files === "function" ? app.get_parsed_files() : targets;
+  const overall_index_by_row = new Map(all_rows.map((row, index) => [row, index]));
+  app.set_status_bar(`Preparing ${targets.length} added FCS file(s) for background loading...`);
 
   try {
     for (let start = 0; start < targets.length; start += ANALYSIS_FILE_CONCURRENCY) {
       const batch = targets.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row) => ({
         row,
-        index: overallIndexByRow.get(row) ?? 0,
+        index: overall_index_by_row.get(row) ?? 0,
       }));
-      await loadAnalysisBatch(batch, selected, app, completed, targets.length, label, {
-        useOverlay: false,
-        detailPrefix: "Loading selected data",
-        allowMainThreadFallback: false,
+      await load_analysis_batch(batch, selected, app, completed, targets.length, label, {
+        use_overlay: false,
+        detail_prefix: "Loading selected data",
+        allow_main_thread_fallback: false,
         activate: false,
-        displayTotal: allRows.length,
-        displaySuffix: " FCS files",
+        display_total: all_rows.length,
+        display_suffix: " FCS files",
       });
     }
   } catch (error) {
-    app.setStatusBar(`Background FCS data load failed: ${error.message}`, true);
-    return { preloaded: false, loadedRows: completed.count };
+    app.set_status_bar(`Background FCS data load failed: ${error.message}`, true);
+    return { preloaded: false, loaded_rows: completed.count };
   }
 
-  app.setStatusBar(`Background loaded event data for ${targets.length} added file(s).`);
-  return { preloaded: true, loadedRows: targets.length };
+  app.set_status_bar(`Background loaded event data for ${targets.length} added file(s).`);
+  return { preloaded: true, loaded_rows: targets.length };
 }
 
 // Whether analysis has run; once true the button drives DJF modeling instead.
-let modelingMode = false;
-let channelChangeLoadId = 0;
+let modeling_mode = false;
+let channel_change_load_id = 0;
 
 /*
 
@@ -718,16 +721,16 @@ Purpose:
 	loading is in progress.
 
 Input:
-	isDisabled [boolean]: true to disable plot controls
+	is_disabled [boolean]: true to disable plot controls
 
 Output:
 	(none) [void]: updates the plot action buttons
 
 */
-function setPlotActionControlsDisabled(isDisabled) {
-  [analysisStartButton, analysisCollapsedPlotButton].forEach((button) => {
+function set_plot_action_controls_disabled(is_disabled) {
+  [analysis_start_button, analysis_collapsed_plot_button].forEach((button) => {
     if (button) {
-      button.disabled = isDisabled;
+      button.disabled = is_disabled;
     }
   });
 }
@@ -745,16 +748,17 @@ Output:
 	(none) [void]: updates button text, class, and tooltip
 
 */
-function enterPlottingMode() {
-  modelingMode = false;
-  if (typeof resetModelingState === "function") {
-    resetModelingState();
+function enter_plotting_mode() {
+  modeling_mode = false;
+  if (typeof reset_modeling_state === "function") {
+    reset_modeling_state();
   }
-  analysisStartButton.textContent = "Plot Channel Events";
-  analysisStartButton.classList.remove("modeling");
-  window.PhaseFinderTooltips.setQuickTooltip(analysisStartButton, "plotChannelEvents");
-  window.PhaseFinderTooltips.setQuickTooltip(analysisCollapsedPlotButton, "plotChannelEvents");
-  analysisCollapsedPlotButton.setAttribute("aria-label", window.PhaseFinderTooltips.text("plotChannelEvents"));
+  [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
+    if (!btn) return;
+    btn.disabled = true;
+    btn.setAttribute("aria-label", window.PhaseFinderTooltips.text("cellCycleModelingDisabled"));
+    window.PhaseFinderTooltips.set_quick_tooltip(btn, "cellCycleModelingDisabled");
+  });
 }
 
 /*
@@ -771,67 +775,68 @@ Output:
 	(none) [Promise<void>]: loads selected-row data for the newly selected channel
 
 */
-async function prepareSelectedChannelForPlotting() {
-  if (typeof plotChannels === "undefined" || !plotChannels) {
-    return;
-  }
-
-  const requestId = ++channelChangeLoadId;
+async function prepare_selected_channel_for_plotting() {
   const app = window.PhaseFinderApp;
-  const selected = app.getSelectedChannels();
-  const rows = app.getSelectedFiles();
+  const selected = app.get_selected_channels();
 
-  enterPlottingMode();
-
-  if (typeof updateStartButtonState === "function") {
-    updateStartButtonState();
-  }
-
-  if (typeof initPlot === "function") {
-    initPlot(selected);
-  }
-
-  if (!selected.dnaArea || !rows.length) {
-    app.setStatusBar("Select a channel and at least one file row before plotting.", true);
+  if (typeof plot_channels === "undefined" || !plot_channels) {
     return;
   }
 
-  const missingRows = rows.filter((row) => !isAnalysisDataLoaded(row, selected));
-  if (!missingRows.length) {
-    app.setStatusBar(`Selected channel ${selected.dnaArea} is ready to plot.`);
+  const request_id = ++channel_change_load_id;
+  const rows = app.get_selected_files();
+
+  enter_plotting_mode();
+
+  if (typeof update_start_button_state === "function") {
+    update_start_button_state();
+  }
+
+  if (typeof init_plot === "function") {
+    init_plot(selected);
+  }
+
+  if (!selected.dna_area || !rows.length) {
+    app.set_status_bar("Select a channel and at least one file row before plotting.", true);
+    return;
+  }
+
+  const missing_rows = rows.filter((row) => !is_analysis_data_loaded(row, selected));
+  if (!missing_rows.length) {
+    app.set_status_bar(`Selected channel ${selected.dna_area} is ready to plot.`);
     return;
   }
 
   const completed = { count: 0 };
   const label = "Loading Selected FCS Data";
-  setPlotActionControlsDisabled(true);
-  app.showProgress(label);
-  app.setStatusBar(`Working: ${label}`);
-  app.updateProgress(0, label, `Preparing ${missingRows.length} file(s)...`);
-  await app.nextFrame();
+  set_plot_action_controls_disabled(true);
+  app.show_progress(label);
+  app.set_status_bar(`Working: ${label}`);
+  app.update_progress(0, label, `Preparing ${missing_rows.length} file(s)...`);
+  await app.next_frame();
 
   try {
-    for (let start = 0; start < missingRows.length; start += ANALYSIS_FILE_CONCURRENCY) {
-      const batch = missingRows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
+    for (let start = 0; start < missing_rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
+      const batch = missing_rows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
         row,
         index: start + offset,
       }));
-      await loadAnalysisBatch(batch, selected, app, completed, missingRows.length, label, {
+      await load_analysis_batch(batch, selected, app, completed, missing_rows.length, label, {
         activate: false,
       });
     }
 
-    if (requestId === channelChangeLoadId) {
-      app.setStatusBar(`Selected channel ${selected.dnaArea} is ready to plot.`);
-      app.updateProgress(100, label, `Finished loading selected data for ${missingRows.length} file(s).`);
+    if (request_id === channel_change_load_id) {
+      app.set_status_bar(`Selected channel ${selected.dna_area} is ready to plot.`);
+      app.update_progress(100, label, `Finished loading selected data for ${missing_rows.length} file(s).`);
     }
   } finally {
-    if (requestId === channelChangeLoadId) {
-      app.hideProgress(700);
-      if (typeof updateStartButtonState === "function") {
-        updateStartButtonState();
+    if (request_id === channel_change_load_id) {
+      app.hide_progress(700);
+      if (typeof update_start_button_state === "function") {
+        update_start_button_state();
       } else {
-        setPlotActionControlsDisabled(false);
+        set_plot_action_controls_disabled(false);
       }
     }
   }
@@ -850,13 +855,14 @@ Output:
 	(none) [void]: updates the button text/style and the modeling flag
 
 */
-function enterModelingMode() {
-  modelingMode = true;
-  analysisStartButton.textContent = "Start Modeling (DJF)";
-  analysisStartButton.classList.add("modeling");
-  window.PhaseFinderTooltips.setQuickTooltip(analysisStartButton, "modeling");
-  window.PhaseFinderTooltips.setQuickTooltip(analysisCollapsedPlotButton, "modeling");
-  analysisCollapsedPlotButton.setAttribute("aria-label", window.PhaseFinderTooltips.text("modeling"));
+function enter_modeling_mode() {
+  modeling_mode = true;
+  [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.setAttribute("aria-label", window.PhaseFinderTooltips.text("cellCycleModeling"));
+    window.PhaseFinderTooltips.set_quick_tooltip(btn, "cellCycleModeling");
+  });
 }
 
 /*
@@ -864,7 +870,7 @@ function enterModelingMode() {
 Purpose:
 	Click handler for plot controls. Before analysis it loads the selected
 	data and reveals the plot (then flips the button to modeling mode); after
-	that it starts DJF modeling (plotting.js startModeling).
+	that it starts DJF modeling (plotting.js start_modeling).
 
 Input:
 	(none)
@@ -873,45 +879,47 @@ Output:
 	(none) [Promise<void>]: runs analysis or starts modeling
 
 */
-async function startAnalysis() {
-  if (modelingMode) {
-    startModeling();
-    return;
-  }
-
-  plotPanel.hidden = false;
+async function start_analysis() {
+  plot_panel.hidden = false;
 
   try {
-    await loadAnalysisData();
-    enterModelingMode();
+    await load_analysis_data();
+    enter_modeling_mode();
   } catch (error) {
-    window.PhaseFinderApp.setStatus(error.message, true);
-    window.PhaseFinderApp.setStatusBar("Selected data loading failed.", true);
-    window.PhaseFinderApp.updateProgress(100, "Loading Selected FCS Data", error.message);
-    window.PhaseFinderApp.hideProgress(1400);
+    window.PhaseFinderApp.set_status(error.message, true);
+    window.PhaseFinderApp.set_status_bar("Selected data loading failed.", true);
+    window.PhaseFinderApp.update_progress(100, "Loading Selected FCS Data", error.message);
+    window.PhaseFinderApp.hide_progress(1400);
   }
 }
 
-metadataPanelToggle.addEventListener("click", toggleMetadataPanel);
-analysisStartButton.addEventListener("click", startAnalysis);
-analysisCollapsedPlotButton.addEventListener("click", startAnalysis);
+metadata_panel_toggle.addEventListener("click", toggle_metadata_panel);
+analysis_start_button.addEventListener("click", start_analysis);
+analysis_collapsed_plot_button.addEventListener("click", start_analysis);
 document.addEventListener("fcs-selection-change", () => {
-  refreshAnalysisAfterMetadataChange({ redrawIfNoMissing: false }).catch((error) => {
-    window.PhaseFinderApp.setStatus(error.message, true);
-    window.PhaseFinderApp.setStatusBar("Selected data loading failed.", true);
-    window.PhaseFinderApp.updateProgress(100, "Loading Added FCS Data", error.message);
-    window.PhaseFinderApp.hideProgress(1400);
+  refresh_analysis_after_metadata_change({ redraw_if_no_missing: false }).catch((error) => {
+    window.PhaseFinderApp.set_status(error.message, true);
+    window.PhaseFinderApp.set_status_bar("Selected data loading failed.", true);
+    window.PhaseFinderApp.update_progress(100, "Loading Added FCS Data", error.message);
+    window.PhaseFinderApp.hide_progress(1400);
   });
 });
 
 document.addEventListener("fcs-channel-change", () => {
-  prepareSelectedChannelForPlotting().catch((error) => {
-    window.PhaseFinderApp.setStatus(error.message, true);
-    window.PhaseFinderApp.setStatusBar("Selected channel data loading failed.", true);
-    window.PhaseFinderApp.updateProgress(100, "Loading Selected FCS Data", error.message);
-    window.PhaseFinderApp.hideProgress(1400);
-    if (typeof updateStartButtonState === "function") {
-      updateStartButtonState();
+  prepare_selected_channel_for_plotting().catch((error) => {
+    window.PhaseFinderApp.set_status(error.message, true);
+    window.PhaseFinderApp.set_status_bar("Selected channel data loading failed.", true);
+    window.PhaseFinderApp.update_progress(100, "Loading Selected FCS Data", error.message);
+    window.PhaseFinderApp.hide_progress(1400);
+    if (typeof update_start_button_state === "function") {
+      update_start_button_state();
     }
+  });
+});
+
+// Cell Cycle Modeling buttons — call start_modeling directly (defined in plotting.js).
+[cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
+  if (btn) btn.addEventListener("click", () => {
+    if (typeof start_modeling === "function") start_modeling();
   });
 });

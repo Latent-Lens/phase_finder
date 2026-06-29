@@ -107,9 +107,8 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
                   "els => els.some(t => t.textContent === 'Number of Events')"
               ),
               title)
-    ctx.check(group, "Plot button becomes Start Modeling (DJF)",
-              page.eval_on_selector("#startAnalysisButton", "e => e.textContent.trim()") == "Start Modeling (DJF)"
-              and page.eval_on_selector("#startAnalysisButton", "e => e.classList.contains('modeling')"))
+    ctx.check(group, "Cell Cycle Modeling button becomes enabled after plotting",
+              not page.eval_on_selector("#cellCycleModelingButton", "e => e.disabled"))
 
     # --- turn rows off, verify curves decrease ---
     checkboxes = page.query_selector_all(".file-table tbody .row-select")
@@ -122,7 +121,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
 
     # Data should still be cached
     ctx.check(group, "Unchecked rows retain loaded data",
-              page.evaluate("window.PhaseFinderApp.getParsedFiles().filter(r => r.data).length") >= total_rows,
+              page.evaluate("window.PhaseFinderApp.get_parsed_files().filter(r => r.data).length") >= total_rows,
               "data cache retained")
 
     # Re-check one row

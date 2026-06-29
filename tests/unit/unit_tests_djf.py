@@ -58,9 +58,9 @@ _FULL_SUITE = """() => {
                  pass: frac.g1 >= 0 && frac.s >= 0 && frac.g2 >= 0,
                  detail: 'G1=' + frac.g1.toFixed(1) + '% S=' + frac.s.toFixed(1) + '% G2=' + frac.g2.toFixed(1) + '%' });
 
-  // 6. estimateRunG1 returns a positive value
-  const g1est = DJF.estimateRunG1([{ points }], null);
-  results.push({ name: 'estimateRunG1: returns a positive value on valid histogram',
+  // 6. estimate_run_g1 returns a positive value
+  const g1est = DJF.estimate_run_g1([{ points }], null);
+  results.push({ name: 'estimate_run_g1: returns a positive value on valid histogram',
                  pass: g1est !== null && g1est > 0,
                  detail: 'g1est=' + (g1est === null ? 'null' : g1est.toFixed(0)) });
 
@@ -71,45 +71,45 @@ _FULL_SUITE = """() => {
                  pass: Boolean(compOk),
                  detail: JSON.stringify(comp) });
 
-  // 8. findAuxiliaryIndexes links area to height/width channels with the same base
-  const summary = window.FCSParser.parseFCSHeader(window.TestUtils.buildSyntheticFCS(20));
-  const aux = DJF.findAuxiliaryIndexes(summary, 'GFP/FITC-A');
-  results.push({ name: 'findAuxiliaryIndexes: resolves matching height and width channels',
-                 pass: aux.dnaH === 2 && aux.dnaW === 3
-                   && aux.dnaHeightLabel === 'GFP/FITC-H'
-                   && aux.dnaWidthLabel === 'GFP/FITC-W',
+  // 8. find_auxiliary_indexes links area to height/width channels with the same base
+  const summary = window.FCSParser.parse_fcs_header(window.TestUtils.buildSyntheticFCS(20));
+  const aux = DJF.find_auxiliary_indexes(summary, 'GFP/FITC-A');
+  results.push({ name: 'find_auxiliary_indexes: resolves matching height and width channels',
+                 pass: aux.dna_h === 2 && aux.dna_w === 3
+                   && aux.dna_height_label === 'GFP/FITC-H'
+                   && aux.dna_width_label === 'GFP/FITC-W',
                  detail: JSON.stringify(aux) });
 
-  // 9. findAuxiliaryIndexes returns an empty object for an unknown area channel
-  const missingAux = DJF.findAuxiliaryIndexes(summary, 'Not A Channel');
-  results.push({ name: 'findAuxiliaryIndexes: returns empty object for unknown channel',
+  // 9. find_auxiliary_indexes returns an empty object for an unknown area channel
+  const missingAux = DJF.find_auxiliary_indexes(summary, 'Not A Channel');
+  results.push({ name: 'find_auxiliary_indexes: returns empty object for unknown channel',
                  pass: Object.keys(missingAux).length === 0,
                  detail: JSON.stringify(missingAux) });
 
-  // 10. prepareRow without corrections preserves the DNA-A values
-  const rawRow = { data: { dnaA: [64000, 66000, 128000] } };
-  const preparedRaw = DJF.prepareRow(rawRow, { removeDebris: false, removeDoublets: false });
-  results.push({ name: 'prepareRow: no corrections preserves all DNA-A values',
+  // 10. prepare_row without corrections preserves the DNA-A values
+  const rawRow = { data: { dna_a: [64000, 66000, 128000] } };
+  const preparedRaw = DJF.prepare_row(rawRow, { remove_debris: false, remove_doublets: false });
+  results.push({ name: 'prepare_row: no corrections preserves all DNA-A values',
                  pass: preparedRaw.values.length === 3
                    && preparedRaw.stats.raw === 3
                    && preparedRaw.stats.plotted === 3,
                  detail: JSON.stringify(preparedRaw.stats) });
 
-  // 11. prepareRow debris correction removes non-positive events
-  const debrisRow = { data: { dnaA: [-5, 0, 64000, 66000, 128000] } };
-  const preparedDebris = DJF.prepareRow(debrisRow, { removeDebris: true, removeDoublets: false });
-  results.push({ name: 'prepareRow: debris correction removes non-positive events',
+  // 11. prepare_row debris correction removes non-positive events
+  const debrisRow = { data: { dna_a: [-5, 0, 64000, 66000, 128000] } };
+  const preparedDebris = DJF.prepare_row(debrisRow, { remove_debris: true, remove_doublets: false });
+  results.push({ name: 'prepare_row: debris correction removes non-positive events',
                  pass: preparedDebris.values.length < 5
                    && preparedDebris.stats.raw === 5
-                   && preparedDebris.stats.debrisRemoved >= 2,
+                   && preparedDebris.stats.debris_removed >= 2,
                  detail: JSON.stringify(preparedDebris.stats) });
 
-  // 12. correctionSummary reports unavailable doublet channels when requested
-  const summaryText = DJF.correctionSummary(
+  // 12. correction_summary reports unavailable doublet channels when requested
+  const summaryText = DJF.correction_summary(
     [{ prepared: preparedDebris }],
-    { removeDebris: true, removeDoublets: true }
+    { remove_debris: true, remove_doublets: true }
   );
-  results.push({ name: 'correctionSummary: reports debris and unavailable doublet channels',
+  results.push({ name: 'correction_summary: reports debris and unavailable doublet channels',
                  pass: /debris\\/background removed/.test(summaryText)
                    && /aggregate\\/doublet channels unavailable/.test(summaryText)
                    && /events plotted/.test(summaryText),

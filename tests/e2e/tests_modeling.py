@@ -17,14 +17,14 @@ def test_modeling(ctx: TestContext):
     page = ctx.page
     group = "Modeling"
 
-    # Ensure we are in "Start Modeling (DJF)" mode
-    btn = page.eval_on_selector("#startAnalysisButton", "e => e.textContent.trim()")
-    if btn != "Start Modeling (DJF)":
+    # Ensure the Cell Cycle Modeling button is enabled (data has been plotted)
+    modeling_btn_disabled = page.eval_on_selector("#cellCycleModelingButton", "e => e.disabled")
+    if modeling_btn_disabled:
         try:
             page.click("#startAnalysisButton")
             page.wait_for_selector("#plotArea svg", timeout=120000)
             page.wait_for_function(
-                "() => document.querySelector('#startAnalysisButton').textContent.trim() === 'Start Modeling (DJF)'",
+                "() => !document.querySelector('#cellCycleModelingButton').disabled",
                 timeout=60000,
             )
         except Exception as err:
@@ -34,7 +34,7 @@ def test_modeling(ctx: TestContext):
 
     bar_before = status_bar_text(page)
 
-    page.click("#startAnalysisButton")
+    page.click("#cellCycleModelingButton")
     page.wait_for_function(
         "() => /G1/.test(document.querySelector('#djfReadout').textContent)",
         timeout=30000,

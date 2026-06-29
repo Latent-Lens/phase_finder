@@ -1,3 +1,147 @@
+// ---------------------------------------------------------------------------
+// Lightweight column-store frame used for the metadata and stats table.
+// Stores data as a plain object of arrays, one array per column.
+// ---------------------------------------------------------------------------
+
+class PhaseFinderFrame {
+  /*
+
+  Purpose:
+	Creates a column-oriented table frame from prebuilt column arrays and an
+	ordered column list.
+
+  Input:
+	col_data [Object]: map of column names to arrays
+	cols [Array<string>]: ordered column names
+
+  Output:
+	frame [PhaseFinderFrame]: initialized frame instance
+
+  */
+  constructor(col_data, cols) {
+    this._data = col_data; // { colName: Array }
+    this._cols = cols;    // ordered column name list
+  }
+
+  /*
+
+  Purpose:
+	Returns the number of rows in the frame.
+
+  Input:
+	(none)
+
+  Output:
+	length [number]: row count, or 0 for an empty frame
+
+  */
+  get length() {
+    return this._cols.length === 0 ? 0 : (this._data[this._cols[0]] || []).length;
+  }
+
+  /*
+
+  Purpose:
+	Returns the frame's ordered column names.
+
+  Input:
+	(none)
+
+  Output:
+	columns [Array<string>]: ordered column names
+
+  */
+  get columns() {
+    return this._cols;
+  }
+
+  /*
+
+  Purpose:
+	Returns the array backing a named column.
+
+  Input:
+	name [string]: column name
+
+  Output:
+	values [Array]: column values, or an empty array when the column is absent
+
+  */
+  col(name) {
+    return this._data[name] || [];
+  }
+
+  /*
+
+  Purpose:
+	Adds or replaces a named column with the provided values.
+
+  Input:
+	name [string]: column name
+	values [Array|Iterable]: values to store in the column
+
+  Output:
+	(none) [void]: mutates the frame's column data
+
+  */
+  setCol(name, values) {
+    if (!Object.prototype.hasOwnProperty.call(this._data, name)) {
+      this._cols.push(name);
+    }
+    this._data[name] = Array.isArray(values) ? values : [...values];
+  }
+}
+
+/*
+
+Purpose:
+	Builds a PhaseFinderFrame from row objects by converting each object key
+	into a column array.
+
+Input:
+	rows [Array<Object>]: plain row objects with shared keys
+
+Output:
+	frame [PhaseFinderFrame]: column-oriented frame
+
+*/
+function make_frame(rows) {
+  if (!rows || !rows.length) return new PhaseFinderFrame({}, []);
+  const cols = Object.keys(rows[0]);
+  const col_data = Object.fromEntries(cols.map((c) => [c, rows.map((r) => r[c] ?? null)]));
+  return new PhaseFinderFrame(col_data, cols);
+}
+
+/*
+
+Purpose:
+	Appends two PhaseFinderFrame instances, preserving existing column order and
+	filling missing columns with null values.
+
+Input:
+	frame1 [PhaseFinderFrame]: existing frame
+	frame2 [PhaseFinderFrame]: frame to append
+
+Output:
+	frame [PhaseFinderFrame]: combined frame
+
+*/
+function concat_frames(frame1, frame2) {
+  const seen = new Set(frame1.columns);
+  const all_cols = [...frame1.columns, ...frame2.columns.filter((c) => !seen.has(c))];
+  const n1 = frame1.length;
+  const n2 = frame2.length;
+  const col_data = Object.fromEntries(
+    all_cols.map((col) => [
+      col,
+      [...(frame1._data[col] ?? Array(n1).fill(null)), ...(frame2._data[col] ?? Array(n2).fill(null))],
+    ]),
+  );
+  return new PhaseFinderFrame(col_data, all_cols);
+}
+
+// ---------------------------------------------------------------------------
+
 // Metadata table columns. `name` is the read-only filename; the rest are the
 // editable annotation fields. All are sortable; filterable columns get a
 // per-header dropdown of their unique values.
@@ -11,14 +155,14 @@ const TABLE_COLUMNS = [
 
 // IDs of files whose row checkbox is ticked. Persists across re-renders so
 // sorting/filtering don't drop the selection.
-const selectedFileIds = new Set();
+const selected_file_ids = new Set();
 // field -> Set of values ticked in that column's filter dropdown. A row passes
 // the column when the set is empty (no filter) or contains the row's value.
-const columnFilters = {};
-let sortState = { field: null, direction: "asc" };
+const column_filters = {};
+let sort_state = { field: null, direction: "asc" };
 // Field whose filter dropdown is currently open, or null. Kept in state so the
 // menu stays open across table re-renders triggered by ticking its checkboxes.
-let openFilterField = null;
+let open_filter_field = null;
 
 /*
 
@@ -33,7 +177,7 @@ Output:
 	id [string]: a unique file identifier
 
 */
-function createId() {
+function create_id() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
   }
@@ -46,16 +190,16 @@ Purpose:
 	Sets the sidebar status text and toggles its error styling.
 
 Input:
-	message [string]:  the status text
-	isError [boolean]: true to apply error styling (default false)
+	message [string]:   the status text
+	is_error [boolean]: true to apply error styling (default false)
 
 Output:
 	(none) [void]: updates the #status element
 
 */
-function setStatus(message, isError = false) {
-  statusEl.textContent = message;
-  statusEl.classList.toggle("error", isError);
+function set_status(message, is_error = false) {
+  status_el.textContent = message;
+  status_el.classList.toggle("error", is_error);
 }
 
 /*
@@ -64,16 +208,16 @@ Purpose:
 	Sets the footer status-bar text and toggles its error styling.
 
 Input:
-	message [string]:  the status-bar text
-	isError [boolean]: true to apply error styling (default false)
+	message [string]:   the status-bar text
+	is_error [boolean]: true to apply error styling (default false)
 
 Output:
 	(none) [void]: updates the status bar
 
 */
-function setStatusBar(message, isError = false) {
-  statusBarMessage.textContent = message;
-  statusBar.classList.toggle("error", isError);
+function set_status_bar(message, is_error = false) {
+  status_bar_message.textContent = message;
+  status_bar.classList.toggle("error", is_error);
 }
 
 /*
@@ -88,16 +232,16 @@ Output:
 	(none) [void]: updates the drop zone text
 
 */
-function updateDropZoneText() {
-  const count = parsedFiles.length;
+function update_drop_zone_text() {
+  const count = file_map.size;
   if (!count) {
-    dropZoneTitle.textContent = "Drop FCS files here";
-    dropZoneHint.textContent = "or click to choose files from disk";
+    drop_zone_title.textContent = "Drop FCS files here";
+    drop_zone_hint.textContent = "or click to choose files from disk";
     return;
   }
 
-  dropZoneTitle.textContent = `${count.toLocaleString()} FCS file${count === 1 ? "" : "s"} loaded`;
-  dropZoneHint.textContent = "Drop or click to add more files";
+  drop_zone_title.textContent = `${count.toLocaleString()} FCS file${count === 1 ? "" : "s"} loaded`;
+  drop_zone_hint.textContent = "Drop or click to add more files";
 }
 
 /*
@@ -112,10 +256,10 @@ Output:
 	(none) [void]: shows the progress overlay
 
 */
-function showProgress(label = "Loading FCS Metadata") {
-  progressOverlay.hidden = false;
-  progressOverlay.setAttribute("aria-busy", "true");
-  updateProgress(0, label, "Preparing files...");
+function show_progress(label = "Loading FCS Metadata") {
+  progress_overlay.hidden = false;
+  progress_overlay.setAttribute("aria-busy", "true");
+  update_progress(0, label, "Preparing files...");
 }
 
 /*
@@ -134,14 +278,14 @@ Output:
 	(none) [void]: updates the progress overlay
 
 */
-function updateProgress(percent, label = "Loading FCS Metadata", detail = "", filename = "") {
-  const boundedPercent = Math.max(0, Math.min(100, percent));
-  progressFill.style.width = `${boundedPercent}%`;
-  progressLabel.textContent = label;
-  progressPercent.textContent = `${Math.round(boundedPercent)}%`;
-  progressDetail.innerHTML = filename
-    ? `${escapeHtml(detail)}<br><strong>${escapeHtml(filename)}</strong>`
-    : escapeHtml(detail);
+function update_progress(percent, label = "Loading FCS Metadata", detail = "", filename = "") {
+  const bounded_percent = Math.max(0, Math.min(100, percent));
+  progress_fill.style.width = `${bounded_percent}%`;
+  progress_label.textContent = label;
+  progress_percent.textContent = `${Math.round(bounded_percent)}%`;
+  progress_detail.innerHTML = filename
+    ? `${escape_html(detail)}<br><strong>${escape_html(filename)}</strong>`
+    : escape_html(detail);
 }
 
 /*
@@ -156,10 +300,10 @@ Output:
 	(none) [void]: hides the progress overlay after the delay
 
 */
-function hideProgress(delay = 500) {
+function hide_progress(delay = 500) {
   window.setTimeout(() => {
-    progressOverlay.hidden = true;
-    progressOverlay.setAttribute("aria-busy", "false");
+    progress_overlay.hidden = true;
+    progress_overlay.setAttribute("aria-busy", "false");
   }, delay);
 }
 
@@ -176,7 +320,7 @@ Output:
 	frame [Promise<void>]: resolves on the next animation frame
 
 */
-function nextFrame() {
+function next_frame() {
   return new Promise((resolve) => window.requestAnimationFrame(resolve));
 }
 
@@ -193,17 +337,17 @@ Output:
 	(none) [void]: clears the channel selector and table state
 
 */
-function clearChannelControls() {
-  [dnaAreaSelect, collapsedDnaAreaSelect].forEach((select) => {
+function clear_channel_controls() {
+  [dna_area_select, collapsed_dna_area_select].forEach((select) => {
     select.innerHTML = "";
     select.add(new Option("", "", true, true));
     select.disabled = true;
   });
 
-  selectedFileIds.clear();
-  Object.keys(columnFilters).forEach((field) => delete columnFilters[field]);
-  sortState = { field: null, direction: "asc" };
-  openFilterField = null;
+  selected_file_ids.clear();
+  Object.keys(column_filters).forEach((field) => delete column_filters[field]);
+  sort_state = { field: null, direction: "asc" };
+  open_filter_field = null;
 }
 
 /*
@@ -219,11 +363,11 @@ Output:
 	columns [Array<string>]: the distinct parameter labels
 
 */
-function uniqueColumns() {
+function unique_columns() {
   const seen = new Set();
   const columns = [];
 
-  parsedFiles.forEach((entry) => {
+  file_map.forEach((entry) => {
     entry.summary.columns.forEach((column) => {
       if (!seen.has(column)) {
         seen.add(column);
@@ -233,24 +377,6 @@ function uniqueColumns() {
   });
 
   return columns;
-}
-
-/*
-
-Purpose:
-	Returns a table cell's value for a file: the filename for the "name" column,
-	otherwise the matching editable annotation.
-
-Input:
-	entry [Object]: a loaded file
-	field [string]: the column field key
-
-Output:
-	value [string]: the cell value
-
-*/
-function columnValue(entry, field) {
-  return field === "name" ? entry.name : entry.annotations[field];
 }
 
 /*
@@ -266,18 +392,17 @@ Output:
 	values [Array<string>]: the sorted distinct values
 
 */
-function uniqueColumnValues(field) {
+function unique_column_values(field) {
+  if (!file_table_frame) return [];
   const seen = new Set();
   const values = [];
-
-  parsedFiles.forEach((entry) => {
-    const value = columnValue(entry, field).trim();
-    if (value && !seen.has(value)) {
-      seen.add(value);
-      values.push(value);
+  for (const v of file_table_frame.col(field)) {
+    const str = (v != null && !Number.isNaN(v)) ? String(v).trim() : "";
+    if (str && !seen.has(str)) {
+      seen.add(str);
+      values.push(str);
     }
-  });
-
+  }
   values.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
   return values;
 }
@@ -292,19 +417,19 @@ Input:
 	select [HTMLSelectElement]: the select to populate
 	columns [Array<string>]:    the option values/labels
 	placeholder [string]:       the leading empty option's label
-	suggestedValue [string]:    value to pre-select, if present (default "")
+	suggested_value [string]:   value to pre-select, if present (default "")
 
 Output:
 	(none) [void]: replaces the select's options
 
 */
-function populateSingleSelect(select, columns, placeholder, suggestedValue = "") {
+function populate_single_select(select, columns, placeholder, suggested_value = "") {
   select.innerHTML = "";
   select.disabled = columns.length === 0;
   select.add(new Option(placeholder, "", true, true));
 
   columns.forEach((column) => {
-    select.add(new Option(column, column, column === suggestedValue, column === suggestedValue));
+    select.add(new Option(column, column, column === suggested_value, column === suggested_value));
   });
 }
 
@@ -322,11 +447,11 @@ Output:
 	match [string]: the first matching column, or "" if none match
 
 */
-function suggestColumn(columns, patterns) {
-  const upperPatterns = patterns.map((pattern) => pattern.toUpperCase());
+function suggest_column(columns, patterns) {
+  const upper_patterns = patterns.map((pattern) => pattern.toUpperCase());
   return columns.find((column) => {
     const normalized = column.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
-    return upperPatterns.some((pattern) => normalized.includes(pattern));
+    return upper_patterns.some((pattern) => normalized.includes(pattern));
   }) || "";
 }
 
@@ -343,15 +468,15 @@ Output:
 	(none) [void]: fills the channel selector
 
 */
-function populateChannelControls() {
-  const columns = uniqueColumns();
-  const previous = dnaAreaSelect.value || collapsedDnaAreaSelect.value;
+function populate_channel_controls() {
+  const columns = unique_columns();
+  const previous = dna_area_select.value || collapsed_dna_area_select.value;
   const selected = columns.includes(previous)
     ? previous
-    : suggestColumn(columns, ["DAPI_A", "DNA_A", "AREA", "_A"]);
+    : suggest_column(columns, ["DAPI_A", "DNA_A", "AREA", "_A"]);
 
-  [dnaAreaSelect, collapsedDnaAreaSelect].forEach((select) => {
-    populateSingleSelect(select, columns, "Choose DNA-content area channel", selected);
+  [dna_area_select, collapsed_dna_area_select].forEach((select) => {
+    populate_single_select(select, columns, "Choose DNA-content area channel", selected);
   });
 }
 
@@ -369,7 +494,7 @@ Output:
 	selected [boolean]: true if the value existed and was selected
 
 */
-function selectIfOptionExists(select, value) {
+function select_if_option_exists(select, value) {
   if (!value) {
     return false;
   }
@@ -386,23 +511,58 @@ function selectIfOptionExists(select, value) {
 /*
 
 Purpose:
-	Enables plot controls only when a DNA channel is chosen and at least one
-	row is checked.
+	Converts a PhaseFinderFrame to an array of plain row objects, one per row.
+	Each object has a key for every column; NaN values pass through as-is.
+
+Input:
+	frame [PhaseFinderFrame]: the frame to extract
+
+Output:
+	rows [Array<Object>]: one plain object per row
+
+*/
+function frame_to_rows(frame) {
+  if (!frame || frame.length === 0) return [];
+  const cols = frame.columns;
+  const arrays = cols.map((c) => frame.col(c));
+  const n = frame.length;
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const row = {};
+    for (let ci = 0; ci < cols.length; ci++) {
+      row[cols[ci]] = arrays[ci][i];
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+/*
+
+Purpose:
+	Enables or disables action buttons based on the current channel selection,
+	selected rows, and loaded-file count.
 
 Input:
 	(none)
 
 Output:
-	(none) [void]: sets the button's disabled state
+	(none) [void]: updates plot and statistics button disabled states
 
 */
-function updateStartButtonState() {
-  const isDisabled = !dnaAreaSelect.value || selectedFileIds.size === 0;
-  [startAnalysisButton, collapsedPlotButton].forEach((button) => {
+function update_start_button_state() {
+  const is_disabled = !dna_area_select.value || selected_file_ids.size === 0;
+  [start_analysis_button, collapsed_plot_button].forEach((button) => {
     if (!button) {
       return;
     }
-    button.disabled = isDisabled;
+    button.disabled = is_disabled;
+  });
+
+  const has_files = file_map.size > 0;
+  ["#calculateStatsButton", "#collapsedCalculateStatsButton"].forEach((sel) => {
+    const btn = document.querySelector(sel);
+    if (btn) btn.disabled = !has_files;
   });
 }
 
@@ -420,7 +580,7 @@ Output:
 	(none) [void]: dispatches a document event
 
 */
-function notifySelectionChanged() {
+function notify_selection_changed() {
   document.dispatchEvent(new CustomEvent("fcs-selection-change"));
 }
 
@@ -431,26 +591,26 @@ Purpose:
 	the grid column transition changes the workspace width.
 
 Input:
-	isCollapsed [boolean]: true to collapse the sidebar, false to expand it
+	is_collapsed [boolean]: true to collapse the sidebar, false to expand it
 
 Output:
 	(none) [void]: updates sidebar state and layout-dependent controls
 
 */
-function setSidebarCollapsed(isCollapsed) {
-  appShell.classList.toggle("sidebar-collapsed", isCollapsed);
-  sidebar.classList.toggle("is-collapsed", isCollapsed);
-  sidebarContent.setAttribute("aria-hidden", String(isCollapsed));
-  if ("inert" in sidebarContent) sidebarContent.inert = isCollapsed;
+function set_sidebar_collapsed(is_collapsed) {
+  app_shell.classList.toggle("sidebar-collapsed", is_collapsed);
+  sidebar.classList.toggle("is-collapsed", is_collapsed);
+  sidebar_content.setAttribute("aria-hidden", String(is_collapsed));
+  if ("inert" in sidebar_content) sidebar_content.inert = is_collapsed;
 
-  sidebarToggle.setAttribute("aria-expanded", String(!isCollapsed));
-  window.PhaseFinderTooltips.setQuickTooltip(sidebarToggle, isCollapsed ? "sidebarExpand" : "sidebarCollapse");
-  sidebarToggle.setAttribute("aria-label", isCollapsed ? "Expand sidebar" : "Collapse sidebar");
-  sidebarToggleIcon.src = isCollapsed ? SIDEBAR_OPEN_ICON : SIDEBAR_CLOSE_ICON;
+  sidebar_toggle.setAttribute("aria-expanded", String(!is_collapsed));
+  window.PhaseFinderTooltips.set_quick_tooltip(sidebar_toggle, is_collapsed ? "sidebarExpand" : "sidebarCollapse");
+  sidebar_toggle.setAttribute("aria-label", is_collapsed ? "Expand sidebar" : "Collapse sidebar");
+  sidebar_toggle_icon.src = is_collapsed ? SIDEBAR_OPEN_ICON : SIDEBAR_CLOSE_ICON;
 
-  const notifyLayoutChanged = () => window.dispatchEvent(new Event("resize"));
-  window.requestAnimationFrame(notifyLayoutChanged);
-  window.setTimeout(notifyLayoutChanged, SIDEBAR_TRANSITION_MS);
+  const notify_layout_changed = () => window.dispatchEvent(new Event("resize"));
+  window.requestAnimationFrame(notify_layout_changed);
+  window.setTimeout(notify_layout_changed, SIDEBAR_TRANSITION_MS);
 }
 
 /*
@@ -465,15 +625,15 @@ Output:
 	(none) [void]: toggles the sidebar collapsed state
 
 */
-function toggleSidebar() {
-  setSidebarCollapsed(!appShell.classList.contains("sidebar-collapsed"));
+function toggle_sidebar() {
+  set_sidebar_collapsed(!app_shell.classList.contains("sidebar-collapsed"));
 }
 
 /*
 
 Purpose:
 	DEBUG helper — auto-selects the "GFP/FITC-A" channel when present so the
-	analysis flow can be exercised without manual clicking. Remove for production.
+	analysis flow can be exercised without manual clicking in debug sessions.
 
 Input:
 	(none)
@@ -482,8 +642,8 @@ Output:
 	(none) [void]: may select a default channel
 
 */
-function applyDebugChannelDefaults() {
-  selectIfOptionExists(dnaAreaSelect, "GFP/FITC-A");
+function apply_debug_channel_defaults() {
+  select_if_option_exists(dna_area_select, "GFP/FITC-A");
 }
 
 
@@ -500,34 +660,39 @@ Output:
 	files [Array<Object>]: the filtered and sorted loaded files
 
 */
-function displayedFiles() {
-  const filtered = parsedFiles.filter((entry) =>
-    TABLE_COLUMNS.every((column) => {
-      const selected = columnFilters[column.field];
-      return !selected || selected.size === 0 || selected.has(columnValue(entry, column.field).trim());
-    }),
-  );
+function displayed_files() {
+  if (!file_table_frame || file_table_frame.length === 0) return [];
 
-  if (!sortState.field) {
-    return filtered;
-  }
+  let rows = frame_to_rows(file_table_frame);
 
-  const { field, direction } = sortState;
-  const factor = direction === "desc" ? -1 : 1;
-  return [...filtered].sort((a, b) => {
-    let comparison;
-    if (field === "timepoint") {
-      comparison = timepointSortValue(columnValue(a, field)) - timepointSortValue(columnValue(b, field));
-      if (Number.isNaN(comparison)) {
-        comparison = 0;
-      }
-    } else {
-      comparison = columnValue(a, field).localeCompare(columnValue(b, field), undefined, {
-        numeric: true,
-        sensitivity: "base",
+  // Filter: each active column filter keeps only rows whose cell value is in
+  // the allowed Set. An empty (or absent) Set means "no filter applied".
+  for (const col of TABLE_COLUMNS) {
+    const allowed = column_filters[col.field];
+    if (allowed && allowed.size > 0) {
+      rows = rows.filter((row) => {
+        const v = row[col.field];
+        const str = (v != null && !Number.isNaN(v)) ? String(v).trim() : "";
+        return allowed.has(str);
       });
     }
-    return comparison * factor;
+  }
+
+  if (!sort_state.field) return rows;
+
+  const { field, direction } = sort_state;
+  const factor = direction === "desc" ? -1 : 1;
+  return rows.sort((a, b) => {
+    const av = a[field];
+    const bv = b[field];
+    if (field === "timepoint") {
+      const cmp = timepoint_sort_value(av) - timepoint_sort_value(bv);
+      return (Number.isNaN(cmp) ? 0 : cmp) * factor;
+    }
+    return String(av ?? "").localeCompare(String(bv ?? ""), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }) * factor;
   });
 }
 
@@ -544,13 +709,13 @@ Output:
 	html [string]: the sort-indicator markup
 
 */
-function sortIndicator(field) {
-  const active = sortState.field === field;
-  const ascClass = active && sortState.direction === "asc" ? "sort-arrow active" : "sort-arrow";
-  const descClass = active && sortState.direction === "desc" ? "sort-arrow active" : "sort-arrow";
-  const sortAscendingTitle = escapeHtml(window.PhaseFinderTooltips.text("sortAscending"));
-  const sortDescendingTitle = escapeHtml(window.PhaseFinderTooltips.text("sortDescending"));
-  return `<span class="sort-indicator"><span class="${ascClass}" data-sort-dir="asc" title="${sortAscendingTitle}">▲</span><span class="${descClass}" data-sort-dir="desc" title="${sortDescendingTitle}">▼</span></span>`;
+function sort_indicator(field) {
+  const active = sort_state.field === field;
+  const asc_class = active && sort_state.direction === "asc" ? "sort-arrow active" : "sort-arrow";
+  const desc_class = active && sort_state.direction === "desc" ? "sort-arrow active" : "sort-arrow";
+  const sort_ascending_title = escape_html(window.PhaseFinderTooltips.text("sortAscending"));
+  const sort_descending_title = escape_html(window.PhaseFinderTooltips.text("sortDescending"));
+  return `<span class="sort-indicator"><span class="${asc_class}" data-sort-dir="asc" title="${sort_ascending_title}">▲</span><span class="${desc_class}" data-sort-dir="desc" title="${sort_descending_title}">▼</span></span>`;
 }
 
 /*
@@ -567,27 +732,27 @@ Output:
 	html [string]: the filter control markup
 
 */
-function filterControl(column) {
-  const selected = columnFilters[column.field] || new Set();
+function filter_control(column) {
+  const selected = column_filters[column.field] || new Set();
   const summary = [...selected].sort((a, b) =>
     a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
   );
-  const isOpen = openFilterField === column.field;
+  const is_open = open_filter_field === column.field;
 
-  const options = uniqueColumnValues(column.field)
+  const options = unique_column_values(column.field)
     .map(
       (value) => `
             <label class="checkbox-option">
-              <input type="checkbox" class="th-filter-option" data-filter-field="${column.field}" value="${escapeHtml(value)}"${selected.has(value) ? " checked" : ""} />
-              <span title="${escapeHtml(value)}">${escapeHtml(value)}</span>
+              <input type="checkbox" class="th-filter-option" data-filter-field="${column.field}" value="${escape_html(value)}"${selected.has(value) ? " checked" : ""} />
+              <span title="${escape_html(value)}">${escape_html(value)}</span>
             </label>`,
     )
     .join("");
 
   return `
           <div class="th-filter multi-select">
-            <button type="button" class="th-filter-toggle multi-select-toggle" data-filter-field="${column.field}" aria-expanded="${isOpen}" title="${escapeHtml(window.PhaseFinderTooltips.text("filterBy", column.label))}">${escapeHtml(summary.join(", "))}</button>
-            <div class="multi-select-menu" data-filter-menu="${column.field}"${isOpen ? "" : " hidden"}>${options}</div>
+            <button type="button" class="th-filter-toggle multi-select-toggle" data-filter-field="${column.field}" aria-expanded="${is_open}" title="${escape_html(window.PhaseFinderTooltips.text("filterBy", column.label))}">${escape_html(summary.join(", "))}</button>
+            <div class="multi-select-menu" data-filter-menu="${column.field}"${is_open ? "" : " hidden"}>${options}</div>
           </div>`;
 }
 
@@ -604,16 +769,51 @@ Output:
 	html [string]: the header cell markup
 
 */
-function headerCell(column) {
-  const filter = column.filterable ? filterControl(column) : "";
+function header_cell(column) {
+  const filter = column.filterable ? filter_control(column) : "";
 
   return `
         <th>
           <div class="th-inner">
-            <button type="button" class="th-sort" data-sort-field="${column.field}">${escapeHtml(column.label)}${sortIndicator(column.field)}</button>
+            <button type="button" class="th-sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button>
             ${filter}
           </div>
         </th>`;
+}
+
+/*
+
+Purpose:
+	Builds the sortable label <th> used in the first row of the two-row stats
+	table header.
+
+Input:
+	column [Object]: a TABLE_COLUMNS entry
+
+Output:
+	html [string]: the stats-mode label header cell markup
+
+*/
+function header_label_cell(column) {
+  return `<th class="stats-label-th"><button type="button" class="th-sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button></th>`;
+}
+
+/*
+
+Purpose:
+	Builds the filter <th> used in the second row of the two-row stats table
+	header.
+
+Input:
+	column [Object]: a TABLE_COLUMNS entry
+
+Output:
+	html [string]: the stats-mode filter header cell markup
+
+*/
+function header_filter_cell(column) {
+  const filter = column.filterable ? filter_control(column) : "";
+  return `<th class="stats-filter-th">${filter}</th>`;
 }
 
 /*
@@ -629,7 +829,7 @@ Output:
 	label [string]: the filename without a trailing ".fcs"
 
 */
-function displayName(name) {
+function display_name(name) {
   return name.replace(/\.fcs$/i, "");
 }
 
@@ -645,69 +845,122 @@ Input:
 	(none)
 
 Output:
-	(none) [void]: rebuilds the #fileTable markup
+	(none) [void]: rebuilds the #file_table markup
 
 */
-function renderFileTable() {
-  if (!parsedFiles.length) {
-    fileTable.innerHTML = '<p class="empty-note">Upload FCS files to initialize the table.</p>';
+function render_file_table() {
+  if (!file_table_frame || file_table_frame.length === 0) {
+    file_table.innerHTML = '<p class="empty-note">Upload FCS files to initialize the table.</p>';
     return;
   }
 
-  const cell = (entry, field) => {
-    const value = entry.annotations[field];
-    return `<td><input data-file-id="${entry.id}" data-field="${field}" type="text" size="${annotationInputSize(value)}" value="${escapeHtml(value)}" /></td>`;
+  // Annotation input for editable columns.
+  const cell = (row, field) => {
+    const value = String(row[field] ?? "");
+    return `<td><input data-file-id="${row.id}" data-field="${field}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
   };
 
-  const visibleFiles = displayedFiles();
+  const visible_files = displayed_files();
 
-  // A row filtered out of the display is automatically deselected, so only
-  // files that are both visible and checked stay selected (and get analyzed).
-  const visibleIds = new Set(visibleFiles.map((entry) => entry.id));
-  let prunedSelection = false;
-  selectedFileIds.forEach((id) => {
-    if (!visibleIds.has(id)) {
-      selectedFileIds.delete(id);
-      prunedSelection = true;
+  // A row filtered out of the display is automatically deselected.
+  const visible_ids = new Set(visible_files.map((row) => row.id));
+  let pruned_selection = false;
+  selected_file_ids.forEach((id) => {
+    if (!visible_ids.has(id)) {
+      selected_file_ids.delete(id);
+      pruned_selection = true;
     }
   });
-  if (prunedSelection) {
-    notifySelectionChanged();
+  if (pruned_selection) {
+    notify_selection_changed();
   }
 
-  const headers = TABLE_COLUMNS.map(headerCell).join("");
+  const STAT_LABELS = { mean: "Mean", stddev: "Std Dev", median: "Median", min: "Min", max: "Max" };
+  // Stats columns live in the frame as "CHANNEL:metric".
+  // Group them by channel to build the two-row stats header.
+  const BASE_COLS = new Set(["id", "name", "strain", "replicate", "nocodazoleArrest", "timepoint"]);
+  const channel_groups = {};
+  for (const col of file_table_frame.columns) {
+    if (!BASE_COLS.has(col)) {
+      const sep = col.lastIndexOf(":");
+      if (sep > 0) {
+        const channel = col.slice(0, sep);
+        const metric = col.slice(sep + 1);
+        (channel_groups[channel] ??= []).push(metric);
+      }
+    }
+  }
+  const stats_groups = Object.entries(channel_groups).map(([channel, metrics]) => ({ channel, metrics }));
+  const has_stats = stats_groups.length > 0;
+  // NaN means "not computed for this file" — show a dash.
+  const fmt = (v) => (v != null && !Number.isNaN(v) ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
 
-  const body = visibleFiles.length
-    ? visibleFiles
-        .map(
-          (entry) => `
+  const checkbox_th_inner = `<input type="checkbox" id="selectAllFiles" title="${escape_html(window.PhaseFinderTooltips.text("selectAllDisplayedFiles"))}" />`;
+
+  let head_html;
+  if (has_stats) {
+    const label_ths = TABLE_COLUMNS.map((col) => header_label_cell(col)).join("");
+    const filter_ths = TABLE_COLUMNS.map((col) => header_filter_cell(col)).join("");
+    const group_headers = stats_groups.map((g) =>
+      `<th colspan="${g.metrics.length}" class="stats-group-th stats-col-start">${escape_html(g.channel)} Summary Statistics</th>`
+    ).join("");
+    const sub_headers = stats_groups.map((g) =>
+      g.metrics.map((m, mi) => {
+        const cls = mi === 0 ? " stats-col-start" : "";
+        return `<th class="stats-sub-th${cls}">${STAT_LABELS[m] || m}</th>`;
+      }).join("")
+    ).join("");
+    head_html = `
         <tr>
-          <td class="checkbox-col"><input type="checkbox" class="row-select" data-file-id="${entry.id}"${selectedFileIds.has(entry.id) ? " checked" : ""} /></td>
-          <td class="filename-cell" title="${escapeHtml(entry.name)}">${escapeHtml(displayName(entry.name))}</td>
-          ${cell(entry, "strain")}
-          ${cell(entry, "replicate")}
-          ${cell(entry, "nocodazoleArrest")}
-          ${cell(entry, "timepoint")}
+          <th class="checkbox-col stats-checkbox-th" rowspan="2">${checkbox_th_inner}</th>
+          ${label_ths}
+          ${group_headers}
         </tr>
-      `,
-        )
-        .join("")
-    : `<tr><td class="empty-note" colspan="${TABLE_COLUMNS.length + 1}">No files match the current filters.</td></tr>`;
+        <tr>
+          ${filter_ths}
+          ${sub_headers}
+        </tr>`;
+  } else {
+    const regular_headers = TABLE_COLUMNS.map((col) => header_cell(col)).join("");
+    head_html = `
+        <tr>
+          <th class="checkbox-col">${checkbox_th_inner}</th>
+          ${regular_headers}
+        </tr>`;
+  }
 
-  fileTable.innerHTML = `
+  const total_stat_cols = has_stats ? stats_groups.reduce((sum, g) => sum + g.metrics.length, 0) : 0;
+  const empty_colspan = TABLE_COLUMNS.length + 1 + total_stat_cols;
+  const body = visible_files.length
+    ? visible_files.map((row) => {
+        const stats_tds = has_stats ? stats_groups.map((g) =>
+          g.metrics.map((m, mi) => {
+            const cls = mi === 0 ? " stats-col-start" : "";
+            return `<td class="stats-td${cls}">${fmt(row[`${g.channel}:${m}`])}</td>`;
+          }).join("")
+        ).join("") : "";
+        return `
+        <tr>
+          <td class="checkbox-col"><input type="checkbox" class="row-select" data-file-id="${row.id}"${selected_file_ids.has(row.id) ? " checked" : ""} /></td>
+          <td class="filename-cell" title="${escape_html(row.name)}">${escape_html(display_name(row.name))}</td>
+          ${cell(row, "strain")}
+          ${cell(row, "replicate")}
+          ${cell(row, "nocodazoleArrest")}
+          ${cell(row, "timepoint")}
+          ${stats_tds}
+        </tr>`;
+      }).join("")
+    : `<tr><td class="empty-note" colspan="${empty_colspan}">No files match the current filters.</td></tr>`;
+
+  file_table.innerHTML = `
     <table class="file-table">
-      <thead>
-        <tr>
-          <th class="checkbox-col"><input type="checkbox" id="selectAllFiles" title="${escapeHtml(window.PhaseFinderTooltips.text("selectAllDisplayedFiles"))}" /></th>
-          ${headers}
-        </tr>
-      </thead>
+      <thead>${head_html}</thead>
       <tbody>${body}</tbody>
     </table>
   `;
 
-  updateSelectAllCheckbox();
-  updateStartButtonState();
+  update_select_all_checkbox();
+  update_start_button_state();
 }
 
 /*
@@ -724,19 +977,19 @@ Output:
 	(none) [void]: updates the select-all checkbox state
 
 */
-function updateSelectAllCheckbox() {
+function update_select_all_checkbox() {
   const checkbox = document.querySelector("#selectAllFiles");
   if (!checkbox) {
     return;
   }
 
-  const displayed = displayedFiles();
-  const selectedCount = displayed.reduce(
-    (count, entry) => count + (selectedFileIds.has(entry.id) ? 1 : 0),
+  const displayed = displayed_files();
+  const selected_count = displayed.reduce(
+    (count, entry) => count + (selected_file_ids.has(entry.id) ? 1 : 0),
     0,
   );
-  checkbox.checked = displayed.length > 0 && selectedCount === displayed.length;
-  checkbox.indeterminate = selectedCount > 0 && selectedCount < displayed.length;
+  checkbox.checked = displayed.length > 0 && selected_count === displayed.length;
+  checkbox.indeterminate = selected_count > 0 && selected_count < displayed.length;
 }
 
 /*
@@ -753,45 +1006,45 @@ Output:
 	(none) [void]: updates selection/filter state and re-renders
 
 */
-function handleTableChange(event) {
+function handle_table_change(event) {
   const target = event.target;
 
   if (target.classList.contains("th-filter-option")) {
     const field = target.dataset.filterField;
-    const selected = columnFilters[field] || (columnFilters[field] = new Set());
+    const selected = column_filters[field] || (column_filters[field] = new Set());
     if (target.checked) {
       selected.add(target.value);
     } else {
       selected.delete(target.value);
     }
-    renderFileTable();
+    render_file_table();
     return;
   }
 
   if (target.id === "selectAllFiles") {
-    displayedFiles().forEach((entry) => {
+    displayed_files().forEach((entry) => {
       if (target.checked) {
-        selectedFileIds.add(entry.id);
+        selected_file_ids.add(entry.id);
       } else {
-        selectedFileIds.delete(entry.id);
+        selected_file_ids.delete(entry.id);
       }
     });
-    renderFileTable();
-    updateStartButtonState();
-    notifySelectionChanged();
+    render_file_table();
+    update_start_button_state();
+    notify_selection_changed();
     return;
   }
 
   if (target.classList.contains("row-select")) {
-    const fileId = target.dataset.fileId;
+    const file_id = target.dataset.fileId;
     if (target.checked) {
-      selectedFileIds.add(fileId);
+      selected_file_ids.add(file_id);
     } else {
-      selectedFileIds.delete(fileId);
+      selected_file_ids.delete(file_id);
     }
-    updateSelectAllCheckbox();
-    updateStartButtonState();
-    notifySelectionChanged();
+    update_select_all_checkbox();
+    update_start_button_state();
+    notify_selection_changed();
   }
 }
 
@@ -808,40 +1061,40 @@ Output:
 	(none) [void]: updates sort/filter state and re-renders
 
 */
-function handleTableClick(event) {
-  const filterToggle = event.target.closest(".th-filter-toggle");
-  if (filterToggle) {
-    const field = filterToggle.dataset.filterField;
-    openFilterField = openFilterField === field ? null : field;
-    renderFileTable();
+function handle_table_click(event) {
+  const filter_toggle = event.target.closest(".th-filter-toggle");
+  if (filter_toggle) {
+    const field = filter_toggle.dataset.filterField;
+    open_filter_field = open_filter_field === field ? null : field;
+    render_file_table();
     return;
   }
 
   // Clicking a specific arrow sorts that column in that direction (up = asc,
   // down = desc).
-  const sortArrow = event.target.closest(".sort-arrow");
-  if (sortArrow) {
-    const arrowButton = sortArrow.closest(".th-sort");
-    if (arrowButton) {
-      sortState = { field: arrowButton.dataset.sortField, direction: sortArrow.dataset.sortDir };
-      renderFileTable();
+  const sort_arrow = event.target.closest(".sort-arrow");
+  if (sort_arrow) {
+    const arrow_button = sort_arrow.closest(".th-sort");
+    if (arrow_button) {
+      sort_state = { field: arrow_button.dataset.sortField, direction: sort_arrow.dataset.sortDir };
+      render_file_table();
     }
     return;
   }
 
   // Clicking the label (not an arrow) toggles the direction.
-  const sortButton = event.target.closest(".th-sort");
-  if (!sortButton) {
+  const sort_button = event.target.closest(".th-sort");
+  if (!sort_button) {
     return;
   }
 
-  const field = sortButton.dataset.sortField;
-  if (sortState.field === field) {
-    sortState.direction = sortState.direction === "asc" ? "desc" : "asc";
+  const field = sort_button.dataset.sortField;
+  if (sort_state.field === field) {
+    sort_state.direction = sort_state.direction === "asc" ? "desc" : "asc";
   } else {
-    sortState = { field, direction: "asc" };
+    sort_state = { field, direction: "asc" };
   }
-  renderFileTable();
+  render_file_table();
 }
 
 /*
@@ -857,12 +1110,12 @@ Output:
 	(none) [void]: may close the open filter menu and re-render
 
 */
-function handleDocumentClick(event) {
-  if (openFilterField === null || event.target.closest(".th-filter")) {
+function handle_document_click(event) {
+  if (open_filter_field === null || event.target.closest(".th-filter")) {
     return;
   }
-  openFilterField = null;
-  renderFileTable();
+  open_filter_field = null;
+  render_file_table();
 }
 
 /*
@@ -878,7 +1131,7 @@ Output:
 	size [number]: the input's size attribute (4–28)
 
 */
-function annotationInputSize(value) {
+function annotation_input_size(value) {
   return Math.min(28, Math.max(4, String(value).length + 1));
 }
 
@@ -896,12 +1149,12 @@ Output:
 	(none) [void]: refreshes the table and channel controls
 
 */
-function updateViews() {
-  renderFileTable();
-  populateChannelControls();
-  applyDebugChannelDefaults();
-  collapsedDnaAreaSelect.value = dnaAreaSelect.value;
-  updateStartButtonState();
+function update_views() {
+  render_file_table();
+  populate_channel_controls();
+  apply_debug_channel_defaults();
+  collapsed_dna_area_select.value = dna_area_select.value;
+  update_start_button_state();
 }
 
 /*
@@ -918,7 +1171,7 @@ Output:
 	guess [Object]: { strain, replicate, nocodazoleArrest, timepoint }
 
 */
-function guessAnnotationsFromFilename(filename) {
+function guess_annotations_from_filename(filename) {
   const basename = filename.replace(/\.[^.]+$/, "");
   const guess = {
     strain: "",
@@ -929,25 +1182,25 @@ function guessAnnotationsFromFilename(filename) {
 
   // Sample token, e.g. "76aN t55": strain digits + replicate letter +
   // nocodazole-arrest letter, then "t" + time since release.
-  const coreMatch = basename.match(/(?:^|[_\s-])(\d+)([A-Za-z])([A-Za-z])\s+t(\d+)(?:[_\s.-]|$)/i);
-  if (coreMatch) {
-    guess.strain = coreMatch[1];
-    guess.replicate = coreMatch[2];
-    guess.nocodazoleArrest = coreMatch[3];
-    guess.timepoint = coreMatch[4];
+  const core_match = basename.match(/(?:^|[_\s-])(\d+)([A-Za-z])([A-Za-z])\s+t(\d+)(?:[_\s.-]|$)/i);
+  if (core_match) {
+    guess.strain = core_match[1];
+    guess.replicate = core_match[2];
+    guess.nocodazoleArrest = core_match[3];
+    guess.timepoint = core_match[4];
     return guess;
   }
 
   // Fallbacks for filenames that don't follow the strain/replicate/arrest token.
-  const strainTimepointMatch = basename.match(/(?:^|[_\s-])([^_\s-]+)\s+t(\d+)(?:[_\s-]|$)/i);
-  if (strainTimepointMatch) {
-    guess.strain = strainTimepointMatch[1];
-    guess.timepoint = strainTimepointMatch[2];
+  const strain_timepoint_match = basename.match(/(?:^|[_\s-])([^_\s-]+)\s+t(\d+)(?:[_\s-]|$)/i);
+  if (strain_timepoint_match) {
+    guess.strain = strain_timepoint_match[1];
+    guess.timepoint = strain_timepoint_match[2];
   }
 
-  const replicateMatch = basename.match(/__([A-Za-z]+\d+)(?:\.|_|\s|-|$)/) || basename.match(/(?:^|[_\s-])([A-Za-z]+\d+)(?:\.|_|\s|-|$)/);
-  if (replicateMatch) {
-    guess.replicate = replicateMatch[1];
+  const replicate_match = basename.match(/__([A-Za-z]+\d+)(?:\.|_|\s|-|$)/) || basename.match(/(?:^|[_\s-])([A-Za-z]+\d+)(?:\.|_|\s|-|$)/);
+  if (replicate_match) {
+    guess.replicate = replicate_match[1];
   }
 
   return guess;
@@ -963,10 +1216,10 @@ Input:
 	value [string]: the timepoint annotation
 
 Output:
-	sortValue [number]: the numeric value, or +Infinity if not numeric
+	sort_value [number]: the numeric value, or +Infinity if not numeric
 
 */
-function timepointSortValue(value) {
+function timepoint_sort_value(value) {
   const numeric = Number.parseFloat(value);
   return Number.isFinite(numeric) ? numeric : Number.POSITIVE_INFINITY;
 }
@@ -974,39 +1227,33 @@ function timepointSortValue(value) {
 /*
 
 Purpose:
-	Sorts the loaded files in place by strain, then replicate, then timepoint,
-	then filename (natural, case-insensitive).
+	Sorts file_table_frame in place by strain → replicate → timepoint (numeric) →
+	filename. Rebuilds the frame from sorted rows so all columns (including
+	stats) are preserved in the new order.
 
 Input:
 	(none)
 
 Output:
-	(none) [void]: sorts parsedFiles in place
+	(none) [void]: replaces file_table_frame with a sorted copy
 
 */
-function sortParsedFiles() {
-  parsedFiles.sort((a, b) => {
-    const strainCompare = a.annotations.strain.localeCompare(b.annotations.strain, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
-    if (strainCompare !== 0) {
-      return strainCompare;
-    }
+function sort_file_table() {
+  if (!file_table_frame || file_table_frame.length === 0) return;
 
-    const replicateCompare = a.annotations.replicate.localeCompare(b.annotations.replicate, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
-    if (replicateCompare !== 0) {
-      return replicateCompare;
-    }
-
-    const timepointCompare = timepointSortValue(a.annotations.timepoint) - timepointSortValue(b.annotations.timepoint);
-    if (timepointCompare !== 0) {
-      return timepointCompare;
-    }
-
-    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+  const rows = frame_to_rows(file_table_frame);
+  rows.sort((a, b) => {
+    const s = String(a.strain ?? "").localeCompare(String(b.strain ?? ""), undefined, { numeric: true, sensitivity: "base" });
+    if (s !== 0) return s;
+    const r = String(a.replicate ?? "").localeCompare(String(b.replicate ?? ""), undefined, { numeric: true, sensitivity: "base" });
+    if (r !== 0) return r;
+    const t = timepoint_sort_value(a.timepoint) - timepoint_sort_value(b.timepoint);
+    if (t !== 0 && !Number.isNaN(t)) return t;
+    return String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true, sensitivity: "base" });
   });
+
+  // Reconstruct column-oriented data and rebuild the frame.
+  const cols = file_table_frame.columns;
+  const col_data = Object.fromEntries(cols.map((col) => [col, rows.map((row) => row[col] ?? null)]));
+  file_table_frame = new PhaseFinderFrame(col_data, [...cols]);
 }

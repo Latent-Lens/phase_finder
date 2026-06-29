@@ -1,11 +1,11 @@
 importScripts("./fcs-parser.js");
 
 self.addEventListener("message", async (event) => {
-  const { requestId, file, summary, selectedIndexes } = event.data || {};
+  const { request_id, file, summary, selected_indexes } = event.data || {};
 
   try {
-    const dataBuffer = await file.slice(summary.dataBegin, summary.dataEnd + 1).arrayBuffer();
-    const parsed = globalThis.FCSParser.parseSelectedColumns(dataBuffer, summary.metadata, selectedIndexes);
+    const data_buffer = await file.slice(summary.data_begin, summary.data_end + 1).arrayBuffer();
+    const parsed = globalThis.FCSParser.parse_selected_columns(data_buffer, summary.metadata, selected_indexes);
     const columns = {};
     const transfers = [];
 
@@ -15,8 +15,8 @@ self.addEventListener("message", async (event) => {
       transfers.push(typed.buffer);
     });
 
-    self.postMessage({ requestId, ok: true, columns }, transfers);
+    self.postMessage({ request_id, ok: true, columns }, transfers);
   } catch (error) {
-    self.postMessage({ requestId, ok: false, error: error.message || String(error) });
+    self.postMessage({ request_id, ok: false, error: error.message || String(error) });
   }
 });

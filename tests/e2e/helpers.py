@@ -477,7 +477,11 @@ def close_filter(page):
     except Exception:
         pass
     try:
-        page.click("body", position={"x": 10, "y": 10})
+        # Dispatch a neutral click that bubbles to document, closing the filter
+        # dropdown without hitting any interactive element (logo, buttons, etc.).
+        page.evaluate(
+            "document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))"
+        )
     except Exception:
         pass
     wait_briefly(0.2)

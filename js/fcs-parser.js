@@ -4,16 +4,16 @@ Purpose:
 	Decodes a byte range of an ArrayBuffer as ASCII text.
 
 Input:
-	buffer [ArrayBuffer]:  the file bytes
-	begin [number]:        start byte offset (inclusive)
-	endInclusive [number]: end byte offset (inclusive)
+	buffer [ArrayBuffer]:    the file bytes
+	begin [number]:          start byte offset (inclusive)
+	end_inclusive [number]:  end byte offset (inclusive)
 
 Output:
 	text [string]: the decoded ASCII string
 
 */
-function readAscii(buffer, begin, endInclusive) {
-  return new TextDecoder("ascii").decode(buffer.slice(begin, endInclusive + 1));
+function read_ascii(buffer, begin, end_inclusive) {
+  return new TextDecoder("ascii").decode(buffer.slice(begin, end_inclusive + 1));
 }
 
 /*
@@ -29,7 +29,7 @@ Output:
 	offset [number]: the parsed integer, or 0 if invalid
 
 */
-function parseOffset(value) {
+function parse_offset(value) {
   const parsed = Number.parseInt(String(value).trim(), 10);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -44,15 +44,15 @@ Input:
 	buffer [ArrayBuffer]: the FCS file bytes
 
 Output:
-	header [Object]: { version, textBegin, textEnd, dataBegin, dataEnd, analysisBegin, analysisEnd }
+	header [Object]: { version, text_begin, text_end, data_begin, data_end, analysis_begin, analysis_end }
 
 */
-function parseHeader(buffer) {
+function parse_header(buffer) {
   if (buffer.byteLength < 58) {
     throw new Error("FCS file is too small to contain a valid header.");
   }
 
-  const header = readAscii(buffer, 0, 57);
+  const header = read_ascii(buffer, 0, 57);
   const version = header.slice(0, 6).trim();
 
   if (!version.startsWith("FCS")) {
@@ -61,12 +61,12 @@ function parseHeader(buffer) {
 
   return {
     version,
-    textBegin: parseOffset(header.slice(10, 18)),
-    textEnd: parseOffset(header.slice(18, 26)),
-    dataBegin: parseOffset(header.slice(26, 34)),
-    dataEnd: parseOffset(header.slice(34, 42)),
-    analysisBegin: parseOffset(header.slice(42, 50)),
-    analysisEnd: parseOffset(header.slice(50, 58)),
+    text_begin: parse_offset(header.slice(10, 18)),
+    text_end: parse_offset(header.slice(18, 26)),
+    data_begin: parse_offset(header.slice(26, 34)),
+    data_end: parse_offset(header.slice(34, 42)),
+    analysis_begin: parse_offset(header.slice(42, 50)),
+    analysis_end: parse_offset(header.slice(50, 58)),
   };
 }
 
@@ -83,7 +83,7 @@ Output:
 	metadata [Object]: normalized keyword -> value pairs
 
 */
-function parseTextSegment(text) {
+function parse_text_segment(text) {
   const delimiter = text[0];
   const values = [];
   let current = "";
@@ -109,7 +109,7 @@ function parseTextSegment(text) {
 
   const metadata = {};
   for (let index = 0; index < values.length; index += 2) {
-    const key = normalizeKeyword(values[index]);
+    const key = normalize_keyword(values[index]);
     if (key) {
       metadata[key] = values[index + 1] ?? "";
     }
@@ -131,7 +131,7 @@ Output:
 	normalized [string]: the canonical keyword (e.g. "PAR", "P1N")
 
 */
-function normalizeKeyword(key) {
+function normalize_keyword(key) {
   return String(key || "")
     .trim()
     .replace(/^\$/, "")
@@ -155,7 +155,7 @@ Output:
 
 */
 function keyword(metadata, name, fallback = "") {
-  return metadata[normalizeKeyword(name)] ?? fallback;
+  return metadata[normalize_keyword(name)] ?? fallback;
 }
 
 /*
@@ -167,12 +167,12 @@ Input:
 	metadata [Object]: normalized metadata map
 
 Output:
-	littleEndian [boolean]: true if the data is little-endian
+	little_endian [boolean]: true if the data is little-endian
 
 */
-function isLittleEndian(metadata) {
-  const byteOrder = keyword(metadata, "$BYTEORD", keyword(metadata, "BYTEORD", "1,2,3,4"));
-  return byteOrder === "1,2,3,4" || byteOrder === "1,2";
+function is_little_endian(metadata) {
+  const byte_order = keyword(metadata, "$BYTEORD", keyword(metadata, "BYTEORD", "1,2,3,4"));
+  return byte_order === "1,2,3,4" || byte_order === "1,2";
 }
 
 /*
@@ -182,15 +182,15 @@ Purpose:
 	then a generated "P<n>" fallback.
 
 Input:
-	metadata [Object]:       normalized metadata map
-	parameterCount [number]: number of parameters ($PAR)
+	metadata [Object]:         normalized metadata map
+	parameter_count [number]:  number of parameters ($PAR)
 
 Output:
 	columns [Array<string>]: one label per parameter
 
 */
-function parameterColumns(metadata, parameterCount) {
-  return Array.from({ length: parameterCount }, (_, index) => {
+function parameter_columns(metadata, parameter_count) {
+  return Array.from({ length: parameter_count }, (_, index) => {
     const number = index + 1;
     return (
       keyword(metadata, `$P${number}S`) ||
@@ -207,34 +207,34 @@ Purpose:
 	endianness. Has fast paths for 1/2/4-byte widths and a loop for others.
 
 Input:
-	view [DataView]:        the data view over the DATA segment
-	byteOffset [number]:    where to read from
-	byteWidth [number]:     integer width in bytes
-	littleEndian [boolean]: byte order
+	view [DataView]:          the data view over the DATA segment
+	byte_offset [number]:     where to read from
+	byte_width [number]:      integer width in bytes
+	little_endian [boolean]:  byte order
 
 Output:
 	value [number]: the unsigned integer value
 
 */
-function integerReader(view, byteOffset, byteWidth, littleEndian) {
-  if (byteWidth === 1) {
-    return view.getUint8(byteOffset);
+function integer_reader(view, byte_offset, byte_width, little_endian) {
+  if (byte_width === 1) {
+    return view.getUint8(byte_offset);
   }
-  if (byteWidth === 2) {
-    return view.getUint16(byteOffset, littleEndian);
+  if (byte_width === 2) {
+    return view.getUint16(byte_offset, little_endian);
   }
-  if (byteWidth === 4) {
-    return view.getUint32(byteOffset, littleEndian);
+  if (byte_width === 4) {
+    return view.getUint32(byte_offset, little_endian);
   }
 
   let value = 0;
-  if (littleEndian) {
-    for (let index = byteWidth - 1; index >= 0; index -= 1) {
-      value = value * 256 + view.getUint8(byteOffset + index);
+  if (little_endian) {
+    for (let index = byte_width - 1; index >= 0; index -= 1) {
+      value = value * 256 + view.getUint8(byte_offset + index);
     }
   } else {
-    for (let index = 0; index < byteWidth; index += 1) {
-      value = value * 256 + view.getUint8(byteOffset + index);
+    for (let index = 0; index < byte_width; index += 1) {
+      value = value * 256 + view.getUint8(byte_offset + index);
     }
   }
   return value;
@@ -247,50 +247,50 @@ Purpose:
 	F/D/I data types. Throws on missing $PAR/$TOT or an unsupported $DATATYPE.
 
 Input:
-	buffer [ArrayBuffer]: the FCS file bytes
-	metadata [Object]:    normalized metadata map
-	dataBegin [number]:   DATA segment start offset
-	dataEnd [number]:     DATA segment end offset (inclusive)
+	buffer [ArrayBuffer]:  the FCS file bytes
+	metadata [Object]:     normalized metadata map
+	data_begin [number]:   DATA segment start offset
+	data_end [number]:     DATA segment end offset (inclusive)
 
 Output:
 	result [Object]: { rows [Array<Object>], columns [Array<string>] }
 
 */
-function parseData(buffer, metadata, dataBegin, dataEnd) {
-  const parameterCount = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
-  const eventCount = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
-  const dataType = keyword(metadata, "$DATATYPE", keyword(metadata, "DATATYPE", "F")).toUpperCase();
-  const littleEndian = isLittleEndian(metadata);
-  const columns = parameterColumns(metadata, parameterCount);
-  const view = new DataView(buffer, dataBegin, dataEnd - dataBegin + 1);
+function parse_data(buffer, metadata, data_begin, data_end) {
+  const parameter_count = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
+  const event_count = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
+  const data_type = keyword(metadata, "$DATATYPE", keyword(metadata, "DATATYPE", "F")).toUpperCase();
+  const little_endian = is_little_endian(metadata);
+  const columns = parameter_columns(metadata, parameter_count);
+  const view = new DataView(buffer, data_begin, data_end - data_begin + 1);
 
-  if (!parameterCount || !eventCount) {
+  if (!parameter_count || !event_count) {
     throw new Error("FCS metadata is missing $PAR or $TOT.");
   }
 
   let offset = 0;
   const rows = [];
 
-  for (let eventIndex = 0; eventIndex < eventCount; eventIndex += 1) {
+  for (let event_index = 0; event_index < event_count; event_index += 1) {
     const row = {};
 
-    for (let parameterIndex = 0; parameterIndex < parameterCount; parameterIndex += 1) {
-      const column = columns[parameterIndex];
+    for (let parameter_index = 0; parameter_index < parameter_count; parameter_index += 1) {
+      const column = columns[parameter_index];
       let value;
 
-      if (dataType === "F") {
-        value = view.getFloat32(offset, littleEndian);
+      if (data_type === "F") {
+        value = view.getFloat32(offset, little_endian);
         offset += 4;
-      } else if (dataType === "D") {
-        value = view.getFloat64(offset, littleEndian);
+      } else if (data_type === "D") {
+        value = view.getFloat64(offset, little_endian);
         offset += 8;
-      } else if (dataType === "I") {
-        const bits = Number.parseInt(keyword(metadata, `$P${parameterIndex + 1}B`, "32"), 10);
-        const byteWidth = Math.ceil(bits / 8);
-        value = integerReader(view, offset, byteWidth, littleEndian);
-        offset += byteWidth;
+      } else if (data_type === "I") {
+        const bits = Number.parseInt(keyword(metadata, `$P${parameter_index + 1}B`, "32"), 10);
+        const byte_width = Math.ceil(bits / 8);
+        value = integer_reader(view, offset, byte_width, little_endian);
+        offset += byte_width;
       } else {
-        throw new Error(`Unsupported FCS $DATATYPE: ${dataType}`);
+        throw new Error(`Unsupported FCS $DATATYPE: ${data_type}`);
       }
 
       row[column] = value;
@@ -309,29 +309,29 @@ Purpose:
 	8 for D, ceil($PnB/8) for I. Throws on unsupported types.
 
 Input:
-	metadata [Object]:       normalized metadata map
-	parameterCount [number]: number of parameters
-	dataType [string]:       "F", "D", or "I"
+	metadata [Object]:         normalized metadata map
+	parameter_count [number]:  number of parameters
+	data_type [string]:        "F", "D", or "I"
 
 Output:
 	widths [Array<number>]: byte width per parameter
 
 */
-function parameterByteWidths(metadata, parameterCount, dataType) {
-  if (dataType === "F") {
-    return Array.from({ length: parameterCount }, () => 4);
+function parameter_byte_widths(metadata, parameter_count, data_type) {
+  if (data_type === "F") {
+    return Array.from({ length: parameter_count }, () => 4);
   }
-  if (dataType === "D") {
-    return Array.from({ length: parameterCount }, () => 8);
+  if (data_type === "D") {
+    return Array.from({ length: parameter_count }, () => 8);
   }
-  if (dataType === "I") {
-    return Array.from({ length: parameterCount }, (_, index) => {
+  if (data_type === "I") {
+    return Array.from({ length: parameter_count }, (_, index) => {
       const bits = Number.parseInt(keyword(metadata, `$P${index + 1}B`, "32"), 10);
       return Math.ceil(bits / 8);
     });
   }
 
-  throw new Error(`Unsupported FCS $DATATYPE: ${dataType}`);
+  throw new Error(`Unsupported FCS $DATATYPE: ${data_type}`);
 }
 
 /*
@@ -341,28 +341,28 @@ Purpose:
 	Throws on unsupported types.
 
 Input:
-	view [DataView]:        the data view
-	offset [number]:        byte offset to read from
-	byteWidth [number]:     width in bytes (for integer types)
-	dataType [string]:      "F", "D", or "I"
-	littleEndian [boolean]: byte order
+	view [DataView]:          the data view
+	offset [number]:          byte offset to read from
+	byte_width [number]:      width in bytes (for integer types)
+	data_type [string]:       "F", "D", or "I"
+	little_endian [boolean]:  byte order
 
 Output:
 	value [number]: the parameter value
 
 */
-function readDataValue(view, offset, byteWidth, dataType, littleEndian) {
-  if (dataType === "F") {
-    return view.getFloat32(offset, littleEndian);
+function read_data_value(view, offset, byte_width, data_type, little_endian) {
+  if (data_type === "F") {
+    return view.getFloat32(offset, little_endian);
   }
-  if (dataType === "D") {
-    return view.getFloat64(offset, littleEndian);
+  if (data_type === "D") {
+    return view.getFloat64(offset, little_endian);
   }
-  if (dataType === "I") {
-    return integerReader(view, offset, byteWidth, littleEndian);
+  if (data_type === "I") {
+    return integer_reader(view, offset, byte_width, little_endian);
   }
 
-  throw new Error(`Unsupported FCS $DATATYPE: ${dataType}`);
+  throw new Error(`Unsupported FCS $DATATYPE: ${data_type}`);
 }
 
 /*
@@ -373,53 +373,53 @@ Purpose:
 	offsets. Used during analysis to avoid loading unused channels.
 
 Input:
-	dataBuffer [ArrayBuffer]:        the DATA segment bytes
-	metadata [Object]:               normalized metadata map
-	selectedIndexes [Array<number>]: 1-based parameter indexes to read
+	data_buffer [ArrayBuffer]:         the DATA segment bytes
+	metadata [Object]:                 normalized metadata map
+	selected_indexes [Array<number>]:  1-based parameter indexes to read
 
 Output:
 	columns [Object]: parameter index -> Array of per-event values
 
 */
-function parseSelectedColumns(dataBuffer, metadata, selectedIndexes) {
-  const parameterCount = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
-  const eventCount = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
-  const dataType = keyword(metadata, "$DATATYPE", keyword(metadata, "DATATYPE", "F")).toUpperCase();
-  const littleEndian = isLittleEndian(metadata);
-  const byteWidths = parameterByteWidths(metadata, parameterCount, dataType);
+function parse_selected_columns(data_buffer, metadata, selected_indexes) {
+  const parameter_count = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
+  const event_count = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
+  const data_type = keyword(metadata, "$DATATYPE", keyword(metadata, "DATATYPE", "F")).toUpperCase();
+  const little_endian = is_little_endian(metadata);
+  const byte_widths = parameter_byte_widths(metadata, parameter_count, data_type);
   const columns = {};
-  const view = new DataView(dataBuffer);
-  const parameterOffsets = [];
-  let eventByteWidth = 0;
+  const view = new DataView(data_buffer);
+  const parameter_offsets = [];
+  let event_byte_width = 0;
 
-  byteWidths.forEach((byteWidth) => {
-    parameterOffsets.push(eventByteWidth);
-    eventByteWidth += byteWidth;
+  byte_widths.forEach((byte_width) => {
+    parameter_offsets.push(event_byte_width);
+    event_byte_width += byte_width;
   });
 
-  const selectedParameters = selectedIndexes.map((index) => {
-    if (index < 1 || index > parameterCount) {
+  const selected_parameters = selected_indexes.map((index) => {
+    if (index < 1 || index > parameter_count) {
       throw new Error(`Selected parameter index is out of range: ${index}`);
     }
 
-    columns[index] = new Array(eventCount);
+    columns[index] = new Array(event_count);
     return {
       index,
-      byteOffset: parameterOffsets[index - 1],
-      byteWidth: byteWidths[index - 1],
+      byte_offset: parameter_offsets[index - 1],
+      byte_width: byte_widths[index - 1],
     };
   });
 
-  for (let eventIndex = 0; eventIndex < eventCount; eventIndex += 1) {
-    const eventOffset = eventIndex * eventByteWidth;
+  for (let event_index = 0; event_index < event_count; event_index += 1) {
+    const event_offset = event_index * event_byte_width;
 
-    selectedParameters.forEach((parameter) => {
-      columns[parameter.index][eventIndex] = readDataValue(
+    selected_parameters.forEach((parameter) => {
+      columns[parameter.index][event_index] = read_data_value(
         view,
-        eventOffset + parameter.byteOffset,
-        parameter.byteWidth,
-        dataType,
-        littleEndian,
+        event_offset + parameter.byte_offset,
+        parameter.byte_width,
+        data_type,
+        little_endian,
       );
     });
   }
@@ -439,19 +439,19 @@ Output:
 	result [Object]: { header, metadata, rows, columns }
 
 */
-function parseFCS(buffer) {
-  const header = parseHeader(buffer);
-  const text = readAscii(buffer, header.textBegin, header.textEnd);
-  const metadata = parseTextSegment(text);
-  const dataBegin = parseOffset(keyword(metadata, "$BEGINDATA", header.dataBegin));
-  const dataEnd = parseOffset(keyword(metadata, "$ENDDATA", header.dataEnd));
-  const parsedData = parseData(buffer, metadata, dataBegin, dataEnd);
+function parse_fcs(buffer) {
+  const header = parse_header(buffer);
+  const text = read_ascii(buffer, header.text_begin, header.text_end);
+  const metadata = parse_text_segment(text);
+  const data_begin = parse_offset(keyword(metadata, "$BEGINDATA", header.data_begin));
+  const data_end = parse_offset(keyword(metadata, "$ENDDATA", header.data_end));
+  const parsed_data = parse_data(buffer, metadata, data_begin, data_end);
 
   return {
     header,
     metadata,
-    rows: parsedData.rows,
-    columns: parsedData.columns,
+    rows: parsed_data.rows,
+    columns: parsed_data.columns,
   };
 }
 
@@ -466,24 +466,24 @@ Input:
 	metadata [Object]: normalized metadata map
 
 Output:
-	summary [Object]: { header, metadata, columns, eventCount, parameterCount, dataBegin, dataEnd }
+	summary [Object]: { header, metadata, columns, event_count, parameter_count, data_begin, data_end }
 
 */
-function summarizeFCSHeader(header, metadata) {
-  const parameterCount = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
-  const eventCount = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
-  const columns = parameterColumns(metadata, parameterCount || 0);
-  const dataBegin = parseOffset(keyword(metadata, "$BEGINDATA", header.dataBegin));
-  const dataEnd = parseOffset(keyword(metadata, "$ENDDATA", header.dataEnd));
+function summarize_fcs_header(header, metadata) {
+  const parameter_count = Number.parseInt(keyword(metadata, "$PAR", keyword(metadata, "PAR", "0")), 10);
+  const event_count = Number.parseInt(keyword(metadata, "$TOT", keyword(metadata, "TOT", "0")), 10);
+  const columns = parameter_columns(metadata, parameter_count || 0);
+  const data_begin = parse_offset(keyword(metadata, "$BEGINDATA", header.data_begin));
+  const data_end = parse_offset(keyword(metadata, "$ENDDATA", header.data_end));
 
   return {
     header,
     metadata,
     columns,
-    eventCount,
-    parameterCount,
-    dataBegin,
-    dataEnd,
+    event_count,
+    parameter_count,
+    data_begin,
+    data_end,
   };
 }
 
@@ -497,14 +497,14 @@ Input:
 	buffer [ArrayBuffer]: the FCS file bytes
 
 Output:
-	summary [Object]: the metadata summary from summarizeFCSHeader
+	summary [Object]: the metadata summary from summarize_fcs_header
 
 */
-function parseFCSHeader(buffer) {
-  const header = parseHeader(buffer);
-  const text = readAscii(buffer, header.textBegin, header.textEnd);
-  const metadata = parseTextSegment(text);
-  return summarizeFCSHeader(header, metadata);
+function parse_fcs_header(buffer) {
+  const header = parse_header(buffer);
+  const text = read_ascii(buffer, header.text_begin, header.text_end);
+  const metadata = parse_text_segment(text);
+  return summarize_fcs_header(header, metadata);
 }
 
 /*
@@ -514,24 +514,24 @@ Purpose:
 	so only those small segments need to be read from disk (fast loading).
 
 Input:
-	headerBuffer [ArrayBuffer]: the 58-byte HEADER bytes
-	textBuffer [ArrayBuffer]:   the TEXT segment bytes
+	header_buffer [ArrayBuffer]: the 58-byte HEADER bytes
+	text_buffer [ArrayBuffer]:   the TEXT segment bytes
 
 Output:
-	summary [Object]: the metadata summary from summarizeFCSHeader
+	summary [Object]: the metadata summary from summarize_fcs_header
 
 */
-function parseFCSHeaderFromSegments(headerBuffer, textBuffer) {
-  const header = parseHeader(headerBuffer);
-  const text = readAscii(textBuffer, 0, textBuffer.byteLength - 1);
-  const metadata = parseTextSegment(text);
-  return summarizeFCSHeader(header, metadata);
+function parse_fcs_header_from_segments(header_buffer, text_buffer) {
+  const header = parse_header(header_buffer);
+  const text = read_ascii(text_buffer, 0, text_buffer.byteLength - 1);
+  const metadata = parse_text_segment(text);
+  return summarize_fcs_header(header, metadata);
 }
 
 globalThis.FCSParser = {
-  parseFCS,
-  parseFCSHeader,
-  parseFCSHeaderFromSegments,
-  parseHeader,
-  parseSelectedColumns,
+  parse_fcs,
+  parse_fcs_header,
+  parse_fcs_header_from_segments,
+  parse_header,
+  parse_selected_columns,
 };

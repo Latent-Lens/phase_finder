@@ -1,32 +1,40 @@
-const fileInput = document.querySelector("#fileInput");
-const dropZone = document.querySelector("#dropZone");
-const collapsedUploadTarget = document.querySelector("#collapsedUploadTarget");
-const dropZoneTitle = document.querySelector("#dropZoneTitle");
-const dropZoneHint = document.querySelector("#dropZoneHint");
-const statusEl = document.querySelector("#status");
-const statusBar = document.querySelector("#statusBar");
-const statusBarMessage = document.querySelector("#statusBarMessage");
-const dnaAreaSelect = document.querySelector("#dnaAreaSelect");
-const collapsedDnaAreaSelect = document.querySelector("#collapsedDnaAreaSelect");
-const fileTable = document.querySelector("#fileTable");
-const startAnalysisButton = document.querySelector("#startAnalysisButton");
-const collapsedPlotButton = document.querySelector("#collapsedPlotButton");
-const progressOverlay = document.querySelector("#progressOverlay");
-const progressFill = document.querySelector("#progressFill");
-const progressLabel = document.querySelector("#progressLabel");
-const progressPercent = document.querySelector("#progressPercent");
-const progressDetail = document.querySelector("#progressDetail");
-const appShell = document.querySelector(".app");
+const file_input = document.querySelector("#fileInput");
+const drop_zone = document.querySelector("#dropZone");
+const collapsed_upload_target = document.querySelector("#collapsedUploadTarget");
+const drop_zone_title = document.querySelector("#dropZoneTitle");
+const drop_zone_hint = document.querySelector("#dropZoneHint");
+const status_el = document.querySelector("#status");
+const status_bar = document.querySelector("#statusBar");
+const status_bar_message = document.querySelector("#statusBarMessage");
+const dna_area_select = document.querySelector("#dnaAreaSelect");
+const collapsed_dna_area_select = document.querySelector("#collapsedDnaAreaSelect");
+const file_table = document.querySelector("#fileTable");
+const start_analysis_button = document.querySelector("#startAnalysisButton");
+const collapsed_plot_button = document.querySelector("#collapsedPlotButton");
+const progress_overlay = document.querySelector("#progressOverlay");
+const progress_fill = document.querySelector("#progressFill");
+const progress_label = document.querySelector("#progressLabel");
+const progress_percent = document.querySelector("#progressPercent");
+const progress_detail = document.querySelector("#progressDetail");
+const app_shell = document.querySelector(".app");
 const sidebar = document.querySelector("#sidebar");
-const sidebarContent = document.querySelector("#sidebarContent");
-const sidebarToggle = document.querySelector("#sidebarToggle");
-const sidebarToggleIcon = document.querySelector("#sidebarToggleIcon");
+const sidebar_content = document.querySelector("#sidebarContent");
+const sidebar_toggle = document.querySelector("#sidebarToggle");
+const sidebar_toggle_icon = document.querySelector("#sidebarToggleIcon");
 
 const SIDEBAR_CLOSE_ICON = "./assets/img/sidepanel_close.svg";
 const SIDEBAR_OPEN_ICON = "./assets/img/sidepanel_open.svg";
 const SIDEBAR_TRANSITION_MS = 220;
 
-let parsedFiles = [];
+// Non-tabular per-file data (File object, FCS header, cached event arrays).
+// Analysis code holds references to these entries and mutates them (e.g. row.data).
+let file_map = new Map();
+
+// Tabular view of loaded files. Columns: id, name, strain, replicate,
+// nocodazoleArrest, timepoint, plus stats columns added by summary_stats.js
+// in the form "CHANNEL:metric" (e.g. "DAPI-A:mean"). Single source of truth
+// for annotation edits and all stats.
+let file_table_frame = null;
 
 /*
 
@@ -42,23 +50,22 @@ Output:
 	entry [Promise<Object>]: resolves to a loaded-file entry
 
 */
-async function readFcsHeader(file) {
-  const headerBuffer = await file.slice(0, 58).arrayBuffer();
-  const header = window.FCSParser.parseHeader(headerBuffer);
+async function read_fcs_header(file) {
+  const header_buffer = await file.slice(0, 58).arrayBuffer();
+  const header = window.FCSParser.parse_header(header_buffer);
 
-  if (header.textEnd < header.textBegin) {
+  if (header.text_end < header.text_begin) {
     throw new Error("FCS header has an invalid TEXT segment range.");
   }
 
-  const textBuffer = await file.slice(header.textBegin, header.textEnd + 1).arrayBuffer();
-  const summary = window.FCSParser.parseFCSHeaderFromSegments(headerBuffer, textBuffer);
+  const text_buffer = await file.slice(header.text_begin, header.text_end + 1).arrayBuffer();
+  const summary = window.FCSParser.parse_fcs_header_from_segments(header_buffer, text_buffer);
 
   return {
-    id: createId(),
+    id: create_id(),
     name: file.name,
     file,
     summary,
-    annotations: guessAnnotationsFromFilename(file.name),
   };
 }
 
@@ -77,118 +84,138 @@ Output:
 	(none) [Promise<void>]: loads metadata and updates the UI
 
 */
-function hasInitializedPlot() {
-  return typeof plotChannels !== "undefined" && Boolean(plotChannels);
+function has_initialized_plot() {
+  return typeof plot_channels !== "undefined" && Boolean(plot_channels);
 }
 
-async function refreshDownstreamAfterFileLoad() {
-  if (typeof refreshAnalysisAfterMetadataChange !== "function") {
-    return { refreshed: false, loadedRows: 0 };
+async function refresh_downstream_after_file_load() {
+  if (typeof refresh_analysis_after_metadata_change !== "function") {
+    return { refreshed: false, loaded_rows: 0 };
   }
-  return refreshAnalysisAfterMetadataChange();
+  return refresh_analysis_after_metadata_change();
 }
 
-async function loadFiles(files) {
-  const selectedFiles = Array.from(files || []);
-  if (!selectedFiles.length) {
+async function load_files(files) {
+  const selected_files = Array.from(files || []);
+  if (!selected_files.length) {
     return;
   }
 
   let loaded = 0;
-  const loadedEntries = [];
+  const loaded_entries = [];
+  const new_tabular_rows = [];
   const failures = [];
   const duplicates = [];
-  const existingNames = new Set(parsedFiles.map((entry) => entry.name));
-  const queuedNames = new Set();
-  showProgress("Loading FCS Metadata");
-  updateProgress(0, "Loading FCS Metadata", `Preparing ${selectedFiles.length} file(s)...`);
-  await nextFrame();
+  const existing_names = new Set([...file_map.values()].map((e) => e.name));
+  const queued_names = new Set();
+  show_progress("Loading FCS Metadata");
+  update_progress(0, "Loading FCS Metadata", `Preparing ${selected_files.length} file(s)...`);
+  await next_frame();
 
-  for (const [index, file] of selectedFiles.entries()) {
+  for (const [index, file] of selected_files.entries()) {
     const current = index + 1;
-    const startPercent = (index / selectedFiles.length) * 100;
-    setStatusBar("Working: Loading FCS Metadata");
-    updateProgress(startPercent, "Loading FCS Metadata", `Reading metadata for file ${current} of ${selectedFiles.length}`, file.name);
-    await nextFrame();
+    const start_percent = (index / selected_files.length) * 100;
+    set_status_bar("Working: Loading FCS Metadata");
+    update_progress(start_percent, "Loading FCS Metadata", `Reading metadata for file ${current} of ${selected_files.length}`, file.name);
+    await next_frame();
 
-    if (existingNames.has(file.name) || queuedNames.has(file.name)) {
+    if (existing_names.has(file.name) || queued_names.has(file.name)) {
       duplicates.push(file.name);
-      updateProgress((current / selectedFiles.length) * 100, "Loading FCS Metadata", `Skipped duplicate file ${current} of ${selectedFiles.length}`, file.name);
-      await nextFrame();
+      update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Skipped duplicate file ${current} of ${selected_files.length}`, file.name);
+      await next_frame();
       continue;
     }
 
     try {
-      const entry = await readFcsHeader(file);
-      parsedFiles.push(entry);
-      if (!hasInitializedPlot()) {
-        selectedFileIds.add(entry.id);
+      const entry = await read_fcs_header(file);
+      file_map.set(entry.id, entry);
+      if (!has_initialized_plot()) {
+        selected_file_ids.add(entry.id);
       }
-      queuedNames.add(file.name);
-      loadedEntries.push(entry);
+      const anns = guess_annotations_from_filename(file.name);
+      new_tabular_rows.push({
+        id: entry.id,
+        name: entry.name,
+        strain: anns.strain,
+        replicate: anns.replicate,
+        nocodazoleArrest: anns.nocodazoleArrest,
+        timepoint: anns.timepoint,
+      });
+      queued_names.add(file.name);
+      loaded_entries.push(entry);
       loaded += 1;
     } catch (error) {
       failures.push(`${file.name}: ${error.message}`);
     }
 
-    updateProgress((current / selectedFiles.length) * 100, "Loading FCS Metadata", `Finished file ${current} of ${selectedFiles.length}`, file.name);
-    await nextFrame();
+    update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Finished file ${current} of ${selected_files.length}`, file.name);
+    await next_frame();
   }
 
-  sortParsedFiles();
-  updateViews();
-  updateDropZoneText();
+  if (new_tabular_rows.length) {
+    const new_frame = make_frame(new_tabular_rows);
+    // concat_frames fills missing columns (e.g. existing stats cols) with null
+    // for new rows, which is the correct default until stats are calculated.
+    file_table_frame = file_table_frame ? concat_frames(file_table_frame, new_frame) : new_frame;
+  }
+  if (loaded_entries.length) {
+    window.PhaseFinderDebug?.saveFilesToCache(loaded_entries.map((e) => e.file));
+  }
+  sort_file_table();
+  update_views();
+  update_drop_zone_text();
 
-  let downstreamRefresh = { refreshed: false, loadedRows: 0 };
+  let downstream_refresh = { refreshed: false, loaded_rows: 0 };
   if (loaded) {
     try {
-      downstreamRefresh = await refreshDownstreamAfterFileLoad();
+      downstream_refresh = await refresh_downstream_after_file_load();
     } catch (error) {
-      setStatus(`Read metadata from ${loaded} file(s), but the existing plot could not be updated: ${error.message}`, true);
-      setStatusBar("Existing plot refresh failed.", true);
-      updateProgress(100, "Loading Added FCS Data", error.message);
-      hideProgress(1400);
+      set_status(`Read metadata from ${loaded} file(s), but the existing plot could not be updated: ${error.message}`, true);
+      set_status_bar("Existing plot refresh failed.", true);
+      update_progress(100, "Loading Added FCS Data", error.message);
+      hide_progress(1400);
       return;
     }
   }
 
-  const finalProgressLabel = downstreamRefresh.refreshed ? "Loading Added FCS Data" : "Loading FCS Metadata";
-  const downstreamMessage = downstreamRefresh.refreshed
-    ? ` Existing plot updated${downstreamRefresh.loadedRows ? ` with ${downstreamRefresh.loadedRows} added file(s)` : ""}.`
+  const final_progress_label = downstream_refresh.refreshed ? "Loading Added FCS Data" : "Loading FCS Metadata";
+  const downstream_message = downstream_refresh.refreshed
+    ? ` Existing plot updated${downstream_refresh.loaded_rows ? ` with ${downstream_refresh.loaded_rows} added file(s)` : ""}.`
     : "";
 
-  const duplicateMessage = duplicates.length
+  const duplicate_message = duplicates.length
     ? ` Rejected duplicate file${duplicates.length === 1 ? "" : "s"}: ${duplicates.join(", ")}.`
     : "";
 
   if (loaded && (failures.length || duplicates.length)) {
-    const failureMessage = failures.length ? ` ${failures.join(" ")}` : "";
-    setStatus(`Read metadata from ${loaded} file(s).${downstreamMessage}${duplicateMessage}${failureMessage}`, true);
-    setStatusBar(`Finished with ${failures.length + duplicates.length} issue(s).`, true);
-    updateProgress(100, finalProgressLabel, downstreamRefresh.refreshed ? "Existing plot updated, with file-load issue(s)." : `Finished with ${failures.length + duplicates.length} issue(s).`);
-    hideProgress(900);
+    const failure_message = failures.length ? ` ${failures.join(" ")}` : "";
+    set_status(`Read metadata from ${loaded} file(s).${downstream_message}${duplicate_message}${failure_message}`, true);
+    set_status_bar(`Finished with ${failures.length + duplicates.length} issue(s).`, true);
+    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated, with file-load issue(s)." : `Finished with ${failures.length + duplicates.length} issue(s).`);
+    hide_progress(900);
   } else if (loaded) {
-    setStatus(`Read metadata from ${loaded} file(s).${downstreamMessage} Verify extracted strain, timepoint, and replicate data before plotting.`);
-    setStatusBar(downstreamRefresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
-    updateProgress(100, finalProgressLabel, downstreamRefresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
-    hideProgress(600);
+    set_status(`Read metadata from ${loaded} file(s).${downstream_message} Verify extracted strain, timepoint, and replicate data before plotting.`);
+    set_status_bar(downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
+    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
+    hide_progress(600);
   } else if (duplicates.length) {
-    setStatus(`No new files loaded.${duplicateMessage}`, true);
-    setStatusBar("Duplicate FCS file rejected.", true);
-    updateProgress(100, "Loading FCS Metadata", "Duplicate FCS file rejected.");
-    hideProgress(1200);
+    set_status(`No new files loaded.${duplicate_message}`, true);
+    set_status_bar("Duplicate FCS file rejected.", true);
+    update_progress(100, "Loading FCS Metadata", "Duplicate FCS file rejected.");
+    hide_progress(1200);
   } else {
-    setStatus(failures.join(" "), true);
-    setStatusBar("No metadata could be read.", true);
-    updateProgress(100, "Loading FCS Metadata", "No metadata could be read.");
-    hideProgress(1200);
+    set_status(failures.join(" "), true);
+    set_status_bar("No metadata could be read.", true);
+    update_progress(100, "Loading FCS Metadata", "No metadata could be read.");
+    hide_progress(1200);
   }
 
-  if (loadedEntries.length && hasInitializedPlot() && typeof preloadAnalysisRowsInBackground === "function") {
-    preloadAnalysisRowsInBackground(loadedEntries).catch((error) => {
-      setStatusBar(`Background FCS data load failed: ${error.message}`, true);
+  if (loaded_entries.length && has_initialized_plot() && typeof preload_analysis_rows_in_background === "function") {
+    preload_analysis_rows_in_background(loaded_entries).catch((error) => {
+      set_status_bar(`Background FCS data load failed: ${error.message}`, true);
     });
   }
+
 }
 
 /*
@@ -204,19 +231,25 @@ Output:
 	(none) [void]: updates the file's annotation in place
 
 */
-function updateAnnotation(event) {
+function update_annotation(event) {
   const input = event.target.closest("input[data-file-id][data-field]");
-  if (!input) {
+  if (!input || !file_table_frame) {
     return;
   }
 
-  const entry = parsedFiles.find((file) => file.id === input.dataset.fileId);
-  if (!entry) {
-    return;
+  const id = input.dataset.fileId;
+  const field = input.dataset.field;
+  const ids = file_table_frame.col("id");
+  let idx = -1;
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i] === id) { idx = i; break; }
   }
+  if (idx < 0) return;
 
-  entry.annotations[input.dataset.field] = input.value;
-  input.size = annotationInputSize(input.value);
+  const new_values = [...file_table_frame.col(field)];
+  new_values[idx] = input.value;
+  file_table_frame.setCol(field, new_values);
+  input.size = annotation_input_size(input.value);
 }
 
 /*
@@ -232,7 +265,7 @@ Output:
 	escaped [string]: the HTML-escaped string
 
 */
-function escapeHtml(value) {
+function escape_html(value) {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -241,65 +274,70 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-window.PhaseFinderTooltips.applyStatic();
+window.PhaseFinderTooltips.apply_static();
 
-function notifyChannelChanged() {
+function notify_channel_changed() {
   document.dispatchEvent(new CustomEvent("fcs-channel-change"));
 }
 
-fileInput.addEventListener("change", () => loadFiles(fileInput.files));
-sidebarToggle.addEventListener("click", toggleSidebar);
-dnaAreaSelect.addEventListener("change", () => {
-  collapsedDnaAreaSelect.value = dnaAreaSelect.value;
-  updateStartButtonState();
-  notifyChannelChanged();
+file_input.addEventListener("change", () => load_files(file_input.files));
+sidebar_toggle.addEventListener("click", toggle_sidebar);
+dna_area_select.addEventListener("change", () => {
+  collapsed_dna_area_select.value = dna_area_select.value;
+  update_start_button_state();
+  notify_channel_changed();
 });
 
-collapsedDnaAreaSelect.addEventListener("change", () => {
-  dnaAreaSelect.value = collapsedDnaAreaSelect.value;
-  updateStartButtonState();
-  notifyChannelChanged();
+collapsed_dna_area_select.addEventListener("change", () => {
+  dna_area_select.value = collapsed_dna_area_select.value;
+  update_start_button_state();
+  notify_channel_changed();
 });
-const uploadTargets = [dropZone, collapsedUploadTarget].filter(Boolean);
+const uploadTargets = [drop_zone, collapsed_upload_target].filter(Boolean);
 
-function openFileBrowser() {
-  fileInput.click();
+function open_file_browser() {
+  file_input.click();
 }
 
-function setUploadTargetDragging(target, isDragging) {
-  target.classList.toggle("dragging", isDragging);
+function set_upload_target_dragging(target, is_dragging) {
+  target.classList.toggle("dragging", is_dragging);
 }
 
 uploadTargets.forEach((target) => {
-  target.addEventListener("click", openFileBrowser);
+  target.addEventListener("click", open_file_browser);
 
-  ["dragenter", "dragover"].forEach((eventName) => {
-    target.addEventListener(eventName, (event) => {
+  ["dragenter", "dragover"].forEach((event_name) => {
+    target.addEventListener(event_name, (event) => {
       event.preventDefault();
-      setUploadTargetDragging(target, true);
+      set_upload_target_dragging(target, true);
     });
   });
 
-  ["dragleave", "drop"].forEach((eventName) => {
-    target.addEventListener(eventName, (event) => {
+  ["dragleave", "drop"].forEach((event_name) => {
+    target.addEventListener(event_name, (event) => {
       event.preventDefault();
-      setUploadTargetDragging(target, false);
+      set_upload_target_dragging(target, false);
     });
   });
 
   target.addEventListener("drop", (event) => {
-    loadFiles(event.dataTransfer.files);
+    load_files(event.dataTransfer.files);
   });
 });
 
 // Restart button and the logo both reload the page, clearing all in-memory
 // state (loaded files, selections, plot, fits) for a clean start.
-document.querySelector("#restartButton").addEventListener("click", () => window.location.reload());
-document.querySelector("#siteLogo").addEventListener("click", () => window.location.reload());
-fileTable.addEventListener("input", updateAnnotation);
-fileTable.addEventListener("change", handleTableChange);
-fileTable.addEventListener("click", handleTableClick);
-document.addEventListener("click", handleDocumentClick);
+// In debug mode the cache is also cleared so files don't auto-restore.
+async function hard_restart() {
+  await window.PhaseFinderDebug?.clearDebugCache();
+  window.location.reload();
+}
+document.querySelector("#restartButton").addEventListener("click", hard_restart);
+document.querySelector("#siteLogo").addEventListener("click", hard_restart);
+file_table.addEventListener("input", update_annotation);
+file_table.addEventListener("change", handle_table_change);
+file_table.addEventListener("click", handle_table_click);
+document.addEventListener("click", handle_document_click);
 
 /*
 
@@ -311,30 +349,50 @@ Input:
 	(none)
 
 Output:
-	channels [Object]: { dnaArea }
+	channels [Object]: { dna_area }
 
 */
-function getSelectedChannels() {
+function get_selected_channels() {
   return {
-    dnaArea: dnaAreaSelect.value,
+    dna_area: dna_area_select.value,
   };
 }
 
 window.PhaseFinderApp = {
-  getParsedFiles: () => parsedFiles,
-  getSelectedFiles: () => parsedFiles.filter((entry) => selectedFileIds.has(entry.id)),
-  getSelectedChannels,
-  setStatus,
-  setStatusBar,
-  showProgress,
-  updateProgress,
-  hideProgress,
-  nextFrame,
+  // Non-tabular entry objects (file, summary, event cache) keyed by id.
+  get_file_by_id: (id) => file_map.get(id),
+  // All entries — used by analysis.js for background preload progress tracking.
+  get_parsed_files: () => [...file_map.values()],
+  // Selected entries returned as full file_map objects so analysis.js can read
+  // and mutate file/summary/event-cache fields directly.
+  get_selected_files: () => {
+    if (!file_table_frame) return [];
+    return [...file_table_frame.col("id")]
+      .filter((id) => selected_file_ids.has(id))
+      .map((id) => file_map.get(id))
+      .filter(Boolean);
+  },
+  // Tabular source of truth for annotations and stats.
+  get_file_table: () => file_table_frame,
+  set_file_table: (frame) => { file_table_frame = frame; },
+  get_selected_channels,
+  set_status,
+  set_status_bar,
+  show_progress,
+  update_progress,
+  hide_progress,
+  next_frame,
 };
 
-clearChannelControls();
-renderFileTable();
-updateDropZoneText();
-setStatus("No files loaded.");
-setStatusBar("Ready: Load FCS files by dragging them to the drop zone or using the file selector above.");
- 
+clear_channel_controls();
+render_file_table();
+update_drop_zone_text();
+set_status("No files loaded.");
+set_status_bar("Ready: Load FCS files by dragging them to the drop zone or using the file selector above.");
+
+if (window.PhaseFinderDebug?.isDebugMode()) {
+  document.title = "[debug] " + document.title;
+  window.PhaseFinderDebug.loadFilesFromCache().then((files) => {
+    if (files.length) load_files(files);
+  });
+}

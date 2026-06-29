@@ -8,6 +8,9 @@ window.PhaseFinderHoverText = Object.freeze({
   plotChannelEventsRequirements: "Load FCS files, select a channel, and check at least one file row first.",
   plotChannelEvents: "Plot channel events",
   modeling: "Start Modeling (DJF)",
+  cellCycleModeling: "Run Dean-Jett-Fox cell cycle modeling on the plotted channel",
+  cellCycleModelingDisabled: "Plot a channel first to enable cell cycle modeling",
+  calculateStats: "Calculate statistics for any channel across all loaded files",
   tableCollapse: "Collapse table",
   tableExpand: "Expand table",
   sortAscending: "Sort ascending",
@@ -35,22 +38,22 @@ window.PhaseFinderTooltips = {
     }
     return value || "";
   },
-  setQuickTooltip(element, key, ...args) {
+  set_quick_tooltip(element, key, ...args) {
     if (element) {
       element.dataset.tooltip = this.text(key, ...args);
     }
   },
-  setNativeTitle(element, key, ...args) {
+  set_native_title(element, key, ...args) {
     if (element) {
       element.title = this.text(key, ...args);
     }
   },
-  applyStatic(root = document) {
+  apply_static(root = document) {
     root.querySelectorAll("[data-tooltip-key]").forEach((element) => {
-      this.setQuickTooltip(element, element.dataset.tooltipKey);
+      this.set_quick_tooltip(element, element.dataset.tooltipKey);
     });
     root.querySelectorAll("[data-title-key]").forEach((element) => {
-      this.setNativeTitle(element, element.dataset.titleKey);
+      this.set_native_title(element, element.dataset.titleKey);
     });
   },
 };

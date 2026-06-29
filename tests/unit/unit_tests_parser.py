@@ -27,63 +27,63 @@ def run_parser_tests(ctx: TestContext):
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(100);
       try {
-        const s = window.FCSParser.parseFCSHeader(buf);
+        const s = window.FCSParser.parse_fcs_header(buf);
         return { pass: s.header.version === 'FCS3.1', detail: 'version=' + s.header.version };
       } catch(e) { return { pass: false, detail: String(e) }; }
     }""")
     ctx.check(GROUP, "parseFCSHeader: version string is FCS3.1", result["pass"], result["detail"],
               screenshot=False)
 
-    # --- 2. textBegin is 58 ---
+    # --- 2. text_begin is 58 ---
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(100);
       try {
-        const s = window.FCSParser.parseFCSHeader(buf);
-        return { pass: s.header.textBegin === 58, detail: 'textBegin=' + s.header.textBegin };
+        const s = window.FCSParser.parse_fcs_header(buf);
+        return { pass: s.header.text_begin === 58, detail: 'text_begin=' + s.header.text_begin };
       } catch(e) { return { pass: false, detail: String(e) }; }
     }""")
-    ctx.check(GROUP, "parseFCSHeader: textBegin equals 58", result["pass"], result["detail"],
+    ctx.check(GROUP, "parseFCSHeader: text_begin equals 58", result["pass"], result["detail"],
               screenshot=False)
 
-    # --- 3. dataBegin > textEnd ---
+    # --- 3. data_begin > text_end ---
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(100);
       try {
-        const s = window.FCSParser.parseFCSHeader(buf);
-        const ok = s.header.dataBegin > s.header.textEnd;
-        return { pass: ok, detail: 'dataBegin=' + s.header.dataBegin + ' textEnd=' + s.header.textEnd };
+        const s = window.FCSParser.parse_fcs_header(buf);
+        const ok = s.header.data_begin > s.header.text_end;
+        return { pass: ok, detail: 'data_begin=' + s.header.data_begin + ' text_end=' + s.header.text_end };
       } catch(e) { return { pass: false, detail: String(e) }; }
     }""")
-    ctx.check(GROUP, "parseFCSHeader: dataBegin > textEnd", result["pass"], result["detail"],
+    ctx.check(GROUP, "parseFCSHeader: data_begin > text_end", result["pass"], result["detail"],
               screenshot=False)
 
-    # --- 4. eventCount matches $TOT ---
+    # --- 4. event_count matches $TOT ---
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(6000);
       try {
-        const s = window.FCSParser.parseFCSHeader(buf);
-        return { pass: s.eventCount === 6000, detail: 'eventCount=' + s.eventCount };
+        const s = window.FCSParser.parse_fcs_header(buf);
+        return { pass: s.event_count === 6000, detail: 'event_count=' + s.event_count };
       } catch(e) { return { pass: false, detail: String(e) }; }
     }""")
-    ctx.check(GROUP, "parseFCSHeader: eventCount equals $TOT (6000)", result["pass"], result["detail"],
+    ctx.check(GROUP, "parseFCSHeader: event_count equals $TOT (6000)", result["pass"], result["detail"],
               screenshot=False)
 
-    # --- 5. parameterCount is 6 ---
+    # --- 5. parameter_count is 6 ---
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(100);
       try {
-        const s = window.FCSParser.parseFCSHeader(buf);
-        return { pass: s.parameterCount === 6, detail: 'parameterCount=' + s.parameterCount };
+        const s = window.FCSParser.parse_fcs_header(buf);
+        return { pass: s.parameter_count === 6, detail: 'parameter_count=' + s.parameter_count };
       } catch(e) { return { pass: false, detail: String(e) }; }
     }""")
-    ctx.check(GROUP, "parseFCSHeader: parameterCount equals 6", result["pass"], result["detail"],
+    ctx.check(GROUP, "parseFCSHeader: parameter_count equals 6", result["pass"], result["detail"],
               screenshot=False)
 
     # --- 6. GFP/FITC-A in columns ---
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(100);
       try {
-        const s = window.FCSParser.parseFCSHeader(buf);
+        const s = window.FCSParser.parse_fcs_header(buf);
         const ok = Array.isArray(s.columns) && s.columns.includes('GFP/FITC-A');
         return { pass: ok, detail: 'columns=' + JSON.stringify(s.columns) };
       } catch(e) { return { pass: false, detail: String(e) }; }
@@ -95,7 +95,7 @@ def run_parser_tests(ctx: TestContext):
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(100);
       try {
-        const s = window.FCSParser.parseFCSHeader(buf);
+        const s = window.FCSParser.parse_fcs_header(buf);
         const ok = Array.isArray(s.columns) && s.columns.includes('mCherry/PE-A');
         return { pass: ok, detail: 'columns=' + JSON.stringify(s.columns) };
       } catch(e) { return { pass: false, detail: String(e) }; }
@@ -107,7 +107,7 @@ def run_parser_tests(ctx: TestContext):
     result = page.evaluate("""() => {
       const tiny = new ArrayBuffer(10);
       try {
-        window.FCSParser.parseFCSHeader(tiny);
+        window.FCSParser.parse_fcs_header(tiny);
         return { pass: false, detail: 'no error thrown' };
       } catch(e) {
         return { pass: true, detail: String(e) };
@@ -122,7 +122,7 @@ def run_parser_tests(ctx: TestContext):
       const bytes = new Uint8Array(buf);
       bytes.set(new TextEncoder().encode('NOTFCS'));
       try {
-        window.FCSParser.parseFCSHeader(buf);
+        window.FCSParser.parse_fcs_header(buf);
         return { pass: false, detail: 'no error thrown' };
       } catch(e) {
         return { pass: /does not look like an FCS file/.test(String(e)), detail: String(e) };
@@ -135,7 +135,7 @@ def run_parser_tests(ctx: TestContext):
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(25);
       try {
-        const parsed = window.FCSParser.parseFCS(buf);
+        const parsed = window.FCSParser.parse_fcs(buf);
         const columnsOk = parsed.columns.length === 6 && parsed.columns[0] === 'GFP/FITC-A';
         const rowsOk = parsed.rows.length === 25;
         const valuesOk = parsed.rows.every(row =>
@@ -154,10 +154,10 @@ def run_parser_tests(ctx: TestContext):
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(32);
       try {
-        const summary = window.FCSParser.parseFCSHeader(buf);
-        const parsed = window.FCSParser.parseFCS(buf);
-        const data = buf.slice(summary.dataBegin, summary.dataEnd + 1);
-        const selected = window.FCSParser.parseSelectedColumns(data, summary.metadata, [1, 4]);
+        const summary = window.FCSParser.parse_fcs_header(buf);
+        const parsed = window.FCSParser.parse_fcs(buf);
+        const data = buf.slice(summary.data_begin, summary.data_end + 1);
+        const selected = window.FCSParser.parse_selected_columns(data, summary.metadata, [1, 4]);
         const firstOk = selected[1][0] === parsed.rows[0]['GFP/FITC-A'];
         const lastOk = selected[4][31] === parsed.rows[31]['mCherry/PE-A'];
         const keysOk = Object.keys(selected).sort().join(',') === '1,4';
@@ -174,9 +174,9 @@ def run_parser_tests(ctx: TestContext):
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(5);
       try {
-        const summary = window.FCSParser.parseFCSHeader(buf);
-        const data = buf.slice(summary.dataBegin, summary.dataEnd + 1);
-        window.FCSParser.parseSelectedColumns(data, summary.metadata, [7]);
+        const summary = window.FCSParser.parse_fcs_header(buf);
+        const data = buf.slice(summary.data_begin, summary.data_end + 1);
+        window.FCSParser.parse_selected_columns(data, summary.metadata, [7]);
         return { pass: false, detail: 'no error thrown' };
       } catch(e) {
         return { pass: /out of range/.test(String(e)), detail: String(e) };
@@ -189,16 +189,16 @@ def run_parser_tests(ctx: TestContext):
     result = page.evaluate("""() => {
       const buf = window.TestUtils.buildSyntheticFCS(17);
       try {
-        const full = window.FCSParser.parseFCSHeader(buf);
-        const headerBuffer = buf.slice(0, 58);
-        const textBuffer = buf.slice(full.header.textBegin, full.header.textEnd + 1);
-        const segmented = window.FCSParser.parseFCSHeaderFromSegments(headerBuffer, textBuffer);
-        const ok = segmented.eventCount === full.eventCount
-          && segmented.parameterCount === full.parameterCount
+        const full = window.FCSParser.parse_fcs_header(buf);
+        const header_buffer = buf.slice(0, 58);
+        const text_buffer = buf.slice(full.header.text_begin, full.header.text_end + 1);
+        const segmented = window.FCSParser.parse_fcs_header_from_segments(header_buffer, text_buffer);
+        const ok = segmented.event_count === full.event_count
+          && segmented.parameter_count === full.parameter_count
           && JSON.stringify(segmented.columns) === JSON.stringify(full.columns)
-          && segmented.dataBegin === full.dataBegin
-          && segmented.dataEnd === full.dataEnd;
-        return { pass: ok, detail: `events=${segmented.eventCount} data=${segmented.dataBegin}-${segmented.dataEnd}` };
+          && segmented.data_begin === full.data_begin
+          && segmented.data_end === full.data_end;
+        return { pass: ok, detail: `events=${segmented.event_count} data=${segmented.data_begin}-${segmented.data_end}` };
       } catch(e) { return { pass: false, detail: String(e) }; }
     }""")
     ctx.check(GROUP, "parseFCSHeaderFromSegments: matches full header summary", result["pass"], result["detail"],

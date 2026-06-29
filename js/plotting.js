@@ -3,30 +3,30 @@
 // plot stays in sync with the table's checkbox selection — unchecking a row
 // removes its curve without discarding the already-loaded event data.
 
-const plotArea = document.querySelector("#plotArea");
-const plotTitle = document.querySelector("#plotTitle");
-const plotColorBySelect = document.querySelector("#plotColorBy");
-const plotXScaleSelect = document.querySelector("#plotXScale");
-const plotBinsInput = document.querySelector("#plotBins");
-let djfFitTable = null;
-const plotDebrisCorrectionToggle = document.querySelector("#plotDebrisCorrection");
-const plotDoubletCorrectionToggle = document.querySelector("#plotDoubletCorrection");
-const plotThresholdToggle = document.querySelector("#plotThresholdToggle");
-const djfReadout = document.querySelector("#djfReadout");
+const plot_area = document.querySelector("#plotArea");
+const plot_title = document.querySelector("#plotTitle");
+const plot_color_by_select = document.querySelector("#plotColorBy");
+const plot_x_scale_select = document.querySelector("#plotXScale");
+const plot_bins_input = document.querySelector("#plotBins");
+let djf_fit_table = null;
+const plot_debris_correction_toggle = document.querySelector("#plotDebrisCorrection");
+const plot_doublet_correction_toggle = document.querySelector("#plotDoubletCorrection");
+const plot_threshold_toggle = document.querySelector("#plotThresholdToggle");
+const djf_readout = document.querySelector("#djfReadout");
 
 const DEFAULT_BINS = 512;
 
 // Colors come from the CSS custom properties in base.css so there is a single
 // source of truth for the whole app; the fallback is used only if a token is
 // missing. (Numeric sizes/widths below stay here as plain JS.)
-const cssColor = (name, fallback) =>
+const css_color = (name, fallback) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
 // Dean–Jett–Fox cell-cycle component colors.
-const DJF_G1_COLOR = cssColor("--djf-g1", "#95c1dc");
-const DJF_S_COLOR = cssColor("--djf-s", "#d5eec8");
-const DJF_G2_COLOR = cssColor("--djf-g2", "#ef8b8d");
-const DJF_TOTAL_COLOR = cssColor("--djf-total", "#111827");
+const DJF_G1_COLOR = css_color("--djf-g1", "#95c1dc");
+const DJF_S_COLOR = css_color("--djf-s", "#d5eec8");
+const DJF_G2_COLOR = css_color("--djf-g2", "#ef8b8d");
+const DJF_TOTAL_COLOR = css_color("--djf-total", "#111827");
 // Fill opacity for the DJF component areas (0 = transparent, 1 = solid).
 const DJF_FILL_OPACITY = 0.8;
 const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
@@ -40,7 +40,7 @@ const PLOT_FALLBACK_HEIGHT = 420;
 const AXIS_LINE_WIDTH = 1;
 const AXIS_TICK_FONT_SIZE = 11;
 const AXIS_TITLE_FONT_SIZE = 12;
-const AXIS_LABEL_COLOR = cssColor("--text", "#172033");
+const AXIS_LABEL_COLOR = css_color("--text", "#172033");
 const X_AXIS_TICKS = 6;
 const Y_AXIS_TICKS = 5;
 const X_TITLE_OFFSET = 10; // px above the bottom edge
@@ -58,29 +58,29 @@ const LEGEND_SWATCH_Y = 6; // swatch line vertical position within a row
 const LEGEND_TEXT_Y = 9; // label baseline within a row
 const LEGEND_CHECKBOX_SIZE = 11; // fit-toggle checkbox on sample legend rows
 
-const THRESHOLD_COLOR = cssColor("--threshold", "#9ca3af");
+const THRESHOLD_COLOR = css_color("--threshold", "#9ca3af");
 const THRESHOLD_LINE_WIDTH = 1.5;
 const THRESHOLD_FILL_OPACITY = 0.12;
 const THRESHOLD_HANDLE_WIDTH = 14; // invisible drag target thickness
 const THRESHOLD_LABEL_FONT_SIZE = 10;
-const THRESHOLD_LABEL_COLOR = cssColor("--threshold-label", "#6b7280");
+const THRESHOLD_LABEL_COLOR = css_color("--threshold-label", "#6b7280");
 const THRESHOLD_LABEL_X_OFFSET = 6; // label inset from the left edge
 const THRESHOLD_LABEL_Y_OFFSET = 5; // label sits this far above the line
 const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot top
 
 // DNA-content channel(s) of the most recent analysis; null until analysis runs.
-let plotChannels = null;
+let plot_channels = null;
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected.
-let lastRange = null;
-let lastYMax = null;
+let last_range = null;
+let last_y_max = null;
 // Global event-count cutoff for peak detection, set by dragging the threshold
 // line on the plot; applies to every sample's fit.
-let peakThreshold = null;
+let peak_threshold = null;
 // DJF modeling state: whether the user has started modeling, and the set of
 // sample names whose fit is shown (toggled via the legend checkboxes).
-let modelingStarted = false;
-const shownFits = new Set();
+let modeling_started = false;
+const shown_fits = new Set();
 
 /*
 
@@ -96,7 +96,7 @@ Output:
 	label [string]: the filename with any trailing ".fcs" (case-insensitive) removed
 
 */
-function stripFcs(name) {
+function strip_fcs(name) {
   return name.replace(/\.fcs$/i, "");
 }
 
@@ -112,7 +112,7 @@ Output:
 	text [string]: HTML-safe text
 
 */
-function plotEscapeHtml(value) {
+function plot_escape_html(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -135,7 +135,7 @@ Output:
 	text [string]: formatted number, or blank for non-finite values
 
 */
-function formatFitNumber(value, digits = 2) {
+function format_fit_number(value, digits = 2) {
   if (!Number.isFinite(value)) return "";
   return value.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
@@ -153,8 +153,8 @@ Output:
 	bins [number]: the bin count, clamped to [16, 1024] (default 256)
 
 */
-function plotBinCount() {
-  const raw = Number.parseInt(plotBinsInput && plotBinsInput.value, 10);
+function plot_bin_count() {
+  const raw = Number.parseInt(plot_bins_input && plot_bins_input.value, 10);
   if (!Number.isFinite(raw)) return DEFAULT_BINS;
   return Math.max(16, Math.min(1024, raw));
 }
@@ -169,13 +169,13 @@ Input:
 	(none)
 
 Output:
-	state [Object]: { removeDebris, removeDoublets }
+	state [Object]: { remove_debris, remove_doublets }
 
 */
-function correctionState() {
+function correction_state() {
   return {
-    removeDebris: Boolean(plotDebrisCorrectionToggle && plotDebrisCorrectionToggle.checked),
-    removeDoublets: Boolean(plotDoubletCorrectionToggle && plotDoubletCorrectionToggle.checked),
+    remove_debris: Boolean(plot_debris_correction_toggle && plot_debris_correction_toggle.checked),
+    remove_doublets: Boolean(plot_doublet_correction_toggle && plot_doublet_correction_toggle.checked),
   };
 }
 
@@ -190,15 +190,15 @@ Input:
   (none)
 
 Output:
-  rows [Array<Object>]: checked sample objects whose row.data.dnaA is loaded
+  rows [Array<Object>]: checked sample objects whose row.data.dna_a is loaded
 
 */
-function plottableRows() {
+function plottable_rows() {
   const app = window.PhaseFinderApp;
   if (!app) return [];
-  const activeChannel = plotChannels && plotChannels.dnaArea;
-  return app.getSelectedFiles().filter((row) =>
-    row.data && row.data.dnaA && (!row.data.channelKey || row.data.channelKey === activeChannel)
+  const active_channel = plot_channels && plot_channels.dna_area;
+  return app.get_selected_files().filter((row) =>
+    row.data && row.data.dna_a && (!row.data.channel_key || row.data.channel_key === active_channel)
   );
 }
 
@@ -216,7 +216,7 @@ Output:
 	color [string]: an HSL color string
 
 */
-function sampleColor(index, total) {
+function sample_color(index, total) {
   const hue = total > 1 ? Math.round((index * 360) / total) % 360 : 210;
   return `hsl(${hue}, 70%, 45%)`;
 }
@@ -230,22 +230,22 @@ Purpose:
 
 Input:
 	rows [Array<Object>]: the samples to be plotted
-	colorBy [string]:     "file" or "strain"
+	color_by [string]:    "file" or "strain"
 
 Output:
 	assign [Function]: (row, index) => { color [string], group [string] }
 
 */
-function buildColorAssigner(rows, colorBy) {
-  if (colorBy === "strain") {
-    const strainOf = (row) => (row.annotations.strain || "").trim() || "(none)";
-    const strains = [...new Set(rows.map(strainOf))].sort((a, b) =>
+function build_color_assigner(rows, color_by) {
+  if (color_by === "strain") {
+    const strain_of = (row) => (row.annotations.strain || "").trim() || "(none)";
+    const strains = [...new Set(rows.map(strain_of))].sort((a, b) =>
       a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
     );
-    const colors = new Map(strains.map((s, i) => [s, sampleColor(i, strains.length)]));
-    return (row) => ({ color: colors.get(strainOf(row)), group: strainOf(row) });
+    const colors = new Map(strains.map((s, i) => [s, sample_color(i, strains.length)]));
+    return (row) => ({ color: colors.get(strain_of(row)), group: strain_of(row) });
   }
-  return (row, index) => ({ color: sampleColor(index, rows.length), group: row.name });
+  return (row, index) => ({ color: sample_color(index, rows.length), group: row.name });
 }
 
 /*
@@ -256,15 +256,15 @@ Purpose:
 	don't squash the curves.
 
 Input:
-	rows [Array<Object>]:   the plotted samples (uses row.data.dnaA)
-	positiveOnly [boolean]: drop values <= 0 first (needed for a log axis)
+	rows [Array<Object>]:   the plotted samples (uses row.data.dna_a)
+	positive_only [boolean]: drop values <= 0 first (needed for a log axis)
 
 Output:
 	range [Array<number>]: the [lo, hi] x-range
 
 */
-function sharedRange(rows, positiveOnly) {
-  return sharedRangeForValues(rows.map((row) => row.data.dnaA), positiveOnly);
+function shared_range(rows, positive_only) {
+  return shared_range_for_values(rows.map((row) => row.data.dna_a), positive_only);
 }
 
 /*
@@ -274,31 +274,31 @@ Purpose:
 	plot range follow the correction checkboxes instead of always using raw events.
 
 Input:
-	valueSets [Array<Array<number>>]: per-sample event arrays
-	positiveOnly [boolean]:          drop values <= 0 first (needed for a log axis)
+	value_sets [Array<Array<number>>]: per-sample event arrays
+	positive_only [boolean]:          drop values <= 0 first (needed for a log axis)
 
 Output:
 	range [Array<number>]: the [lo, hi] x-range
 
 */
-function sharedRangeForValues(valueSets, positiveOnly) {
-  const total = valueSets.reduce((sum, values) => sum + values.length, 0);
+function shared_range_for_values(value_sets, positive_only) {
+  const total = value_sets.reduce((sum, values) => sum + values.length, 0);
   const stride = Math.max(1, Math.floor(total / 50000));
   const sample = [];
-  for (const values of valueSets) {
+  for (const values of value_sets) {
     for (let i = 0; i < values.length; i += stride) {
       const v = values[i];
-      if (Number.isFinite(v) && (!positiveOnly || v > 0)) sample.push(v);
+      if (Number.isFinite(v) && (!positive_only || v > 0)) sample.push(v);
     }
   }
-  if (!sample.length) return positiveOnly ? [1, 10] : [0, 1];
+  if (!sample.length) return positive_only ? [1, 10] : [0, 1];
   sample.sort((a, b) => a - b);
   const at = (p) => sample[Math.min(sample.length - 1, Math.max(0, Math.round(p * (sample.length - 1))))];
   let lo = at(0.005);
   let hi = at(0.995);
   if (!(hi > lo)) { lo = sample[0]; hi = sample[sample.length - 1]; }
   if (!(hi > lo)) { hi = lo + 1; }
-  if (!positiveOnly) {
+  if (!positive_only) {
     lo = 0;
     if (!(hi > lo)) hi = 1;
   }
@@ -313,19 +313,19 @@ Purpose:
 
 Input:
 	range [Array<number>]: the [lo, hi] data range
-	isLog [boolean]:       true for a log x-axis
+	is_log [boolean]:      true for a log x-axis
 	bins [number]:         number of histogram bins
 
 Output:
-	opts [Object]: { tLo, tHi, bins, toData, toT } used by histogramCurve
+	opts [Object]: { t_lo, t_hi, bins, to_data, to_t } used by histogram_curve
 
 */
-function axisOpts(range, isLog, bins) {
+function axis_opts(range, is_log, bins) {
   const [lo, hi] = range;
-  if (isLog) {
-    return { tLo: Math.log10(lo), tHi: Math.log10(hi), bins, toData: (t) => 10 ** t, toT: (v) => (v > 0 ? Math.log10(v) : NaN) };
+  if (is_log) {
+    return { t_lo: Math.log10(lo), t_hi: Math.log10(hi), bins, to_data: (t) => 10 ** t, to_t: (v) => (v > 0 ? Math.log10(v) : NaN) };
   }
-  return { tLo: lo, tHi: hi, bins, toData: (t) => t, toT: (v) => v };
+  return { t_lo: lo, t_hi: hi, bins, to_data: (t) => t, to_t: (v) => v };
 }
 
 /*
@@ -336,27 +336,27 @@ Purpose:
 
 Input:
 	values [Float64Array]: the channel's event values (one per event)
-	opts [Object]:         binning transform from axisOpts()
+	opts [Object]:         binning transform from axis_opts()
 
 Output:
 	points [Array<{x,y}>]: per-bin { x: bin center, y: event count } points
 
 */
-function histogramCurve(values, opts) {
-  const { tLo, tHi, bins, toData, toT } = opts;
-  const width = (tHi - tLo) / bins;
+function histogram_curve(values, opts) {
+  const { t_lo, t_hi, bins, to_data, to_t } = opts;
+  const width = (t_hi - t_lo) / bins;
   const counts = new Float64Array(bins);
   for (let i = 0; i < values.length; i++) {
-    const t = toT(values[i]);
-    if (Number.isNaN(t) || t < tLo || t > tHi) continue;
-    let bin = Math.floor((t - tLo) / width);
+    const t = to_t(values[i]);
+    if (Number.isNaN(t) || t < t_lo || t > t_hi) continue;
+    let bin = Math.floor((t - t_lo) / width);
     if (bin >= bins) bin = bins - 1;
     else if (bin < 0) bin = 0;
     counts[bin]++;
   }
   const points = new Array(bins);
   for (let i = 0; i < bins; i++) {
-    points[i] = { x: toData(tLo + (i + 0.5) * width), y: counts[i] };
+    points[i] = { x: to_data(t_lo + (i + 0.5) * width), y: counts[i] };
   }
   return points;
 }
@@ -371,17 +371,18 @@ Purpose:
 
 Input:
 	rows [Array<Object>]: the currently plotted samples
+	event_count [number]: optional pre-computed event count
 
 Output:
 	(none) [void]: sets the #plotTitle text
 
 */
-function updatePlotTitle(rows, eventCount = null) {
-  if (!plotTitle) return;
-  const events = eventCount == null
-    ? rows.reduce((sum, row) => sum + row.data.dnaA.length, 0)
-    : eventCount;
-  plotTitle.textContent = `Histogram of Events:  ${rows.length} Samples  |  ${events.toLocaleString()} Events`;
+function update_plot_title(rows, event_count = null) {
+  if (!plot_title) return;
+  const events = event_count == null
+    ? rows.reduce((sum, row) => sum + row.data.dna_a.length, 0)
+    : event_count;
+  plot_title.textContent = `Histogram of Events:  ${rows.length} Samples  |  ${events.toLocaleString()} Events`;
 }
 
 /*
@@ -392,28 +393,29 @@ Purpose:
 
 Input:
 	fits [Array<Object>]: visible DJF fit objects
+	placement [Object]:   positioning for the table overlay
 
 Output:
 	(none) [void]: updates #djfFitTable
 
 */
-function renderFitResultsTable(fits, placement = {}) {
-  if (!plotArea) return;
+function render_fit_results_table(fits, placement = {}) {
+  if (!plot_area) return;
   if (!fits.length) {
-    if (djfFitTable) {
-      djfFitTable.hidden = true;
-      djfFitTable.innerHTML = "";
+    if (djf_fit_table) {
+      djf_fit_table.hidden = true;
+      djf_fit_table.innerHTML = "";
     }
     return;
   }
-  djfFitTable = document.createElement("div");
-  djfFitTable.id = "djfFitTable";
-  djfFitTable.className = "djf-fit-table-wrap";
-  djfFitTable.style.top = `${Math.round(placement.top || 0)}px`;
-  djfFitTable.style.right = `${Math.round(placement.right || 8)}px`;
-  if (placement.maxWidth) djfFitTable.style.maxWidth = `${Math.round(placement.maxWidth)}px`;
+  djf_fit_table = document.createElement("div");
+  djf_fit_table.id = "djfFitTable";
+  djf_fit_table.className = "djf-fit-table-wrap";
+  djf_fit_table.style.top = `${Math.round(placement.top || 0)}px`;
+  djf_fit_table.style.right = `${Math.round(placement.right || 8)}px`;
+  if (placement.max_width) djf_fit_table.style.max_width = `${Math.round(placement.max_width)}px`;
 
-  const fitGroups = [];
+  const fit_groups = [];
   fits.forEach((fit) => {
     const annotations = fit.row && fit.row.annotations ? fit.row.annotations : {};
     const meta = [
@@ -422,22 +424,22 @@ function renderFitResultsTable(fits, placement = {}) {
       `Nocodazole Arrest: ${annotations.nocodazoleArrest || ""}`,
       `Timepoint: ${annotations.timepoint || ""}`,
     ];
-    const phaseRows = [fit.phaseStats.g1, fit.phaseStats.s, fit.phaseStats.g2]
+    const phase_rows = [fit.phase_stats.g1, fit.phase_stats.s, fit.phase_stats.g2]
       .map((phase) => `
         <tr class="djf-fit-phase-row">
-          <td>${plotEscapeHtml(phase.phase)}</td>
-          <td class="numeric-cell">${formatFitNumber(phase.percent, 1)}%</td>
-          <td class="numeric-cell">${formatFitNumber(phase.mean, 2)}</td>
-          <td class="numeric-cell">${formatFitNumber(phase.stdev, 2)}</td>
+          <td>${plot_escape_html(phase.phase)}</td>
+          <td class="numeric-cell">${format_fit_number(phase.percent, 1)}%</td>
+          <td class="numeric-cell">${format_fit_number(phase.mean, 2)}</td>
+          <td class="numeric-cell">${format_fit_number(phase.stdev, 2)}</td>
         </tr>`)
       .join("");
 
-    fitGroups.push(`
+    fit_groups.push(`
       <tbody class="djf-fit-group">
         <tr class="djf-fit-title-row">
           <th colspan="4">
-            <span class="djf-fit-sample" title="${plotEscapeHtml(fit.name)}">${plotEscapeHtml(stripFcs(fit.name))}</span>
-            <span class="djf-fit-meta">${plotEscapeHtml(meta.join("  |  "))}</span>
+            <span class="djf-fit-sample" title="${plot_escape_html(fit.name)}">${plot_escape_html(strip_fcs(fit.name))}</span>
+            <span class="djf-fit-meta">${plot_escape_html(meta.join("  |  "))}</span>
           </th>
         </tr>
         <tr class="djf-fit-column-row">
@@ -446,16 +448,16 @@ function renderFitResultsTable(fits, placement = {}) {
           <th class="numeric-cell">Mean</th>
           <th class="numeric-cell">Std Dev</th>
         </tr>
-        ${phaseRows}
+        ${phase_rows}
       </tbody>`);
   });
 
-  djfFitTable.innerHTML = `
+  djf_fit_table.innerHTML = `
     <table class="djf-fit-table">
-      ${fitGroups.join("")}
+      ${fit_groups.join("")}
     </table>`;
-  djfFitTable.hidden = false;
-  plotArea.appendChild(djfFitTable);
+  djf_fit_table.hidden = false;
+  plot_area.appendChild(djf_fit_table);
 }
 
 
@@ -472,12 +474,12 @@ Output:
 	(none) [void]: resets modeling flags and fit selections
 
 */
-function resetModelingState() {
-  modelingStarted = false;
-  shownFits.clear();
-  peakThreshold = null;
-  if (djfReadout) {
-    djfReadout.textContent = "";
+function reset_modeling_state() {
+  modeling_started = false;
+  shown_fits.clear();
+  peak_threshold = null;
+  if (djf_readout) {
+    djf_readout.textContent = "";
   }
 }
 
@@ -489,15 +491,15 @@ Purpose:
 	and table selection changes.
 
 Input:
-	channels [Object]: the selected channels, e.g. { dnaArea }
+	channels [Object]: the selected channels, e.g. { dna_area }
 
 Output:
 	(none) [void]: stores plot state and triggers the first render
 
 */
-function initPlot(channels) {
-  plotChannels = channels;
-  renderDensityPlot();
+function init_plot(channels) {
+  plot_channels = channels;
+  render_density_plot();
 }
 
 /*
@@ -514,13 +516,13 @@ Output:
 	(none) [void]: enables modeling and re-renders
 
 */
-function startModeling() {
-  if (!plotChannels) return;
-  modelingStarted = true;
-  const rows = plottableRows();
-  shownFits.clear();
-  if (rows.length) shownFits.add(rows[0].name);
-  renderDensityPlot();
+function start_modeling() {
+  if (!plot_channels) return;
+  modeling_started = true;
+  const rows = plottable_rows();
+  shown_fits.clear();
+  if (rows.length) shown_fits.add(rows[0].name);
+  render_density_plot();
 }
 
 /*
@@ -533,16 +535,16 @@ Input:
 	name [string]: the sample's full row.name
 
 Output:
-	(none) [void]: updates shownFits and re-renders
+	(none) [void]: updates shown_fits and re-renders
 
 */
-function toggleFit(name) {
-  if (shownFits.has(name)) {
-    shownFits.delete(name);
+function toggle_fit(name) {
+  if (shown_fits.has(name)) {
+    shown_fits.delete(name);
   } else {
-    shownFits.add(name);
+    shown_fits.add(name);
   }
-  renderDensityPlot();
+  render_density_plot();
 }
 
 /*
@@ -561,68 +563,68 @@ Output:
 	(none) [void]: rebuilds the #plotArea SVG
 
 */
-function renderDensityPlot() {
+function render_density_plot() {
   const d3 = window.d3;
-  if (!d3 || !plotArea || !plotChannels) return;
+  if (!d3 || !plot_area || !plot_channels) return;
 
   const djf = window.PhaseFinderDJF;
-  const rows = plottableRows();
+  const rows = plottable_rows();
 
-  plotArea.innerHTML = "";
-  if (djfReadout) djfReadout.textContent = "";
+  plot_area.innerHTML = "";
+  if (djf_readout) djf_readout.textContent = "";
 
-  const isLog = false;
-  const colorBy = plotColorBySelect ? plotColorBySelect.value : "file";
-  const bins = plotBinCount();
-  const corrections = correctionState();
-  const preparedRows = rows.map((row) => ({
+  const is_log = false;
+  const color_by = plot_color_by_select ? plot_color_by_select.value : "file";
+  const bins = plot_bin_count();
+  const corrections = correction_state();
+  const prepared_rows = rows.map((row) => ({
     row,
-    prepared: djf ? djf.prepareRow(row, corrections) : { values: row.data.dnaA, stats: { raw: row.data.dnaA.length, plotted: row.data.dnaA.length } },
+    prepared: djf ? djf.prepare_row(row, corrections) : { values: row.data.dna_a, stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length } },
   }));
 
   // With samples, compute the range from the plotted events and remember it;
   // with none, keep the axes by reusing the last range.
   let range;
-  if (preparedRows.length) {
-    range = sharedRangeForValues(preparedRows.map((entry) => entry.prepared.values), isLog);
-    lastRange = range;
-  } else if (lastRange && (!isLog || lastRange[0] > 0)) {
-    range = isLog ? lastRange : [0, Math.max(lastRange[1], 1)];
+  if (prepared_rows.length) {
+    range = shared_range_for_values(prepared_rows.map((entry) => entry.prepared.values), is_log);
+    last_range = range;
+  } else if (last_range && (!is_log || last_range[0] > 0)) {
+    range = is_log ? last_range : [0, Math.max(last_range[1], 1)];
   } else {
-    range = isLog ? [1, 10] : [0, 1];
+    range = is_log ? [1, 10] : [0, 1];
   }
-  const opts = axisOpts(range, isLog, bins);
+  const opts = axis_opts(range, is_log, bins);
 
-  const assign = buildColorAssigner(rows, colorBy);
-  const series = preparedRows.map(({ row, prepared }, index) => {
+  const assign = build_color_assigner(rows, color_by);
+  const series = prepared_rows.map(({ row, prepared }, index) => {
     const { color, group } = assign(row, index);
-    return { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points: histogramCurve(prepared.values, opts) };
+    return { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points: histogram_curve(prepared.values, opts) };
   });
-  updatePlotTitle(rows, series.reduce((sum, item) => sum + item.values.length, 0));
+  update_plot_title(rows, series.reduce((sum, item) => sum + item.values.length, 0));
 
   // Dean-Jett-Fox: one independent fit per shown sample (linear axis only). The
   // peak-detection threshold is a single draggable line shared by all fits;
   // default 5% of the tallest shown bin.
   const fits = [];
-  let thresholdValue = null;
-  const correctionText = djf ? djf.correctionSummary(preparedRows, corrections) : "";
-  if (modelingStarted && rows.length) {
-    if (isLog) {
-      if (djfReadout) djfReadout.textContent = "DJF requires a linear X-axis.";
+  let threshold_value = null;
+  const correction_text = djf ? djf.correction_summary(prepared_rows, corrections) : "";
+  if (modeling_started && rows.length) {
+    if (is_log) {
+      if (djf_readout) djf_readout.textContent = "DJF requires a linear X-axis.";
     } else if (!djf) {
-      if (djfReadout) djfReadout.textContent = "Corrected DJF module is unavailable.";
+      if (djf_readout) djf_readout.textContent = "Corrected DJF module is unavailable.";
     } else {
-      const shownSeries = series.filter((s) => shownFits.has(s.name));
-      if (shownSeries.length) {
-        const shownMax = d3.max(shownSeries, (s) => d3.max(s.points, (pt) => pt.y)) || 1;
-        if (peakThreshold == null) peakThreshold = 0.05 * shownMax;
-        thresholdValue = peakThreshold;
-        const runG1 = djf.estimateRunG1(series, thresholdValue);
-        for (const s of shownSeries) {
-          const params = djf.fit(s.points, range, thresholdValue, runG1);
+      const shown_series = series.filter((s) => shown_fits.has(s.name));
+      if (shown_series.length) {
+        const shown_max = d3.max(shown_series, (s) => d3.max(s.points, (pt) => pt.y)) || 1;
+        if (peak_threshold == null) peak_threshold = 0.05 * shown_max;
+        threshold_value = peak_threshold;
+        const run_g1 = djf.estimate_run_g1(series, threshold_value);
+        for (const s of shown_series) {
+          const params = djf.fit(s.points, range, threshold_value, run_g1);
           if (!params) continue;
           const comps = s.points.map((pt) => ({ x: pt.x, c: djf.components(pt.x, params) }));
-          const phaseStats = djf.phaseStats(s.points, params);
+          const phase_stats = djf.phase_stats(s.points, params);
           fits.push({
             row: s.row,
             name: s.name,
@@ -630,54 +632,54 @@ function renderDensityPlot() {
             g1: comps.map((o) => ({ x: o.x, y: o.c.g1 })),
             s: comps.map((o) => ({ x: o.x, y: o.c.s })),
             g2: comps.map((o) => ({ x: o.x, y: o.c.g2 })),
-            fractions: { g1: phaseStats.g1.percent, s: phaseStats.s.percent, g2: phaseStats.g2.percent },
-            phaseStats,
+            fractions: { g1: phase_stats.g1.percent, s: phase_stats.s.percent, g2: phase_stats.g2.percent },
+            phase_stats,
           });
         }
       }
-      if (djfReadout) {
-        const fitText = fits
-          .map((fit) => `${stripFcs(fit.name)}: G1 ${fit.fractions.g1.toFixed(1)}% · S ${fit.fractions.s.toFixed(1)}% · G2 ${fit.fractions.g2.toFixed(1)}%`)
+      if (djf_readout) {
+        const fit_text = fits
+          .map((fit) => `${strip_fcs(fit.name)}: G1 ${fit.fractions.g1.toFixed(1)}% · S ${fit.fractions.s.toFixed(1)}% · G2 ${fit.fractions.g2.toFixed(1)}%`)
           .join("\n");
-        djfReadout.textContent = [fitText, correctionText].filter(Boolean).join("\n");
+        djf_readout.textContent = [fit_text, correction_text].filter(Boolean).join("\n");
       }
     }
-  } else if (djfReadout && correctionText) {
-    djfReadout.textContent = correctionText;
+  } else if (djf_readout && correction_text) {
+    djf_readout.textContent = correction_text;
   }
 
-  const width = plotArea.clientWidth || PLOT_FALLBACK_WIDTH;
-  const height = plotArea.clientHeight || PLOT_FALLBACK_HEIGHT;
+  const width = plot_area.clientWidth || PLOT_FALLBACK_WIDTH;
+  const height = plot_area.clientHeight || PLOT_FALLBACK_HEIGHT;
   const margin = PLOT_MARGIN;
 
-  const xScale = (isLog ? d3.scaleLog() : d3.scaleLinear())
+  const x_scale = (is_log ? d3.scaleLog() : d3.scaleLinear())
     .domain(range)
     .range([margin.left, width - margin.right]);
-  let yMax = d3.max(series, (s) => d3.max(s.points, (pt) => pt.y)) || 0;
-  for (const fit of fits) yMax = Math.max(yMax, d3.max(fit.total, (pt) => pt.y) || 0);
+  let y_max = d3.max(series, (s) => d3.max(s.points, (pt) => pt.y)) || 0;
+  for (const fit of fits) y_max = Math.max(y_max, d3.max(fit.total, (pt) => pt.y) || 0);
   // Remember the populated y-max so an empty plot keeps the same y-scale.
-  if (yMax > 0) {
-    lastYMax = yMax;
+  if (y_max > 0) {
+    last_y_max = y_max;
   } else {
-    yMax = lastYMax || 1;
+    y_max = last_y_max || 1;
   }
-  const yScale = d3.scaleLinear().domain([0, yMax]).nice().range([height - margin.bottom, margin.top]);
+  const y_scale = d3.scaleLinear().domain([0, y_max]).nice().range([height - margin.bottom, margin.top]);
 
-  const svg = d3.select(plotArea).append("svg").attr("width", width).attr("height", height);
+  const svg = d3.select(plot_area).append("svg").attr("width", width).attr("height", height);
 
   // Apply tick font size + axis line width to a rendered axis group.
-  const styleAxis = (g) => {
+  const style_axis = (g) => {
     g.style("font-size", `${AXIS_TICK_FONT_SIZE}px`);
     g.selectAll(".domain, .tick line").attr("stroke-width", AXIS_LINE_WIDTH);
     return g;
   };
 
-  styleAxis(svg.append("g")
+  style_axis(svg.append("g")
     .attr("transform", `translate(0,${height - margin.bottom})`)
-    .call(d3.axisBottom(xScale).ticks(X_AXIS_TICKS, isLog ? "~s" : undefined)));
-  styleAxis(svg.append("g")
+    .call(d3.axisBottom(x_scale).ticks(X_AXIS_TICKS, is_log ? "~s" : undefined)));
+  style_axis(svg.append("g")
     .attr("transform", `translate(${margin.left},0)`)
-    .call(d3.axisLeft(yScale).ticks(Y_AXIS_TICKS, "~s")));
+    .call(d3.axisLeft(y_scale).ticks(Y_AXIS_TICKS, "~s")));
 
   svg.append("text")
     .attr("x", (margin.left + width - margin.right) / 2)
@@ -685,7 +687,7 @@ function renderDensityPlot() {
     .attr("text-anchor", "middle")
     .attr("font-size", AXIS_TITLE_FONT_SIZE)
     .attr("fill", AXIS_LABEL_COLOR)
-    .text(plotChannels.dnaArea || "DNA-content area");
+    .text(plot_channels.dna_area || "DNA-content area");
   svg.append("text")
     .attr("transform", "rotate(-90)")
     .attr("x", -(margin.top + height - margin.bottom) / 2)
@@ -696,9 +698,9 @@ function renderDensityPlot() {
     .text("Number of Events");
 
   const line = d3.line()
-    .defined((d) => !isLog || d.x > 0)
-    .x((d) => xScale(d.x))
-    .y((d) => yScale(d.y))
+    .defined((d) => !is_log || d.x > 0)
+    .x((d) => x_scale(d.x))
+    .y((d) => y_scale(d.y))
     .curve(d3.curveBasis);
 
   svg.append("g")
@@ -713,10 +715,10 @@ function renderDensityPlot() {
   // Each shown fit: filled G1/S/G2 components (semi-transparent so overlaps
   // show) with solid outlines, plus the fitted total on top.
   const area = d3.area()
-    .defined((d) => !isLog || d.x > 0)
-    .x((d) => xScale(d.x))
-    .y0(yScale(0))
-    .y1((d) => yScale(d.y))
+    .defined((d) => !is_log || d.x > 0)
+    .x((d) => x_scale(d.x))
+    .y0(y_scale(0))
+    .y1((d) => y_scale(d.y))
     .curve(d3.curveBasis);
 
   fits.forEach((fit) => {
@@ -734,17 +736,17 @@ function renderDensityPlot() {
   // Draggable peak-detection threshold (only when the "Peak threshold" box is
   // checked): a grey line with a light fill down to 0. Drag to set the
   // event-count cutoff; on release, peaks + DJF recompute.
-  const showThreshold = thresholdValue != null && plotThresholdToggle && plotThresholdToggle.checked;
-  if (showThreshold) {
+  const show_threshold = threshold_value != null && plot_threshold_toggle && plot_threshold_toggle.checked;
+  if (show_threshold) {
     const x0 = margin.left;
     const x1 = width - margin.right;
-    const baseY = height - margin.bottom;
+    const base_y = height - margin.bottom;
     const group = svg.append("g");
 
-    const positionAt = (yPix) => {
-      group.select(".threshold-fill").attr("y", yPix).attr("height", Math.max(0, baseY - yPix));
-      group.selectAll(".threshold-line").attr("y1", yPix).attr("y2", yPix);
-      group.select(".threshold-label").attr("y", Math.max(margin.top + THRESHOLD_LABEL_TOP_PAD, yPix - THRESHOLD_LABEL_Y_OFFSET));
+    const position_at = (y_pix) => {
+      group.select(".threshold-fill").attr("y", y_pix).attr("height", Math.max(0, base_y - y_pix));
+      group.selectAll(".threshold-line").attr("y1", y_pix).attr("y2", y_pix);
+      group.select(".threshold-label").attr("y", Math.max(margin.top + THRESHOLD_LABEL_TOP_PAD, y_pix - THRESHOLD_LABEL_Y_OFFSET));
     };
 
     group.append("rect").attr("class", "threshold-fill")
@@ -755,24 +757,24 @@ function renderDensityPlot() {
       .attr("stroke", THRESHOLD_COLOR).attr("stroke-width", THRESHOLD_LINE_WIDTH).attr("pointer-events", "none");
     group.append("text").attr("class", "threshold-label")
       .attr("x", x0 + THRESHOLD_LABEL_X_OFFSET).attr("font-size", THRESHOLD_LABEL_FONT_SIZE).attr("fill", THRESHOLD_LABEL_COLOR)
-      .text(`peak threshold: ${Math.round(thresholdValue).toLocaleString()} events`);
+      .text(`peak threshold: ${Math.round(threshold_value).toLocaleString()} events`);
     const handle = group.append("line").attr("class", "threshold-line")
       .attr("x1", x0).attr("x2", x1)
       .attr("stroke", "transparent").attr("stroke-width", THRESHOLD_HANDLE_WIDTH).attr("cursor", "ns-resize");
 
-    positionAt(yScale(Math.min(thresholdValue, yMax)));
+    position_at(y_scale(Math.min(threshold_value, y_max)));
 
-    const clampValue = (yPix) => Math.max(0, Math.min(yMax, yScale.invert(yPix)));
+    const clamp_value = (y_pix) => Math.max(0, Math.min(y_max, y_scale.invert(y_pix)));
     handle.call(
       d3.drag()
         .on("drag", (event) => {
-          const value = clampValue(event.y);
-          positionAt(yScale(value));
+          const value = clamp_value(event.y);
+          position_at(y_scale(value));
           group.select(".threshold-label").text(`peak threshold: ${Math.round(value).toLocaleString()} events`);
         })
         .on("end", (event) => {
-          peakThreshold = clampValue(event.y);
-          renderDensityPlot();
+          peak_threshold = clamp_value(event.y);
+          render_density_plot();
         }),
     );
   }
@@ -780,11 +782,11 @@ function renderDensityPlot() {
   // Legend: one row per sample (each gets a fit checkbox once modeling has
   // started), then the fitted-component rows for every shown fit. With more than
   // one fit shown, component labels are prefixed with the sample name.
-  const legendItems = series.map((s) => ({ type: "sample", name: s.name, color: s.color }));
-  const multipleFits = fits.length > 1;
+  const legend_items = series.map((s) => ({ type: "sample", name: s.name, color: s.color }));
+  const multiple_fits = fits.length > 1;
   fits.forEach((fit) => {
-    const prefix = multipleFits ? `${stripFcs(fit.name)} ` : "";
-    legendItems.push(
+    const prefix = multiple_fits ? `${strip_fcs(fit.name)} ` : "";
+    legend_items.push(
       { type: "component", label: `${prefix}DJF fit`, color: DJF_TOTAL_COLOR },
       { type: "component", label: `${prefix}G1`, color: DJF_G1_COLOR },
       { type: "component", label: `${prefix}S`, color: DJF_S_COLOR },
@@ -792,49 +794,49 @@ function renderDensityPlot() {
     );
   });
 
-  const checkboxCol = modelingStarted ? LEGEND_CHECKBOX_SIZE + 6 : 0;
+  const checkbox_col = modeling_started ? LEGEND_CHECKBOX_SIZE + 6 : 0;
   const legend = svg.append("g").attr("transform", `translate(${width - margin.right + LEGEND_OFFSET_X},${margin.top})`);
-  const items = legend.selectAll("g").data(legendItems).join("g").attr("transform", (d, i) => `translate(0,${i * LEGEND_ROW_HEIGHT})`);
+  const items = legend.selectAll("g").data(legend_items).join("g").attr("transform", (d, i) => `translate(0,${i * LEGEND_ROW_HEIGHT})`);
 
-  if (modelingStarted) {
+  if (modeling_started) {
     // Clickable checkbox on each sample row to show/hide that sample's fit.
-    const sampleRows = items.filter((d) => d.type === "sample").attr("cursor", "pointer").on("click", (event, d) => toggleFit(d.name));
-    sampleRows.append("rect")
+    const sample_rows = items.filter((d) => d.type === "sample").attr("cursor", "pointer").on("click", (event, d) => toggle_fit(d.name));
+    sample_rows.append("rect")
       .attr("x", 0).attr("y", LEGEND_SWATCH_Y - LEGEND_CHECKBOX_SIZE / 2)
       .attr("width", LEGEND_CHECKBOX_SIZE).attr("height", LEGEND_CHECKBOX_SIZE).attr("rx", 2)
       .attr("fill", "#fff").attr("stroke", THRESHOLD_COLOR);
-    sampleRows.filter((d) => shownFits.has(d.name)).append("path")
+    sample_rows.filter((d) => shown_fits.has(d.name)).append("path")
       .attr("d", `M2,${LEGEND_SWATCH_Y} l2.5,2.5 l5,-5`)
       .attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", 1.6).attr("pointer-events", "none");
   }
 
   items.append("line")
-    .attr("x1", checkboxCol).attr("x2", checkboxCol + LEGEND_SWATCH_WIDTH)
+    .attr("x1", checkbox_col).attr("x2", checkbox_col + LEGEND_SWATCH_WIDTH)
     .attr("y1", LEGEND_SWATCH_Y).attr("y2", LEGEND_SWATCH_Y)
     .attr("stroke", (d) => d.color).attr("stroke-width", LEGEND_LINE_WIDTH);
   items.append("text")
-    .attr("x", checkboxCol + LEGEND_TEXT_OFFSET).attr("y", LEGEND_TEXT_Y)
+    .attr("x", checkbox_col + LEGEND_TEXT_OFFSET).attr("y", LEGEND_TEXT_Y)
     .attr("font-size", LEGEND_FONT_SIZE).attr("fill", AXIS_LABEL_COLOR)
-    .text((d) => (d.type === "sample" ? stripFcs(d.name) : d.label));
+    .text((d) => (d.type === "sample" ? strip_fcs(d.name) : d.label));
 
-  renderFitResultsTable(fits, {
-    top: margin.top + legendItems.length * LEGEND_ROW_HEIGHT + 12,
+  render_fit_results_table(fits, {
+    top: margin.top + legend_items.length * LEGEND_ROW_HEIGHT + 12,
     right: 8,
-    maxWidth: Math.max(190, margin.right - 18),
+    max_width: Math.max(190, margin.right - 18),
   });
 }
 
 /* ---------- Listeners ---------- */
 
-[plotColorBySelect, plotBinsInput, plotThresholdToggle].forEach((el) => {
-  if (el) el.addEventListener("change", renderDensityPlot);
+[plot_color_by_select, plot_bins_input, plot_threshold_toggle].forEach((el) => {
+  if (el) el.addEventListener("change", render_density_plot);
 });
 
-[plotDebrisCorrectionToggle, plotDoubletCorrectionToggle].forEach((el) => {
+[plot_debris_correction_toggle, plot_doublet_correction_toggle].forEach((el) => {
   if (el) {
     el.addEventListener("change", () => {
-      peakThreshold = null;
-      renderDensityPlot();
+      peak_threshold = null;
+      render_density_plot();
     });
   }
 });
@@ -842,14 +844,14 @@ function renderDensityPlot() {
 // Live-update when the table checkbox selection changes (uncheck removes a
 // curve, re-check restores it from the still-loaded data).
 document.addEventListener("fcs-selection-change", () => {
-  if (plotChannels) renderDensityPlot();
+  if (plot_channels) render_density_plot();
 });
 
 // Redraw on resize so the SVG tracks the panel size.
-let plotResizeTimer = null;
+let plot_resize_timer = null;
 window.addEventListener("resize", () => {
-  window.clearTimeout(plotResizeTimer);
-  plotResizeTimer = window.setTimeout(() => {
-    if (plotChannels) renderDensityPlot();
+  window.clearTimeout(plot_resize_timer);
+  plot_resize_timer = window.setTimeout(() => {
+    if (plot_channels) render_density_plot();
   }, 150);
 });
