@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PhaseFinder – Clear Debug</title>
+<script>
+try {
+  localStorage.removeItem('pf_debug_level');
+  localStorage.removeItem('pf_meta_state');
+  localStorage.removeItem('pf_plot_state');
+} catch (e) {}
+location.replace('../');
+</script>
+</head>
+<body></body>
+</html>

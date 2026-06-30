@@ -12,7 +12,10 @@
 }
 
 /* Stack the controls bar above the plot area. */
-.plot_panel .metadata_panel_body {
+.plot_panel_inner {
+  display: flex;
+  flex: 1;
+  min-height: 0;
   flex-direction: column;
 }
 

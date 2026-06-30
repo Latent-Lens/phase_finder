@@ -228,6 +228,9 @@
       close_stats_modal();
       const stat_names = new_stats.map((s) => STAT_LABELS[s] || s).join(", ");
       window.PhaseFinderApp?.set_status_bar?.(`${stat_names} for ${channel_label} added to the table (${valid.length} file${valid.length === 1 ? "" : "s"}).`);
+      document.dispatchEvent(new CustomEvent("pf-stats-complete", {
+        detail: { channel: channel_label, stats: new_stats, files: valid.length },
+      }));
     });
   }
 

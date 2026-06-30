@@ -1,14 +1,19 @@
 const file_input = document.querySelector("#file_input");
+const file_upload_section = document.querySelector("#file_upload_section");
 const drop_zone = document.querySelector("#drop_zone");
 const collapsed_upload_target = document.querySelector("#collapsed_upload_target");
 const drop_zone_title = document.querySelector("#drop_zone_title");
 const drop_zone_hint = document.querySelector("#drop_zone_hint");
+const loaded_files_panel = document.querySelector("#loaded_files_panel");
+const loaded_files_label = document.querySelector("#loaded_files_label");
+const loaded_files_list = document.querySelector("#loaded_files_list");
 const status_el = document.querySelector("#status");
 const status_bar = document.querySelector("#status_bar");
 const status_bar_message = document.querySelector("#status_bar_message");
-const dna_area_select = document.querySelector("#dna_area_select");
-const collapsed_dna_area_select = document.querySelector("#collapsed_dna_area_select");
+const channel_select = document.querySelector("#channel_select");
+const collapsed_channel_select = document.querySelector("#collapsed_channel_select");
 const file_table = document.querySelector("#file_table");
+const metadata_export_button = document.querySelector("#metadata_export_button");
 const start_analysis_button = document.querySelector("#start_analysis_button");
 const collapsed_plot_button = document.querySelector("#collapsed_plot_button");
 const progress_overlay = document.querySelector("#progress_overlay");
@@ -160,6 +165,9 @@ async function load_files(files) {
   }
   if (loaded_entries.length) {
     window.PhaseFinderDebug?.saveFilesToCache(loaded_entries.map((e) => e.file));
+    document.dispatchEvent(new CustomEvent("pf-files-loaded", {
+      detail: { count: loaded, names: new_tabular_rows.map((r) => r.name) },
+    }));
   }
   sort_file_table();
   update_views();
@@ -250,6 +258,11 @@ function update_annotation(event) {
   new_values[idx] = input.value;
   file_table_frame.setCol(field, new_values);
   input.size = annotation_input_size(input.value);
+
+  if (window.PhaseFinderDebug?.getLevel?.() >= 2) {
+    const dbg_state = get_debug_meta_state();
+    if (dbg_state) window.PhaseFinderDebug.saveMetaState(dbg_state);
+  }
 }
 
 /*
@@ -282,14 +295,14 @@ function notify_channel_changed() {
 
 file_input.addEventListener("change", () => load_files(file_input.files));
 sidebar_toggle.addEventListener("click", toggle_sidebar);
-dna_area_select.addEventListener("change", () => {
-  collapsed_dna_area_select.value = dna_area_select.value;
+channel_select.addEventListener("change", () => {
+  collapsed_channel_select.value = channel_select.value;
   update_start_button_state();
   notify_channel_changed();
 });
 
-collapsed_dna_area_select.addEventListener("change", () => {
-  dna_area_select.value = collapsed_dna_area_select.value;
+collapsed_channel_select.addEventListener("change", () => {
+  channel_select.value = collapsed_channel_select.value;
   update_start_button_state();
   notify_channel_changed();
 });
@@ -337,6 +350,7 @@ document.querySelector("#site_logo").addEventListener("click", hard_restart);
 file_table.addEventListener("input", update_annotation);
 file_table.addEventListener("change", handle_table_change);
 file_table.addEventListener("click", handle_table_click);
+metadata_export_button?.addEventListener("click", handle_metadata_table_export);
 document.addEventListener("click", handle_document_click);
 
 /*
@@ -354,7 +368,7 @@ Output:
 */
 function get_selected_channels() {
   return {
-    dna_area: dna_area_select.value,
+    dna_area: channel_select.value,
   };
 }
 
@@ -391,8 +405,39 @@ set_status("No files loaded.");
 set_status_bar("Ready: Load FCS files by dragging them to the drop zone or using the file selector above.");
 
 if (window.PhaseFinderDebug?.isDebugMode()) {
-  document.title = "[debug] " + document.title;
-  window.PhaseFinderDebug.loadFilesFromCache().then((files) => {
-    if (files.length) load_files(files);
-  });
+  (async () => {
+    const level = window.PhaseFinderDebug.getLevel();
+    document.title = `[debug L${level}] ${document.title}`;
+
+    const files = await window.PhaseFinderDebug.loadFilesFromCache();
+    if (files.length) await load_files(files);
+
+    if (level >= 2) {
+      const meta = window.PhaseFinderDebug.loadMetaState();
+      if (meta && typeof apply_debug_meta_state === "function") {
+        apply_debug_meta_state(meta);
+      }
+    }
+
+    if (level >= 3) {
+      const plot = window.PhaseFinderDebug.loadPlotState();
+      if (plot && plot.channel && select_if_option_exists(channel_select, plot.channel)) {
+        collapsed_channel_select.value = plot.channel;
+        update_start_button_state();
+
+        const g = (id) => document.querySelector(`#${id}`);
+        if (plot.color_by && g("plot_color_by")) g("plot_color_by").value = plot.color_by;
+        if (plot.bins && g("plot_bins")) g("plot_bins").value = String(plot.bins);
+        if (g("plot_debris_correction")) g("plot_debris_correction").checked = !!plot.debris_correction;
+        if (g("plot_doublet_correction")) g("plot_doublet_correction").checked = !!plot.doublet_correction;
+        if (g("plot_threshold_toggle")) g("plot_threshold_toggle").checked = !!plot.threshold_toggle;
+
+        if (selected_file_ids.size > 0 && channel_select.value) {
+          await next_frame();
+          start_analysis_button.click();
+        }
+        document.dispatchEvent(new CustomEvent("pf-plot-state-restored", { detail: plot }));
+      }
+    }
+  })();
 }

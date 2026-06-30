@@ -7,6 +7,9 @@ const metadata_panel = document.querySelector("#metadata_panel");
 const metadata_panel_body = document.querySelector("#metadata_panel_body");
 const metadata_panel_toggle = document.querySelector("#metadata_panel_toggle");
 const metadata_panel_toggle_icon = document.querySelector("#metadata_panel_toggle_icon");
+const plot_panel_toggle = document.querySelector("#plot_panel_toggle");
+const plot_panel_toggle_icon = document.querySelector("#plot_panel_toggle_icon");
+const plot_panel_body = document.querySelector("#plot_panel_body");
 const TABLE_MINIMIZE_ICON = "./assets/img/table_minimize.svg";
 const TABLE_RESTORE_ICON = "./assets/img/table_restore.svg";
 const TABLE_PANEL_TRANSITION_MS = 220;
@@ -83,6 +86,43 @@ Output:
 */
 function toggle_metadata_panel() {
   set_metadata_panel_collapsed(!metadata_panel.classList.contains("is_collapsed"));
+}
+
+/*
+
+Purpose:
+	Collapses or expands the plot panel, updating its CSS class, body
+	accessibility state, aria-expanded state, and toggle icon.
+
+Input:
+	is_collapsed [boolean]: true to collapse the panel, false to expand it
+
+Output:
+	(none) [void]: updates the plot panel DOM
+
+*/
+function set_plot_panel_collapsed(is_collapsed) {
+  if (plot_panel.classList.contains("is_collapsed") === is_collapsed) {
+    return;
+  }
+
+  plot_panel.classList.toggle("is_collapsed", is_collapsed);
+  plot_panel_body.setAttribute("aria-hidden", String(is_collapsed));
+  if ("inert" in plot_panel_body) plot_panel_body.inert = is_collapsed;
+
+  const plot_tooltip_key = is_collapsed ? "plotExpand" : "plotCollapse";
+  plot_panel_toggle.setAttribute("aria-expanded", String(!is_collapsed));
+  window.PhaseFinderTooltips.set_quick_tooltip(plot_panel_toggle, plot_tooltip_key);
+  plot_panel_toggle.setAttribute("aria-label", window.PhaseFinderTooltips.text(plot_tooltip_key));
+  plot_panel_toggle_icon.src = is_collapsed ? TABLE_RESTORE_ICON : TABLE_MINIMIZE_ICON;
+
+  const notify_layout_changed = () => window.dispatchEvent(new Event("resize"));
+  window.requestAnimationFrame(notify_layout_changed);
+  window.setTimeout(notify_layout_changed, TABLE_PANEL_TRANSITION_MS);
+}
+
+function toggle_plot_panel() {
+  set_plot_panel_collapsed(!plot_panel.classList.contains("is_collapsed"));
 }
 
 /*
@@ -750,6 +790,7 @@ Output:
 */
 function enter_plotting_mode() {
   modeling_mode = false;
+  if (analysis_start_button) analysis_start_button.classList.remove("modeling");
   if (typeof reset_modeling_state === "function") {
     reset_modeling_state();
   }
@@ -857,6 +898,7 @@ Output:
 */
 function enter_modeling_mode() {
   modeling_mode = true;
+  if (analysis_start_button) analysis_start_button.classList.add("modeling");
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (!btn) return;
     btn.disabled = false;
@@ -881,10 +923,16 @@ Output:
 */
 async function start_analysis() {
   plot_panel.hidden = false;
+  document.dispatchEvent(new CustomEvent("pf-plot-started", {
+    detail: { channel: window.PhaseFinderApp.get_selected_channels().dna_area },
+  }));
 
   try {
     await load_analysis_data();
     enter_modeling_mode();
+    document.dispatchEvent(new CustomEvent("pf-plot-complete", {
+      detail: { channel: window.PhaseFinderApp.get_selected_channels().dna_area },
+    }));
   } catch (error) {
     window.PhaseFinderApp.set_status(error.message, true);
     window.PhaseFinderApp.set_status_bar("Selected data loading failed.", true);
@@ -894,6 +942,7 @@ async function start_analysis() {
 }
 
 metadata_panel_toggle.addEventListener("click", toggle_metadata_panel);
+plot_panel_toggle.addEventListener("click", toggle_plot_panel);
 analysis_start_button.addEventListener("click", start_analysis);
 analysis_collapsed_plot_button.addEventListener("click", start_analysis);
 document.addEventListener("fcs-selection-change", () => {

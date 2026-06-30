@@ -17,6 +17,23 @@
   cursor: pointer;
 }
 
+.header_brand {
+  display: flex;
+  align-items: center;
+}
+
+.debug_level_badge {
+  margin-left: 20px;
+  padding: 0 14px;
+  font-size: 32px;
+  font-weight: 500;
+  color: var(--panel);
+  background: var(--accent);
+  border-radius: 8px;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
 .header_actions {
   display: flex;
   align-items: center;
@@ -92,7 +109,7 @@
 .panel {
   --panel_title_row_height: 44px;
   --panel_title_font_size: 22px;
-  --panel_title_rule_gap: 8px;
+  --panel_title_gap: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -142,6 +159,27 @@
   pointer-events: none;
 }
 
+#plot_panel_body {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    grid-template-rows 220ms ease,
+    opacity 160ms ease;
+}
+
+#plot_panel_body > .plot_panel_inner {
+  min-height: 0;
+}
+
+#plot_panel.is_collapsed #plot_panel_body {
+  flex: 0 0 auto;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .metadata_panel_body[hidden] {
   display: none !important;
 }
@@ -157,7 +195,7 @@
 }
 
 .panel_title {
-  margin-bottom: 14px;
+  margin-bottom: 0;
 }
 
 .panel_title h2 {
@@ -194,7 +232,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: calc(var(--panel_title_row_height) + var(--panel_title_rule_gap));
+  min-height: var(--panel_title_row_height);
   margin-bottom: 0;
   font-size: var(--panel_title_font_size);
   font-weight: 700;
@@ -216,6 +254,7 @@
   display: block;
   width: 100%;
   height: 2px;
+  margin-bottom: var(--panel_title_gap);
   border-radius: 999px;
   background: var(--logo_teal);
 }
@@ -385,4 +424,3 @@
   outline: 3px solid rgba(1, 165, 175, 0.35);
   outline-offset: 2px;
 }
-

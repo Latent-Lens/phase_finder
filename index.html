@@ -37,7 +37,10 @@
   </head>
   <body>
     <header class="page_header">
-      <img id="site_logo" class="site_logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
+      <div class="header_brand">
+        <img id="site_logo" class="site_logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
+        <span id="debug_level_badge" class="debug_level_badge" hidden></span>
+      </div>
       <div class="header_actions">
         <button
           id="restart_button"
@@ -62,7 +65,11 @@
           <div class="panel_title_rule"></div>
         </div>
         <div id="sidebar_content" class="sidebar_content">
-          <section class="sidebar_section">
+          <section id="file_upload_section" class="sidebar_section file_upload_section">
+            <div id="loaded_files_panel" class="loaded_files_panel" hidden>
+              <label id="loaded_files_label" for="loaded_files_list">Loaded FCS files (0)</label>
+              <textarea id="loaded_files_list" class="loaded_files_list" readonly wrap="off" spellcheck="false"></textarea>
+            </div>
             <div id="drop_zone" class="drop_zone">
               <div>
                 <strong id="drop_zone_title">Drop FCS files here</strong>
@@ -73,8 +80,8 @@
 
           <section class="sidebar_section controls">
             <div>
-              <label for="dna_area_select">Select channel</label>
-              <select id="dna_area_select"></select>
+              <label for="channel_select">Select channel</label>
+              <select id="channel_select"></select>
             </div>
             <p id="status" class="status">No files loaded.</p>
             <button
@@ -113,7 +120,7 @@
           </button>
           <div class="sidebar_collapsed_channel_control quick_tooltip" data-tooltip-key="selectChannel">
             <img class="sidebar_collapsed_checklist_icon" src="./assets/img/checklist.svg" alt="" aria-hidden="true" />
-            <select id="collapsed_dna_area_select" class="sidebar_collapsed_channel_select" aria-label="Select channel"></select>
+            <select id="collapsed_channel_select" class="sidebar_collapsed_channel_select" aria-label="Select channel"></select>
           </div>
           <button id="collapsed_plot_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="plotChannelEvents" aria-label="Plot channel events" disabled>
             <img class="sidebar_collapsed_histogram_icon" src="./assets/img/histogram.svg" alt="" aria-hidden="true" />
@@ -130,10 +137,16 @@
       <section class="workspace">
         <section id="plot_panel" class="panel parsed_files_panel plot_panel" hidden>
           <div class="panel_title">
-            <span class="metadata_title_row"><span class="metadata_title_text" id="plot_title">Histogram of Events</span></span>
+            <div class="metadata_title_row">
+              <span class="metadata_title_text" id="plot_title">Histogram of Events</span>
+              <button id="plot_panel_toggle" class="panel_icon_toggle quick_tooltip" type="button" aria-expanded="true" aria-controls="plot_panel_body" data-tooltip-key="plotCollapse" aria-label="Collapse plot">
+                <img id="plot_panel_toggle_icon" class="panel_toggle_icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
+              </button>
+            </div>
             <span class="panel_title_rule"></span>
           </div>
-          <div class="metadata_panel_body">
+          <div id="plot_panel_body" class="metadata_panel_body">
+            <div class="plot_panel_inner">
             <div class="plot_controls">
               <label class="plot_control">Color by
                 <select id="plot_color_by">
@@ -186,6 +199,7 @@
               <span id="djf_readout" class="djf_readout"></span>
             </div>
             <div id="plot_area" class="table_wrap"></div>
+            </div>
           </div>
         </section>
 
@@ -193,9 +207,14 @@
           <div class="panel_title metadata_title">
             <div class="metadata_title_row">
               <span class="metadata_title_text">Table of Loaded FCS Samples</span>
-              <button id="metadata_panel_toggle" class="panel_icon_toggle quick_tooltip" type="button" aria-expanded="true" aria-controls="metadata_panel_body" data-tooltip-key="tableCollapse" aria-label="Collapse table">
-                <img id="metadata_panel_toggle_icon" class="panel_toggle_icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
-              </button>
+              <div class="metadata_title_actions">
+                <button id="metadata_export_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="exportTable" aria-label="Export table as TSV" disabled>
+                  <img class="panel_toggle_icon" src="./assets/img/table_export.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="metadata_panel_toggle" class="panel_icon_toggle quick_tooltip" type="button" aria-expanded="true" aria-controls="metadata_panel_body" data-tooltip-key="tableCollapse" aria-label="Collapse table">
+                  <img id="metadata_panel_toggle_icon" class="panel_toggle_icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
+                </button>
+              </div>
             </div>
             <span class="panel_title_rule"></span>
           </div>

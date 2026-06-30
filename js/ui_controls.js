@@ -223,6 +223,39 @@ function set_status_bar(message, is_error = false) {
 /*
 
 Purpose:
+	Updates the read-only sidebar list of loaded FCS filenames.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: updates and shows/hides the loaded-file list
+
+*/
+function update_loaded_files_list() {
+  if (!loaded_files_panel || !loaded_files_label || !loaded_files_list) {
+    return;
+  }
+
+  const count = file_map.size;
+  file_upload_section?.classList.toggle("has_loaded_files", count > 0);
+  loaded_files_panel.hidden = count === 0;
+  loaded_files_label.textContent = `Loaded FCS files (${count.toLocaleString()})`;
+
+  if (!count) {
+    loaded_files_list.value = "";
+    return;
+  }
+
+  const names = file_table_frame && file_table_frame.length
+    ? file_table_frame.col("name")
+    : [...file_map.values()].map((entry) => entry.name);
+  loaded_files_list.value = names.join("\n");
+}
+
+/*
+
+Purpose:
 	Updates the drop zone's title and hint to reflect how many files are loaded.
 
 Input:
@@ -234,14 +267,18 @@ Output:
 */
 function update_drop_zone_text() {
   const count = file_map.size;
+  update_loaded_files_list();
+
   if (!count) {
     drop_zone_title.textContent = "Drop FCS files here";
     drop_zone_hint.textContent = "or click to choose files from disk";
+    drop_zone_hint.hidden = false;
     return;
   }
 
-  drop_zone_title.textContent = `${count.toLocaleString()} FCS file${count === 1 ? "" : "s"} loaded`;
-  drop_zone_hint.textContent = "Drop or click to add more files";
+  drop_zone_title.textContent = "Drop or click to add more files";
+  drop_zone_hint.textContent = "";
+  drop_zone_hint.hidden = true;
 }
 
 /*
@@ -338,7 +375,7 @@ Output:
 
 */
 function clear_channel_controls() {
-  [dna_area_select, collapsed_dna_area_select].forEach((select) => {
+  [channel_select, collapsed_channel_select].forEach((select) => {
     select.innerHTML = "";
     select.add(new Option("", "", true, true));
     select.disabled = true;
@@ -470,12 +507,12 @@ Output:
 */
 function populate_channel_controls() {
   const columns = unique_columns();
-  const previous = dna_area_select.value || collapsed_dna_area_select.value;
+  const previous = channel_select.value || collapsed_channel_select.value;
   const selected = columns.includes(previous)
     ? previous
     : suggest_column(columns, ["DAPI_A", "DNA_A", "AREA", "_A"]);
 
-  [dna_area_select, collapsed_dna_area_select].forEach((select) => {
+  [channel_select, collapsed_channel_select].forEach((select) => {
     populate_single_select(select, columns, "Choose DNA-content area channel", selected);
   });
 }
@@ -551,7 +588,7 @@ Output:
 
 */
 function update_start_button_state() {
-  const is_disabled = !dna_area_select.value || selected_file_ids.size === 0;
+  const is_disabled = !channel_select.value || selected_file_ids.size === 0;
   [start_analysis_button, collapsed_plot_button].forEach((button) => {
     if (!button) {
       return;
@@ -564,6 +601,161 @@ function update_start_button_state() {
     const btn = document.querySelector(sel);
     if (btn) btn.disabled = !has_files;
   });
+  if (metadata_export_button) metadata_export_button.disabled = !has_files;
+}
+
+const TABLE_EXPORT_BASE_COLS = new Set(["id", "name", "strain", "replicate", "nocodazoleArrest", "timepoint"]);
+const TABLE_EXPORT_STAT_LABELS = { mean: "Mean", stddev: "Std Dev", median: "Median", min: "Min", max: "Max" };
+
+/*
+
+Purpose:
+	Converts a table cell value to TSV-safe text.
+
+Input:
+	value [any]: value to serialize
+
+Output:
+	cell [string]: TSV cell text
+
+*/
+function tsv_cell(value) {
+  if (value == null || Number.isNaN(value)) return "";
+  const text = String(value);
+  if (!/[\t\r\n"]/.test(text)) return text;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+/*
+
+Purpose:
+	Builds the TSV header/value column list for the visible metadata table,
+	omitting the checkbox column and preserving stats-column order.
+
+Input:
+	(none)
+
+Output:
+	columns [Array<Object>]: export column definitions
+
+*/
+function metadata_export_columns() {
+  const columns = TABLE_COLUMNS.map((column) => ({
+    header: column.label,
+    value: (row) => column.field === "name" ? display_name(row.name) : row[column.field],
+  }));
+
+  if (!file_table_frame) return columns;
+
+  file_table_frame.columns.forEach((field) => {
+    if (TABLE_EXPORT_BASE_COLS.has(field)) return;
+    const sep = field.lastIndexOf(":");
+    const header = sep > 0
+      ? `${field.slice(0, sep)} ${TABLE_EXPORT_STAT_LABELS[field.slice(sep + 1)] || field.slice(sep + 1)}`
+      : field;
+    columns.push({ header, value: (row) => row[field] });
+  });
+
+  return columns;
+}
+
+/*
+
+Purpose:
+	Serializes the currently visible metadata table rows to TSV, including
+	headers and any summary-stat columns.
+
+Input:
+	(none)
+
+Output:
+	tsv [string]: tab-separated metadata table text
+
+*/
+function metadata_table_tsv() {
+  const columns = metadata_export_columns();
+  const rows = displayed_files();
+  return [
+    columns.map((column) => tsv_cell(column.header)).join("\t"),
+    ...rows.map((row) => columns.map((column) => tsv_cell(column.value(row))).join("\t")),
+  ].join("\n") + "\n";
+}
+
+/*
+
+Purpose:
+	Saves a Blob through the File System Access API when available, with an
+	anchor-download fallback for browsers that do not expose a save picker.
+
+Input:
+	blob [Blob]: file contents
+	filename [string]: suggested filename
+
+Output:
+	saved [Promise<boolean>]: true when a file was written/downloaded, false when canceled
+
+*/
+async function save_blob(blob, filename) {
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: "Tab-separated values",
+          accept: { "text/tab-separated-values": [".tsv"] },
+        }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return true;
+    } catch (error) {
+      if (error.name === "AbortError") return false;
+      throw error;
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+/*
+
+Purpose:
+	Exports the visible metadata table, including headers, to a TSV file.
+
+Input:
+	(none)
+
+Output:
+	(none) [Promise<void>]: prompts the user to save/download a TSV file
+
+*/
+async function handle_metadata_table_export() {
+  if (!file_table_frame || file_table_frame.length === 0) {
+    set_status("Load FCS files before exporting the table.", true);
+    return;
+  }
+
+  const tsv = metadata_table_tsv();
+  const blob = new Blob([tsv], { type: "text/tab-separated-values;charset=utf-8" });
+
+  try {
+    const saved = await save_blob(blob, "phasefinder_loaded_fcs_samples.tsv");
+    if (!saved) return;
+    const row_count = displayed_files().length;
+    set_status_bar(`Exported metadata table (${row_count} row${row_count === 1 ? "" : "s"}).`);
+  } catch (error) {
+    set_status(`Could not export metadata table: ${error.message}`, true);
+    set_status_bar("Metadata table export failed.", true);
+  }
 }
 
 /*
@@ -643,7 +835,7 @@ Output:
 
 */
 function apply_debug_channel_defaults() {
-  select_if_option_exists(dna_area_select, "GFP/FITC-A");
+  select_if_option_exists(channel_select, "GFP/FITC-A");
 }
 
 
@@ -961,6 +1153,11 @@ function render_file_table() {
 
   update_select_all_checkbox();
   update_start_button_state();
+
+  if (window.PhaseFinderDebug?.getLevel?.() >= 2) {
+    const dbg_state = get_debug_meta_state();
+    if (dbg_state) window.PhaseFinderDebug.saveMetaState(dbg_state);
+  }
 }
 
 /*
@@ -1153,7 +1350,7 @@ function update_views() {
   render_file_table();
   populate_channel_controls();
   apply_debug_channel_defaults();
-  collapsed_dna_area_select.value = dna_area_select.value;
+  collapsed_channel_select.value = channel_select.value;
   update_start_button_state();
 }
 
@@ -1256,4 +1453,126 @@ function sort_file_table() {
   const cols = file_table_frame.columns;
   const col_data = Object.fromEntries(cols.map((col) => [col, rows.map((row) => row[col] ?? null)]));
   file_table_frame = new PhaseFinderFrame(col_data, [...cols]);
+}
+
+// ---------------------------------------------------------------------------
+// Debug-mode (Level 2+) metadata table state: annotations, stats columns,
+// row selection, sort, and column filters — serialized by filename so it
+// survives a reload even though file ids are regenerated on each load.
+// ---------------------------------------------------------------------------
+
+const DEBUG_ANNOTATION_FIELDS = ["strain", "replicate", "nocodazoleArrest", "timepoint"];
+
+/*
+
+Purpose:
+	Serializes the current metadata table state (annotations, stats columns,
+	selection, sort, filters) for debug-mode persistence. Rows are keyed by
+	filename since file ids are regenerated on every reload.
+
+Input:
+	(none)
+
+Output:
+	state [Object|null]: serializable debug meta state, or null with no files loaded
+
+*/
+function get_debug_meta_state() {
+  if (!file_table_frame || file_table_frame.length === 0) return null;
+
+  const ids = file_table_frame.col("id");
+  const names = file_table_frame.col("name");
+  const base_cols = new Set(["id", "name", ...DEBUG_ANNOTATION_FIELDS]);
+
+  const annotations = {};
+  names.forEach((name, i) => {
+    annotations[name] = {};
+    DEBUG_ANNOTATION_FIELDS.forEach((field) => {
+      annotations[name][field] = file_table_frame.col(field)[i] ?? "";
+    });
+  });
+
+  const stats_columns = file_table_frame.columns.filter((c) => !base_cols.has(c));
+  const stats = {};
+  if (stats_columns.length) {
+    names.forEach((name, i) => {
+      stats[name] = {};
+      stats_columns.forEach((col) => { stats[name][col] = file_table_frame.col(col)[i] ?? null; });
+    });
+  }
+
+  const selected_filenames = [];
+  ids.forEach((id, i) => { if (selected_file_ids.has(id)) selected_filenames.push(names[i]); });
+
+  const saved_filters = {};
+  Object.entries(column_filters).forEach(([field, value_set]) => {
+    if (value_set && value_set.size) saved_filters[field] = [...value_set];
+  });
+
+  return {
+    annotations,
+    stats,
+    stats_columns,
+    selected_filenames,
+    sort_state: { ...sort_state },
+    column_filters: saved_filters,
+  };
+}
+
+/*
+
+Purpose:
+	Restores metadata table state saved by get_debug_meta_state into the
+	current file_table_frame, matching rows by filename, then re-renders.
+
+Input:
+	meta [Object]: state previously returned by get_debug_meta_state
+
+Output:
+	(none) [void]: mutates file_table_frame and table-related module state
+
+*/
+function apply_debug_meta_state(meta) {
+  if (!meta || !file_table_frame || file_table_frame.length === 0) return;
+
+  const ids = file_table_frame.col("id");
+  const names = file_table_frame.col("name");
+
+  if (meta.annotations) {
+    DEBUG_ANNOTATION_FIELDS.forEach((field) => {
+      const col = [...file_table_frame.col(field)];
+      names.forEach((name, i) => {
+        const saved = meta.annotations[name];
+        if (saved && saved[field] != null) col[i] = saved[field];
+      });
+      file_table_frame.setCol(field, col);
+    });
+  }
+
+  if (meta.stats_columns?.length && meta.stats) {
+    meta.stats_columns.forEach((col_name) => {
+      const values = names.map((name) => meta.stats[name]?.[col_name] ?? null);
+      file_table_frame.setCol(col_name, values);
+    });
+  }
+
+  if (meta.selected_filenames) {
+    const selected_names = new Set(meta.selected_filenames);
+    selected_file_ids.clear();
+    names.forEach((name, i) => { if (selected_names.has(name)) selected_file_ids.add(ids[i]); });
+  }
+
+  if (meta.sort_state) sort_state = { ...meta.sort_state };
+
+  if (meta.column_filters) {
+    Object.keys(column_filters).forEach((k) => delete column_filters[k]);
+    Object.entries(meta.column_filters).forEach(([field, values]) => {
+      if (values?.length) column_filters[field] = new Set(values);
+    });
+  }
+
+  render_file_table();
+  document.dispatchEvent(new CustomEvent("pf-meta-restored", {
+    detail: { files: names.length, selected: selected_file_ids.size },
+  }));
 }
