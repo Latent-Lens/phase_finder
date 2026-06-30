@@ -1,6 +1,6 @@
 /* Transient feedback UI: the fixed footer status bar and the progress overlay. */
 
-.status-bar {
+.status_bar {
   position: fixed;
   right: 0;
   bottom: 0;
@@ -10,9 +10,9 @@
   gap: 16px;
   z-index: 20;
   min-height: 36px;
-  border-top: 3.5px solid var(--logo-teal);
-  box-shadow: 0 -4px 12px var(--shadow-soft);
-  background: var(--logo-blue);
+  border-top: 3.5px solid var(--logo_teal);
+  box-shadow: 0 -4px 12px var(--shadow_soft);
+  background: var(--logo_blue);
   color: var(--panel);
   padding: 2px 16px;
   overflow: hidden;
@@ -20,11 +20,11 @@
   line-height: 1;
 }
 
-.status-bar.error {
+.status_bar.error {
   background: var(--danger);
 }
 
-.status-bar-message {
+.status_bar_message {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
@@ -32,24 +32,24 @@
   white-space: nowrap;
 }
 
-.status-bar-copyright {
+.status_bar_copyright {
   flex: 0 0 auto;
   margin-left: auto;
   white-space: nowrap;
   opacity: 0.9;
 }
 
-.status-bar-copyright a {
+.status_bar_copyright a {
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.status-bar-copyright a:hover {
+.status_bar_copyright a:hover {
   opacity: 0.8;
 }
 
-.progress-overlay {
+.progress_overlay {
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -60,38 +60,38 @@
   pointer-events: none;
 }
 
-.progress-overlay[hidden] {
+.progress_overlay[hidden] {
   display: none;
 }
 
-.progress-card {
+.progress_card {
   pointer-events: auto;
   width: min(420px, 100%);
-  border: 1px solid var(--progress-card-border);
+  border: 1px solid var(--progress_card_border);
   border-radius: 8px;
   background: var(--panel);
-  box-shadow: 0 18px 45px var(--shadow-strong);
+  box-shadow: 0 18px 45px var(--shadow_strong);
   padding: 18px;
 }
 
-.progress-track {
+.progress_track {
   width: 100%;
   height: 28px;
   overflow: hidden;
-  border: 1px solid var(--progress-track-border);
+  border: 1px solid var(--progress_track_border);
   border-radius: 6px;
-  background: var(--progress-track-bg);
+  background: var(--progress_track_bg);
 }
 
-.progress-fill {
+.progress_fill {
   width: 0%;
   height: 100%;
   border-radius: 5px;
-  background: linear-gradient(90deg, var(--logo-teal), var(--logo-blue));
+  background: linear-gradient(90deg, var(--logo_teal), var(--logo_blue));
   transition: width 180ms ease;
 }
 
-.progress-meta {
+.progress_meta {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -102,7 +102,7 @@
   text-transform: uppercase;
 }
 
-.progress-detail {
+.progress_detail {
   min-height: 38px;
   margin-top: 6px;
   overflow: hidden;
@@ -111,7 +111,7 @@
   line-height: 1.35;
 }
 
-.progress-detail strong {
+.progress_detail strong {
   display: block;
   overflow: hidden;
   color: var(--text);
@@ -122,7 +122,7 @@
 
 /* Statistics modal */
 
-.stats-modal {
+.stats_modal {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -131,46 +131,46 @@
   padding: 24px;
 }
 
-.stats-modal[hidden] {
+.stats_modal[hidden] {
   display: none;
 }
 
-.stats-modal-backdrop {
+.stats_modal_backdrop {
   position: absolute;
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
 }
 
-.stats-modal-card {
+.stats_modal_card {
   position: relative;
   z-index: 1;
   width: min(640px, 100%);
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--progress-card-border);
+  border: 1px solid var(--progress_card_border);
   border-radius: 8px;
   background: var(--panel);
-  box-shadow: 0 18px 45px var(--shadow-strong);
+  box-shadow: 0 18px 45px var(--shadow_strong);
   overflow: hidden;
 }
 
-.stats-modal-header {
+.stats_modal_header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 16px 18px 14px;
-  border-bottom: 2px solid var(--logo-teal);
+  border-bottom: 2px solid var(--logo_teal);
 }
 
-.stats-modal-title {
+.stats_modal_title {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 700;
 }
 
-.stats-modal-close {
+.stats_modal_close {
   flex: 0 0 auto;
   width: 32px;
   min-height: 32px;
@@ -185,12 +185,12 @@
   cursor: pointer;
 }
 
-.stats-modal-close:hover {
+.stats_modal_close:hover {
   background: var(--bg);
   color: var(--text);
 }
 
-.stats-modal-body {
+.stats_modal_body {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -198,15 +198,15 @@
   overflow-y: auto;
 }
 
-.stats-form-row {
+.stats_form_row {
   display: grid;
   grid-template-columns: 90px 1fr;
   align-items: start;
   gap: 10px;
 }
 
-.stats-form-row label,
-.stats-label {
+.stats_form_row label,
+.stats_label {
   padding-top: 6px;
   margin: 0;
   color: var(--muted);
@@ -214,13 +214,13 @@
   font-weight: 650;
 }
 
-.stats-checkboxes {
+.stats_checkboxes {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
 }
 
-.stats-check {
+.stats_check {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -231,14 +231,14 @@
   cursor: pointer;
 }
 
-.stats-check input[type="checkbox"] {
+.stats_check input[type="checkbox"] {
   width: auto;
   min-height: auto;
   height: auto;
   cursor: pointer;
 }
 
-.stats-check-all {
+.stats_check_all {
   margin-left: 6px;
   padding-left: 10px;
   border-left: 1px solid var(--border);
@@ -246,37 +246,37 @@
 }
 
 /* Stat already in the table for the selected channel: dimmed, non-interactive. */
-.stats-check--done {
+.stats_check__done {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.stats-check--done input {
+.stats_check__done input {
   cursor: not-allowed;
 }
 
-.stats-modal-actions {
+.stats_modal_actions {
   display: flex;
   justify-content: flex-end;
 }
 
-.stats-modal-actions button {
+.stats_modal_actions button {
   width: auto;
   min-height: 36px;
   padding: 0 20px;
-  background: var(--logo-teal);
-  border-color: var(--logo-teal);
+  background: var(--logo_teal);
+  border-color: var(--logo_teal);
   color: var(--panel);
   font-size: 0.9rem;
 }
 
-.stats-modal-actions button:hover {
+.stats_modal_actions button:hover {
   filter: brightness(0.9);
 }
 
 /* Progress indicator shown in the stats modal while calculations run. */
 
-.stats-progress {
+.stats_progress {
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -284,36 +284,36 @@
   padding-top: 14px;
 }
 
-.stats-progress[hidden] {
+.stats_progress[hidden] {
   display: none;
 }
 
-.stats-progress-track {
+.stats_progress_track {
   height: 6px;
   border-radius: 3px;
   background: var(--border);
   overflow: hidden;
 }
 
-.stats-progress-bar {
+.stats_progress_bar {
   height: 100%;
   width: 0%;
   border-radius: 3px;
-  background: var(--logo-teal);
+  background: var(--logo_teal);
   transition: width 120ms ease;
 }
 
-.stats-progress--error .stats-progress-bar {
+.stats_progress__error .stats_progress_bar {
   background: var(--danger);
 }
 
-.stats-progress-label {
+.stats_progress_label {
   font-size: 0.82rem;
   color: var(--muted);
   text-align: center;
   min-height: 1.2em;
 }
 
-.stats-progress--error .stats-progress-label {
+.stats_progress__error .stats_progress_label {
   color: var(--danger);
 }

@@ -2,13 +2,13 @@
 (function () {
   "use strict";
 
-  const calculate_stats_button = document.querySelector("#calculateStatsButton");
-  const collapsed_calculate_stats_button = document.querySelector("#collapsedCalculateStatsButton");
-  const stats_modal = document.querySelector("#statsModal");
-  const stats_channel_select = document.querySelector("#statsChannelSelect");
-  const stats_progress_indicator = document.querySelector("#statsProgressIndicator");
-  const stats_progress_bar = document.querySelector("#statsProgressBar");
-  const stats_progress_label = document.querySelector("#statsProgressLabel");
+  const calculate_stats_button = document.querySelector("#calculate_stats_button");
+  const collapsed_calculate_stats_button = document.querySelector("#collapsed_calculate_stats_button");
+  const stats_modal = document.querySelector("#stats_modal");
+  const stats_channel_select = document.querySelector("#stats_channel_select");
+  const stats_progress_indicator = document.querySelector("#stats_progress_indicator");
+  const stats_progress_bar = document.querySelector("#stats_progress_bar");
+  const stats_progress_label = document.querySelector("#stats_progress_label");
 
   // Statistics modal
 
@@ -55,7 +55,7 @@
     update_stats_checkboxes();
     if (stats_progress_indicator) {
       stats_progress_indicator.hidden = true;
-      stats_progress_indicator.classList.remove("stats-progress--error");
+      stats_progress_indicator.classList.remove("stats_progress__error");
     }
     if (stats_progress_bar) stats_progress_bar.style.width = "0%";
     if (stats_progress_label) stats_progress_label.textContent = "";
@@ -88,7 +88,7 @@
       const done = existing_metrics.has(cb.value);
       cb.disabled = done;
       if (done) cb.checked = false;
-      cb.closest("label").classList.toggle("stats-check--done", done);
+      cb.closest("label").classList.toggle("stats_check__done", done);
     });
 
     const enabled_boxes = other_boxes.filter((cb) => !cb.disabled);
@@ -117,15 +117,15 @@
 
     stats_channel_select.addEventListener("change", update_stats_checkboxes);
 
-    stats_modal.querySelector(".stats-modal-backdrop").addEventListener("click", close_stats_modal);
-    stats_modal.querySelector("#statsModalClose").addEventListener("click", close_stats_modal);
+    stats_modal.querySelector(".stats_modal_backdrop").addEventListener("click", close_stats_modal);
+    stats_modal.querySelector("#stats_modal_close").addEventListener("click", close_stats_modal);
 
-    const calculate_button = stats_modal.querySelector("#statsCalculateButton");
+    const calculate_button = stats_modal.querySelector("#stats_calculate_button");
 
     function show_stats_error(msg) {
       if (!stats_progress_indicator) return;
       stats_progress_indicator.hidden = false;
-      stats_progress_indicator.classList.add("stats-progress--error");
+      stats_progress_indicator.classList.add("stats_progress__error");
       if (stats_progress_bar) stats_progress_bar.style.width = "0%";
       if (stats_progress_label) stats_progress_label.textContent = msg;
     }
@@ -157,7 +157,7 @@
 
       if (stats_progress_indicator) {
         stats_progress_indicator.hidden = false;
-        stats_progress_indicator.classList.remove("stats-progress--error");
+        stats_progress_indicator.classList.remove("stats_progress__error");
       }
       if (stats_progress_bar) stats_progress_bar.style.width = "0%";
       calculate_button.disabled = true;

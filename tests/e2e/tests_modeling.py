@@ -18,13 +18,13 @@ def test_modeling(ctx: TestContext):
     group = "Modeling"
 
     # Ensure the Cell Cycle Modeling button is enabled (data has been plotted)
-    modeling_btn_disabled = page.eval_on_selector("#cellCycleModelingButton", "e => e.disabled")
+    modeling_btn_disabled = page.eval_on_selector("#cell_cycle_modeling_button", "e => e.disabled")
     if modeling_btn_disabled:
         try:
-            page.click("#startAnalysisButton")
-            page.wait_for_selector("#plotArea svg", timeout=120000)
+            page.click("#start_analysis_button")
+            page.wait_for_selector("#plot_area svg", timeout=120000)
             page.wait_for_function(
-                "() => !document.querySelector('#cellCycleModelingButton').disabled",
+                "() => !document.querySelector('#cell_cycle_modeling_button').disabled",
                 timeout=60000,
             )
         except Exception as err:
@@ -34,14 +34,14 @@ def test_modeling(ctx: TestContext):
 
     bar_before = status_bar_text(page)
 
-    page.click("#cellCycleModelingButton")
+    page.click("#cell_cycle_modeling_button")
     page.wait_for_function(
-        "() => /G1/.test(document.querySelector('#djfReadout').textContent)",
+        "() => /G1/.test(document.querySelector('#djf_readout').textContent)",
         timeout=30000,
     )
     wait_briefly(0.4)
 
-    text = page.eval_on_selector("#djfReadout", "e => e.textContent")
+    text = page.eval_on_selector("#djf_readout", "e => e.textContent")
     nums = [float(x) for x in re.findall(r"([\d.]+)%", text)]
 
     ctx.check(group, "Start Modeling (DJF) creates one visible fit",
@@ -49,8 +49,8 @@ def test_modeling(ctx: TestContext):
     ctx.check(group, "DJF fractions sum to approximately 100%",
               len(nums) == 3 and abs(sum(nums) - 100) < 0.5, str(nums))
     ctx.check(group, "DJF fit table appears with phase rows",
-              page.eval_on_selector_all("#djfFitTable .djf-fit-title-row", "rows => rows.length") >= 1
-              and page.eval_on_selector_all("#djfFitTable .djf-fit-phase-row", "rows => rows.length") >= 3)
+              page.eval_on_selector_all("#djf_fit_table .djf_fit_title_row", "rows => rows.length") >= 1
+              and page.eval_on_selector_all("#djf_fit_table .djf_fit_phase_row", "rows => rows.length") >= 3)
 
     bar_after = status_bar_text(page)
     ctx.check(group, "Status bar updates after DJF modeling",
@@ -58,22 +58,22 @@ def test_modeling(ctx: TestContext):
               f"before={bar_before!r}, after={bar_after!r}")
 
     # Debris correction
-    page.check("#plotDebrisCorrection")
+    page.check("#plot_debris_correction")
     wait_briefly(0.4)
-    corrected = page.eval_on_selector("#djfReadout", "e => e.textContent")
+    corrected = page.eval_on_selector("#djf_readout", "e => e.textContent")
     ctx.check(group, "Debris correction updates DJF readout",
               "debris/background" in corrected, corrected)
 
     # Doublet correction
-    page.check("#plotDoubletCorrection")
+    page.check("#plot_doublet_correction")
     wait_briefly(0.4)
-    corrected2 = page.eval_on_selector("#djfReadout", "e => e.textContent")
+    corrected2 = page.eval_on_selector("#djf_readout", "e => e.textContent")
     ctx.check(group, "Doublet correction updates DJF readout",
               "aggregates/doublets" in corrected2 or "aggregate/doublet channels unavailable" in corrected2,
               corrected2)
 
     # Peak threshold
-    page.check("#plotThresholdToggle")
+    page.check("#plot_threshold_toggle")
     wait_briefly(0.3)
     ctx.check(group, "Peak threshold line appears when enabled",
-              page.query_selector("#plotArea svg .threshold-line, #plotArea svg .threshold-fill") is not None)
+              page.query_selector("#plot_area svg .threshold_line, #plot_area svg .threshold_fill") is not None)

@@ -1,18 +1,18 @@
 // Plot panel rendering: per-sample event histograms drawn as smooth curves
-// (D3 into #plotArea), with optional Dean–Jett–Fox cell-cycle modeling. The
+// (D3 into #plot_area), with optional Dean–Jett–Fox cell-cycle modeling. The
 // plot stays in sync with the table's checkbox selection — unchecking a row
 // removes its curve without discarding the already-loaded event data.
 
-const plot_area = document.querySelector("#plotArea");
-const plot_title = document.querySelector("#plotTitle");
-const plot_color_by_select = document.querySelector("#plotColorBy");
-const plot_x_scale_select = document.querySelector("#plotXScale");
-const plot_bins_input = document.querySelector("#plotBins");
+const plot_area = document.querySelector("#plot_area");
+const plot_title = document.querySelector("#plot_title");
+const plot_color_by_select = document.querySelector("#plot_color_by");
+const plot_x_scale_select = document.querySelector("#plot_x_scale");
+const plot_bins_input = document.querySelector("#plot_bins");
 let djf_fit_table = null;
-const plot_debris_correction_toggle = document.querySelector("#plotDebrisCorrection");
-const plot_doublet_correction_toggle = document.querySelector("#plotDoubletCorrection");
-const plot_threshold_toggle = document.querySelector("#plotThresholdToggle");
-const djf_readout = document.querySelector("#djfReadout");
+const plot_debris_correction_toggle = document.querySelector("#plot_debris_correction");
+const plot_doublet_correction_toggle = document.querySelector("#plot_doublet_correction");
+const plot_threshold_toggle = document.querySelector("#plot_threshold_toggle");
+const djf_readout = document.querySelector("#djf_readout");
 
 const DEFAULT_BINS = 512;
 
@@ -23,10 +23,10 @@ const css_color = (name, fallback) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
 // Dean–Jett–Fox cell-cycle component colors.
-const DJF_G1_COLOR = css_color("--djf-g1", "#95c1dc");
-const DJF_S_COLOR = css_color("--djf-s", "#d5eec8");
-const DJF_G2_COLOR = css_color("--djf-g2", "#ef8b8d");
-const DJF_TOTAL_COLOR = css_color("--djf-total", "#111827");
+const DJF_G1_COLOR = css_color("--djf_g1", "#95c1dc");
+const DJF_S_COLOR = css_color("--djf_s", "#d5eec8");
+const DJF_G2_COLOR = css_color("--djf_g2", "#ef8b8d");
+const DJF_TOTAL_COLOR = css_color("--djf_total", "#111827");
 // Fill opacity for the DJF component areas (0 = transparent, 1 = solid).
 const DJF_FILL_OPACITY = 0.8;
 const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
@@ -63,7 +63,7 @@ const THRESHOLD_LINE_WIDTH = 1.5;
 const THRESHOLD_FILL_OPACITY = 0.12;
 const THRESHOLD_HANDLE_WIDTH = 14; // invisible drag target thickness
 const THRESHOLD_LABEL_FONT_SIZE = 10;
-const THRESHOLD_LABEL_COLOR = css_color("--threshold-label", "#6b7280");
+const THRESHOLD_LABEL_COLOR = css_color("--threshold_label", "#6b7280");
 const THRESHOLD_LABEL_X_OFFSET = 6; // label inset from the left edge
 const THRESHOLD_LABEL_Y_OFFSET = 5; // label sits this far above the line
 const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot top
@@ -374,7 +374,7 @@ Input:
 	event_count [number]: optional pre-computed event count
 
 Output:
-	(none) [void]: sets the #plotTitle text
+	(none) [void]: sets the #plot_title text
 
 */
 function update_plot_title(rows, event_count = null) {
@@ -396,7 +396,7 @@ Input:
 	placement [Object]:   positioning for the table overlay
 
 Output:
-	(none) [void]: updates #djfFitTable
+	(none) [void]: updates #djf_fit_table
 
 */
 function render_fit_results_table(fits, placement = {}) {
@@ -409,8 +409,8 @@ function render_fit_results_table(fits, placement = {}) {
     return;
   }
   djf_fit_table = document.createElement("div");
-  djf_fit_table.id = "djfFitTable";
-  djf_fit_table.className = "djf-fit-table-wrap";
+  djf_fit_table.id = "djf_fit_table";
+  djf_fit_table.className = "djf_fit_table_wrap";
   djf_fit_table.style.top = `${Math.round(placement.top || 0)}px`;
   djf_fit_table.style.right = `${Math.round(placement.right || 8)}px`;
   if (placement.max_width) djf_fit_table.style.max_width = `${Math.round(placement.max_width)}px`;
@@ -426,34 +426,34 @@ function render_fit_results_table(fits, placement = {}) {
     ];
     const phase_rows = [fit.phase_stats.g1, fit.phase_stats.s, fit.phase_stats.g2]
       .map((phase) => `
-        <tr class="djf-fit-phase-row">
+        <tr class="djf_fit_phase_row">
           <td>${plot_escape_html(phase.phase)}</td>
-          <td class="numeric-cell">${format_fit_number(phase.percent, 1)}%</td>
-          <td class="numeric-cell">${format_fit_number(phase.mean, 2)}</td>
-          <td class="numeric-cell">${format_fit_number(phase.stdev, 2)}</td>
+          <td class="numeric_cell">${format_fit_number(phase.percent, 1)}%</td>
+          <td class="numeric_cell">${format_fit_number(phase.mean, 2)}</td>
+          <td class="numeric_cell">${format_fit_number(phase.stdev, 2)}</td>
         </tr>`)
       .join("");
 
     fit_groups.push(`
-      <tbody class="djf-fit-group">
-        <tr class="djf-fit-title-row">
+      <tbody class="djf_fit_group">
+        <tr class="djf_fit_title_row">
           <th colspan="4">
-            <span class="djf-fit-sample" title="${plot_escape_html(fit.name)}">${plot_escape_html(strip_fcs(fit.name))}</span>
-            <span class="djf-fit-meta">${plot_escape_html(meta.join("  |  "))}</span>
+            <span class="djf_fit_sample" title="${plot_escape_html(fit.name)}">${plot_escape_html(strip_fcs(fit.name))}</span>
+            <span class="djf_fit_meta">${plot_escape_html(meta.join("  |  "))}</span>
           </th>
         </tr>
-        <tr class="djf-fit-column-row">
+        <tr class="djf_fit_column_row">
           <th>Phase</th>
-          <th class="numeric-cell">Percent</th>
-          <th class="numeric-cell">Mean</th>
-          <th class="numeric-cell">Std Dev</th>
+          <th class="numeric_cell">Percent</th>
+          <th class="numeric_cell">Mean</th>
+          <th class="numeric_cell">Std Dev</th>
         </tr>
         ${phase_rows}
       </tbody>`);
   });
 
   djf_fit_table.innerHTML = `
-    <table class="djf-fit-table">
+    <table class="djf_fit_table">
       ${fit_groups.join("")}
     </table>`;
   djf_fit_table.hidden = false;
@@ -560,7 +560,7 @@ Input:
 	(none)
 
 Output:
-	(none) [void]: rebuilds the #plotArea SVG
+	(none) [void]: rebuilds the #plot_area SVG
 
 */
 function render_density_plot() {
@@ -744,21 +744,21 @@ function render_density_plot() {
     const group = svg.append("g");
 
     const position_at = (y_pix) => {
-      group.select(".threshold-fill").attr("y", y_pix).attr("height", Math.max(0, base_y - y_pix));
-      group.selectAll(".threshold-line").attr("y1", y_pix).attr("y2", y_pix);
-      group.select(".threshold-label").attr("y", Math.max(margin.top + THRESHOLD_LABEL_TOP_PAD, y_pix - THRESHOLD_LABEL_Y_OFFSET));
+      group.select(".threshold_fill").attr("y", y_pix).attr("height", Math.max(0, base_y - y_pix));
+      group.selectAll(".threshold_line").attr("y1", y_pix).attr("y2", y_pix);
+      group.select(".threshold_label").attr("y", Math.max(margin.top + THRESHOLD_LABEL_TOP_PAD, y_pix - THRESHOLD_LABEL_Y_OFFSET));
     };
 
-    group.append("rect").attr("class", "threshold-fill")
+    group.append("rect").attr("class", "threshold_fill")
       .attr("x", x0).attr("width", x1 - x0)
       .attr("fill", THRESHOLD_COLOR).attr("opacity", THRESHOLD_FILL_OPACITY).attr("pointer-events", "none");
-    group.append("line").attr("class", "threshold-line")
+    group.append("line").attr("class", "threshold_line")
       .attr("x1", x0).attr("x2", x1)
       .attr("stroke", THRESHOLD_COLOR).attr("stroke-width", THRESHOLD_LINE_WIDTH).attr("pointer-events", "none");
-    group.append("text").attr("class", "threshold-label")
+    group.append("text").attr("class", "threshold_label")
       .attr("x", x0 + THRESHOLD_LABEL_X_OFFSET).attr("font-size", THRESHOLD_LABEL_FONT_SIZE).attr("fill", THRESHOLD_LABEL_COLOR)
       .text(`peak threshold: ${Math.round(threshold_value).toLocaleString()} events`);
-    const handle = group.append("line").attr("class", "threshold-line")
+    const handle = group.append("line").attr("class", "threshold_line")
       .attr("x1", x0).attr("x2", x1)
       .attr("stroke", "transparent").attr("stroke-width", THRESHOLD_HANDLE_WIDTH).attr("cursor", "ns-resize");
 
@@ -770,7 +770,7 @@ function render_density_plot() {
         .on("drag", (event) => {
           const value = clamp_value(event.y);
           position_at(y_scale(value));
-          group.select(".threshold-label").text(`peak threshold: ${Math.round(value).toLocaleString()} events`);
+          group.select(".threshold_label").text(`peak threshold: ${Math.round(value).toLocaleString()} events`);
         })
         .on("end", (event) => {
           peak_threshold = clamp_value(event.y);

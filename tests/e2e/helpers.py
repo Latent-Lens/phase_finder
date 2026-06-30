@@ -280,47 +280,47 @@ def make_synthetic_fcs_pool(results_dir, report_stem, count):
 
 def density_curve_count(page):
     return page.eval_on_selector_all(
-        "#plotArea svg path",
+        "#plot_area svg path",
         "els => els.filter(p => (p.getAttribute('stroke')||'').startsWith('hsl')).length",
     )
 
 
 def fit_curve_count(page):
     return page.eval_on_selector_all(
-        "#plotArea svg path",
+        "#plot_area svg path",
         "els => els.filter(p => p.getAttribute('stroke') === '#111827' && p.getAttribute('stroke-width') === '2').length",
     )
 
 
 def table_row_count(page):
-    return page.eval_on_selector_all(".file-table tbody tr", "rows => rows.length")
+    return page.eval_on_selector_all(".file_table tbody tr", "rows => rows.length")
 
 
 def selected_row_count(page):
-    return page.eval_on_selector_all(".file-table tbody .row-select", "els => els.filter(e => e.checked).length")
+    return page.eval_on_selector_all(".file_table tbody .row_select", "els => els.filter(e => e.checked).length")
 
 
 def status_bar_text(page):
-    return page.eval_on_selector("#statusBarMessage", "e => e.textContent.trim()")
+    return page.eval_on_selector("#status_bar_message", "e => e.textContent.trim()")
 
 
 def progress_visible(page):
-    return page.eval_on_selector("#progressOverlay", "e => !e.hidden")
+    return page.eval_on_selector("#progress_overlay", "e => !e.hidden")
 
 
 def progress_label(page):
-    return page.eval_on_selector("#progressLabel", "e => e.textContent.trim()")
+    return page.eval_on_selector("#progress_label", "e => e.textContent.trim()")
 
 
 def plot_title(page):
-    return page.eval_on_selector("#plotTitle", "e => e.textContent.trim()")
+    return page.eval_on_selector("#plot_title", "e => e.textContent.trim()")
 
 
 def table_values(page, column_index):
     """Return one value per visible table row for the given column index (1-based).
     Prefers the <input> value if the cell contains an input, otherwise uses textContent."""
     return page.eval_on_selector_all(
-        ".file-table tbody tr",
+        ".file_table tbody tr",
         f"""rows => rows.map(r => {{
             const inp = r.querySelector('td:nth-child({column_index}) input');
             if (inp) return inp.value;
@@ -337,7 +337,7 @@ def table_values(page, column_index):
 
 def wait_for_rows(page, count, timeout=60000):
     page.wait_for_function(
-        "(count) => document.querySelectorAll('.file-table tbody .row-select').length === count",
+        "(count) => document.querySelectorAll('.file_table tbody .row_select').length === count",
         arg=count,
         timeout=timeout,
     )
@@ -345,7 +345,7 @@ def wait_for_rows(page, count, timeout=60000):
 
 def wait_for_curves(page, count, timeout=120000):
     page.wait_for_function(
-        """(count) => [...document.querySelectorAll('#plotArea svg path')]
+        """(count) => [...document.querySelectorAll('#plot_area svg path')]
           .filter(p => (p.getAttribute('stroke')||'').startsWith('hsl')).length === count""",
         arg=count,
         timeout=timeout,
@@ -355,7 +355,7 @@ def wait_for_curves(page, count, timeout=120000):
 def try_catch_progress(page, timeout_ms=8000):
     """Return True if the progress overlay was observed as visible within timeout_ms."""
     try:
-        page.wait_for_selector("#progressOverlay:not([hidden])", timeout=timeout_ms)
+        page.wait_for_selector("#progress_overlay:not([hidden])", timeout=timeout_ms)
         return True
     except Exception:
         return False
@@ -365,7 +365,7 @@ def wait_for_overlay_hidden(page, timeout_ms=20000):
     """Block until the progress overlay is hidden (state='hidden' — not visible in the DOM)."""
     try:
         # state="hidden" waits until the element is not visible (display:none / [hidden] attr)
-        page.wait_for_selector("#progressOverlay", state="hidden", timeout=timeout_ms)
+        page.wait_for_selector("#progress_overlay", state="hidden", timeout=timeout_ms)
     except Exception:
         pass
 
@@ -413,26 +413,26 @@ def set_files_via_drag_drop(page, target_selector, files):
 
 
 def select_channel(page, channel):
-    page.select_option("#dnaAreaSelect", channel)
+    page.select_option("#dna_area_select", channel)
     wait_briefly(0.2)
 
 
 def click_plot_events(page):
-    page.click("#startAnalysisButton")
-    page.wait_for_selector("#plotArea svg", timeout=120000)
+    page.click("#start_analysis_button")
+    page.wait_for_selector("#plot_area svg", timeout=120000)
     wait_briefly(0.4)
 
 
 def select_all_visible_rows(page):
-    if page.query_selector("#selectAllFiles") is None:
+    if page.query_selector("#select_all_files") is None:
         return
-    if not page.eval_on_selector("#selectAllFiles", "e => e.checked && !e.indeterminate"):
-        page.click("#selectAllFiles")
+    if not page.eval_on_selector("#select_all_files", "e => e.checked && !e.indeterminate"):
+        page.click("#select_all_files")
         wait_briefly(0.3)
 
 
 def ensure_channel_option(page, preferred="GFP/FITC-A"):
-    options = page.eval_on_selector_all("#dnaAreaSelect option", "els => els.map(e => e.value).filter(Boolean)")
+    options = page.eval_on_selector_all("#dna_area_select option", "els => els.map(e => e.value).filter(Boolean)")
     if preferred in options:
         return preferred, None
     if options:
@@ -441,7 +441,7 @@ def ensure_channel_option(page, preferred="GFP/FITC-A"):
 
 
 def another_channel(page, current):
-    options = page.eval_on_selector_all("#dnaAreaSelect option", "els => els.map(e => e.value).filter(Boolean)")
+    options = page.eval_on_selector_all("#dna_area_select option", "els => els.map(e => e.value).filter(Boolean)")
     for option in options:
         if option != current:
             return option
@@ -449,10 +449,10 @@ def another_channel(page, current):
 
 
 def open_filter(page, header_label):
-    headers = page.query_selector_all(".file-table thead th")
+    headers = page.query_selector_all(".file_table thead th")
     for header in headers:
         if header_label in header.inner_text():
-            header.query_selector(".th-filter-toggle").click()
+            header.query_selector(".th_filter_toggle").click()
             return
     raise RuntimeError(f"Could not find filter header: {header_label!r}")
 
@@ -460,7 +460,7 @@ def open_filter(page, header_label):
 def set_filter_option(page, field, value, checked):
     page.evaluate(
         """({ field, value, checked }) => {
-          const selector = `.th-filter-option[data-filter-field="${field}"]`;
+          const selector = `.th_filter_option[data-filter-field="${field}"]`;
           const input = [...document.querySelectorAll(selector)].find(el => el.value === value);
           if (!input) throw new Error(`Filter option not found: ${field}=${value}`);
           input.checked = checked;
@@ -650,10 +650,10 @@ def _write_html_report(
     th:first-child, td:first-child {{ text-align: left; }}
     th {{ background: #eef1f8; }}
     hr {{ border: 0; border-top: 1px solid #d7deea; margin: 20px 0; }}
-    .test-card {{ margin: 12px 0 4px; }}
-    .test-header {{ display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    .test_card {{ margin: 12px 0 4px; }}
+    .test_header {{ display: flex; justify-content: space-between; align-items: center; gap: 16px;
                     font-size: 1.05rem; font-weight: 600; padding: 6px 0; }}
-    .test-label {{ flex: 1; }}
+    .test_label {{ flex: 1; }}
     .badge {{ border-radius: 4px; color: white; font-weight: 800; padding: 4px 12px;
               min-width: 60px; text-align: center; flex-shrink: 0; }}
     .pass {{ background: #16803c; }}
@@ -661,8 +661,8 @@ def _write_html_report(
     .warn {{ background: #b7791f; }}
     .detail {{ color: #444; font-size: 0.9rem; margin: 4px 0 8px; white-space: pre-wrap; }}
     img {{ max-width: 100%; border: 1px solid #d7deea; display: block; margin: 8px auto; }}
-    .video-wrap {{ display: flex; justify-content: center; margin: 12px 0; }}
-    .video-wrap video {{ width: 960px; max-width: 100%; border: 1px solid #d7deea; }}
+    .video_wrap {{ display: flex; justify-content: center; margin: 12px 0; }}
+    .video_wrap video {{ width: 960px; max-width: 100%; border: 1px solid #d7deea; }}
     .overall {{ background: #f4f6fb; border: 1px solid #d7deea; border-radius: 6px; padding: 12px 16px; margin: 16px 0; }}
     .overall span {{ margin-right: 20px; font-weight: 600; }}
     .overall .p {{ color: #16803c; }}

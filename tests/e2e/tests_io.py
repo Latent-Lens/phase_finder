@@ -49,7 +49,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
     group = "Input/Output"
 
     # --- drag-and-drop into expanded sidebar ---
-    set_files_via_drag_drop(page, "#dropZone", drag_drop_files)
+    set_files_via_drag_drop(page, "#drop_zone", drag_drop_files)
     after_drag = len(drag_drop_files)
     wait_for_rows(page, after_drag)
     ctx.check(group, "File loading [Sidebar expanded, drag and drop]",
@@ -61,7 +61,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
               bar_text)
 
     # --- file browser via expanded sidebar click ---
-    set_files_via_file_browser(page, "#dropZone", file_browser_files)
+    set_files_via_file_browser(page, "#drop_zone", file_browser_files)
     after_browser = after_drag + len(file_browser_files)
 
     # Try to catch the progress overlay while real files are loading
@@ -74,7 +74,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
               table_row_count(page) == after_browser, f"rows={table_row_count(page)}")
     ctx.check(group, "Progress overlay appears during file loading",
               progress_seen, "overlay caught" if progress_seen else "loaded too fast to observe")
-    overlay_is_hidden = page.eval_on_selector("#progressOverlay", "e => e.hidden")
+    overlay_is_hidden = page.eval_on_selector("#progress_overlay", "e => e.hidden")
     ctx.check(group, "Progress overlay hides after file load completes",
               overlay_is_hidden, "hidden" if overlay_is_hidden else "still visible")
 
@@ -84,11 +84,11 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
     # Use drag/drop for the duplicate check. Re-selecting the exact same file in
     # the same file input can be suppressed by the browser before the app sees a
     # change event, leaving the previous status text in place.
-    set_files_via_drag_drop(page, "#dropZone", [duplicate_file])
+    set_files_via_drag_drop(page, "#drop_zone", [duplicate_file])
     try:
         page.wait_for_function(
             """() => {
-              const bar = document.querySelector('#statusBarMessage')?.textContent || '';
+              const bar = document.querySelector('#status_bar_message')?.textContent || '';
               const status = document.querySelector('#status')?.textContent || '';
               return /Duplicate|duplicate|No new files loaded/.test(`${bar} ${status}`);
             }""",
@@ -98,7 +98,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
         pass
     # Wait for any brief progress overlay to appear and settle
     try:
-        page.wait_for_selector("#progressOverlay", state="visible", timeout=5000)
+        page.wait_for_selector("#progress_overlay", state="visible", timeout=5000)
     except Exception:
         pass  # May complete too fast to observe
     wait_for_overlay_hidden(page)
@@ -113,7 +113,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
     ctx.check(group, "Duplicate FCS file warning", row_unchanged and has_dup_msg, detail)
 
     # --- add genuinely new files ---
-    set_files_via_file_browser(page, "#dropZone", additional_files)
+    set_files_via_file_browser(page, "#drop_zone", additional_files)
     after_additional = after_browser + len(additional_files)
     wait_for_rows(page, after_additional)
     wait_for_overlay_hidden(page)
@@ -130,12 +130,12 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
               f"replicates={sorted(replicates)}, arrests={sorted(arrests)}, timepoints={timepoints[:4]}")
 
     # --- collapse sidebar and verify collapsed icons ---
-    page.click("#sidebarToggle")
+    page.click("#sidebar_toggle")
     wait_briefly(0.5)
     ctx.check(group, "Sidebar collapsed icon controls are visible",
-              page.locator("#collapsedUploadTarget").is_visible()
-              and page.locator("#collapsedDnaAreaSelect").is_visible()
-              and page.locator("#collapsedPlotButton").is_visible())
+              page.locator("#collapsed_upload_target").is_visible()
+              and page.locator("#collapsed_dna_area_select").is_visible()
+              and page.locator("#collapsed_plot_button").is_visible())
 
     # --- file loading via collapsed upload icon (file browser) ---
     loaded_paths = {str(Path(p).resolve()) for p in file_browser_files + additional_files + drag_drop_files}
@@ -146,7 +146,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
         extra_pool = [_synthetic_extra_file(ctx, seed=7001, strain=970, timepoint=70)]
 
     before_collapsed = table_row_count(page)
-    set_files_via_file_browser(page, "#collapsedUploadTarget", extra_pool)
+    set_files_via_file_browser(page, "#collapsed_upload_target", extra_pool)
     wait_for_rows(page, before_collapsed + 1)
     wait_for_overlay_hidden(page)
     ctx.check(group, "File loading [Sidebar collapsed, via file browser icon]",
@@ -160,12 +160,12 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
     if not dd_pool:
         dd_pool = [_synthetic_extra_file(ctx, seed=7002, strain=971, timepoint=75)]
 
-    set_files_via_drag_drop(page, "#collapsedUploadTarget", dd_pool)
+    set_files_via_drag_drop(page, "#collapsed_upload_target", dd_pool)
     wait_for_rows(page, before_ddcoll + 1)
     wait_for_overlay_hidden(page)
     ctx.check(group, "File loading [Sidebar collapsed, drag-and-drop]",
               table_row_count(page) == before_ddcoll + 1, f"rows={table_row_count(page)}")
 
     # Restore expanded sidebar
-    page.click("#sidebarToggle")
+    page.click("#sidebar_toggle")
     wait_briefly(0.4)

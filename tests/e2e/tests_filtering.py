@@ -31,7 +31,7 @@ _FILTER_FIELDS = [
 
 def _read_col(page, field, col_index):
     if field == "name":
-        return page.eval_on_selector_all(".filename-cell", "els => els.map(e => e.textContent.trim())")
+        return page.eval_on_selector_all(".filename_cell", "els => els.map(e => e.textContent.trim())")
     return table_values(page, col_index)
 
 
@@ -42,7 +42,7 @@ def _sort_test(ctx: TestContext, field: str, label: str, col_index: int):
 
     # Click the label part of the sort button (left edge) to avoid accidentally
     # hitting the sort-direction arrows on the right, which set rather than toggle.
-    btn = page.locator(f".th-sort[data-sort-field='{field}']").first
+    btn = page.locator(f".th_sort[data-sort-field='{field}']").first
     btn.click(position={"x": 4, "y": 8})
     wait_briefly(0.25)
     first = _read_col(page, field, col_index)
@@ -79,7 +79,7 @@ def _filter_test(ctx: TestContext, field: str, label: str, col_index: int):
     try:
         open_filter(page, label)
         wait_briefly(0.2)
-        options = page.query_selector_all(f".th-filter-option[data-filter-field='{field}']")
+        options = page.query_selector_all(f".th_filter_option[data-filter-field='{field}']")
 
         if not options:
             close_filter(page)
@@ -124,21 +124,21 @@ def test_table_filtering_sorting(ctx: TestContext):
         _sort_test(ctx, field, label, col_index)
 
     # Select-all / deselect-all checkbox
-    if page.query_selector("#selectAllFiles") is not None:
+    if page.query_selector("#select_all_files") is not None:
         total = table_row_count(page)
         # Ensure none are checked, then select-all
-        page.eval_on_selector("#selectAllFiles",
+        page.eval_on_selector("#select_all_files",
                                "e => { e.checked = false; e.dispatchEvent(new Event('change', { bubbles: true })); }")
         wait_briefly(0.2)
-        page.click("#selectAllFiles")
+        page.click("#select_all_files")
         wait_briefly(0.3)
-        all_selected = page.eval_on_selector_all(".file-table tbody .row-select",
+        all_selected = page.eval_on_selector_all(".file_table tbody .row_select",
                                                   "els => els.every(e => e.checked)")
         ctx.check(group, "Select-all checkbox selects all rows", all_selected, f"total={total}")
 
-        page.click("#selectAllFiles")
+        page.click("#select_all_files")
         wait_briefly(0.2)
-        none_selected = page.eval_on_selector_all(".file-table tbody .row-select",
+        none_selected = page.eval_on_selector_all(".file_table tbody .row_select",
                                                    "els => els.every(e => !e.checked)")
         ctx.check(group, "Deselect-all checkbox clears all rows", none_selected)
     else:

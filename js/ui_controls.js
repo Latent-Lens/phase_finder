@@ -560,7 +560,7 @@ function update_start_button_state() {
   });
 
   const has_files = file_map.size > 0;
-  ["#calculateStatsButton", "#collapsedCalculateStatsButton"].forEach((sel) => {
+  ["#calculate_stats_button", "#collapsed_calculate_stats_button"].forEach((sel) => {
     const btn = document.querySelector(sel);
     if (btn) btn.disabled = !has_files;
   });
@@ -598,8 +598,8 @@ Output:
 
 */
 function set_sidebar_collapsed(is_collapsed) {
-  app_shell.classList.toggle("sidebar-collapsed", is_collapsed);
-  sidebar.classList.toggle("is-collapsed", is_collapsed);
+  app_shell.classList.toggle("sidebar_collapsed", is_collapsed);
+  sidebar.classList.toggle("is_collapsed", is_collapsed);
   sidebar_content.setAttribute("aria-hidden", String(is_collapsed));
   if ("inert" in sidebar_content) sidebar_content.inert = is_collapsed;
 
@@ -626,7 +626,7 @@ Output:
 
 */
 function toggle_sidebar() {
-  set_sidebar_collapsed(!app_shell.classList.contains("sidebar-collapsed"));
+  set_sidebar_collapsed(!app_shell.classList.contains("sidebar_collapsed"));
 }
 
 /*
@@ -711,11 +711,11 @@ Output:
 */
 function sort_indicator(field) {
   const active = sort_state.field === field;
-  const asc_class = active && sort_state.direction === "asc" ? "sort-arrow active" : "sort-arrow";
-  const desc_class = active && sort_state.direction === "desc" ? "sort-arrow active" : "sort-arrow";
+  const asc_class = active && sort_state.direction === "asc" ? "sort_arrow active" : "sort_arrow";
+  const desc_class = active && sort_state.direction === "desc" ? "sort_arrow active" : "sort_arrow";
   const sort_ascending_title = escape_html(window.PhaseFinderTooltips.text("sortAscending"));
   const sort_descending_title = escape_html(window.PhaseFinderTooltips.text("sortDescending"));
-  return `<span class="sort-indicator"><span class="${asc_class}" data-sort-dir="asc" title="${sort_ascending_title}">▲</span><span class="${desc_class}" data-sort-dir="desc" title="${sort_descending_title}">▼</span></span>`;
+  return `<span class="sort_indicator"><span class="${asc_class}" data-sort-dir="asc" title="${sort_ascending_title}">▲</span><span class="${desc_class}" data-sort-dir="desc" title="${sort_descending_title}">▼</span></span>`;
 }
 
 /*
@@ -742,17 +742,17 @@ function filter_control(column) {
   const options = unique_column_values(column.field)
     .map(
       (value) => `
-            <label class="checkbox-option">
-              <input type="checkbox" class="th-filter-option" data-filter-field="${column.field}" value="${escape_html(value)}"${selected.has(value) ? " checked" : ""} />
+            <label class="checkbox_option">
+              <input type="checkbox" class="th_filter_option" data-filter-field="${column.field}" value="${escape_html(value)}"${selected.has(value) ? " checked" : ""} />
               <span title="${escape_html(value)}">${escape_html(value)}</span>
             </label>`,
     )
     .join("");
 
   return `
-          <div class="th-filter multi-select">
-            <button type="button" class="th-filter-toggle multi-select-toggle" data-filter-field="${column.field}" aria-expanded="${is_open}" title="${escape_html(window.PhaseFinderTooltips.text("filterBy", column.label))}">${escape_html(summary.join(", "))}</button>
-            <div class="multi-select-menu" data-filter-menu="${column.field}"${is_open ? "" : " hidden"}>${options}</div>
+          <div class="th_filter multi_select">
+            <button type="button" class="th_filter_toggle multi_select_toggle" data-filter-field="${column.field}" aria-expanded="${is_open}" title="${escape_html(window.PhaseFinderTooltips.text("filterBy", column.label))}">${escape_html(summary.join(", "))}</button>
+            <div class="multi_select_menu" data-filter-menu="${column.field}"${is_open ? "" : " hidden"}>${options}</div>
           </div>`;
 }
 
@@ -774,8 +774,8 @@ function header_cell(column) {
 
   return `
         <th>
-          <div class="th-inner">
-            <button type="button" class="th-sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button>
+          <div class="th_inner">
+            <button type="button" class="th_sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button>
             ${filter}
           </div>
         </th>`;
@@ -795,7 +795,7 @@ Output:
 
 */
 function header_label_cell(column) {
-  return `<th class="stats-label-th"><button type="button" class="th-sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button></th>`;
+  return `<th class="stats_label_th"><button type="button" class="th_sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button></th>`;
 }
 
 /*
@@ -813,7 +813,7 @@ Output:
 */
 function header_filter_cell(column) {
   const filter = column.filterable ? filter_control(column) : "";
-  return `<th class="stats-filter-th">${filter}</th>`;
+  return `<th class="stats_filter_th">${filter}</th>`;
 }
 
 /*
@@ -850,7 +850,7 @@ Output:
 */
 function render_file_table() {
   if (!file_table_frame || file_table_frame.length === 0) {
-    file_table.innerHTML = '<p class="empty-note">Upload FCS files to initialize the table.</p>';
+    file_table.innerHTML = '<p class="empty_note">Upload FCS files to initialize the table.</p>';
     return;
   }
 
@@ -895,24 +895,24 @@ function render_file_table() {
   // NaN means "not computed for this file" — show a dash.
   const fmt = (v) => (v != null && !Number.isNaN(v) ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
 
-  const checkbox_th_inner = `<input type="checkbox" id="selectAllFiles" title="${escape_html(window.PhaseFinderTooltips.text("selectAllDisplayedFiles"))}" />`;
+  const checkbox_th_inner = `<input type="checkbox" id="select_all_files" title="${escape_html(window.PhaseFinderTooltips.text("selectAllDisplayedFiles"))}" />`;
 
   let head_html;
   if (has_stats) {
     const label_ths = TABLE_COLUMNS.map((col) => header_label_cell(col)).join("");
     const filter_ths = TABLE_COLUMNS.map((col) => header_filter_cell(col)).join("");
     const group_headers = stats_groups.map((g) =>
-      `<th colspan="${g.metrics.length}" class="stats-group-th stats-col-start">${escape_html(g.channel)} Summary Statistics</th>`
+      `<th colspan="${g.metrics.length}" class="stats_group_th stats_col_start">${escape_html(g.channel)} Summary Statistics</th>`
     ).join("");
     const sub_headers = stats_groups.map((g) =>
       g.metrics.map((m, mi) => {
-        const cls = mi === 0 ? " stats-col-start" : "";
-        return `<th class="stats-sub-th${cls}">${STAT_LABELS[m] || m}</th>`;
+        const cls = mi === 0 ? " stats_col_start" : "";
+        return `<th class="stats_sub_th${cls}">${STAT_LABELS[m] || m}</th>`;
       }).join("")
     ).join("");
     head_html = `
         <tr>
-          <th class="checkbox-col stats-checkbox-th" rowspan="2">${checkbox_th_inner}</th>
+          <th class="checkbox_col stats_checkbox_th" rowspan="2">${checkbox_th_inner}</th>
           ${label_ths}
           ${group_headers}
         </tr>
@@ -924,7 +924,7 @@ function render_file_table() {
     const regular_headers = TABLE_COLUMNS.map((col) => header_cell(col)).join("");
     head_html = `
         <tr>
-          <th class="checkbox-col">${checkbox_th_inner}</th>
+          <th class="checkbox_col">${checkbox_th_inner}</th>
           ${regular_headers}
         </tr>`;
   }
@@ -935,14 +935,14 @@ function render_file_table() {
     ? visible_files.map((row) => {
         const stats_tds = has_stats ? stats_groups.map((g) =>
           g.metrics.map((m, mi) => {
-            const cls = mi === 0 ? " stats-col-start" : "";
-            return `<td class="stats-td${cls}">${fmt(row[`${g.channel}:${m}`])}</td>`;
+            const cls = mi === 0 ? " stats_col_start" : "";
+            return `<td class="stats_td${cls}">${fmt(row[`${g.channel}:${m}`])}</td>`;
           }).join("")
         ).join("") : "";
         return `
         <tr>
-          <td class="checkbox-col"><input type="checkbox" class="row-select" data-file-id="${row.id}"${selected_file_ids.has(row.id) ? " checked" : ""} /></td>
-          <td class="filename-cell" title="${escape_html(row.name)}">${escape_html(display_name(row.name))}</td>
+          <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) ? " checked" : ""} /></td>
+          <td class="filename_cell" title="${escape_html(row.name)}">${escape_html(display_name(row.name))}</td>
           ${cell(row, "strain")}
           ${cell(row, "replicate")}
           ${cell(row, "nocodazoleArrest")}
@@ -950,10 +950,10 @@ function render_file_table() {
           ${stats_tds}
         </tr>`;
       }).join("")
-    : `<tr><td class="empty-note" colspan="${empty_colspan}">No files match the current filters.</td></tr>`;
+    : `<tr><td class="empty_note" colspan="${empty_colspan}">No files match the current filters.</td></tr>`;
 
   file_table.innerHTML = `
-    <table class="file-table">
+    <table class="file_table">
       <thead>${head_html}</thead>
       <tbody>${body}</tbody>
     </table>
@@ -978,7 +978,7 @@ Output:
 
 */
 function update_select_all_checkbox() {
-  const checkbox = document.querySelector("#selectAllFiles");
+  const checkbox = document.querySelector("#select_all_files");
   if (!checkbox) {
     return;
   }
@@ -1009,7 +1009,7 @@ Output:
 function handle_table_change(event) {
   const target = event.target;
 
-  if (target.classList.contains("th-filter-option")) {
+  if (target.classList.contains("th_filter_option")) {
     const field = target.dataset.filterField;
     const selected = column_filters[field] || (column_filters[field] = new Set());
     if (target.checked) {
@@ -1021,7 +1021,7 @@ function handle_table_change(event) {
     return;
   }
 
-  if (target.id === "selectAllFiles") {
+  if (target.id === "select_all_files") {
     displayed_files().forEach((entry) => {
       if (target.checked) {
         selected_file_ids.add(entry.id);
@@ -1035,7 +1035,7 @@ function handle_table_change(event) {
     return;
   }
 
-  if (target.classList.contains("row-select")) {
+  if (target.classList.contains("row_select")) {
     const file_id = target.dataset.fileId;
     if (target.checked) {
       selected_file_ids.add(file_id);
@@ -1062,7 +1062,7 @@ Output:
 
 */
 function handle_table_click(event) {
-  const filter_toggle = event.target.closest(".th-filter-toggle");
+  const filter_toggle = event.target.closest(".th_filter_toggle");
   if (filter_toggle) {
     const field = filter_toggle.dataset.filterField;
     open_filter_field = open_filter_field === field ? null : field;
@@ -1072,9 +1072,9 @@ function handle_table_click(event) {
 
   // Clicking a specific arrow sorts that column in that direction (up = asc,
   // down = desc).
-  const sort_arrow = event.target.closest(".sort-arrow");
+  const sort_arrow = event.target.closest(".sort_arrow");
   if (sort_arrow) {
-    const arrow_button = sort_arrow.closest(".th-sort");
+    const arrow_button = sort_arrow.closest(".th_sort");
     if (arrow_button) {
       sort_state = { field: arrow_button.dataset.sortField, direction: sort_arrow.dataset.sortDir };
       render_file_table();
@@ -1083,7 +1083,7 @@ function handle_table_click(event) {
   }
 
   // Clicking the label (not an arrow) toggles the direction.
-  const sort_button = event.target.closest(".th-sort");
+  const sort_button = event.target.closest(".th_sort");
   if (!sort_button) {
     return;
   }
@@ -1111,7 +1111,7 @@ Output:
 
 */
 function handle_document_click(event) {
-  if (open_filter_field === null || event.target.closest(".th-filter")) {
+  if (open_filter_field === null || event.target.closest(".th_filter")) {
     return;
   }
   open_filter_field = null;

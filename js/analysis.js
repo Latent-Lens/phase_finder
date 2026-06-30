@@ -1,12 +1,12 @@
-const analysis_start_button = document.querySelector("#startAnalysisButton");
-const analysis_collapsed_plot_button = document.querySelector("#collapsedPlotButton");
-const cell_cycle_modeling_button = document.querySelector("#cellCycleModelingButton");
-const collapsed_cell_cycle_modeling_button = document.querySelector("#collapsedCellCycleModelingButton");
-const plot_panel = document.querySelector("#plotPanel");
-const metadata_panel = document.querySelector("#metadataPanel");
-const metadata_panel_body = document.querySelector("#metadataPanelBody");
-const metadata_panel_toggle = document.querySelector("#metadataPanelToggle");
-const metadata_panel_toggle_icon = document.querySelector("#metadataPanelToggleIcon");
+const analysis_start_button = document.querySelector("#start_analysis_button");
+const analysis_collapsed_plot_button = document.querySelector("#collapsed_plot_button");
+const cell_cycle_modeling_button = document.querySelector("#cell_cycle_modeling_button");
+const collapsed_cell_cycle_modeling_button = document.querySelector("#collapsed_cell_cycle_modeling_button");
+const plot_panel = document.querySelector("#plot_panel");
+const metadata_panel = document.querySelector("#metadata_panel");
+const metadata_panel_body = document.querySelector("#metadata_panel_body");
+const metadata_panel_toggle = document.querySelector("#metadata_panel_toggle");
+const metadata_panel_toggle_icon = document.querySelector("#metadata_panel_toggle_icon");
 const TABLE_MINIMIZE_ICON = "./assets/img/table_minimize.svg";
 const TABLE_RESTORE_ICON = "./assets/img/table_restore.svg";
 const TABLE_PANEL_TRANSITION_MS = 220;
@@ -34,11 +34,11 @@ Output:
 
 */
 function set_metadata_panel_collapsed(is_collapsed) {
-  if (metadata_panel.classList.contains("is-collapsed") === is_collapsed) {
+  if (metadata_panel.classList.contains("is_collapsed") === is_collapsed) {
     return;
   }
 
-  metadata_panel.classList.toggle("is-collapsed", is_collapsed);
+  metadata_panel.classList.toggle("is_collapsed", is_collapsed);
   metadata_panel_body.setAttribute("aria-hidden", String(is_collapsed));
   if ("inert" in metadata_panel_body) metadata_panel_body.inert = is_collapsed;
 
@@ -82,7 +82,7 @@ Output:
 
 */
 function toggle_metadata_panel() {
-  set_metadata_panel_collapsed(!metadata_panel.classList.contains("is-collapsed"));
+  set_metadata_panel_collapsed(!metadata_panel.classList.contains("is_collapsed"));
 }
 
 /*

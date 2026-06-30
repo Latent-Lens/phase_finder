@@ -6,28 +6,28 @@
     padding: 8px 10px 0;
   }
 
-  .app.sidebar-collapsed {
+  .app.sidebar_collapsed {
     grid-template-columns: 1fr;
   }
 
-  .app.sidebar-collapsed .sidebar {
+  .app.sidebar_collapsed .sidebar {
     min-height: 56px;
   }
 
-  .page-header {
+  .page_header {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .parsed-files-panel {
+  .parsed_files_panel {
     min-height: 55vh;
   }
 
-  .table-wrap {
+  .table_wrap {
     max-height: 55vh;
   }
 
-  .start-analysis-button {
+  .start_analysis_button {
     width: 100%;
   }
 }

@@ -36,12 +36,12 @@
     <link rel="manifest" href="/assets/img/favicon/site.webmanifest">
   </head>
   <body>
-    <header class="page-header">
-      <img id="siteLogo" class="site-logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
-      <div class="header-actions">
+    <header class="page_header">
+      <img id="site_logo" class="site_logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
+      <div class="header_actions">
         <button
-          id="restartButton"
-          class="restart-button"
+          id="restart_button"
+          class="restart_button"
           type="button"
           data-title-key="restart"
         >
@@ -52,34 +52,34 @@
 
     <main class="app">
       <aside id="sidebar" class="sidebar panel">
-        <div class="sidebar-header panel-title">
-          <div class="sidebar-title-row">
+        <div class="sidebar_header panel_title">
+          <div class="sidebar_title_row">
             <h2>FCS Files</h2>
-            <button id="sidebarToggle" class="sidebar-toggle quick-tooltip" type="button" aria-controls="sidebarContent" aria-expanded="true" data-tooltip-key="sidebarCollapse" aria-label="Collapse sidebar">
-              <img id="sidebarToggleIcon" class="sidebar-toggle-icon" src="./assets/img/sidepanel_close.svg" alt="" aria-hidden="true" />
+            <button id="sidebar_toggle" class="sidebar_toggle quick_tooltip" type="button" aria-controls="sidebar_content" aria-expanded="true" data-tooltip-key="sidebarCollapse" aria-label="Collapse sidebar">
+              <img id="sidebar_toggle_icon" class="sidebar_toggle_icon" src="./assets/img/sidepanel_close.svg" alt="" aria-hidden="true" />
             </button>
           </div>
-          <div class="panel-title-rule"></div>
+          <div class="panel_title_rule"></div>
         </div>
-        <div id="sidebarContent" class="sidebar-content">
-          <section class="sidebar-section">
-            <div id="dropZone" class="drop-zone">
+        <div id="sidebar_content" class="sidebar_content">
+          <section class="sidebar_section">
+            <div id="drop_zone" class="drop_zone">
               <div>
-                <strong id="dropZoneTitle">Drop FCS files here</strong>
-                <span id="dropZoneHint">or click to choose files from disk</span>
+                <strong id="drop_zone_title">Drop FCS files here</strong>
+                <span id="drop_zone_hint">or click to choose files from disk</span>
               </div>
             </div>
           </section>
 
-          <section class="sidebar-section controls">
+          <section class="sidebar_section controls">
             <div>
-              <label for="dnaAreaSelect">Select channel</label>
-              <select id="dnaAreaSelect"></select>
+              <label for="dna_area_select">Select channel</label>
+              <select id="dna_area_select"></select>
             </div>
             <p id="status" class="status">No files loaded.</p>
             <button
-              id="startAnalysisButton"
-              class="start-analysis-button sidebar-plot-button quick-tooltip"
+              id="start_analysis_button"
+              class="start_analysis_button sidebar_plot_button quick_tooltip"
               type="button"
               data-tooltip-key="plotChannelEventsRequirements"
               disabled
@@ -87,8 +87,8 @@
               Plot Channel Events
             </button>
             <button
-              id="cellCycleModelingButton"
-              class="cell-cycle-modeling-button sidebar-plot-button quick-tooltip"
+              id="cell_cycle_modeling_button"
+              class="cell_cycle_modeling_button sidebar_plot_button quick_tooltip"
               type="button"
               data-tooltip-key="cellCycleModelingDisabled"
               disabled
@@ -96,8 +96,8 @@
               Cell Cycle Modeling
             </button>
             <button
-              id="calculateStatsButton"
-              class="calculate-stats-button sidebar-plot-button quick-tooltip"
+              id="calculate_stats_button"
+              class="calculate_stats_button sidebar_plot_button quick_tooltip"
               type="button"
               data-tooltip-key="calculateStats"
               disabled
@@ -106,50 +106,50 @@
             </button>
           </section>
         </div>
-        <input id="fileInput" class="visually-hidden-file" type="file" accept=".fcs" multiple />
-        <div class="sidebar-collapsed-actions">
-          <button id="collapsedUploadTarget" class="sidebar-collapsed-upload-target quick-tooltip" type="button" data-tooltip-key="uploadFiles" aria-label="Drop FCS files here or click to choose files from disk">
-            <img class="sidebar-collapsed-upload-icon" src="./assets/img/file_upload.svg" alt="" aria-hidden="true" />
+        <input id="file_input" class="visually_hidden_file" type="file" accept=".fcs" multiple />
+        <div class="sidebar_collapsed_actions">
+          <button id="collapsed_upload_target" class="sidebar_collapsed_upload_target quick_tooltip" type="button" data-tooltip-key="uploadFiles" aria-label="Drop FCS files here or click to choose files from disk">
+            <img class="sidebar_collapsed_upload_icon" src="./assets/img/file_upload.svg" alt="" aria-hidden="true" />
           </button>
-          <div class="sidebar-collapsed-channel-control quick-tooltip" data-tooltip-key="selectChannel">
-            <img class="sidebar-collapsed-checklist-icon" src="./assets/img/checklist.svg" alt="" aria-hidden="true" />
-            <select id="collapsedDnaAreaSelect" class="sidebar-collapsed-channel-select" aria-label="Select channel"></select>
+          <div class="sidebar_collapsed_channel_control quick_tooltip" data-tooltip-key="selectChannel">
+            <img class="sidebar_collapsed_checklist_icon" src="./assets/img/checklist.svg" alt="" aria-hidden="true" />
+            <select id="collapsed_dna_area_select" class="sidebar_collapsed_channel_select" aria-label="Select channel"></select>
           </div>
-          <button id="collapsedPlotButton" class="sidebar-collapsed-plot-button quick-tooltip" type="button" data-tooltip-key="plotChannelEvents" aria-label="Plot channel events" disabled>
-            <img class="sidebar-collapsed-histogram-icon" src="./assets/img/histogram.svg" alt="" aria-hidden="true" />
+          <button id="collapsed_plot_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="plotChannelEvents" aria-label="Plot channel events" disabled>
+            <img class="sidebar_collapsed_histogram_icon" src="./assets/img/histogram.svg" alt="" aria-hidden="true" />
           </button>
-          <button id="collapsedCellCycleModelingButton" class="sidebar-collapsed-plot-button quick-tooltip" type="button" data-tooltip-key="cellCycleModelingDisabled" aria-label="Cell cycle modeling (disabled until channel is plotted)" disabled>
-            <img class="sidebar-collapsed-function-icon" src="./assets/img/function_icon.svg" alt="" aria-hidden="true" />
+          <button id="collapsed_cell_cycle_modeling_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="cellCycleModelingDisabled" aria-label="Cell cycle modeling (disabled until channel is plotted)" disabled>
+            <img class="sidebar_collapsed_function_icon" src="./assets/img/function_icon.svg" alt="" aria-hidden="true" />
           </button>
-          <button id="collapsedCalculateStatsButton" class="sidebar-collapsed-plot-button quick-tooltip" type="button" data-tooltip-key="calculateStats" aria-label="Calculate statistics" disabled>
-            <img class="sidebar-collapsed-calculator-icon" src="./assets/img/calculator.svg" alt="" aria-hidden="true" />
+          <button id="collapsed_calculate_stats_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="calculateStats" aria-label="Calculate statistics" disabled>
+            <img class="sidebar_collapsed_calculator_icon" src="./assets/img/calculator.svg" alt="" aria-hidden="true" />
           </button>
         </div>
       </aside>
 
       <section class="workspace">
-        <section id="plotPanel" class="panel parsed-files-panel plot-panel" hidden>
-          <div class="panel-title">
-            <span class="metadata-title-row"><span class="metadata-title-text" id="plotTitle">Histogram of Events</span></span>
-            <span class="panel-title-rule"></span>
+        <section id="plot_panel" class="panel parsed_files_panel plot_panel" hidden>
+          <div class="panel_title">
+            <span class="metadata_title_row"><span class="metadata_title_text" id="plot_title">Histogram of Events</span></span>
+            <span class="panel_title_rule"></span>
           </div>
-          <div class="metadata-panel-body">
-            <div class="plot-controls">
-              <label class="plot-control">Color by
-                <select id="plotColorBy">
+          <div class="metadata_panel_body">
+            <div class="plot_controls">
+              <label class="plot_control">Color by
+                <select id="plot_color_by">
                   <option value="file">File</option>
                   <option value="strain">Strain</option>
                 </select>
               </label>
-              <label class="plot-control">Bins
-                <input id="plotBins" type="number" min="16" max="1024" step="16" value="512" />
+              <label class="plot_control">Bins
+                <input id="plot_bins" type="number" min="16" max="1024" step="16" value="512" />
               </label>
-              <label class="plot-control plot-control-check">
-                <span class="plot-check-row">
-                  <input type="checkbox" id="plotDebrisCorrection" />
+              <label class="plot_control plot_control_check">
+                <span class="plot_check_row">
+                  <input type="checkbox" id="plot_debris_correction" />
                   Remove debris/background
                   <span
-                    class="info-icon"
+                    class="info_icon"
                     tabindex="0"
                     role="img"
                     aria-label="Debris and background correction help"
@@ -157,12 +157,12 @@
                   >?</span>
                 </span>
               </label>
-              <label class="plot-control plot-control-check">
-                <span class="plot-check-row">
-                  <input type="checkbox" id="plotDoubletCorrection" />
+              <label class="plot_control plot_control_check">
+                <span class="plot_check_row">
+                  <input type="checkbox" id="plot_doublet_correction" />
                   Remove aggregates/doublets
                   <span
-                    class="info-icon"
+                    class="info_icon"
                     tabindex="0"
                     role="img"
                     aria-label="Aggregate and doublet correction help"
@@ -170,12 +170,12 @@
                   >?</span>
                 </span>
               </label>
-              <label class="plot-control plot-control-check">
-                <span class="plot-check-row">
-                  <input type="checkbox" id="plotThresholdToggle" />
+              <label class="plot_control plot_control_check">
+                <span class="plot_check_row">
+                  <input type="checkbox" id="plot_threshold_toggle" />
                   Peak threshold
                   <span
-                    class="info-icon"
+                    class="info_icon"
                     tabindex="0"
                     role="img"
                     aria-label="Peak threshold help"
@@ -183,81 +183,81 @@
                   >?</span>
                 </span>
               </label>
-              <span id="djfReadout" class="djf-readout"></span>
+              <span id="djf_readout" class="djf_readout"></span>
             </div>
-            <div id="plotArea" class="table-wrap"></div>
+            <div id="plot_area" class="table_wrap"></div>
           </div>
         </section>
 
-        <section id="metadataPanel" class="panel parsed-files-panel">
-          <div class="panel-title metadata-title">
-            <div class="metadata-title-row">
-              <span class="metadata-title-text">Table of Loaded FCS Samples</span>
-              <button id="metadataPanelToggle" class="panel-icon-toggle quick-tooltip" type="button" aria-expanded="true" aria-controls="metadataPanelBody" data-tooltip-key="tableCollapse" aria-label="Collapse table">
-                <img id="metadataPanelToggleIcon" class="panel-toggle-icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
+        <section id="metadata_panel" class="panel parsed_files_panel">
+          <div class="panel_title metadata_title">
+            <div class="metadata_title_row">
+              <span class="metadata_title_text">Table of Loaded FCS Samples</span>
+              <button id="metadata_panel_toggle" class="panel_icon_toggle quick_tooltip" type="button" aria-expanded="true" aria-controls="metadata_panel_body" data-tooltip-key="tableCollapse" aria-label="Collapse table">
+                <img id="metadata_panel_toggle_icon" class="panel_toggle_icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
               </button>
             </div>
-            <span class="panel-title-rule"></span>
+            <span class="panel_title_rule"></span>
           </div>
-          <div id="metadataPanelBody" class="metadata-panel-body">
-            <div id="fileTable" class="table-wrap"></div>
+          <div id="metadata_panel_body" class="metadata_panel_body">
+            <div id="file_table" class="table_wrap"></div>
           </div>
         </section>
       </section>
     </main>
 
-    <div id="statsModal" class="stats-modal" hidden role="dialog" aria-modal="true" aria-labelledby="statsModalTitle">
-      <div class="stats-modal-backdrop"></div>
-      <div class="stats-modal-card">
-        <div class="stats-modal-header">
-          <h3 id="statsModalTitle" class="stats-modal-title">Calculate Statistics</h3>
-          <button id="statsModalClose" class="stats-modal-close" type="button" aria-label="Close">&times;</button>
+    <div id="stats_modal" class="stats_modal" hidden role="dialog" aria-modal="true" aria-labelledby="stats_modal_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card">
+        <div class="stats_modal_header">
+          <h3 id="stats_modal_title" class="stats_modal_title">Calculate Statistics</h3>
+          <button id="stats_modal_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
         </div>
-        <div class="stats-modal-body">
-          <div class="stats-form-row">
-            <label for="statsChannelSelect">Channel</label>
-            <select id="statsChannelSelect"></select>
+        <div class="stats_modal_body">
+          <div class="stats_form_row">
+            <label for="stats_channel_select">Channel</label>
+            <select id="stats_channel_select"></select>
           </div>
-          <div class="stats-form-row">
-            <span class="stats-label">Statistics</span>
-            <div class="stats-checkboxes">
-              <label class="stats-check"><input type="checkbox" name="stat" value="mean" checked> Mean</label>
-              <label class="stats-check"><input type="checkbox" name="stat" value="stddev" checked> Std Dev</label>
-              <label class="stats-check"><input type="checkbox" name="stat" value="median"> Median</label>
-              <label class="stats-check"><input type="checkbox" name="stat" value="min"> Min</label>
-              <label class="stats-check"><input type="checkbox" name="stat" value="max"> Max</label>
-              <label class="stats-check stats-check-all"><input type="checkbox" name="stat" value="all"> All</label>
+          <div class="stats_form_row">
+            <span class="stats_label">Statistics</span>
+            <div class="stats_checkboxes">
+              <label class="stats_check"><input type="checkbox" name="stat" value="mean" checked> Mean</label>
+              <label class="stats_check"><input type="checkbox" name="stat" value="stddev" checked> Std Dev</label>
+              <label class="stats_check"><input type="checkbox" name="stat" value="median"> Median</label>
+              <label class="stats_check"><input type="checkbox" name="stat" value="min"> Min</label>
+              <label class="stats_check"><input type="checkbox" name="stat" value="max"> Max</label>
+              <label class="stats_check stats_check_all"><input type="checkbox" name="stat" value="all"> All</label>
             </div>
           </div>
-          <div class="stats-modal-actions">
-            <button id="statsCalculateButton" type="button">Calculate</button>
+          <div class="stats_modal_actions">
+            <button id="stats_calculate_button" type="button">Calculate</button>
           </div>
-          <div id="statsProgressIndicator" class="stats-progress" hidden>
-            <div class="stats-progress-track">
-              <div id="statsProgressBar" class="stats-progress-bar"></div>
+          <div id="stats_progress_indicator" class="stats_progress" hidden>
+            <div class="stats_progress_track">
+              <div id="stats_progress_bar" class="stats_progress_bar"></div>
             </div>
-            <span id="statsProgressLabel" class="stats-progress-label"></span>
+            <span id="stats_progress_label" class="stats_progress_label"></span>
           </div>
         </div>
       </div>
     </div>
 
-    <div id="progressOverlay" class="progress-overlay" hidden aria-live="polite" aria-busy="false">
-      <div class="progress-card" role="status">
-        <div class="progress-track" aria-hidden="true">
-          <div id="progressFill" class="progress-fill"></div>
+    <div id="progress_overlay" class="progress_overlay" hidden aria-live="polite" aria-busy="false">
+      <div class="progress_card" role="status">
+        <div class="progress_track" aria-hidden="true">
+          <div id="progress_fill" class="progress_fill"></div>
         </div>
-        <div class="progress-meta">
-          <span id="progressLabel">Loading FCS Metadata</span>
-          <span id="progressPercent">0%</span>
+        <div class="progress_meta">
+          <span id="progress_label">Loading FCS Metadata</span>
+          <span id="progress_percent">0%</span>
         </div>
-        <div id="progressDetail" class="progress-detail"></div>
+        <div id="progress_detail" class="progress_detail"></div>
       </div>
     </div>
 
-    <footer id="statusBar" class="status-bar">
-      <span id="statusBarMessage" class="status-bar-message">Ready.</span>
-      <span class="status-bar-copyright">
+    <footer id="status_bar" class="status_bar">
+      <span id="status_bar_message" class="status_bar_message">Ready.</span>
+      <span class="status_bar_copyright">
         © 2026 <a href="https://latentlens.org">LatentLens</a>. All rights reserved
       </span>
     </footer>

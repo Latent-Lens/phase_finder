@@ -15,18 +15,18 @@ def test_sidebar_icons(ctx: TestContext):
     group = "Sidebar/Icons"
 
     # Collapse the sidebar
-    page.click("#sidebarToggle")
+    page.click("#sidebar_toggle")
     wait_briefly(0.5)
 
     # Collapsed icons are visible
     ctx.check(group, "Collapsed sidebar shows upload/channel/plot icons",
-              page.locator("#collapsedUploadTarget").is_visible()
-              and page.locator("#collapsedDnaAreaSelect").is_visible()
-              and page.locator("#collapsedPlotButton").is_visible())
+              page.locator("#collapsed_upload_target").is_visible()
+              and page.locator("#collapsed_dna_area_select").is_visible()
+              and page.locator("#collapsed_plot_button").is_visible())
 
     # Upload icon tooltip describes both functions
     tooltip = page.eval_on_selector(
-        "#collapsedUploadTarget",
+        "#collapsed_upload_target",
         "e => e.getAttribute('data-tooltip') || e.title || ''",
     )
     ctx.check(group, "Collapsed upload icon hover text describes both functions",
@@ -34,17 +34,17 @@ def test_sidebar_icons(ctx: TestContext):
 
     # Channel select mirrors expanded select
     ctx.check(group, "Collapsed channel icon select mirrors expanded select",
-              page.eval_on_selector("#collapsedDnaAreaSelect", "e => e.value")
-              == page.eval_on_selector("#dnaAreaSelect", "e => e.value"))
+              page.eval_on_selector("#collapsed_dna_area_select", "e => e.value")
+              == page.eval_on_selector("#dna_area_select", "e => e.value"))
 
     # Histogram icon is enabled (plot is available since rows are checked)
     ctx.check(group, "Collapsed histogram icon is enabled when plotting is available",
-              not page.eval_on_selector("#collapsedPlotButton", "e => e.disabled"))
+              not page.eval_on_selector("#collapsed_plot_button", "e => e.disabled"))
 
     # Click the collapsed histogram icon to trigger a replot
     expected_curves = density_curve_count(page)
     try:
-        page.click("#collapsedPlotButton")
+        page.click("#collapsed_plot_button")
         wait_for_curves(page, expected_curves, timeout=120000)
         ctx.check(group, "Collapsed histogram icon click triggers plot",
                   density_curve_count(page) == expected_curves,
@@ -53,5 +53,5 @@ def test_sidebar_icons(ctx: TestContext):
         ctx.check(group, "Collapsed histogram icon click triggers plot", False, str(error))
 
     # Restore expanded sidebar
-    page.click("#sidebarToggle")
+    page.click("#sidebar_toggle")
     wait_briefly(0.4)

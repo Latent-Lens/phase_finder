@@ -15,14 +15,14 @@ def test_reset(ctx: TestContext, initial_files):
     group = "Reset"
 
     # --- Restart button ---
-    page.click("#restartButton")
-    page.wait_for_selector("#fileTable .empty-note", timeout=30000)
+    page.click("#restart_button")
+    page.wait_for_selector("#file_table .empty_note", timeout=30000)
 
     bar = status_bar_text(page)
-    channel_val = page.eval_on_selector("#dnaAreaSelect", "e => e.value")
+    channel_val = page.eval_on_selector("#dna_area_select", "e => e.value")
     ctx.check(group, "Restart button resets app state",
               table_row_count(page) == 0
-              and page.locator("#plotPanel").is_hidden()
+              and page.locator("#plot_panel").is_hidden()
               and "Ready:" in bar,
               bar)
     ctx.check(group, "Restart button clears channel selection",
@@ -30,15 +30,15 @@ def test_reset(ctx: TestContext, initial_files):
               f"channel value={channel_val!r}")
 
     # --- Site logo ---
-    set_files_via_file_browser(page, "#dropZone", initial_files[:1])
+    set_files_via_file_browser(page, "#drop_zone", initial_files[:1])
     wait_for_rows(page, 1)
 
-    page.click("#siteLogo")
-    page.wait_for_selector("#fileTable .empty-note", timeout=30000)
+    page.click("#site_logo")
+    page.wait_for_selector("#file_table .empty_note", timeout=30000)
 
     bar2 = status_bar_text(page)
     ctx.check(group, "Clicking site logo resets app state",
               table_row_count(page) == 0
-              and page.locator("#plotPanel").is_hidden()
+              and page.locator("#plot_panel").is_hidden()
               and "Ready:" in bar2,
               bar2)

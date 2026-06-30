@@ -39,10 +39,10 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
         ctx.warn(group, f"Select {preferred_channel} channel", warning)
     else:
         ctx.check(group, f"Select {preferred_channel} channel",
-                  page.eval_on_selector("#dnaAreaSelect", "e => e.value") == channel)
+                  page.eval_on_selector("#dna_area_select", "e => e.value") == channel)
 
     # --- plot a strict subset first to verify subset behavior ---
-    checkboxes = page.query_selector_all(".file-table tbody .row-select")
+    checkboxes = page.query_selector_all(".file_table tbody .row_select")
     subset_count = min(2, total_rows)
     # Uncheck all except the first subset_count
     for i, cb in enumerate(checkboxes):
@@ -52,10 +52,10 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
             cb.uncheck()
     wait_briefly(0.3)
 
-    page.click("#startAnalysisButton")
+    page.click("#start_analysis_button")
     # Catch progress overlay during plot
     progress_during_plot = try_catch_progress(page, timeout_ms=10000)
-    page.wait_for_selector("#plotArea svg", timeout=120000)
+    page.wait_for_selector("#plot_area svg", timeout=120000)
     wait_for_curves(page, subset_count)
 
     ctx.check(group, "Plot strict subset of files",
@@ -65,7 +65,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
               progress_during_plot,
               "overlay caught" if progress_during_plot else "loaded too fast to observe")
     wait_for_overlay_hidden(page)
-    overlay_hidden = page.eval_on_selector("#progressOverlay", "e => e.hidden")
+    overlay_hidden = page.eval_on_selector("#progress_overlay", "e => e.hidden")
     ctx.check(group, "Progress overlay hides after plot completes",
               overlay_hidden, "hidden" if overlay_hidden else "still visible")
 
@@ -80,14 +80,14 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     wait_briefly(0.2)
 
     # Button text should be "Start Modeling (DJF)" now that we already plotted once
-    button_text = page.eval_on_selector("#startAnalysisButton", "e => e.textContent.trim()")
+    button_text = page.eval_on_selector("#start_analysis_button", "e => e.textContent.trim()")
     if button_text == "Start Modeling (DJF)":
         # Change channel to force "Plot Channel Events" mode again, then change back
         other = another_channel(page, channel)
         if other:
             select_channel(page, other)
             page.wait_for_function(
-                "() => document.querySelector('#startAnalysisButton').textContent.trim() === 'Plot Channel Events'",
+                "() => document.querySelector('#start_analysis_button').textContent.trim() === 'Plot Channel Events'",
                 timeout=30000,
             )
             select_channel(page, channel)
@@ -103,15 +103,15 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     ctx.check(group, "Plot title and y-axis update",
               title.startswith(f"Histogram of Events:  {total_rows} Samples  |  ")
               and page.eval_on_selector_all(
-                  "#plotArea svg text",
+                  "#plot_area svg text",
                   "els => els.some(t => t.textContent === 'Number of Events')"
               ),
               title)
     ctx.check(group, "Cell Cycle Modeling button becomes enabled after plotting",
-              not page.eval_on_selector("#cellCycleModelingButton", "e => e.disabled"))
+              not page.eval_on_selector("#cell_cycle_modeling_button", "e => e.disabled"))
 
     # --- turn rows off, verify curves decrease ---
-    checkboxes = page.query_selector_all(".file-table tbody .row-select")
+    checkboxes = page.query_selector_all(".file_table tbody .row_select")
     checkboxes[0].uncheck()
     checkboxes[1].uncheck()
     wait_briefly(0.4)
@@ -125,7 +125,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
               "data cache retained")
 
     # Re-check one row
-    checkboxes = page.query_selector_all(".file-table tbody .row-select")
+    checkboxes = page.query_selector_all(".file_table tbody .row_select")
     checkboxes[0].check()
     wait_briefly(0.4)
     ctx.check(group, "Turning a row back on restores its plot line",
@@ -133,7 +133,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
               f"curves={density_curve_count(page)}")
 
     # Re-check the second row
-    checkboxes = page.query_selector_all(".file-table tbody .row-select")
+    checkboxes = page.query_selector_all(".file_table tbody .row_select")
     checkboxes[1].check()
     wait_briefly(0.4)
     ctx.check(group, "All rows back on restores all plot lines",
@@ -146,17 +146,17 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
         select_channel(page, other)
         try:
             page.wait_for_function(
-                "() => document.querySelector('#startAnalysisButton').textContent.trim() === 'Plot Channel Events'",
+                "() => document.querySelector('#start_analysis_button').textContent.trim() === 'Plot Channel Events'",
                 timeout=60000,
             )
             wait_briefly(0.8)
-            btn = page.eval_on_selector("#startAnalysisButton", "e => e.textContent.trim()")
+            btn = page.eval_on_selector("#start_analysis_button", "e => e.textContent.trim()")
             ctx.check(group, "Changing channel restores Plot Channel Events button",
                       btn == "Plot Channel Events", btn)
             ctx.check(group, "Changing channel clears curves but keeps axes",
                       density_curve_count(page) == 0
                       and page.eval_on_selector_all(
-                          "#plotArea svg text",
+                          "#plot_area svg text",
                           "els => els.some(t => t.textContent === 'Number of Events')"
                       ),
                       f"curves={density_curve_count(page)}, title={plot_title(page)}")
@@ -166,7 +166,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
                       bar)
             load_ok = "failed" not in bar.lower() and "error" not in bar.lower()
             if load_ok:
-                page.click("#startAnalysisButton")
+                page.click("#start_analysis_button")
                 wait_for_curves(page, total_rows)
                 ctx.check(group, "Plot Channel Events replots the newly selected channel",
                           density_curve_count(page) == total_rows,
@@ -181,7 +181,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
         select_channel(page, channel)
         try:
             page.wait_for_function(
-                "() => document.querySelector('#startAnalysisButton').textContent.trim() === 'Plot Channel Events'",
+                "() => document.querySelector('#start_analysis_button').textContent.trim() === 'Plot Channel Events'",
                 timeout=30000,
             )
         except Exception:

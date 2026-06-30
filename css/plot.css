@@ -1,36 +1,36 @@
 /* Plot panel: panel layout overrides, the controls bar, the DJF fractions
    readout, and the peak-threshold checkbox with its info icon. */
 
-/* display:flex on .parsed-files-panel would otherwise defeat [hidden]. */
-.plot-panel[hidden] {
+/* display:flex on .parsed_files_panel would otherwise defeat [hidden]. */
+.plot_panel[hidden] {
   display: none !important;
 }
 
-.plot-panel {
+.plot_panel {
   flex: 0 0 auto;
   min-height: 460px;
 }
 
 /* Stack the controls bar above the plot area. */
-.plot-panel .metadata-panel-body {
+.plot_panel .metadata_panel_body {
   flex-direction: column;
 }
 
-.plot-panel .table-wrap {
+.plot_panel .table_wrap {
   max-height: none;
   overflow: hidden;
 }
 
 /* Keep the plot canvas stable; the DJF fit table is positioned inside the
    right-side legend margin and does not take height away from the SVG. */
-.plot-panel #plotArea {
+.plot_panel #plot_area {
   position: relative;
   flex: 0 0 clamp(360px, 42vh, 520px);
   height: clamp(360px, 42vh, 520px);
   min-height: 360px;
 }
 
-.plot-controls {
+.plot_controls {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -38,7 +38,7 @@
   margin-bottom: 10px;
 }
 
-.plot-control {
+.plot_control {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -48,8 +48,8 @@
   color: var(--muted);
 }
 
-.plot-control select,
-.plot-control input {
+.plot_control select,
+.plot_control input {
   width: auto;
   min-height: 30px;
   font-size: 0.85rem;
@@ -57,11 +57,11 @@
   color: var(--text);
 }
 
-.plot-control input {
+.plot_control input {
   width: 88px;
 }
 
-.djf-readout {
+.djf_readout {
   align-self: center;
   margin-left: auto;
   font-size: 0.85rem;
@@ -71,7 +71,7 @@
   color: var(--text);
 }
 
-.plot-check-row {
+.plot_check_row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -81,7 +81,7 @@
   color: var(--text);
 }
 
-.plot-check-row input[type="checkbox"] {
+.plot_check_row input[type="checkbox"] {
   width: 15px;
   height: 15px;
   min-height: 0;
@@ -89,7 +89,7 @@
   cursor: pointer;
 }
 
-.info-icon {
+.info_icon {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -106,7 +106,7 @@
   cursor: help;
 }
 
-.info-icon::after {
+.info_icon::after {
   position: absolute;
   z-index: 100;
   bottom: calc(100% + 8px);
@@ -117,7 +117,7 @@
   border-radius: 6px;
   background: var(--text);
   color: var(--panel);
-  box-shadow: 0 10px 24px var(--shadow-medium);
+  box-shadow: 0 10px 24px var(--shadow_medium);
   content: attr(data-tooltip);
   font-size: 0.76rem;
   font-weight: 500;
@@ -131,7 +131,7 @@
   white-space: pre-line;
 }
 
-.info-icon::before {
+.info_icon::before {
   position: absolute;
   z-index: 101;
   bottom: calc(100% + 3px);
@@ -147,21 +147,21 @@
   visibility: hidden;
 }
 
-.info-icon:hover::after,
-.info-icon:focus-visible::after,
-.info-icon:hover::before,
-.info-icon:focus-visible::before {
+.info_icon:hover::after,
+.info_icon:focus-visible::after,
+.info_icon:hover::before,
+.info_icon:focus-visible::before {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   visibility: visible;
 }
 
-.info-icon:hover::before,
-.info-icon:focus-visible::before {
+.info_icon:hover::before,
+.info_icon:focus-visible::before {
   transform: translateX(-50%) rotate(45deg);
 }
 
-.djf-fit-table-wrap {
+.djf_fit_table_wrap {
   position: absolute;
   z-index: 6;
   overflow: auto;
@@ -170,42 +170,42 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--panel);
-  box-shadow: 0 8px 20px var(--shadow-soft);
+  box-shadow: 0 8px 20px var(--shadow_soft);
 }
 
-.djf-fit-table-wrap[hidden] {
+.djf_fit_table_wrap[hidden] {
   display: none;
 }
 
-.djf-fit-table {
+.djf_fit_table {
   width: max-content;
   min-width: 0;
   font-size: 0.72rem;
 }
 
-.djf-fit-table th,
-.djf-fit-table td {
+.djf_fit_table th,
+.djf_fit_table td {
   max-width: 210px;
   padding: 4px 6px;
 }
 
-.djf-fit-title-row th {
+.djf_fit_title_row th {
   position: static;
-  background: var(--accent-soft);
+  background: var(--accent_soft);
   color: var(--text);
 }
 
-.djf-fit-column-row th {
+.djf_fit_column_row th {
   position: static;
-  background: var(--th-bg);
+  background: var(--th_bg);
   color: var(--text);
 }
 
-.djf-fit-group + .djf-fit-group .djf-fit-title-row th {
+.djf_fit_group + .djf_fit_group .djf_fit_title_row th {
   border-top: 2px solid var(--border);
 }
 
-.djf-fit-sample {
+.djf_fit_sample {
   display: block;
   max-width: 210px;
   overflow: hidden;
@@ -214,7 +214,7 @@
   white-space: nowrap;
 }
 
-.djf-fit-meta {
+.djf_fit_meta {
   display: block;
   max-width: 210px;
   color: var(--muted);
@@ -223,7 +223,7 @@
   white-space: normal;
 }
 
-.djf-fit-table .numeric-cell {
+.djf_fit_table .numeric_cell {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }

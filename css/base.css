@@ -14,41 +14,41 @@
 
   /* Brand / accent (blue) */
   --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-soft: #e7efff;
-  --logo-teal: #01a5af;
-  --logo-blue: #072c67;
+  --accent_strong: #1d4ed8;
+  --accent_soft: #e7efff;
+  --logo_teal: #01a5af;
+  --logo_blue: #072c67;
 
   /* Status / action colors */
   --danger: #b42318;
   --success: #059669;
-  --success-strong: #047857;
+  --success_strong: #047857;
   --restart: #dc2626;
-  --restart-strong: #b91c1c;
+  --restart_strong: #b91c1c;
 
   /* Focus rings */
-  --focus-success: rgba(5, 150, 105, 0.28);
-  --focus-restart: rgba(220, 38, 38, 0.28);
+  --focus_success: rgba(5, 150, 105, 0.28);
+  --focus_restart: rgba(220, 38, 38, 0.28);
 
   /* Component-specific surfaces */
-  --dropzone-border: #8ea0bd;
-  --th-bg: #f2f5fa;
-  --progress-track-bg: #e5edf6;
-  --progress-track-border: #b8c5d6;
-  --progress-card-border: rgba(1, 165, 175, 0.45);
+  --dropzone_border: #8ea0bd;
+  --th_bg: #f2f5fa;
+  --progress_track_bg: #e5edf6;
+  --progress_track_border: #b8c5d6;
+  --progress_card_border: rgba(1, 165, 175, 0.45);
 
   /* Shadows */
-  --shadow-soft: rgba(15, 23, 42, 0.12);
-  --shadow-medium: rgba(15, 23, 42, 0.16);
-  --shadow-strong: rgba(15, 23, 42, 0.2);
+  --shadow_soft: rgba(15, 23, 42, 0.12);
+  --shadow_medium: rgba(15, 23, 42, 0.16);
+  --shadow_strong: rgba(15, 23, 42, 0.2);
 
   /* Plot (D3) — read by plotting.js via getComputedStyle */
-  --djf-g1: #95c1dc;
-  --djf-s: #d5eec8;
-  --djf-g2: #ef8b8d;
-  --djf-total: #111827;
+  --djf_g1: #95c1dc;
+  --djf_s: #d5eec8;
+  --djf_g2: #ef8b8d;
+  --djf_total: #111827;
   --threshold: #9ca3af;
-  --threshold-label: #6b7280;
+  --threshold_label: #6b7280;
 }
 
 * {
@@ -123,7 +123,7 @@ label {
   font-weight: 650;
 }
 
-.visually-hidden-file {
+.visually_hidden_file {
   position: absolute;
   width: 1px;
   height: 1px;

@@ -20,17 +20,17 @@ td {
 th {
   position: sticky;
   top: 0;
-  background: var(--th-bg);
+  background: var(--th_bg);
   text-align: left;
 }
 
 /* ---- Multi-select dropdown (column filters) ---- */
 
-.multi-select {
+.multi_select {
   position: relative;
 }
 
-.multi-select-toggle {
+.multi_select_toggle {
   width: 100%;
   min-height: 38px;
   border: 1px solid var(--border);
@@ -46,7 +46,7 @@ th {
   cursor: pointer;
 }
 
-.multi-select-toggle::after {
+.multi_select_toggle::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -58,13 +58,13 @@ th {
   transform: translateY(-65%) rotate(45deg);
 }
 
-.multi-select-toggle:disabled {
+.multi_select_toggle:disabled {
   cursor: default;
   color: var(--muted);
   background: var(--bg);
 }
 
-.multi-select-menu {
+.multi_select_menu {
   position: absolute;
   z-index: 30;
   right: 0;
@@ -77,15 +77,15 @@ th {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--panel);
-  box-shadow: 0 14px 28px var(--shadow-medium);
+  box-shadow: 0 14px 28px var(--shadow_medium);
   padding: 8px;
 }
 
-.multi-select-menu[hidden] {
+.multi_select_menu[hidden] {
   display: none;
 }
 
-.checkbox-option {
+.checkbox_option {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
@@ -94,13 +94,13 @@ th {
   font-size: 0.9rem;
 }
 
-.checkbox-option input {
+.checkbox_option input {
   width: 14px;
   height: 14px;
   margin: 0;
 }
 
-.checkbox-option span {
+.checkbox_option span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -109,19 +109,19 @@ th {
 /* ---- File table ---- */
 
 /* Let columns widen to fit their content instead of stretching to fill. */
-.file-table {
+.file_table {
   width: auto;
   /* Height of the label row (row 1) when stats columns are present.
      Used to offset the row-2 sticky headers so they sit just below row 1. */
-  --stats-label-row-height: 34px;
+  --stats_label_row_height: 34px;
 }
 
-.file-table th,
-.file-table td {
+.file_table th,
+.file_table td {
   max-width: none;
 }
 
-.file-table input {
+.file_table input {
   width: auto;
   min-width: 0;
   min-height: 34px;
@@ -131,7 +131,7 @@ th {
   font: inherit;
 }
 
-.file-table input[type="checkbox"] {
+.file_table input[type="checkbox"] {
   width: 17px;
   height: 17px;
   min-width: 0;
@@ -144,7 +144,7 @@ th {
   cursor: pointer;
 }
 
-.checkbox-col {
+.checkbox_col {
   width: 1%;
   text-align: center;
   white-space: nowrap;
@@ -152,18 +152,18 @@ th {
 }
 
 /* Header checkbox sits at the top of the cell, level with the column labels. */
-.file-table th.checkbox-col {
+.file_table th.checkbox_col {
   vertical-align: top;
 }
 
-.file-table th.checkbox-col input[type="checkbox"] {
+.file_table th.checkbox_col input[type="checkbox"] {
   margin-top: 2px;
 }
 
-.file-table th {
+.file_table th {
   vertical-align: top;
   /* Shrink the header band; the label pins to the top and the filter dropdown
-     to the bottom of this height (see .th-inner / .th-filter). */
+     to the bottom of this height (see .th_inner / .th_filter). */
   height: 54px;
   padding-top: 6px;
   padding-bottom: 6px;
@@ -173,13 +173,13 @@ th {
 
 /* Flex column so the label stays at the top and the dropdown drops to the
    bottom of the (fixed-height) header cell. */
-.th-inner {
+.th_inner {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.th-sort {
+.th_sort {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -195,53 +195,53 @@ th {
   cursor: pointer;
 }
 
-.th-sort:hover {
+.th_sort:hover {
   color: var(--accent);
 }
 
 /* Always-visible up/down sort arrows, side by side; the active one highlights. */
-.sort-indicator {
+.sort_indicator {
   display: inline-flex;
   flex-direction: row;
   gap: 1px;
   font-size: 0.85rem;
 }
 
-.sort-arrow {
+.sort_arrow {
   color: var(--muted);
   opacity: 0.45;
   cursor: pointer;
 }
 
-.sort-arrow:hover {
+.sort_arrow:hover {
   color: var(--accent);
   opacity: 1;
 }
 
-.sort-arrow.active {
+.sort_arrow.active {
   color: var(--accent);
   opacity: 1;
 }
 
-.th-filter {
+.th_filter {
   margin-top: auto;
   max-width: 180px;
   font-weight: 400;
 }
 
-.th-filter-toggle {
+.th_filter_toggle {
   min-height: 26px;
   font-size: 0.8rem;
 }
 
 /* Filter menu checkboxes use the global 17px size, so let the first grid
    column fit the checkbox instead of clamping it to 16px. */
-.th-filter .checkbox-option {
+.th_filter .checkbox_option {
   grid-template-columns: auto minmax(0, 1fr);
   font-size: 0.85rem;
 }
 
-.empty-note {
+.empty_note {
   margin: 0;
   color: var(--muted);
   font-size: 0.9rem;
@@ -251,8 +251,8 @@ th {
 /* ---- Statistics columns ---- */
 
 /* Teal left border marks the visual boundary between regular and stats columns. */
-.stats-col-start {
-  border-left: 2px solid var(--logo-teal) !important;
+.stats_col_start {
+  border-left: 2px solid var(--logo_teal) !important;
 }
 
 /*
@@ -260,17 +260,17 @@ th {
  *   Row 1 — column sort labels  +  channel name group header
  *   Row 2 — column filter dropdowns  +  per-metric sub-headers
  *
- * Higher specificity (.file-table th.*) overrides the base .file-table th rules
+ * Higher specificity (.file_table th.*) overrides the base .file_table th rules
  * (height: 54px, position: sticky, vertical-align: top).
  */
 
 /* Checkbox th spans both rows; center it vertically. */
-.file-table th.stats-checkbox-th {
+.file_table th.stats_checkbox_th {
   vertical-align: middle;
 }
 
 /* Row-1 label cells: compact, centered, sticky. */
-.file-table th.stats-label-th {
+.file_table th.stats_label_th {
   height: auto;
   padding: 7px 10px;
   vertical-align: middle;
@@ -278,7 +278,7 @@ th {
 }
 
 /* Group header: spans all metric columns, shows channel name with a teal accent. */
-.file-table th.stats-group-th {
+.file_table th.stats_group_th {
   height: auto;
   padding: 5px 10px;
   text-align: center;
@@ -286,24 +286,24 @@ th {
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--logo-teal);
+  color: var(--logo_teal);
   white-space: nowrap;
   overflow: visible;
 }
 
 /* Row-2 filter cells: sticky just below the label row. */
-.file-table th.stats-filter-th {
+.file_table th.stats_filter_th {
   height: auto;
   padding: 4px 10px 6px;
   vertical-align: top;
   position: sticky;
-  top: var(--stats-label-row-height);
-  background: var(--th-bg);
+  top: var(--stats_label_row_height);
+  background: var(--th_bg);
   overflow: visible;
 }
 
 /* Row-2 per-metric sub-headers: sticky just below the label row. */
-.file-table th.stats-sub-th {
+.file_table th.stats_sub_th {
   height: auto;
   padding: 5px 10px 6px;
   font-size: 0.94rem;
@@ -313,12 +313,12 @@ th {
   white-space: nowrap;
   vertical-align: middle;
   position: sticky;
-  top: var(--stats-label-row-height);
-  background: var(--th-bg);
+  top: var(--stats_label_row_height);
+  background: var(--th_bg);
 }
 
 /* Data cells: same font/color/spacing as regular data cells, right+middle aligned. */
-.stats-td {
+.stats_td {
   text-align: right;
   vertical-align: middle;
 }

@@ -2,55 +2,55 @@
 
 .sidebar {
   position: relative;
-  --sidebar-section-gap: 16px;
-  --sidebar-header-margin: 16px;
-  --sidebar-section-separator-height: 1px;
-  --sidebar-section-separator-padding-top: 16px;
-  --sidebar-drop-zone-min-height: 168px;
-  gap: var(--sidebar-section-gap);
+  --sidebar_section_gap: 16px;
+  --sidebar_header_margin: 16px;
+  --sidebar_section_separator_height: 1px;
+  --sidebar_section_separator_padding_top: 16px;
+  --sidebar_drop_zone_min_height: 168px;
+  gap: var(--sidebar_section_gap);
 }
 
-.sidebar-header {
-  margin-bottom: var(--sidebar-header-margin);
+.sidebar_header {
+  margin-bottom: var(--sidebar_header_margin);
   transition: margin 120ms ease;
 }
 
-.sidebar-title-row {
+.sidebar_title_row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: calc(var(--panel-title-row-height) + var(--panel-title-rule-gap));
+  min-height: calc(var(--panel_title_row_height) + var(--panel_title_rule_gap));
   margin-bottom: 0;
 }
 
-.sidebar-title-row h2 {
+.sidebar_title_row h2 {
   margin: 0;
   line-height: 1.2;
 }
 
-.sidebar-content {
+.sidebar_content {
   display: flex;
   min-width: 0;
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: var(--sidebar-section-gap);
+  gap: var(--sidebar_section_gap);
   transition:
     opacity 120ms ease,
     visibility 120ms ease;
 }
 
-.sidebar-section {
+.sidebar_section {
   min-width: 0;
 }
 
-.sidebar-section + .sidebar-section {
-  border-top: var(--sidebar-section-separator-height) solid var(--border);
-  padding-top: var(--sidebar-section-separator-padding-top);
+.sidebar_section + .sidebar_section {
+  border-top: var(--sidebar_section_separator_height) solid var(--border);
+  padding-top: var(--sidebar_section_separator_padding_top);
 }
 
-.sidebar-toggle {
+.sidebar_toggle {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -65,54 +65,54 @@
   padding: 0;
 }
 
-.sidebar-toggle:hover {
+.sidebar_toggle:hover {
   background: transparent;
   color: var(--accent);
 }
 
-.sidebar-toggle:focus-visible {
-  outline: 3px solid var(--focus-success);
+.sidebar_toggle:focus-visible {
+  outline: 3px solid var(--focus_success);
   outline-offset: 2px;
 }
 
-.sidebar-toggle-icon {
+.sidebar_toggle_icon {
   display: block;
   width: 42px;
   height: 42px;
 }
 
-.app.sidebar-collapsed .sidebar {
+.app.sidebar_collapsed .sidebar {
   align-items: center;
   padding: 2px 8px;
 }
 
-.app.sidebar-collapsed .sidebar-header {
+.app.sidebar_collapsed .sidebar_header {
   width: 100%;
   margin-bottom: 0;
 }
 
-.app.sidebar-collapsed .sidebar-title-row {
+.app.sidebar_collapsed .sidebar_title_row {
   justify-content: center;
-  min-height: calc(var(--panel-title-row-height) + var(--panel-title-rule-gap));
+  min-height: calc(var(--panel_title_row_height) + var(--panel_title_rule_gap));
   margin-bottom: 0;
 }
 
-.app.sidebar-collapsed .sidebar-title-row h2 {
+.app.sidebar_collapsed .sidebar_title_row h2 {
   display: none;
 }
 
-.app.sidebar-collapsed .sidebar-header .panel-title-rule {
+.app.sidebar_collapsed .sidebar_header .panel_title_rule {
   width: 100%;
 }
 
-.app.sidebar-collapsed .sidebar-content {
+.app.sidebar_collapsed .sidebar_content {
   display: none;
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
 }
 
-.sidebar-collapsed-actions {
+.sidebar_collapsed_actions {
   display: none;
   width: 100%;
   flex-direction: column;
@@ -121,23 +121,23 @@
   padding-top: 14px;
 }
 
-.app.sidebar-collapsed .sidebar-collapsed-actions {
+.app.sidebar_collapsed .sidebar_collapsed_actions {
   display: flex;
 }
 
-.sidebar-plot-button {
+.sidebar_plot_button {
   width: 100%;
   min-height: 42px;
   margin-top: 2px;
   font-size: 1rem;
 }
 
-.sidebar-collapsed-upload-target {
+.sidebar_collapsed_upload_target {
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 1px dashed var(--dropzone-border);
+  border: 1px dashed var(--dropzone_border);
   border-radius: 8px;
   background: var(--panel);
   cursor: pointer;
@@ -147,33 +147,33 @@
     background 120ms ease;
 }
 
-.sidebar-collapsed-upload-target:hover,
-.sidebar-collapsed-upload-target.dragging {
+.sidebar_collapsed_upload_target:hover,
+.sidebar_collapsed_upload_target.dragging {
   border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--accent_soft);
 }
 
-.sidebar-collapsed-upload-target:focus-visible,
-.sidebar-collapsed-channel-select:focus-visible,
-.sidebar-collapsed-plot-button:focus-visible,
-#collapsedCellCycleModelingButton:focus-visible,
-#collapsedCalculateStatsButton:focus-visible {
-  outline: 3px solid var(--focus-success);
+.sidebar_collapsed_upload_target:focus-visible,
+.sidebar_collapsed_channel_select:focus-visible,
+.sidebar_collapsed_plot_button:focus-visible,
+#collapsed_cell_cycle_modeling_button:focus-visible,
+#collapsed_calculate_stats_button:focus-visible {
+  outline: 3px solid var(--focus_success);
   outline-offset: 2px;
 }
 
-.sidebar-collapsed-upload-icon,
-.sidebar-collapsed-checklist-icon,
-.sidebar-collapsed-histogram-icon,
-.sidebar-collapsed-function-icon,
-.sidebar-collapsed-calculator-icon {
+.sidebar_collapsed_upload_icon,
+.sidebar_collapsed_checklist_icon,
+.sidebar_collapsed_histogram_icon,
+.sidebar_collapsed_function_icon,
+.sidebar_collapsed_calculator_icon {
   display: block;
   width: 42px;
   height: 42px;
   object-fit: contain;
 }
 
-.sidebar-collapsed-channel-control {
+.sidebar_collapsed_channel_control {
   position: relative;
   display: grid;
   place-items: center;
@@ -181,7 +181,7 @@
   height: 44px;
 }
 
-.sidebar-collapsed-channel-select {
+.sidebar_collapsed_channel_select {
   position: absolute;
   inset: 0;
   width: 44px;
@@ -192,11 +192,11 @@
   padding: 0;
 }
 
-.sidebar-collapsed-channel-select:disabled {
+.sidebar_collapsed_channel_select:disabled {
   cursor: not-allowed;
 }
 
-.sidebar-collapsed-plot-button {
+.sidebar_collapsed_plot_button {
   display: grid;
   place-items: center;
   width: 44px;
@@ -210,20 +210,20 @@
   cursor: pointer;
 }
 
-.sidebar-collapsed-plot-button:hover:not(:disabled) {
-  background: var(--accent-soft);
+.sidebar_collapsed_plot_button:hover:not(:disabled) {
+  background: var(--accent_soft);
 }
 
-.sidebar-collapsed-plot-button:disabled {
+.sidebar_collapsed_plot_button:disabled {
   cursor: not-allowed;
 }
 
-.sidebar-collapsed-plot-button:disabled img {
+.sidebar_collapsed_plot_button:disabled img {
   opacity: 0.45;
 }
 
 /* All sidebar tooltips appear to the right of their element. */
-.sidebar .quick-tooltip::after {
+.sidebar .quick_tooltip::after {
   top: 50%;
   right: auto;
   bottom: auto;
@@ -232,7 +232,7 @@
   transform: translate(2px, -50%);
 }
 
-.sidebar .quick-tooltip::before {
+.sidebar .quick_tooltip::before {
   top: 50%;
   right: auto;
   bottom: auto;
@@ -240,30 +240,30 @@
   transform: translateY(-50%) rotate(45deg);
 }
 
-.sidebar .quick-tooltip:hover::after,
-.sidebar .quick-tooltip:focus-visible::after {
+.sidebar .quick_tooltip:hover::after,
+.sidebar .quick_tooltip:focus-visible::after {
   transform: translate(0, -50%);
 }
 
 /* Collapsed sidebar icons: tighter max-width since icon bar is only 56px wide. */
-.sidebar-collapsed-actions .quick-tooltip::after {
+.sidebar_collapsed_actions .quick_tooltip::after {
   max-width: min(260px, calc(100vw - 88px));
 }
 
 /* Disabled items still show their tooltip at full opacity. */
-.sidebar .quick-tooltip:disabled:hover::after,
-.sidebar .quick-tooltip:disabled:hover::before {
+.sidebar .quick_tooltip:disabled:hover::after,
+.sidebar .quick_tooltip:disabled:hover::before {
   opacity: 1;
   visibility: visible;
 }
 
 
-.drop-zone {
+.drop_zone {
   cursor: pointer;
   display: grid;
   place-items: center;
-  min-height: var(--sidebar-drop-zone-min-height);
-  border: 1px dashed var(--dropzone-border);
+  min-height: var(--sidebar_drop_zone_min_height);
+  border: 1px dashed var(--dropzone_border);
   border-radius: 8px;
   padding: 18px;
   text-align: center;
@@ -273,17 +273,17 @@
     background 120ms ease;
 }
 
-.drop-zone.dragging {
+.drop_zone.dragging {
   border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--accent_soft);
 }
 
-.drop-zone strong,
-.drop-zone span {
+.drop_zone strong,
+.drop_zone span {
   display: block;
 }
 
-.drop-zone span {
+.drop_zone span {
   margin-top: 8px;
   color: var(--muted);
   font-size: 0.92rem;
