@@ -22,43 +22,55 @@
   align-items: center;
 }
 
-.debug_level_badge {
-  margin-left: 20px;
-  padding: 0 14px;
-  font-size: 32px;
-  font-weight: 500;
-  color: var(--panel);
-  background: var(--accent);
-  border-radius: 8px;
-  white-space: nowrap;
-  line-height: 1.6;
-}
-
 .header_actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.restart_button {
+.save_session_button {
   width: auto;
   min-height: 36px;
-  border: 1px solid var(--restart_strong);
+  border: 1px solid var(--logo_blue);
   border-radius: 8px;
-  background: var(--restart);
+  background: var(--logo_blue);
   color: var(--panel);
   padding: 0 14px;
   font-size: var(--panel_title_font_size);
   font-weight: 800;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.restart_button:hover {
-  background: var(--restart_strong);
+.save_session_button:hover {
+  filter: brightness(1.35);
 }
 
-.restart_button:focus-visible {
-  outline: 3px solid var(--focus_restart);
+.save_session_button:focus-visible {
+  outline: 3px solid rgba(7, 44, 103, 0.35);
+  outline-offset: 2px;
+}
+
+.load_session_button {
+  width: auto;
+  min-height: 36px;
+  border: 1px solid var(--logo_teal);
+  border-radius: 8px;
+  background: var(--logo_teal);
+  color: var(--panel);
+  padding: 0 14px;
+  font-size: var(--panel_title_font_size);
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.load_session_button:hover {
+  filter: brightness(0.9);
+}
+
+.load_session_button:focus-visible {
+  outline: 3px solid rgba(1, 165, 175, 0.35);
   outline-offset: 2px;
 }
 
@@ -69,20 +81,60 @@
   --page_header_height: 60px;
   /* Actual rendered height of the fixed status bar (36px + 3.5px border). */
   --status_bar_height: 40px;
+  /* Width of the drag handle between sidebar and workspace. */
+  --sidebar_resizer_width: 12px;
 
   display: grid;
-  grid-template-columns: var(--sidebar_width) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar_width) var(--sidebar_resizer_width) minmax(0, 1fr);
   /* Fill exactly the space between the page header and status bar — no more,
      so the page never grows a vertical scrollbar. Panels scroll internally. */
   grid-template-rows: minmax(0, 1fr);
-  gap: 20px;
+  gap: 0;
   height: calc(100vh - var(--page_header_height) - var(--status_bar_height));
   padding: 8px 10px;
   transition: grid-template-columns 180ms ease;
 }
 
 .app.sidebar_collapsed {
-  grid-template-columns: var(--sidebar_collapsed_width) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar_collapsed_width) var(--sidebar_resizer_width) minmax(0, 1fr);
+}
+
+/* ── Sidebar drag-resizer ────────────────────────────────────────────────── */
+
+.sidebar_resizer {
+  position: relative;
+  cursor: col-resize;
+  border-radius: 4px;
+  z-index: 10;
+}
+
+.sidebar_resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 48px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 150ms ease;
+  pointer-events: none;
+}
+
+.sidebar_resizer:hover::after,
+.sidebar_resizer.is_dragging::after {
+  background: var(--accent);
+}
+
+/* Disabled when the sidebar is collapsed — toggle button handles that. */
+.app.sidebar_collapsed .sidebar_resizer {
+  pointer-events: none;
+  cursor: default;
+}
+
+.app.sidebar_collapsed .sidebar_resizer::after {
+  display: none;
 }
 
 .sidebar,
@@ -103,13 +155,59 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 16px;
+  gap: 0; /* workspace_resizer element provides the vertical spacing */
+}
+
+/* ── Workspace vertical drag-resizer (between plot & metadata panels) ─────── */
+
+.workspace_resizer {
+  display: none; /* shown by JS when plot_panel is visible */
+  position: relative;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: default;
+  border-radius: 4px;
+}
+
+.workspace_resizer.visible {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspace_resizer.draggable {
+  cursor: row-resize;
+}
+
+.workspace_resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: transparent;
+  transition: background 150ms ease;
+  pointer-events: none;
+}
+
+.workspace_resizer.draggable::after {
+  background: var(--border);
+}
+
+.workspace_resizer.draggable:hover::after,
+.workspace_resizer.is_dragging::after {
+  background: var(--accent);
 }
 
 .panel {
   --panel_title_row_height: 44px;
   --panel_title_font_size: 22px;
   --panel_title_gap: 10px;
+  --panel_title_action_gap: 40px;
+  --panel_title_icon_size: 32px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -243,11 +341,19 @@
   line-height: 1.2;
 }
 
+.metadata_title_actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--panel_title_action_gap);
+}
+
 .panel_toggle_icon {
   display: inline-block;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: var(--panel_title_icon_size);
+  height: var(--panel_title_icon_size);
+  flex: 0 0 var(--panel_title_icon_size);
+  object-fit: contain;
 }
 
 .panel_title_rule {
@@ -259,16 +365,11 @@
   background: var(--logo_teal);
 }
 
-.quick_tooltip {
-  position: relative;
-}
+/* ── JS-positioned shared tooltip ───────────────────────────────────────── */
 
-.quick_tooltip::after {
-  position: absolute;
-  z-index: 120;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  width: max-content;
+#pf_tooltip {
+  position: fixed;
+  z-index: 1200;
   max-width: min(280px, 80vw);
   padding: 7px 9px;
   border: 1px solid var(--border);
@@ -276,61 +377,50 @@
   background: var(--text);
   box-shadow: 0 8px 20px var(--shadow_medium);
   color: var(--panel);
-  content: attr(data-tooltip);
   font-size: 0.76rem;
   font-weight: 600;
   line-height: 1.25;
-  opacity: 0;
-  pointer-events: none;
   text-align: left;
-  transform: translateX(-50%) translateY(2px);
-  transition: opacity 70ms ease, transform 70ms ease, visibility 70ms ease;
-  transition-delay: 0ms;
-  visibility: hidden;
   white-space: normal;
+  word-break: break-word;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 70ms ease, visibility 70ms ease;
 }
 
-.quick_tooltip::before {
+#pf_tooltip.pf_tip_visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Arrow: rotated square that visually merges with the tooltip edge. */
+#pf_tooltip::before {
+  content: '';
   position: absolute;
-  z-index: 121;
-  bottom: calc(100% + 3px);
-  left: 50%;
   width: 9px;
   height: 9px;
   background: var(--text);
-  content: "";
-  opacity: 0;
+  transform: rotate(45deg);
   pointer-events: none;
-  transform: translateX(-50%) rotate(45deg);
-  transition: opacity 70ms ease, visibility 70ms ease;
-  transition-delay: 0ms;
-  visibility: hidden;
 }
 
-.quick_tooltip:hover::after,
-.quick_tooltip:focus-visible::after,
-.quick_tooltip:hover::before,
-.quick_tooltip:focus-visible::before {
-  opacity: 1;
-  visibility: visible;
+/* Arrow below the box (tooltip is above the anchor). */
+#pf_tooltip[data-placement="above"]::before {
+  bottom: -4px;
+  left: calc(var(--pf-arrow-offset, 50%) - 4.5px);
 }
 
-.quick_tooltip:hover::after,
-.quick_tooltip:focus-visible::after,
-.quick_tooltip:hover::before,
-.quick_tooltip:focus-visible::before {
-  transition-delay: 80ms;
+/* Arrow above the box (tooltip is below the anchor). */
+#pf_tooltip[data-placement="below"]::before {
+  top: -4px;
+  left: calc(var(--pf-arrow-offset, 50%) - 4.5px);
 }
 
-.quick_tooltip:hover::after,
-.quick_tooltip:focus-visible::after {
-  transform: translateX(-50%) translateY(0);
-}
-
-.quick_tooltip:disabled:hover::after,
-.quick_tooltip:disabled:hover::before {
-  opacity: 1;
-  visibility: visible;
+/* Arrow to the left of the box (tooltip is to the right of the anchor). */
+#pf_tooltip[data-placement="right"]::before {
+  left: -4px;
+  top: calc(var(--pf-arrow-offset, 50%) - 4.5px);
 }
 
 
