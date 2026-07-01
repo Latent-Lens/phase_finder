@@ -1,5 +1,10 @@
 /* Transient feedback UI: the fixed footer status bar and the progress overlay. */
 
+:root {
+  --metadata_split_panel_max_height: 260px;
+  --metadata_preview_table_max_height: 280px;
+}
+
 .status_bar {
   position: fixed;
   right: 0;
@@ -272,6 +277,190 @@
 
 .stats_modal_actions button:hover {
   filter: brightness(0.9);
+}
+
+.stats_modal_actions .secondary_button {
+  border-color: var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.stats_modal_actions .secondary_button:hover {
+  background: var(--bg);
+  filter: none;
+}
+
+.metadata_wizard_card {
+  width: min(980px, 100%);
+}
+
+.metadata_wizard_body {
+  gap: 16px;
+}
+
+.metadata_split_panel {
+  max-height: var(--metadata_split_panel_max_height);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.metadata_split_panel_header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--th_bg);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.metadata_split_panel_header button,
+.metadata_split_step button {
+  width: auto;
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.metadata_split_steps {
+  display: grid;
+}
+
+.metadata_split_step {
+  display: grid;
+  grid-template-columns: 88px minmax(120px, 0.65fr) minmax(0, 1.25fr) minmax(170px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 760px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.metadata_split_step_label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.metadata_split_step select,
+.metadata_split_step input {
+  min-height: 36px;
+}
+
+.metadata_split_step_controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(90px, 0.6fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.metadata_split_step_controls .metadata_regex_input,
+.metadata_split_step_controls .metadata_full_step_input {
+  grid-column: span 3;
+}
+
+.metadata_split_step_remove {
+  border-color: var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.metadata_branch_leaf {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+}
+
+.metadata_branch_leaf input,
+.metadata_column_name {
+  width: 100%;
+}
+
+.metadata_column_row {
+  display: grid;
+  grid-template-columns: 88px minmax(160px, 1fr) max-content;
+  gap: 10px;
+  align-items: center;
+  min-width: 420px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.metadata_remainder_label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.metadata_leaf_hide {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.metadata_leaf_hide input {
+  width: auto;
+  min-height: auto;
+}
+
+.metadata_column_name {
+  min-height: 34px;
+}
+
+.metadata_preview_title {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.metadata_preview {
+  max-height: var(--metadata_preview_table_max_height);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.metadata_preview_table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.metadata_preview_table th,
+.metadata_preview_table td {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.metadata_preview_table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--th_bg);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.metadata_preview_table td {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.metadata_wizard_actions {
+  gap: 10px;
 }
 
 /* Progress indicator shown in the stats modal while calculations run. */

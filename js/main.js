@@ -13,7 +13,17 @@ const status_bar_message = document.querySelector("#status_bar_message");
 const channel_select = document.querySelector("#channel_select");
 const collapsed_channel_select = document.querySelector("#collapsed_channel_select");
 const file_table = document.querySelector("#file_table");
+const metadata_parse_button = document.querySelector("#metadata_parse_button");
 const metadata_export_button = document.querySelector("#metadata_export_button");
+const metadata_wizard_modal = document.querySelector("#metadata_wizard_modal");
+const metadata_wizard_close = document.querySelector("#metadata_wizard_close");
+const metadata_wizard_cancel = document.querySelector("#metadata_wizard_cancel");
+const metadata_wizard_apply = document.querySelector("#metadata_wizard_apply");
+const metadata_wizard_reset = document.querySelector("#metadata_wizard_reset");
+const metadata_split_steps = document.querySelector("#metadata_split_steps");
+const metadata_add_split_step = document.querySelector("#metadata_add_split_step");
+const metadata_column_editor = document.querySelector("#metadata_column_editor");
+const metadata_preview = document.querySelector("#metadata_preview");
 const start_analysis_button = document.querySelector("#start_analysis_button");
 const collapsed_plot_button = document.querySelector("#collapsed_plot_button");
 const progress_overlay = document.querySelector("#progress_overlay");
@@ -35,8 +45,8 @@ const SIDEBAR_TRANSITION_MS = 220;
 // Analysis code holds references to these entries and mutates them (e.g. row.data).
 let file_map = new Map();
 
-// Tabular view of loaded files. Columns: id, name, strain, replicate,
-// nocodazoleArrest, timepoint, plus stats columns added by summary_stats.js
+// Tabular view of loaded files. Columns: id, name, user-defined filename
+// metadata columns, plus stats columns added by summary_stats.js
 // in the form "CHANNEL:metric" (e.g. "DAPI-A:mean"). Single source of truth
 // for annotation edits and all stats.
 let file_table_frame = null;
@@ -137,14 +147,9 @@ async function load_files(files) {
       if (!has_initialized_plot()) {
         selected_file_ids.add(entry.id);
       }
-      const anns = guess_annotations_from_filename(file.name);
       new_tabular_rows.push({
         id: entry.id,
         name: entry.name,
-        strain: anns.strain,
-        replicate: anns.replicate,
-        nocodazoleArrest: anns.nocodazoleArrest,
-        timepoint: anns.timepoint,
       });
       queued_names.add(file.name);
       loaded_entries.push(entry);
@@ -162,9 +167,9 @@ async function load_files(files) {
     // concat_frames fills missing columns (e.g. existing stats cols) with null
     // for new rows, which is the correct default until stats are calculated.
     file_table_frame = file_table_frame ? concat_frames(file_table_frame, new_frame) : new_frame;
+    apply_current_filename_metadata_template({ render: false });
   }
   if (loaded_entries.length) {
-    window.PhaseFinderDebug?.saveFilesToCache(loaded_entries.map((e) => e.file));
     document.dispatchEvent(new CustomEvent("pf-files-loaded", {
       detail: { count: loaded, names: new_tabular_rows.map((r) => r.name) },
     }));
@@ -172,6 +177,7 @@ async function load_files(files) {
   sort_file_table();
   update_views();
   update_drop_zone_text();
+  if (loaded) schedule_metadata_wizard_after_file_load();
 
   let downstream_refresh = { refreshed: false, loaded_rows: 0 };
   if (loaded) {
@@ -202,7 +208,7 @@ async function load_files(files) {
     update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated, with file-load issue(s)." : `Finished with ${failures.length + duplicates.length} issue(s).`);
     hide_progress(900);
   } else if (loaded) {
-    set_status(`Read metadata from ${loaded} file(s).${downstream_message} Verify extracted strain, timepoint, and replicate data before plotting.`);
+    set_status(`Read metadata from ${loaded} file(s).${downstream_message} Configure filename metadata columns before plotting if needed.`);
     set_status_bar(downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
     update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
     hide_progress(600);
@@ -258,11 +264,7 @@ function update_annotation(event) {
   new_values[idx] = input.value;
   file_table_frame.setCol(field, new_values);
   input.size = annotation_input_size(input.value);
-
-  if (window.PhaseFinderDebug?.getLevel?.() >= 2) {
-    const dbg_state = get_debug_meta_state();
-    if (dbg_state) window.PhaseFinderDebug.saveMetaState(dbg_state);
-  }
+  sync_file_annotations();
 }
 
 /*
@@ -338,20 +340,33 @@ uploadTargets.forEach((target) => {
   });
 });
 
-// Restart button and the logo both reload the page, clearing all in-memory
-// state (loaded files, selections, plot, fits) for a clean start.
-// In debug mode the cache is also cleared so files don't auto-restore.
-async function hard_restart() {
-  await window.PhaseFinderDebug?.clearDebugCache();
+// The logo reloads the page for a clean start.
+function hard_restart() {
   window.location.reload();
 }
-document.querySelector("#restart_button").addEventListener("click", hard_restart);
 document.querySelector("#site_logo").addEventListener("click", hard_restart);
 file_table.addEventListener("input", update_annotation);
 file_table.addEventListener("change", handle_table_change);
 file_table.addEventListener("click", handle_table_click);
+metadata_parse_button?.addEventListener("click", open_metadata_wizard);
 metadata_export_button?.addEventListener("click", handle_metadata_table_export);
+metadata_wizard_close?.addEventListener("click", close_metadata_wizard);
+metadata_wizard_cancel?.addEventListener("click", close_metadata_wizard);
+metadata_wizard_apply?.addEventListener("click", apply_metadata_wizard);
+metadata_wizard_reset?.addEventListener("click", reset_filename_metadata_columns);
+metadata_wizard_modal?.querySelector(".stats_modal_backdrop")?.addEventListener("click", close_metadata_wizard);
+metadata_add_split_step?.addEventListener("click", add_metadata_split_step);
+metadata_split_steps?.addEventListener("input", handle_metadata_split_step_input);
+metadata_split_steps?.addEventListener("change", handle_metadata_split_step_input);
+metadata_split_steps?.addEventListener("click", handle_metadata_split_step_click);
+metadata_column_editor?.addEventListener("input", render_metadata_wizard_preview);
+metadata_column_editor?.addEventListener("change", render_metadata_wizard_preview);
 document.addEventListener("click", handle_document_click);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && metadata_wizard_modal && !metadata_wizard_modal.hidden) {
+    close_metadata_wizard();
+  }
+});
 
 /*
 
@@ -381,6 +396,7 @@ window.PhaseFinderApp = {
   // and mutate file/summary/event-cache fields directly.
   get_selected_files: () => {
     if (!file_table_frame) return [];
+    sync_file_annotations();
     return [...file_table_frame.col("id")]
       .filter((id) => selected_file_ids.has(id))
       .map((id) => file_map.get(id))
@@ -396,6 +412,97 @@ window.PhaseFinderApp = {
   update_progress,
   hide_progress,
   next_frame,
+
+  // ── Session save / load API ─────────────────────────────────────────────────
+
+  // Returns a plain-object snapshot of table state for session serialization.
+  get_session_table_state() {
+    const frame = file_table_frame;
+    const ids   = frame ? [...frame.col("id")]   : [];
+    const names = frame ? [...frame.col("name")] : [];
+    const selected_names = ids
+      .map((id, i) => (selected_file_ids.has(id) ? names[i] : null))
+      .filter(Boolean);
+    const filters_plain = {};
+    for (const [field, set] of Object.entries(column_filters)) {
+      if (set?.size) filters_plain[field] = [...set];
+    }
+    return {
+      selected_names,
+      sort: { ...sort_state },
+      filters: filters_plain,
+      template: filename_metadata_template
+        ? JSON.parse(JSON.stringify(filename_metadata_template))
+        : null,
+      table_columns: TABLE_COLUMNS.map((c) => ({ ...c })),
+    };
+  },
+
+  // Applies a parsed session's table portion: template, annotations, sort,
+  // filters, and row selection.
+  apply_session_state({ template, annotations, sort, filters, selected_names }) {
+    if (template?.columns?.length) {
+      save_filename_metadata_template(template);
+      if (file_table_frame) {
+        apply_filename_metadata_columns(template, template.columns, {
+          render: false,
+          preserve_existing: false,
+        });
+      }
+    } else if (template) {
+      save_filename_metadata_template(template);
+    }
+
+    if (annotations?.length && file_table_frame) {
+      const by_name    = new Map(annotations.map((r) => [r.name, r]));
+      const cols       = file_table_frame.columns;
+      const names_col  = file_table_frame.col("name");
+      const col_data   = {};
+      for (const col of cols) {
+        col_data[col] = [...file_table_frame.col(col)].map((v, i) => {
+          if (col === "id" || col === "name") return v;
+          const saved = by_name.get(names_col[i]);
+          return (saved && Object.prototype.hasOwnProperty.call(saved, col))
+            ? saved[col]
+            : (v ?? "");
+        });
+      }
+      file_table_frame = new PhaseFinderFrame(col_data, cols);
+      sync_file_annotations();
+    }
+
+    sort_state = sort?.field
+      ? { field: sort.field, direction: sort.direction || "asc" }
+      : { field: null, direction: "asc" };
+
+    Object.keys(column_filters).forEach((k) => delete column_filters[k]);
+    if (filters) {
+      for (const [field, values] of Object.entries(filters)) {
+        if (Array.isArray(values) && values.length) {
+          column_filters[field] = new Set(values);
+        }
+      }
+    }
+
+    selected_file_ids.clear();
+    if (selected_names?.length && file_table_frame) {
+      const ids       = [...file_table_frame.col("id")];
+      const names_arr = [...file_table_frame.col("name")];
+      const name_to_id = new Map(names_arr.map((n, i) => [n, ids[i]]));
+      for (const name of selected_names) {
+        const id = name_to_id.get(name);
+        if (id) selected_file_ids.add(id);
+      }
+    }
+
+    render_file_table();
+    update_start_button_state();
+  },
+
+  // Saves the filename-splitting template to localStorage.
+  save_metadata_template(template) {
+    save_filename_metadata_template(template);
+  },
 };
 
 clear_channel_controls();
@@ -403,41 +510,3 @@ render_file_table();
 update_drop_zone_text();
 set_status("No files loaded.");
 set_status_bar("Ready: Load FCS files by dragging them to the drop zone or using the file selector above.");
-
-if (window.PhaseFinderDebug?.isDebugMode()) {
-  (async () => {
-    const level = window.PhaseFinderDebug.getLevel();
-    document.title = `[debug L${level}] ${document.title}`;
-
-    const files = await window.PhaseFinderDebug.loadFilesFromCache();
-    if (files.length) await load_files(files);
-
-    if (level >= 2) {
-      const meta = window.PhaseFinderDebug.loadMetaState();
-      if (meta && typeof apply_debug_meta_state === "function") {
-        apply_debug_meta_state(meta);
-      }
-    }
-
-    if (level >= 3) {
-      const plot = window.PhaseFinderDebug.loadPlotState();
-      if (plot && plot.channel && select_if_option_exists(channel_select, plot.channel)) {
-        collapsed_channel_select.value = plot.channel;
-        update_start_button_state();
-
-        const g = (id) => document.querySelector(`#${id}`);
-        if (plot.color_by && g("plot_color_by")) g("plot_color_by").value = plot.color_by;
-        if (plot.bins && g("plot_bins")) g("plot_bins").value = String(plot.bins);
-        if (g("plot_debris_correction")) g("plot_debris_correction").checked = !!plot.debris_correction;
-        if (g("plot_doublet_correction")) g("plot_doublet_correction").checked = !!plot.doublet_correction;
-        if (g("plot_threshold_toggle")) g("plot_threshold_toggle").checked = !!plot.threshold_toggle;
-
-        if (selected_file_ids.size > 0 && channel_select.value) {
-          await next_frame();
-          start_analysis_button.click();
-        }
-        document.dispatchEvent(new CustomEvent("pf-plot-state-restored", { detail: plot }));
-      }
-    }
-  })();
-}

@@ -142,16 +142,10 @@ function concat_frames(frame1, frame2) {
 
 // ---------------------------------------------------------------------------
 
-// Metadata table columns. `name` is the read-only filename; the rest are the
-// editable annotation fields. All are sortable; filterable columns get a
-// per-header dropdown of their unique values.
-const TABLE_COLUMNS = [
-  { field: "name", label: "Filename", editable: false, filterable: false },
-  { field: "strain", label: "Strain", editable: true, filterable: true },
-  { field: "replicate", label: "Replicate", editable: true, filterable: true },
-  { field: "nocodazoleArrest", label: "Nocodazole Arrest", editable: true, filterable: true },
-  { field: "timepoint", label: "Timepoint", editable: true, filterable: true },
-];
+// Metadata table columns. `name` is the read-only filename. User-defined
+// filename-derived columns are appended by the metadata wizard.
+const FILENAME_TABLE_COLUMN = { field: "name", label: "Filename", editable: false, filterable: false };
+let TABLE_COLUMNS = [FILENAME_TABLE_COLUMN];
 
 // IDs of files whose row checkbox is ticked. Persists across re-renders so
 // sorting/filtering don't drop the selection.
@@ -163,6 +157,77 @@ let sort_state = { field: null, direction: "asc" };
 // Field whose filter dropdown is currently open, or null. Kept in state so the
 // menu stays open across table re-renders triggered by ticking its checkboxes.
 let open_filter_field = null;
+
+function metadata_field_from_label(label, used_fields = new Set()) {
+  const trimmed = String(label || "").trim();
+  const known = {
+    filename: "filename",
+    strain: "strain",
+    replicate: "replicate",
+    "nocodazole arrest": "nocodazoleArrest",
+    nocodazole: "nocodazoleArrest",
+    arrest: "nocodazoleArrest",
+    timepoint: "timepoint",
+    time: "timepoint",
+  };
+  const lower = trimmed.toLowerCase();
+  let base = known[lower] || lower
+    .replace(/[^a-z0-9]+(.)/g, (_, chr) => chr.toUpperCase())
+    .replace(/[^a-z0-9]/g, "");
+  if (!base || /^\d/.test(base)) base = `metadata${base ? `_${base}` : ""}`;
+  if (base === "id" || base === "name") base = `${base}Metadata`;
+
+  let field = base;
+  let suffix = 2;
+  while (used_fields.has(field)) {
+    field = `${base}${suffix}`;
+    suffix += 1;
+  }
+  used_fields.add(field);
+  return field;
+}
+
+function table_base_field_set() {
+  return new Set(["id", ...TABLE_COLUMNS.map((column) => column.field)]);
+}
+
+function table_stat_columns() {
+  if (!file_table_frame) return [];
+  const base_fields = table_base_field_set();
+  return file_table_frame.columns.filter((field) => !base_fields.has(field) && field.includes(":"));
+}
+
+function set_metadata_table_columns(columns) {
+  TABLE_COLUMNS = [FILENAME_TABLE_COLUMN, ...columns];
+  Object.keys(column_filters).forEach((field) => {
+    if (!TABLE_COLUMNS.some((column) => column.field === field)) {
+      delete column_filters[field];
+    }
+  });
+  if (sort_state.field && !TABLE_COLUMNS.some((column) => column.field === sort_state.field)) {
+    sort_state = { field: null, direction: "asc" };
+  }
+  if (open_filter_field && !TABLE_COLUMNS.some((column) => column.field === open_filter_field)) {
+    open_filter_field = null;
+  }
+}
+
+function sync_file_annotations() {
+  if (!file_table_frame || typeof file_map === "undefined") return;
+  const ids = file_table_frame.col("id");
+  const metadata_columns = TABLE_COLUMNS.filter((column) => column.field !== "name");
+  ids.forEach((id, index) => {
+    const entry = file_map.get(id);
+    if (!entry) return;
+    const annotations = {};
+    metadata_columns.forEach((column) => {
+      const value = file_table_frame.col(column.field)[index] ?? "";
+      annotations[column.field] = value;
+      annotations[column.label] = value;
+    });
+    entry.annotations = annotations;
+  });
+}
 
 /*
 
@@ -601,10 +666,10 @@ function update_start_button_state() {
     const btn = document.querySelector(sel);
     if (btn) btn.disabled = !has_files;
   });
+  if (metadata_parse_button) metadata_parse_button.disabled = !has_files;
   if (metadata_export_button) metadata_export_button.disabled = !has_files;
 }
 
-const TABLE_EXPORT_BASE_COLS = new Set(["id", "name", "strain", "replicate", "nocodazoleArrest", "timepoint"]);
 const TABLE_EXPORT_STAT_LABELS = { mean: "Mean", stddev: "Std Dev", median: "Median", min: "Min", max: "Max" };
 
 /*
@@ -647,8 +712,9 @@ function metadata_export_columns() {
 
   if (!file_table_frame) return columns;
 
+  const base_fields = table_base_field_set();
   file_table_frame.columns.forEach((field) => {
-    if (TABLE_EXPORT_BASE_COLS.has(field)) return;
+    if (base_fields.has(field)) return;
     const sep = field.lastIndexOf(":");
     const header = sep > 0
       ? `${field.slice(0, sep)} ${TABLE_EXPORT_STAT_LABELS[field.slice(sep + 1)] || field.slice(sep + 1)}`
@@ -820,24 +886,6 @@ Output:
 function toggle_sidebar() {
   set_sidebar_collapsed(!app_shell.classList.contains("sidebar_collapsed"));
 }
-
-/*
-
-Purpose:
-	DEBUG helper — auto-selects the "GFP/FITC-A" channel when present so the
-	analysis flow can be exercised without manual clicking in debug sessions.
-
-Input:
-	(none)
-
-Output:
-	(none) [void]: may select a default channel
-
-*/
-function apply_debug_channel_defaults() {
-  select_if_option_exists(channel_select, "GFP/FITC-A");
-}
-
 
 /*
 
@@ -1025,6 +1073,423 @@ function display_name(name) {
   return name.replace(/\.fcs$/i, "");
 }
 
+const METADATA_TEMPLATE_STORAGE_KEY = "phasefinder_filename_metadata_template";
+let metadata_wizard_seen_this_session = false;
+let filename_metadata_template = load_filename_metadata_template();
+
+function load_filename_metadata_template() {
+  try {
+    const raw = window.localStorage?.getItem(METADATA_TEMPLATE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.columns)) return null;
+    return normalize_filename_metadata_template(parsed);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function normalize_filename_metadata_template(template) {
+  if (!template) return null;
+  if (Array.isArray(template.steps)) return template;
+  const step = template.mode === "fixed"
+    ? { type: "fixed", breaks: template.breaks || [] }
+    : { type: "delimiter", delimiter: template.delimiter || "_" };
+  return { ...template, steps: [step] };
+}
+
+function save_filename_metadata_template(template) {
+  filename_metadata_template = normalize_filename_metadata_template(template);
+  try {
+    window.localStorage?.setItem(METADATA_TEMPLATE_STORAGE_KEY, JSON.stringify(filename_metadata_template));
+  } catch (_error) {
+    // localStorage can be unavailable in private/sandboxed contexts.
+  }
+}
+
+function default_metadata_split_steps() {
+  return [{ type: "delimiter", delimiter: "_" }];
+}
+
+function parse_fixed_breaks(value) {
+  return String(value || "")
+    .split(/[,\s]+/)
+    .map((candidate) => Number.parseInt(candidate, 10))
+    .filter((candidate) => Number.isFinite(candidate) && candidate > 0)
+    .sort((a, b) => a - b)
+    .filter((candidate, index, arr) => index === 0 || candidate !== arr[index - 1]);
+}
+
+function collect_metadata_split_steps() {
+  if (!metadata_split_steps) return default_metadata_split_steps();
+  const steps = [...metadata_split_steps.querySelectorAll(".metadata_split_step")].map((row) => {
+    const type = row.querySelector(".metadata_split_type")?.value || "delimiter";
+    const label = row.querySelector(".metadata_step_column_name")?.value || "";
+    const hide = row.querySelector(".metadata_step_hide")?.checked || false;
+    if (type === "fixed") {
+      return {
+        type,
+        breaks: parse_fixed_breaks(row.querySelector(".metadata_step_breaks")?.value || ""),
+        label,
+        hide,
+      };
+    }
+    if (type === "regex") {
+      return {
+        type,
+        pattern: row.querySelector(".metadata_step_regex")?.value || "",
+        label,
+        hide,
+      };
+    }
+    return {
+      type: "delimiter",
+      delimiter: row.querySelector(".metadata_step_delimiter")?.value || "",
+      label,
+      hide,
+    };
+  });
+  return steps.length ? steps : default_metadata_split_steps();
+}
+
+function current_metadata_wizard_spec() {
+  return { steps: collect_metadata_split_steps() };
+}
+
+function metadata_split_step_controls(step) {
+  if (step.type === "fixed") {
+    return `
+      <div class="metadata_split_step_controls">
+        <input class="metadata_step_breaks" type="text" value="${escape_html((step.breaks || []).join(", "))}" placeholder="Break position">
+        <input class="metadata_step_width" type="number" min="1" step="1" placeholder="Width">
+        <button class="metadata_step_set_width" type="button">Set</button>
+      </div>`;
+  }
+  if (step.type === "regex") {
+    return `
+      <div class="metadata_split_step_controls">
+        <input class="metadata_step_regex metadata_regex_input" type="text" value="${escape_html(step.pattern || "")}" placeholder="Regex separator or capture, e.g. (\\d{2,3})aN">
+      </div>`;
+  }
+  return `
+    <div class="metadata_split_step_controls">
+      <input class="metadata_step_delimiter metadata_full_step_input" type="text" value="${escape_html(step.delimiter ?? "_")}" placeholder="Delimiter, e.g. _">
+    </div>`;
+}
+
+function render_metadata_split_steps(steps = default_metadata_split_steps()) {
+  if (!metadata_split_steps) return;
+  const saved_columns = filename_metadata_template?.columns || [];
+  const saved_by_source = new Map(saved_columns.map((column) => [column.source_index, column]));
+  const saved_leaves = filename_metadata_template?.leaves || [];
+  metadata_split_steps.innerHTML = steps.map((step, index) => {
+    const has_step_label = Object.prototype.hasOwnProperty.call(step, "label");
+    const has_step_hide = Object.prototype.hasOwnProperty.call(step, "hide");
+    const column_label = has_step_label
+      ? step.label
+      : saved_leaves[index]?.label || saved_by_source.get(index)?.label || `Column ${index + 1}`;
+    const is_hidden = has_step_hide ? step.hide : saved_leaves[index]?.include === false;
+    return `
+    <div class="metadata_split_step" data-step-index="${index}">
+      <span class="metadata_split_step_label">Split ${index + 1}</span>
+      <select class="metadata_split_type" aria-label="Split step ${index + 1} type">
+        <option value="delimiter"${step.type === "delimiter" ? " selected" : ""}>Delimiter</option>
+        <option value="fixed"${step.type === "fixed" ? " selected" : ""}>Fixed width</option>
+        <option value="regex"${step.type === "regex" ? " selected" : ""}>Regex</option>
+      </select>
+      ${metadata_split_step_controls(step)}
+      <div class="metadata_branch_leaf">
+        <input class="metadata_step_column_name" type="text" value="${escape_html(column_label)}" placeholder="Column header">
+        <label class="metadata_leaf_hide">
+          <input class="metadata_step_hide" type="checkbox" ${is_hidden ? "checked" : ""}>
+          Hide
+        </label>
+      </div>
+      <button class="metadata_split_step_remove" type="button" ${steps.length === 1 ? "disabled" : ""}>Remove</button>
+    </div>`;
+  }).join("");
+}
+
+function split_text_binary_step(text, step) {
+  if (step.type === "fixed") {
+    const split_at = (step.breaks || []).find((value) => value > 0 && value < text.length);
+    if (!split_at) return { left: text, right: "" };
+    return { left: text.slice(0, split_at), right: text.slice(split_at) };
+  }
+  if (step.type === "regex") {
+    if (!step.pattern) return { left: text, right: "" };
+    try {
+      const match = new RegExp(step.pattern).exec(text);
+      if (!match) return { left: text, right: "" };
+      const capture = match.slice(1).find((value) => value !== undefined);
+      return {
+        left: capture !== undefined ? capture : text.slice(0, match.index),
+        right: text.slice(match.index + match[0].length),
+      };
+    } catch (_error) {
+      return { left: text, right: "" };
+    }
+  }
+  if (!step.delimiter) return { left: text, right: "" };
+  const index = text.indexOf(step.delimiter);
+  if (index < 0) return { left: text, right: "" };
+  return {
+    left: text.slice(0, index),
+    right: text.slice(index + step.delimiter.length),
+  };
+}
+
+function split_filename_metadata(name, spec) {
+  const base = display_name(name);
+  const template = normalize_filename_metadata_template(spec) || { steps: default_metadata_split_steps() };
+  const parts = [];
+  let remainder = base;
+  template.steps.forEach((step) => {
+    const split = split_text_binary_step(remainder, step);
+    parts.push(split.left);
+    remainder = split.right;
+  });
+  parts.push(remainder);
+  return parts;
+}
+
+function metadata_part_count(spec) {
+  const template = normalize_filename_metadata_template(spec) || { steps: default_metadata_split_steps() };
+  return Math.max(1, template.steps.length + 1);
+}
+
+function current_column_editor_state() {
+  const step_states = metadata_split_steps
+    ? [...metadata_split_steps.querySelectorAll(".metadata_split_step")].map((row) => ({
+        include: !(row.querySelector(".metadata_step_hide")?.checked ?? false),
+        label: row.querySelector(".metadata_step_column_name")?.value || "",
+      }))
+    : [];
+  const remainder_row = metadata_column_editor?.querySelector(".metadata_column_row");
+  const remainder_state = remainder_row ? [{
+    include: !(remainder_row.querySelector(".metadata_leaf_hide input")?.checked ?? false),
+    label: remainder_row.querySelector(".metadata_column_name")?.value || "",
+  }] : [];
+  return [...step_states, ...remainder_state];
+}
+
+function render_metadata_column_editor(part_count) {
+  if (!metadata_column_editor) return;
+  const existing = current_column_editor_state();
+  const saved_columns = filename_metadata_template?.columns || [];
+  const saved_by_source = new Map(saved_columns.map((column) => [column.source_index, column]));
+  const saved_leaves = filename_metadata_template?.leaves || [];
+  const has_saved_columns = saved_columns.length > 0;
+  const index = Math.max(0, part_count - 1);
+  const previous = existing[index] || saved_leaves[index] || saved_by_source.get(index) || {};
+  const include = existing[index] ? previous.include !== false : (saved_leaves[index] ? saved_leaves[index].include !== false : (has_saved_columns ? saved_by_source.has(index) : true));
+  const label = previous.label || "Remaining text";
+  metadata_column_editor.innerHTML = `
+    <div class="metadata_column_row metadata_remainder_leaf" data-column-index="${index}">
+      <span class="metadata_remainder_label">Remainder</span>
+      <input class="metadata_column_name" type="text" value="${escape_html(label)}" placeholder="Column header">
+      <label class="metadata_leaf_hide">
+        <input type="checkbox" ${include ? "" : "checked"}>
+        Hide
+      </label>
+    </div>`;
+}
+
+function metadata_wizard_columns_from_editor() {
+  const used = new Set(["id", "name"]);
+  return current_column_editor_state()
+    .map((column, index) => ({ ...column, source_index: index }))
+    .filter((column) => column.include)
+    .map((column, index) => {
+      const label = column.label.trim() || `Column ${index + 1}`;
+      return {
+        source_index: column.source_index,
+        label,
+        field: metadata_field_from_label(label, used),
+        editable: true,
+        filterable: true,
+      };
+    });
+}
+
+function render_metadata_wizard_preview() {
+  if (!metadata_preview || !file_table_frame) return;
+  const spec = current_metadata_wizard_spec();
+  const part_count = metadata_part_count(spec);
+  const remainder_row = metadata_column_editor?.querySelector(".metadata_column_row");
+  const remainder_index = Number.parseInt(remainder_row?.dataset.columnIndex || "", 10);
+  if (!remainder_row || remainder_index !== part_count - 1) render_metadata_column_editor(part_count);
+  const columns = metadata_wizard_columns_from_editor();
+  const names = file_table_frame.col("name").slice(0, 20);
+
+  const header = ["Filename", ...columns.map((column) => column.label)]
+    .map((label) => `<th>${escape_html(label)}</th>`)
+    .join("");
+  const body = names.map((name) => {
+    const parts = split_filename_metadata(name, spec);
+    return `
+      <tr>
+        <td>${escape_html(display_name(name))}</td>
+        ${columns.map((column) => `<td>${escape_html(parts[column.source_index] ?? "")}</td>`).join("")}
+      </tr>`;
+  }).join("");
+
+  metadata_preview.innerHTML = `
+    <table class="metadata_preview_table">
+      <thead><tr>${header}</tr></thead>
+      <tbody>${body || `<tr><td colspan="${columns.length + 1}">No files loaded.</td></tr>`}</tbody>
+    </table>`;
+}
+
+function fill_metadata_wizard_from_template() {
+  const template = normalize_filename_metadata_template(filename_metadata_template);
+  render_metadata_split_steps(template?.steps?.length ? template.steps : default_metadata_split_steps());
+}
+
+function add_metadata_split_step() {
+  render_metadata_split_steps([...collect_metadata_split_steps(), { type: "delimiter", delimiter: "_" }]);
+  render_metadata_wizard_preview();
+}
+
+function open_metadata_wizard() {
+  if (!metadata_wizard_modal || !file_table_frame || file_table_frame.length === 0) return;
+  metadata_wizard_seen_this_session = true;
+  if (metadata_column_editor) metadata_column_editor.innerHTML = "";
+  fill_metadata_wizard_from_template();
+  render_metadata_wizard_preview();
+  metadata_wizard_modal.hidden = false;
+  metadata_wizard_apply?.focus();
+}
+
+function close_metadata_wizard() {
+  if (metadata_wizard_modal) metadata_wizard_modal.hidden = true;
+}
+
+function set_fixed_width_breaks_from_width(row) {
+  const width = Number.parseInt(row?.querySelector(".metadata_step_width")?.value || "", 10);
+  if (!Number.isFinite(width) || width <= 0) return;
+  const breaks_input = row?.querySelector(".metadata_step_breaks");
+  if (breaks_input) breaks_input.value = String(width);
+  render_metadata_wizard_preview();
+}
+
+function handle_metadata_split_step_input(event) {
+  const row = event.target.closest(".metadata_split_step");
+  if (!row) return;
+  if (event.target.classList.contains("metadata_split_type")) {
+    const steps = collect_metadata_split_steps();
+    const index = Number(row.dataset.stepIndex);
+    const previous = steps[index] || {};
+    steps[index] = {
+      type: event.target.value,
+      delimiter: "_",
+      breaks: [],
+      pattern: "",
+      label: previous.label || "",
+      hide: previous.hide || false,
+    };
+    render_metadata_split_steps(steps);
+  }
+  render_metadata_wizard_preview();
+}
+
+function handle_metadata_split_step_click(event) {
+  const remove_button = event.target.closest(".metadata_split_step_remove");
+  if (remove_button) {
+    const row = remove_button.closest(".metadata_split_step");
+    const index = Number(row.dataset.stepIndex);
+    const steps = collect_metadata_split_steps();
+    if (steps.length > 1) {
+      steps.splice(index, 1);
+      render_metadata_split_steps(steps);
+      render_metadata_wizard_preview();
+    }
+    return;
+  }
+
+  const width_button = event.target.closest(".metadata_step_set_width");
+  if (width_button) {
+    set_fixed_width_breaks_from_width(width_button.closest(".metadata_split_step"));
+  }
+}
+
+function apply_filename_metadata_columns(spec, columns, { render = true, preserve_existing = false } = {}) {
+  if (!file_table_frame) return;
+
+  set_metadata_table_columns(columns.map((column) => ({
+    field: column.field,
+    label: column.label,
+    editable: true,
+    filterable: true,
+  })));
+
+  const rows = frame_to_rows(file_table_frame);
+  const stat_columns = file_table_frame.columns.filter((field) => field.includes(":"));
+  const col_data = {
+    id: rows.map((row) => row.id),
+    name: rows.map((row) => row.name),
+  };
+
+  columns.forEach((column) => {
+    col_data[column.field] = rows.map((row) => {
+      const existing = row[column.field];
+      if (preserve_existing && existing != null && String(existing) !== "") return existing;
+      return split_filename_metadata(row.name, spec)[column.source_index] ?? "";
+    });
+  });
+  stat_columns.forEach((field) => {
+    col_data[field] = rows.map((row) => row[field] ?? null);
+  });
+
+  file_table_frame = new PhaseFinderFrame(col_data, ["id", "name", ...columns.map((column) => column.field), ...stat_columns]);
+  sync_file_annotations();
+  if (render) render_file_table();
+}
+
+function apply_current_filename_metadata_template({ render = true, preserve_existing = true } = {}) {
+  if (!filename_metadata_template?.columns?.length || !file_table_frame) {
+    sync_file_annotations();
+    return;
+  }
+  apply_filename_metadata_columns(filename_metadata_template, filename_metadata_template.columns, { render, preserve_existing });
+}
+
+function apply_metadata_wizard() {
+  if (!file_table_frame) return;
+  const spec = current_metadata_wizard_spec();
+  const columns = metadata_wizard_columns_from_editor();
+  const template = { ...spec, columns, leaves: current_column_editor_state() };
+  save_filename_metadata_template(template);
+  apply_filename_metadata_columns(spec, columns);
+  close_metadata_wizard();
+  set_status_bar(`Filename metadata columns applied (${columns.length} column${columns.length === 1 ? "" : "s"}).`);
+}
+
+function reset_filename_metadata_columns() {
+  if (!file_table_frame) return;
+  save_filename_metadata_template({ steps: default_metadata_split_steps(), columns: [] });
+  set_metadata_table_columns([]);
+  const rows = frame_to_rows(file_table_frame);
+  const stat_columns = file_table_frame.columns.filter((field) => field.includes(":"));
+  const col_data = {
+    id: rows.map((row) => row.id),
+    name: rows.map((row) => row.name),
+  };
+  stat_columns.forEach((field) => {
+    col_data[field] = rows.map((row) => row[field] ?? null);
+  });
+  file_table_frame = new PhaseFinderFrame(col_data, ["id", "name", ...stat_columns]);
+  sync_file_annotations();
+  render_file_table();
+  close_metadata_wizard();
+  set_status_bar("Metadata table reset to Filename only.");
+}
+
+function schedule_metadata_wizard_after_file_load() {
+  if (metadata_wizard_seen_this_session || TABLE_COLUMNS.length > 1) return;
+  window.setTimeout(() => open_metadata_wizard(), 750);
+}
+
 /*
 
 Purpose:
@@ -1070,7 +1535,7 @@ function render_file_table() {
   const STAT_LABELS = { mean: "Mean", stddev: "Std Dev", median: "Median", min: "Min", max: "Max" };
   // Stats columns live in the frame as "CHANNEL:metric".
   // Group them by channel to build the two-row stats header.
-  const BASE_COLS = new Set(["id", "name", "strain", "replicate", "nocodazoleArrest", "timepoint"]);
+  const BASE_COLS = table_base_field_set();
   const channel_groups = {};
   for (const col of file_table_frame.columns) {
     if (!BASE_COLS.has(col)) {
@@ -1125,6 +1590,12 @@ function render_file_table() {
   const empty_colspan = TABLE_COLUMNS.length + 1 + total_stat_cols;
   const body = visible_files.length
     ? visible_files.map((row) => {
+        const metadata_tds = TABLE_COLUMNS.map((column) => {
+          if (column.field === "name") {
+            return `<td class="filename_cell" title="${escape_html(row.name)}">${escape_html(display_name(row.name))}</td>`;
+          }
+          return cell(row, column.field);
+        }).join("");
         const stats_tds = has_stats ? stats_groups.map((g) =>
           g.metrics.map((m, mi) => {
             const cls = mi === 0 ? " stats_col_start" : "";
@@ -1134,11 +1605,7 @@ function render_file_table() {
         return `
         <tr>
           <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) ? " checked" : ""} /></td>
-          <td class="filename_cell" title="${escape_html(row.name)}">${escape_html(display_name(row.name))}</td>
-          ${cell(row, "strain")}
-          ${cell(row, "replicate")}
-          ${cell(row, "nocodazoleArrest")}
-          ${cell(row, "timepoint")}
+          ${metadata_tds}
           ${stats_tds}
         </tr>`;
       }).join("")
@@ -1153,11 +1620,7 @@ function render_file_table() {
 
   update_select_all_checkbox();
   update_start_button_state();
-
-  if (window.PhaseFinderDebug?.getLevel?.() >= 2) {
-    const dbg_state = get_debug_meta_state();
-    if (dbg_state) window.PhaseFinderDebug.saveMetaState(dbg_state);
-  }
+  sync_file_annotations();
 }
 
 /*
@@ -1336,8 +1799,8 @@ function annotation_input_size(value) {
 /*
 
 Purpose:
-	Re-renders the table, refreshes the channel selector, applies debug defaults,
-	and updates the Start button. Run after files load.
+	Re-renders the table, refreshes the channel selector, and updates the Start
+	button. Run after files load.
 
 Input:
 	(none)
@@ -1349,7 +1812,6 @@ Output:
 function update_views() {
   render_file_table();
   populate_channel_controls();
-  apply_debug_channel_defaults();
   collapsed_channel_select.value = channel_select.value;
   update_start_button_state();
 }
@@ -1424,9 +1886,9 @@ function timepoint_sort_value(value) {
 /*
 
 Purpose:
-	Sorts file_table_frame in place by strain → replicate → timepoint (numeric) →
-	filename. Rebuilds the frame from sorted rows so all columns (including
-	stats) are preserved in the new order.
+	Sorts file_table_frame in place by filename. Rebuilds the frame from sorted
+	rows so all columns (including user metadata and stats) are preserved in the
+	new order.
 
 Input:
 	(none)
@@ -1440,12 +1902,6 @@ function sort_file_table() {
 
   const rows = frame_to_rows(file_table_frame);
   rows.sort((a, b) => {
-    const s = String(a.strain ?? "").localeCompare(String(b.strain ?? ""), undefined, { numeric: true, sensitivity: "base" });
-    if (s !== 0) return s;
-    const r = String(a.replicate ?? "").localeCompare(String(b.replicate ?? ""), undefined, { numeric: true, sensitivity: "base" });
-    if (r !== 0) return r;
-    const t = timepoint_sort_value(a.timepoint) - timepoint_sort_value(b.timepoint);
-    if (t !== 0 && !Number.isNaN(t)) return t;
     return String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true, sensitivity: "base" });
   });
 
@@ -1453,126 +1909,4 @@ function sort_file_table() {
   const cols = file_table_frame.columns;
   const col_data = Object.fromEntries(cols.map((col) => [col, rows.map((row) => row[col] ?? null)]));
   file_table_frame = new PhaseFinderFrame(col_data, [...cols]);
-}
-
-// ---------------------------------------------------------------------------
-// Debug-mode (Level 2+) metadata table state: annotations, stats columns,
-// row selection, sort, and column filters — serialized by filename so it
-// survives a reload even though file ids are regenerated on each load.
-// ---------------------------------------------------------------------------
-
-const DEBUG_ANNOTATION_FIELDS = ["strain", "replicate", "nocodazoleArrest", "timepoint"];
-
-/*
-
-Purpose:
-	Serializes the current metadata table state (annotations, stats columns,
-	selection, sort, filters) for debug-mode persistence. Rows are keyed by
-	filename since file ids are regenerated on every reload.
-
-Input:
-	(none)
-
-Output:
-	state [Object|null]: serializable debug meta state, or null with no files loaded
-
-*/
-function get_debug_meta_state() {
-  if (!file_table_frame || file_table_frame.length === 0) return null;
-
-  const ids = file_table_frame.col("id");
-  const names = file_table_frame.col("name");
-  const base_cols = new Set(["id", "name", ...DEBUG_ANNOTATION_FIELDS]);
-
-  const annotations = {};
-  names.forEach((name, i) => {
-    annotations[name] = {};
-    DEBUG_ANNOTATION_FIELDS.forEach((field) => {
-      annotations[name][field] = file_table_frame.col(field)[i] ?? "";
-    });
-  });
-
-  const stats_columns = file_table_frame.columns.filter((c) => !base_cols.has(c));
-  const stats = {};
-  if (stats_columns.length) {
-    names.forEach((name, i) => {
-      stats[name] = {};
-      stats_columns.forEach((col) => { stats[name][col] = file_table_frame.col(col)[i] ?? null; });
-    });
-  }
-
-  const selected_filenames = [];
-  ids.forEach((id, i) => { if (selected_file_ids.has(id)) selected_filenames.push(names[i]); });
-
-  const saved_filters = {};
-  Object.entries(column_filters).forEach(([field, value_set]) => {
-    if (value_set && value_set.size) saved_filters[field] = [...value_set];
-  });
-
-  return {
-    annotations,
-    stats,
-    stats_columns,
-    selected_filenames,
-    sort_state: { ...sort_state },
-    column_filters: saved_filters,
-  };
-}
-
-/*
-
-Purpose:
-	Restores metadata table state saved by get_debug_meta_state into the
-	current file_table_frame, matching rows by filename, then re-renders.
-
-Input:
-	meta [Object]: state previously returned by get_debug_meta_state
-
-Output:
-	(none) [void]: mutates file_table_frame and table-related module state
-
-*/
-function apply_debug_meta_state(meta) {
-  if (!meta || !file_table_frame || file_table_frame.length === 0) return;
-
-  const ids = file_table_frame.col("id");
-  const names = file_table_frame.col("name");
-
-  if (meta.annotations) {
-    DEBUG_ANNOTATION_FIELDS.forEach((field) => {
-      const col = [...file_table_frame.col(field)];
-      names.forEach((name, i) => {
-        const saved = meta.annotations[name];
-        if (saved && saved[field] != null) col[i] = saved[field];
-      });
-      file_table_frame.setCol(field, col);
-    });
-  }
-
-  if (meta.stats_columns?.length && meta.stats) {
-    meta.stats_columns.forEach((col_name) => {
-      const values = names.map((name) => meta.stats[name]?.[col_name] ?? null);
-      file_table_frame.setCol(col_name, values);
-    });
-  }
-
-  if (meta.selected_filenames) {
-    const selected_names = new Set(meta.selected_filenames);
-    selected_file_ids.clear();
-    names.forEach((name, i) => { if (selected_names.has(name)) selected_file_ids.add(ids[i]); });
-  }
-
-  if (meta.sort_state) sort_state = { ...meta.sort_state };
-
-  if (meta.column_filters) {
-    Object.keys(column_filters).forEach((k) => delete column_filters[k]);
-    Object.entries(meta.column_filters).forEach(([field, values]) => {
-      if (values?.length) column_filters[field] = new Set(values);
-    });
-  }
-
-  render_file_table();
-  document.dispatchEvent(new CustomEvent("pf-meta-restored", {
-    detail: { files: names.length, selected: selected_file_ids.size },
-  }));
 }
