@@ -86,8 +86,8 @@
 
   display: grid;
   grid-template-columns: var(--sidebar_width) var(--sidebar_resizer_width) minmax(0, 1fr);
-  /* Fill exactly the space between the page header and status bar — no more,
-     so the page never grows a vertical scrollbar. Panels scroll internally. */
+  /* Fill exactly the space between the page header and status bar. The
+     workspace column scrolls independently so the sidebar stays put. */
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
   height: calc(100vh - var(--page_header_height) - var(--status_bar_height));
@@ -156,6 +156,9 @@
   min-height: 0;
   flex-direction: column;
   gap: 0; /* workspace_resizer element provides the vertical spacing */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* ── Workspace vertical drag-resizer (between plot & metadata panels) ─────── */
@@ -239,7 +242,8 @@
 #metadata_panel_body {
   display: grid;
   grid-template-rows: 1fr;
-  overflow: hidden;
+  flex: 0 0 auto;
+  overflow: visible;
   opacity: 1;
   transition:
     grid-template-rows 220ms ease,
@@ -247,12 +251,17 @@
 }
 
 #metadata_panel_body > .table_wrap {
+  flex: 0 0 auto;
   min-height: 0;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 #metadata_panel.is_collapsed #metadata_panel_body {
   flex: 0 0 auto;
   grid-template-rows: 0fr;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
 }

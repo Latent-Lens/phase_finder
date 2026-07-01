@@ -12,6 +12,117 @@
 
   // Statistics modal
 
+  // ── In-memory stats session ─────────────────────────────────────────────────
+  // Tracks which (channel, metrics) combos have been computed so newly loaded
+  // files automatically receive the same statistics without any user action.
+
+  const stats_session = new Map(); // channel_label -> Set<metric_name>
+
+  function record_stats(channel, metrics) {
+    if (!stats_session.has(channel)) stats_session.set(channel, new Set());
+    for (const m of metrics) stats_session.get(channel).add(m);
+  }
+
+  function get_stats_plan() {
+    return [...stats_session.entries()]
+      .filter(([, ms]) => ms.size > 0)
+      .map(([channel, ms]) => ({ channel, metrics: [...ms] }));
+  }
+
+  function restore_stats_plan(entries) {
+    if (!Array.isArray(entries)) return;
+    for (const { channel, metrics } of entries) {
+      if (channel && Array.isArray(metrics) && metrics.length) {
+        record_stats(channel, metrics);
+      }
+    }
+  }
+
+  // Scans the current frame for "CHANNEL:metric" columns and re-populates
+  // stats_session. Called on pf-files-loaded so a restored session (whose
+  // TOML carried a stats_plan) is always reflected in memory.
+  function rebuild_session_from_frame() {
+    const df = window.PhaseFinderApp?.get_file_table?.();
+    if (!df) return;
+    for (const col of df.columns) {
+      const sep = col.lastIndexOf(":");
+      if (sep > 0) record_stats(col.slice(0, sep), [col.slice(sep + 1)]);
+    }
+  }
+
+  // For each tracked (channel, metrics), load data and compute stats for the
+  // given files, then write the results back into the frame.
+  async function compute_stats_for_new_files(new_names) {
+    if (!stats_session.size || !new_names?.length) return;
+
+    const app = window.PhaseFinderApp;
+    const name_set = new Set(new_names);
+    const all_rows = typeof app.get_parsed_files === "function" ? app.get_parsed_files() : [];
+    const new_rows = all_rows.filter((r) => name_set.has(r.name));
+    if (!new_rows.length) return;
+
+    let any_computed = false;
+
+    for (const [channel, metrics_set] of stats_session) {
+      const metrics = [...metrics_set];
+
+      const loaded = await Promise.all(new_rows.map(async (row) => {
+        try {
+          const data = await load_analysis_row(row, { dna_area: channel }, { activate: false });
+          return (data?.dna_a?.length) ? { name: row.name, array: data.dna_a } : null;
+        } catch (_) { return null; }
+      }));
+
+      const valid = loaded.filter(Boolean);
+      if (!valid.length) continue;
+
+      const results_by_name = new Map(
+        valid.map(({ name, array }) => [name, compute_column_stats(array, metrics)]),
+      );
+
+      const frame = app.get_file_table?.();
+      if (!frame) continue;
+
+      const ids = [...frame.col("id")];
+      for (const metric of metrics) {
+        const col_name = `${channel}:${metric}`;
+        const col = frame.columns.includes(col_name)
+          ? [...frame.col(col_name)]
+          : Array(ids.length).fill(null);
+        ids.forEach((id, i) => {
+          const entry = app.get_file_by_id(id);
+          const sr = results_by_name.get(entry?.name);
+          if (sr?.[metric] != null) col[i] = sr[metric];
+        });
+        frame.setCol(col_name, col);
+      }
+      any_computed = true;
+    }
+
+    if (any_computed) {
+      if (typeof render_file_table === "function") render_file_table();
+      const channels = [...stats_session.keys()].join(", ");
+      window.PhaseFinderApp?.set_status_bar?.(
+        `Stats auto-computed for ${new_names.length} newly loaded file(s): ${channels}.`,
+      );
+    }
+  }
+
+  // Record computed stats when the modal calculates them.
+  document.addEventListener("pf-stats-complete", (e) => {
+    const { channel, stats } = e.detail || {};
+    if (channel && stats?.length) record_stats(channel, stats);
+  });
+
+  // When files load, rebuild the session from the frame (picks up TOML-restored
+  // stats_plan) then auto-compute any tracked stats for the new files.
+  document.addEventListener("pf-files-loaded", (e) => {
+    rebuild_session_from_frame();
+    compute_stats_for_new_files(e.detail?.names).catch(() => {});
+  });
+
+  // ── Column statistics ────────────────────────────────────────────────────────
+
   function compute_column_stats(typed_array, selected_stats) {
     const n = typed_array.length;
     if (!n) return null;
@@ -48,9 +159,15 @@
   function open_stats_modal() {
     if (!stats_modal) return;
     const columns = typeof unique_columns === "function" ? unique_columns() : [];
+    const sidebar_channel = document.querySelector("#channel_select")?.value
+      || document.querySelector("#collapsed_channel_select")?.value
+      || "";
     stats_channel_select.innerHTML = "";
     stats_channel_select.add(new Option("Choose a channel", "", true, true));
     columns.forEach((col) => stats_channel_select.add(new Option(col, col)));
+    if (columns.includes(sidebar_channel)) {
+      stats_channel_select.value = sidebar_channel;
+    }
     // Reset disabled state (no channel selected yet → all enabled).
     update_stats_checkboxes();
     if (stats_progress_indicator) {
@@ -153,7 +270,7 @@
       if (!new_stats.length) { show_stats_error("All selected statistics are already in the table."); return; }
 
       const app = window.PhaseFinderApp;
-      const rows = typeof app.get_selected_files === "function" ? app.get_selected_files() : [];
+      const rows = typeof app.get_parsed_files === "function" ? app.get_parsed_files() : [];
 
       if (stats_progress_indicator) {
         stats_progress_indicator.hidden = false;
@@ -246,5 +363,7 @@
     compute_column_stats,
     open_modal: open_stats_modal,
     close_modal: close_stats_modal,
+    get_stats_plan,
+    restore_stats_plan,
   });
 }());

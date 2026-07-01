@@ -591,19 +591,19 @@ Output:
 */
 async function load_analysis_data() {
   const app = window.PhaseFinderApp;
-  const rows = app.get_selected_files();
+  const rows = app.get_parsed_files();
   const selected = app.get_selected_channels();
   const completed = { count: 0 };
 
   if (!rows.length) {
-    app.set_status("Select at least one file (check its row) before starting analysis.", true);
-    app.set_status_bar("No files selected for analysis.", true);
+    app.set_status("Load at least one FCS file before starting analysis.", true);
+    app.set_status_bar("No files loaded for analysis.", true);
     return;
   }
 
-  app.show_progress("Loading Selected FCS Data");
-  app.set_status_bar("Working: Loading Selected FCS Data");
-  app.update_progress(0, "Loading Selected FCS Data", `Preparing ${rows.length} file(s)...`);
+  app.show_progress("Loading FCS Data");
+  app.set_status_bar("Working: Loading FCS Data");
+  app.update_progress(0, "Loading FCS Data", `Preparing ${rows.length} file(s)...`);
   await app.next_frame();
 
   for (let start = 0; start < rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
@@ -611,14 +611,14 @@ async function load_analysis_data() {
       row,
       index: start + offset,
     }));
-    await load_analysis_batch(batch, selected, app, completed, rows.length);
+    await load_analysis_batch(batch, selected, app, completed, rows.length, "Loading FCS Data", {
+      detail_prefix: "Loading data",
+    });
   }
 
-  // The loaded-sample / event counts now live in the plot title (see
-  // update_plot_title in plotting.js), so the sidebar just confirms completion.
-  app.set_status("Analysis complete.");
-  app.set_status_bar(`Finished loading selected data for ${rows.length} file(s).`);
-  app.update_progress(100, "Loading Selected FCS Data", `Finished loading selected data for ${rows.length} file(s).`);
+  app.set_status("Data loaded for all files. Curves shown for checked rows.");
+  app.set_status_bar(`Loaded event data for all ${rows.length} file(s).`);
+  app.update_progress(100, "Loading FCS Data", `Finished loading data for ${rows.length} file(s).`);
 
   init_plot(selected);
 
@@ -646,7 +646,7 @@ async function refresh_analysis_after_metadata_change({ redraw_if_no_missing = t
 
   const app = window.PhaseFinderApp;
   const selected = app.get_selected_channels();
-  const rows = app.get_selected_files();
+  const rows = app.get_parsed_files();
   const should_activate_plot = !plot_channels || selected.dna_area === plot_channels.dna_area;
   const missing_rows = rows.filter((row) => !is_analysis_data_loaded(row, selected));
 
@@ -825,7 +825,7 @@ async function prepare_selected_channel_for_plotting() {
   }
 
   const request_id = ++channel_change_load_id;
-  const rows = app.get_selected_files();
+  const rows = app.get_parsed_files();
 
   enter_plotting_mode();
 
@@ -838,18 +838,18 @@ async function prepare_selected_channel_for_plotting() {
   }
 
   if (!selected.dna_area || !rows.length) {
-    app.set_status_bar("Select a channel and at least one file row before plotting.", true);
+    app.set_status_bar("Load files and select a channel before plotting.", true);
     return;
   }
 
   const missing_rows = rows.filter((row) => !is_analysis_data_loaded(row, selected));
   if (!missing_rows.length) {
-    app.set_status_bar(`Selected channel ${selected.dna_area} is ready to plot.`);
+    app.set_status_bar(`Channel ${selected.dna_area} data ready.`);
     return;
   }
 
   const completed = { count: 0 };
-  const label = "Loading Selected FCS Data";
+  const label = "Loading FCS Data";
   set_plot_action_controls_disabled(true);
   app.show_progress(label);
   app.set_status_bar(`Working: ${label}`);
@@ -864,12 +864,13 @@ async function prepare_selected_channel_for_plotting() {
       }));
       await load_analysis_batch(batch, selected, app, completed, missing_rows.length, label, {
         activate: false,
+        detail_prefix: "Loading data",
       });
     }
 
     if (request_id === channel_change_load_id) {
-      app.set_status_bar(`Selected channel ${selected.dna_area} is ready to plot.`);
-      app.update_progress(100, label, `Finished loading selected data for ${missing_rows.length} file(s).`);
+      app.set_status_bar(`Channel ${selected.dna_area} data ready — pre-loaded ${missing_rows.length} file(s).`);
+      app.update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`);
     }
   } finally {
     if (request_id === channel_change_load_id) {

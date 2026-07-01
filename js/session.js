@@ -95,6 +95,16 @@
       `metadata_panel_collapsed = ${s.ui.metadata_panel_collapsed}`,
       `metadata_panel_height_px = ${s.ui.metadata_panel_height_px}`);
 
+    if (s.stats_plan?.length) {
+      p('');
+      s.stats_plan.forEach((entry) => {
+        p('[[stats_plan.entries]]',
+          `channel = ${toml_str(entry.channel)}`,
+          `metrics = [${entry.metrics.map(toml_str).join(', ')}]`,
+          '');
+      });
+    }
+
     return L.join('\n');
   }
 
@@ -305,6 +315,25 @@
     });
   }
 
+  // Fetch FCS files directly from an HTTP base URL — no picker required.
+  async function fetch_files_from_url(base_url, names) {
+    const base = base_url.replace(/\/$/, '');
+    const results = await Promise.allSettled(
+      names.map(async (name) => {
+        const resp = await fetch(`${base}/${encodeURIComponent(name)}`, { cache: 'no-store' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        return new File([blob], name, { type: blob.type || 'application/octet-stream' });
+      })
+    );
+    const files = [], missing = [];
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') files.push(r.value);
+      else missing.push(names[i]);
+    });
+    return { files, missing };
+  }
+
   // Entry point: route to the right picker, then pass found files to load_files.
   async function auto_load_session_files(names) {
     if (!names?.length) return;
@@ -378,6 +407,7 @@
     return {
       session: { created: new Date().toISOString() },
       files:   { names },
+      stats_plan: window.PhaseFinderSummaryStats?.get_stats_plan?.() ?? [],
       metadata: {
         columns: user_cols.map((c) => ({ field: c.field, label: c.label })),
         rows:    meta_rows,
@@ -452,6 +482,11 @@
     pending_session = session;
     apply_plot_settings(session.plot);
 
+    const plan = session.stats_plan?.entries;
+    if (plan?.length) {
+      window.PhaseFinderSummaryStats?.restore_stats_plan?.(plan);
+    }
+
     const app_shell = document.querySelector('.app');
     if (app_shell && session.ui?.sidebar_width_px > 0) {
       app_shell.style.setProperty('--sidebar_width', `${session.ui.sidebar_width_px}px`);
@@ -490,11 +525,16 @@
       await writable.write(content);
       await writable.close();
     } else {
+      // Firefox / Safari: no save-as API, but we can at least let the user
+      // choose a filename before the browser downloads it to its default folder.
+      const input = window.prompt('Save session as:', suggested_name);
+      if (input === null) return; // cancelled
+      const filename = input.trim() || suggested_name;
       const blob = new Blob([content], { type: 'text/plain' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = suggested_name;
+      a.download = filename.endsWith('.toml') ? filename : filename + '.toml';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -567,4 +607,74 @@
 
   document.getElementById('save_session_button')?.addEventListener('click', handle_save);
   document.getElementById('load_session_button')?.addEventListener('click', handle_load);
+
+  // ── Startup auto-load (phasefinder_local.json) ───────────────────────────────
+  // If a phasefinder_local.json file exists in the app root, the app fetches it
+  // on startup and auto-loads the specified session file plus any stored FCS
+  // directory handle.  The JSON file is never committed — it is personal/local.
+  //
+  // Minimal example:
+  //   { "autoload_session": "sessions/my_experiment.toml" }
+  //
+  // The session path is relative to the app root (where index.html lives).
+
+  async function try_autoload() {
+    let config;
+    try {
+      const resp = await fetch('./phasefinder_local.json', { cache: 'no-store' });
+      if (!resp.ok) return; // file absent — normal, nothing to do
+      config = await resp.json();
+    } catch (_) {
+      return; // fetch or parse failed — silent
+    }
+
+    const session_path = config?.autoload_session;
+    if (!session_path) return;
+
+    const app = window.PhaseFinderApp;
+    try {
+      const resp = await fetch(session_path, { cache: 'no-store' });
+      if (!resp.ok) {
+        app.set_status_bar?.(`Auto-load: could not fetch session file "${session_path}".`, true);
+        return;
+      }
+      const text    = await resp.text();
+      const session = parse_session_toml(text);
+      if (!session.session?.created) {
+        app.set_status_bar?.(`Auto-load: "${session_path}" is not a valid PhaseFinder session.`, true);
+        return;
+      }
+
+      apply_session(session);
+
+      const names = session.files?.names;
+      if (names?.length) {
+        if (config.data_directory) {
+          // Local dev fast-path: fetch files directly over HTTP, no picker needed.
+          app.set_status_bar?.(`Loading ${names.length} FCS file${names.length === 1 ? '' : 's'} from "${config.data_directory}"…`);
+          const { files, missing } = await fetch_files_from_url(config.data_directory, names);
+          if (files.length) {
+            await load_files(files);
+            if (missing.length) {
+              app.set_status_bar?.(`Loaded ${files.length} file${files.length === 1 ? '' : 's'}. Not found: ${missing.join(', ')}`, true);
+            } else {
+              app.set_status_bar?.(`Session auto-loaded with ${files.length} FCS file${files.length === 1 ? '' : 's'}.`);
+            }
+          } else {
+            app.set_status_bar?.(`Auto-load: no FCS files found in "${config.data_directory}". Check that the path is correct and the server serves the directory.`, true);
+          }
+        } else {
+          app.set_status_bar?.(`Session auto-loaded. Opening folder for ${names.length} FCS file${names.length === 1 ? '' : 's'}…`);
+          await auto_load_session_files(names);
+        }
+      } else {
+        app.set_status_bar?.('Session auto-loaded from phasefinder_local.json.');
+      }
+    } catch (err) {
+      app.set_status_bar?.(`Auto-load failed: ${err.message}`, true);
+    }
+  }
+
+  // Defer until after the rest of the page scripts have finished initialising.
+  setTimeout(try_autoload, 0);
 })();

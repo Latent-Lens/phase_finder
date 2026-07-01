@@ -6,7 +6,7 @@ window.PhaseFinderHoverText = Object.freeze({
   sidebarExpand: "Expand sidebar",
   uploadFiles: "Drop FCS files here or click to choose files from disk",
   selectChannel: "Select channel",
-  plotChannelEventsRequirements: "Load FCS files, select a channel, and check at least one file row first.",
+  plotChannelEventsRequirements: "Load FCS files and select a channel first. Curves are shown only for checked rows.",
   plotChannelEvents: "Plot channel events",
   modeling: "Start Modeling (DJF)",
   cellCycleModeling: "Run Dean-Jett-Fox cell cycle modeling on the plotted channel",

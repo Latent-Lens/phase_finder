@@ -278,6 +278,10 @@
   padding: 4.5px 12px;
 }
 
+.file_upload_section.has_loaded_files .drop_zone strong {
+  transform: translateY(1px);
+}
+
 .file_upload_section.has_loaded_files .drop_zone span {
   margin-top: 5px;
   font-size: 0.84rem;

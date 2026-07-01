@@ -653,7 +653,7 @@ Output:
 
 */
 function update_start_button_state() {
-  const is_disabled = !channel_select.value || selected_file_ids.size === 0;
+  const is_disabled = !channel_select.value || file_map.size === 0;
   [start_analysis_button, collapsed_plot_button].forEach((button) => {
     if (!button) {
       return;
