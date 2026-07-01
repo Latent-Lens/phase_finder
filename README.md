@@ -233,16 +233,24 @@ prefer `$PnS`, then `$PnN`, then a generated `P<number>` fallback.
 
 Because this is a static browser app, there is no install step. Opening
 `index.html` directly works, but a static server is recommended (the `ml-*`
-modules import more reliably over `http://`):
+modules import more reliably over `http://`).
+
+With live-reload (auto-refreshes the browser on file changes):
 
 ```bash
-python3 -m http.server 8000
+~/.local/bin/livereload -p 8080
 ```
 
 Then open:
 
 ```text
-http://localhost:8000/
+http://localhost:8080/
+```
+
+Or with the Python built-in server (no live-reload):
+
+```bash
+python3 -m http.server 8080
 ```
 
 D3, `ml-levenberg-marquardt`, and `ml-gsd` are loaded from CDNs (see "How The App
@@ -273,7 +281,4 @@ are vendored locally and the tags in `index.html` are changed.
 - There is no package manager configuration or bundler in the repository; the
   JavaScript is plain browser JavaScript, so changes can be tested by refreshing
   the page.
-- `main.js` includes `applyDebugChannelDefaults`, which automatically selects
-  `GFP/FITC-A` when that channel exists. The inline comment marks this as a debug
-  helper to remove for production.
 - We use Tablericons (https://tabler.io/icons) for a lot of the icons on the site.

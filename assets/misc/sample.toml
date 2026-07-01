@@ -1,0 +1,162 @@
+# PhaseFinder Session File
+# Created: 2026-07-01T09:00:00.000Z
+#
+# Load this file with the "Load session" button in PhaseFinder to restore
+# settings and annotations. PhaseFinder will then prompt you to select the
+# folder containing your FCS files so it can reload them automatically.
+
+# ── Session metadata ──────────────────────────────────────────────────────────
+
+[session]
+created = "2026-07-01T09:00:00.000Z"
+
+# ── Loaded files ──────────────────────────────────────────────────────────────
+# Only filenames are stored here — browsers do not expose full filesystem paths
+# to web apps for security reasons.
+#
+# Where the source folder is tracked:
+#   Chrome / Edge / Opera — when you pick the folder during session load,
+#     PhaseFinder saves a FileSystemDirectoryHandle in the browser's IndexedDB
+#     (database "phasefinder", key "fcs_directory"). On the next load it asks
+#     for a one-click permission re-grant instead of making you pick again.
+#
+#   Firefox / Safari — no persistent handle is available; a native directory
+#     picker opens each time so you can point PhaseFinder at the right folder.
+#
+# Files in `names` are matched by filename inside whichever folder you select.
+
+[files]
+names = [
+  "WT_1_no_0min.fcs",
+  "WT_1_no_30min.fcs",
+  "WT_1_no_60min.fcs",
+  "WT_2_yes_0min.fcs",
+  "WT_2_yes_30min.fcs",
+  "WT_2_yes_60min.fcs",
+]
+
+# ── Metadata table ────────────────────────────────────────────────────────────
+# Column definitions (field = internal key, label = display name) and
+# per-file annotation values, one [[metadata.rows]] block per file.
+
+[metadata]
+columns = [
+  {field = "strain",          label = "Strain"},
+  {field = "replicate",       label = "Replicate"},
+  {field = "nocodazoleArrest",label = "Nocodazole Arrest"},
+  {field = "timepoint",       label = "Timepoint"},
+]
+
+[[metadata.rows]]
+name             = "WT_1_no_0min.fcs"
+strain           = "WT"
+replicate        = "1"
+nocodazoleArrest = "no"
+timepoint        = "0"
+
+[[metadata.rows]]
+name             = "WT_1_no_30min.fcs"
+strain           = "WT"
+replicate        = "1"
+nocodazoleArrest = "no"
+timepoint        = "30"
+
+[[metadata.rows]]
+name             = "WT_1_no_60min.fcs"
+strain           = "WT"
+replicate        = "1"
+nocodazoleArrest = "no"
+timepoint        = "60"
+
+[[metadata.rows]]
+name             = "WT_2_yes_0min.fcs"
+strain           = "WT"
+replicate        = "2"
+nocodazoleArrest = "yes"
+timepoint        = "0"
+
+[[metadata.rows]]
+name             = "WT_2_yes_30min.fcs"
+strain           = "WT"
+replicate        = "2"
+nocodazoleArrest = "yes"
+timepoint        = "30"
+
+[[metadata.rows]]
+name             = "WT_2_yes_60min.fcs"
+strain           = "WT"
+replicate        = "2"
+nocodazoleArrest = "yes"
+timepoint        = "60"
+
+# ── Filename-splitting template ───────────────────────────────────────────────
+# Controls how the metadata wizard auto-fills annotation columns from
+# FCS filenames. Each [[metadata_template.steps]] block is one split step;
+# [[metadata_template.columns]] maps split pieces to column definitions.
+#
+# Step types:
+#   delimiter — split on a fixed character (e.g. "_")
+#   fixed     — split at fixed character positions (breaks = [5, 7, ...])
+#   regex     — split using a regex separator or capture group
+#
+# source_index links a column to the nth piece produced by the steps.
+
+[[metadata_template.steps]]
+type      = "delimiter"
+delimiter = "_"
+label     = ""
+hide      = false
+
+[[metadata_template.columns]]
+field        = "strain"
+label        = "Strain"
+source_index = 0
+
+[[metadata_template.columns]]
+field        = "replicate"
+label        = "Replicate"
+source_index = 1
+
+[[metadata_template.columns]]
+field        = "nocodazoleArrest"
+label        = "Nocodazole Arrest"
+source_index = 2
+
+[[metadata_template.columns]]
+field        = "timepoint"
+label        = "Timepoint"
+source_index = 3
+
+# ── Table state ───────────────────────────────────────────────────────────────
+# Which rows were checked, the active sort column, and any active column
+# filters. An empty sort_field means "default order (by filename)".
+
+[table]
+selected_files  = ["WT_1_no_0min.fcs", "WT_1_no_30min.fcs", "WT_2_yes_0min.fcs"]
+sort_field      = "timepoint"
+sort_direction  = "asc"
+
+# Active column filters: field = list of allowed values.
+# An absent or empty list means no filter is applied for that column.
+[table.filters]
+nocodazoleArrest = ["no"]
+
+# ── Plot settings ─────────────────────────────────────────────────────────────
+
+[plot]
+channel             = "DAPI-A"
+color_by            = "strain"    # "file" or "strain"
+bins                = 512
+remove_debris       = true
+remove_doublets     = false
+show_peak_threshold = false
+
+# ── UI layout ─────────────────────────────────────────────────────────────────
+
+[ui]
+sidebar_collapsed        = false
+sidebar_width_px         = 320
+plot_panel_collapsed     = false
+plot_panel_height_px     = 420
+metadata_panel_collapsed = false
+metadata_panel_height_px = 280
