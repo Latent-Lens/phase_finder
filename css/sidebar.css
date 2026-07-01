@@ -141,6 +141,10 @@
   width: 100%;
   min-height: 42px;
   font-size: 1rem;
+  white-space: normal;
+  overflow-wrap: break-word;
+  line-height: 1.35;
+  padding: 6px 14px;
 }
 
 .sidebar_collapsed_upload_target {
@@ -233,40 +237,6 @@
   opacity: 0.45;
 }
 
-/* All sidebar tooltips appear to the right of their element. */
-.sidebar .quick_tooltip::after {
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  left: calc(100% + 10px);
-  max-width: min(260px, calc(100vw - 340px));
-  transform: translate(2px, -50%);
-}
-
-.sidebar .quick_tooltip::before {
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  left: calc(100% + 5px);
-  transform: translateY(-50%) rotate(45deg);
-}
-
-.sidebar .quick_tooltip:hover::after,
-.sidebar .quick_tooltip:focus-visible::after {
-  transform: translate(0, -50%);
-}
-
-/* Collapsed sidebar icons: tighter max-width since icon bar is only 56px wide. */
-.sidebar_collapsed_actions .quick_tooltip::after {
-  max-width: min(260px, calc(100vw - 88px));
-}
-
-/* Disabled items still show their tooltip at full opacity. */
-.sidebar .quick_tooltip:disabled:hover::after,
-.sidebar .quick_tooltip:disabled:hover::before {
-  opacity: 1;
-  visibility: visible;
-}
 
 
 .drop_zone {
