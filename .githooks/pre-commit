@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+PYTHON="${PHASEFINDER_TEST_PYTHON:-/tmp/flowvenv/bin/python}"
+TEST_RUNNER="tests/e2e/drive_flow.py"
+
+if ! git diff --quiet --; then
+  cat >&2 <<'MSG'
+Commit blocked: unstaged tracked changes are present.
+
+The regression suite runs against the working tree. Stage or discard unstaged
+tracked edits first so the tests cover exactly what will be committed.
+MSG
+  exit 1
+fi
+
+UNTRACKED="$(git ls-files --others --exclude-standard)"
+if [ -n "$UNTRACKED" ]; then
+  cat >&2 <<MSG
+Commit blocked: untracked files are present.
+
+Stage, ignore, or remove these files before committing so the regression suite
+is not influenced by files outside the commit:
+
+$UNTRACKED
+MSG
+  exit 1
+fi
+
+if [ ! -x "$PYTHON" ]; then
+  cat >&2 <<MSG
+Commit blocked: test Python was not found or is not executable:
+  $PYTHON
+
+Create the documented test environment, or set PHASEFINDER_TEST_PYTHON to the
+Python executable that has Playwright installed.
+MSG
+  exit 1
+fi
+
+if [ ! -f "$TEST_RUNNER" ]; then
+  echo "Commit blocked: missing test runner $TEST_RUNNER" >&2
+  exit 1
+fi
+
+echo "Running PhaseFinder full regression suite before commit..."
+"$PYTHON" "$TEST_RUNNER"
