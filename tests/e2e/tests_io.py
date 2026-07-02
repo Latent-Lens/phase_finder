@@ -3,6 +3,7 @@
 
 from helpers import (
     TestContext,
+    configure_default_metadata_wizard_columns,
     set_files_via_drag_drop,
     set_files_via_file_browser,
     status_bar_text,
@@ -54,6 +55,20 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
     wait_for_rows(page, after_drag)
     ctx.check(group, "File loading [Sidebar expanded, drag and drop]",
               table_row_count(page) == after_drag, f"rows={table_row_count(page)}")
+
+    # The filename metadata wizard auto-opens once, ~750ms after this first
+    # load. Configure it now (Strain/Replicate/Nocodazole Arrest/Timepoint via
+    # regex split steps) before anything else clicks through its modal
+    # backdrop — this also seeds the columns that filtering/sorting/plotting
+    # tests further down the suite depend on.
+    wizard_configured = configure_default_metadata_wizard_columns(ctx.page)
+    ctx.check(group, "Filename metadata wizard auto-opens after first file load and applies",
+              wizard_configured
+              and page.eval_on_selector_all(
+                  ".file_table thead .th_sort",
+                  "els => els.some(e => e.dataset.sortField === 'strain')",
+              ),
+              "configured" if wizard_configured else "wizard did not auto-open within timeout")
 
     bar_text = status_bar_text(page)
     ctx.check(group, "Status bar updates after drag-and-drop load",
@@ -134,7 +149,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
     wait_briefly(0.5)
     ctx.check(group, "Sidebar collapsed icon controls are visible",
               page.locator("#collapsed_upload_target").is_visible()
-              and page.locator("#collapsed_dna_area_select").is_visible()
+              and page.locator("#collapsed_channel_select").is_visible()
               and page.locator("#collapsed_plot_button").is_visible())
 
     # --- file loading via collapsed upload icon (file browser) ---

@@ -39,7 +39,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
         ctx.warn(group, f"Select {preferred_channel} channel", warning)
     else:
         ctx.check(group, f"Select {preferred_channel} channel",
-                  page.eval_on_selector("#dna_area_select", "e => e.value") == channel)
+                  page.eval_on_selector("#channel_select", "e => e.value") == channel)
 
     # --- plot a strict subset first to verify subset behavior ---
     checkboxes = page.query_selector_all(".file_table tbody .row_select")

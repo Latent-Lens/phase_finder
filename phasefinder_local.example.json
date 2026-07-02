@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy this file to phasefinder_local.json and fill in your values. phasefinder_local.json is personal and should not be committed.",
+
+  "autoload_session": "sessions/my_experiment.toml",
+
+  "_comment_data_directory": "Optional: URL path (relative to app root) where FCS files are served. When set, auto-load fetches files over HTTP instead of opening a directory picker. Useful for local development when the server serves the data folder.",
+  "data_directory": "flow_data"
+}

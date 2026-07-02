@@ -18,6 +18,7 @@ import time
 import threading
 import http.server
 import socketserver
+from contextlib import nullcontext
 from pathlib import Path
 
 # Put this directory on sys.path so sibling helpers/test modules are importable
@@ -41,6 +42,7 @@ from helpers import (
     make_synthetic_fcs_pool,
     prepare_results_dir,
     prepare_test_data_dir,
+    suspended_local_autoload_config,
     write_combined_report,
 )
 from tests_io import test_file_loading, test_libraries
@@ -48,6 +50,8 @@ from tests_filtering import test_table_filtering_sorting
 from tests_plotting import test_plotting
 from tests_modeling import test_modeling
 from tests_sidebar import test_sidebar_icons
+from tests_stats import test_summary_statistics
+from tests_metadata_wizard import test_metadata_wizard
 from tests_reset import test_reset
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -115,6 +119,8 @@ def run(args):
         test_plotting(e2e_ctx, args.channel)
         test_modeling(e2e_ctx)
         test_sidebar_icons(e2e_ctx)
+        test_summary_statistics(e2e_ctx)
+        test_metadata_wizard(e2e_ctx)
         test_reset(e2e_ctx, reset_files)
         # Filter out expected channel-not-found errors (arise from channel change tests
         # when some loaded FCS files lack data for the selected secondary channel)
@@ -213,29 +219,35 @@ def main():
     args = parser.parse_args()
 
     httpd = None
+    local_autoload_guard = nullcontext()
 
     if not args.url:
-        repo_root = str(_HERE.parents[1])
+        repo_root = Path(_HERE.parents[1])
         print(f"Starting up a new local server process to serve the app...", flush=True)
-        port, httpd = start_test_server(repo_root)
+        port, httpd = start_test_server(str(repo_root))
         args.url = f"http://127.0.0.1:{port}/index.html"
         print(f"Server successfully started at {args.url}", flush=True)
+        # A personal, uncommitted phasefinder_local.json in the repo root
+        # would otherwise get served to the app under test and silently
+        # auto-load unrelated files, desyncing every row-count assertion.
+        local_autoload_guard = suspended_local_autoload_config(repo_root)
 
-    try:
-        ret = run(args)
-    except PlaywrightTimeoutError as err:
-        print(f"Playwright timed out: {err}", file=sys.stderr)
-        ret = 1
-    except Exception as err:
-        print(f"Test runner failed: {err}", file=sys.stderr)
-        ret = 1
-    finally:
-        if httpd:
-            print(f"\nShutting down local test server process...", flush=True)
-            httpd.shutdown()
-            httpd.server_close()
-            print("Server shutdown complete.", flush=True)
-            
+    with local_autoload_guard:
+        try:
+            ret = run(args)
+        except PlaywrightTimeoutError as err:
+            print(f"Playwright timed out: {err}", file=sys.stderr)
+            ret = 1
+        except Exception as err:
+            print(f"Test runner failed: {err}", file=sys.stderr)
+            ret = 1
+        finally:
+            if httpd:
+                print(f"\nShutting down local test server process...", flush=True)
+                httpd.shutdown()
+                httpd.server_close()
+                print("Server shutdown complete.", flush=True)
+
     return ret
 
 

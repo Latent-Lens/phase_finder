@@ -14,6 +14,7 @@ import shutil
 import struct
 import subprocess
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -148,6 +149,31 @@ def prepare_results_dir(results_dir: Path):
                 shutil.rmtree(path)
 
     return img_dir, vid_dir
+
+
+@contextmanager
+def suspended_local_autoload_config(repo_root: Path):
+    """Temporarily move phasefinder_local.json out of the way for a test run.
+
+    phasefinder_local.json is a personal, uncommitted dev-convenience file
+    (see phasefinder_local.example.json) that can point session.js's startup
+    auto-load at an arbitrary session file + data directory on every page
+    load. When the local test server serves the repo root, the app under
+    test picks it up exactly like a real user's browser would — silently
+    loading extra files that desync every row-count assertion in this suite.
+    Move it aside before the run and restore it (unmodified) afterward.
+    """
+    config_path = repo_root / "phasefinder_local.json"
+    backup_path = repo_root / "phasefinder_local.json.e2e_suspended"
+    moved = False
+    if config_path.exists():
+        config_path.rename(backup_path)
+        moved = True
+    try:
+        yield
+    finally:
+        if moved:
+            backup_path.rename(config_path)
 
 
 def prepare_test_data_dir(test_data_dir: Path):
@@ -352,6 +378,71 @@ def wait_for_curves(page, count, timeout=120000):
     )
 
 
+def dismiss_metadata_wizard_if_open(page, timeout_ms=1500):
+    """Close the filename metadata wizard if it auto-opened after a file load.
+
+    The wizard opens ~750ms after the *first* successful file load in a
+    session (see schedule_metadata_wizard_after_file_load in ui_controls.js)
+    and never again afterward. Left open, its modal backdrop blocks clicks on
+    everything behind it, so callers should invoke this once, right after the
+    very first file load of a run, before doing anything else.
+    """
+    try:
+        page.wait_for_selector("#metadata_wizard_modal:not([hidden])", timeout=timeout_ms)
+    except Exception:
+        return False
+    page.click("#metadata_wizard_cancel")
+    wait_briefly(0.2)
+    return True
+
+
+def configure_default_metadata_wizard_columns(page, timeout_ms=3000):
+    """Configure and apply the filename metadata wizard's default Strain /
+    Replicate / Nocodazole Arrest / Timepoint columns, matching the naming
+    convention used by write_synthetic_fcs() (and the app's own sample
+    session): "<strain digits><replicate letter><arrest letter> t<timepoint>".
+
+    Annotation guessing from filenames is no longer automatic (that logic is
+    dead code in ui_controls.js) — the wizard is now the only way these
+    columns get populated. Downstream tests (sorting/filtering by
+    strain/replicate/timepoint, coloring plots by strain, per-sample
+    annotations in the DJF fit table) all depend on these columns existing,
+    so this is called once, right after the very first file load of a run.
+
+    Returns True if the wizard was found and configured, False if it never
+    auto-opened (callers should treat that as a soft failure).
+    """
+    try:
+        page.wait_for_selector("#metadata_wizard_modal:not([hidden])", timeout=timeout_ms)
+    except Exception:
+        return False
+
+    # Step 0 (pre-existing default delimiter "_" step): the date-ish prefix.
+    page.fill('.metadata_split_step[data-step-index="0"] .metadata_step_column_name', "Date")
+    page.check('.metadata_split_step[data-step-index="0"] .metadata_step_hide')
+
+    regex_steps = [
+        (r"^(\d+)", "Strain"),
+        (r"^([A-Za-z])", "Replicate"),
+        (r"^([A-Za-z])", "Nocodazole Arrest"),
+        (r"t(\d+)", "Timepoint"),
+    ]
+    for offset, (pattern, label) in enumerate(regex_steps, start=1):
+        page.click("#metadata_add_split_step")
+        row = f'.metadata_split_step[data-step-index="{offset}"]'
+        page.select_option(f"{row} .metadata_split_type", "regex")
+        page.fill(f"{row} .metadata_step_regex", pattern)
+        page.fill(f"{row} .metadata_step_column_name", label)
+
+    # Remainder (whatever text is left after all steps): hide it.
+    page.fill("#metadata_column_editor .metadata_column_name", "Well")
+    page.check("#metadata_column_editor .metadata_leaf_hide input")
+
+    page.click("#metadata_wizard_apply")
+    wait_briefly(0.3)
+    return True
+
+
 def try_catch_progress(page, timeout_ms=8000):
     """Return True if the progress overlay was observed as visible within timeout_ms."""
     try:
@@ -413,7 +504,7 @@ def set_files_via_drag_drop(page, target_selector, files):
 
 
 def select_channel(page, channel):
-    page.select_option("#dna_area_select", channel)
+    page.select_option("#channel_select", channel)
     wait_briefly(0.2)
 
 
@@ -432,7 +523,7 @@ def select_all_visible_rows(page):
 
 
 def ensure_channel_option(page, preferred="GFP/FITC-A"):
-    options = page.eval_on_selector_all("#dna_area_select option", "els => els.map(e => e.value).filter(Boolean)")
+    options = page.eval_on_selector_all("#channel_select option", "els => els.map(e => e.value).filter(Boolean)")
     if preferred in options:
         return preferred, None
     if options:
@@ -441,7 +532,7 @@ def ensure_channel_option(page, preferred="GFP/FITC-A"):
 
 
 def another_channel(page, current):
-    options = page.eval_on_selector_all("#dna_area_select option", "els => els.map(e => e.value).filter(Boolean)")
+    options = page.eval_on_selector_all("#channel_select option", "els => els.map(e => e.value).filter(Boolean)")
     for option in options:
         if option != current:
             return option

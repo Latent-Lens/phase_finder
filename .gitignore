@@ -1,9 +1,12 @@
 # E2E testing artifacts (screenshots, etc.) — keep the dir, ignore the output.
 tests/e2e/results/*
-tests/test_data/*
 !tests/test_data/.gitkeep
 tests/e2e/__pycache__
 tests/unit/__pycache__
+
+# Test data
+tests/test_data/*
+flow_data
 
 
 # Local AI tooling

@@ -115,6 +115,96 @@ _FULL_SUITE = """() => {
                    && /events plotted/.test(summaryText),
                  detail: summaryText });
 
+  // 13. find_auxiliary_indexes links only a height channel when no width channel shares its base name
+  const summaryHeightOnly = {
+    columns: ['GFP/FITC-A', 'GFP/FITC-H', 'Other-W'],
+    metadata: {
+      P1N: 'GFP/FITC-A', P1S: 'GFP/FITC-A',
+      P2N: 'GFP/FITC-H', P2S: 'GFP/FITC-H',
+      P3N: 'Other-W', P3S: 'Other-W',
+    },
+  };
+  const auxHeightOnly = DJF.find_auxiliary_indexes(summaryHeightOnly, 'GFP/FITC-A');
+  results.push({ name: 'find_auxiliary_indexes: links only a height channel when no width channel shares its base name',
+                 pass: auxHeightOnly.dna_h === 2 && (auxHeightOnly.dna_w === null || auxHeightOnly.dna_w === undefined),
+                 detail: JSON.stringify(auxHeightOnly) });
+
+  // 14. find_auxiliary_indexes links only a width channel when no height channel shares its base name
+  const summaryWidthOnly = {
+    columns: ['GFP/FITC-A', 'Other-H', 'GFP/FITC-W'],
+    metadata: {
+      P1N: 'GFP/FITC-A', P1S: 'GFP/FITC-A',
+      P2N: 'Other-H', P2S: 'Other-H',
+      P3N: 'GFP/FITC-W', P3S: 'GFP/FITC-W',
+    },
+  };
+  const auxWidthOnly = DJF.find_auxiliary_indexes(summaryWidthOnly, 'GFP/FITC-A');
+  results.push({ name: 'find_auxiliary_indexes: links only a width channel when no height channel shares its base name',
+                 pass: auxWidthOnly.dna_w === 3 && (auxWidthOnly.dna_h === null || auxWidthOnly.dna_h === undefined),
+                 detail: JSON.stringify(auxWidthOnly) });
+
+  // 15. prepare_row: doublet correction actually removes ratio-outlier events
+  // when height/width channels are available (12 above only covered the
+  // "channels unavailable" case).
+  const doubletN = 200;
+  const doublet_a = new Array(doubletN);
+  const doublet_h = new Array(doubletN);
+  const doublet_w = new Array(doubletN);
+  for (let i = 0; i < doubletN; i += 1) {
+    doublet_a[i] = 60000 + i * 10;
+    const isOutlier = i % 20 === 0; // 10 of 200
+    doublet_h[i] = isOutlier ? doublet_a[i] * 0.97 : doublet_a[i] / 2;
+    doublet_w[i] = isOutlier ? 5.0 : 2.0 + (i % 5) * 0.001;
+  }
+  const doubletRow = { data: { dna_a: doublet_a, dna_h: doublet_h, dna_w: doublet_w } };
+  const preparedDoublet = DJF.prepare_row(doubletRow, { remove_debris: false, remove_doublets: true });
+  results.push({ name: 'prepare_row: doublet correction removes ratio-outlier events when height/width channels are available',
+                 pass: preparedDoublet.stats.doublet_available === true
+                   && preparedDoublet.stats.doublets_removed >= 5
+                   && preparedDoublet.values.length === doubletN - 10,
+                 detail: JSON.stringify(preparedDoublet.stats) });
+
+  // 16. estimate_run_g1 picks the median G1 position across several series,
+  // not the min or max — so one noisy/off sample cannot skew the shared
+  // anchor used to fit every sample.
+  function bimodalAt(g1Center) {
+    const bins = 256;
+    const lo = g1Center * 0.3;
+    const hi = g1Center * 3.2;
+    const width = (hi - lo) / bins;
+    const points = [];
+    for (let i = 0; i < bins; i += 1) {
+      const x = lo + (i + 0.5) * width;
+      const g1y = Math.exp(-0.5 * Math.pow((x - g1Center) / (g1Center * 0.07), 2)) * 800;
+      const g2y = Math.exp(-0.5 * Math.pow((x - 2 * g1Center) / (g1Center * 0.09), 2)) * 400;
+      const sy = Math.max(0, 60 - Math.abs(x - 1.5 * g1Center) / (g1Center * 0.02));
+      points.push({ x, y: g1y + g2y + sy });
+    }
+    return points;
+  }
+  const runG1 = DJF.estimate_run_g1(
+    [{ points: bimodalAt(80000) }, { points: bimodalAt(50000) }, { points: bimodalAt(64000) }],
+    null,
+  );
+  results.push({ name: 'estimate_run_g1: selects the median G1 position across multiple series, not the min or max',
+                 pass: runG1 !== null
+                   && Math.abs(runG1 - 64000) < Math.abs(runG1 - 50000)
+                   && Math.abs(runG1 - 64000) < Math.abs(runG1 - 80000),
+                 detail: 'runG1=' + runG1 });
+
+  // 17. correction_summary reports both debris and doublet removal counts
+  // when both corrections are available (12 above only covered doublets
+  // being unavailable).
+  const bothCorrectionsSummary = DJF.correction_summary(
+    [{ prepared: preparedDoublet }, { prepared: preparedDebris }],
+    { remove_debris: true, remove_doublets: true },
+  );
+  results.push({ name: 'correction_summary: reports both debris and doublet removal counts when both are available',
+                 pass: /debris\\/background removed/.test(bothCorrectionsSummary)
+                   && /aggregates\\/doublets removed/.test(bothCorrectionsSummary)
+                   && /events plotted/.test(bothCorrectionsSummary),
+                 detail: bothCorrectionsSummary });
+
   return results;
 }"""
 
