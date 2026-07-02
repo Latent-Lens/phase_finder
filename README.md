@@ -26,6 +26,7 @@ pipeline in this repository.
 ```text
 .
 ├── index.html
+├── help.html             # in-app help/feature guide, linked from the header
 ├── assets/
 │   └── img/
 │       ├── logo.png
@@ -39,7 +40,8 @@ pipeline in this repository.
 │   ├── table.css        # metadata table, sort headers, filter dropdowns
 │   ├── plot.css         # plot panel layout, controls bar, DJF readout
 │   ├── feedback.css     # status bar and progress overlay
-│   └── responsive.css   # @media overrides (loaded last)
+│   ├── responsive.css   # @media overrides (loaded last)
+│   └── help.css         # standalone stylesheet for help.html
 ├── js/
 │   ├── fcs-parser.js    # window.FCSParser — FCS reading
 │   ├── main.js          # window.PhaseFinderApp — file/table/selection UI
@@ -50,6 +52,13 @@ pipeline in this repository.
 └── misc/
     └── README.md
 ```
+
+Note: the file list above predates several JS modules that now also load (see
+`index.html`'s script tags for the current, authoritative load order) —
+`ui_controls.js`, `hover_text.js`, `djf_gpt.js`, `summary_stats.js`,
+`panel_resize.js`, and `session.js`. `help.html` documents all of the features
+they add (the metadata wizard, summary statistics, session save/load, and
+layout controls); see it for an up-to-date feature tour.
 
 ## How The App Works
 

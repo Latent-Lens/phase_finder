@@ -50,27 +50,42 @@ The directory is tracked but its contents are git-ignored.
 ```
 tests/
 ├── e2e/
-│   ├── drive_flow.py       ← entry point
-│   ├── helpers.py          ← TestContext, all helpers, report writers
-│   ├── tests_io.py         ← library + file loading tests
-│   ├── tests_filtering.py  ← sort + filter tests
-│   ├── tests_plotting.py   ← plotting + channel change tests
-│   ├── tests_modeling.py   ← DJF modeling tests
-│   ├── tests_sidebar.py    ← collapsed sidebar icon tests
-│   ├── tests_reset.py      ← restart + logo reset tests
+│   ├── drive_flow.py            ← entry point
+│   ├── helpers.py                ← TestContext, all helpers, report writers
+│   ├── tests_io.py                ← library + file loading tests
+│   ├── tests_filtering.py         ← sort + filter tests
+│   ├── tests_plotting.py          ← plotting + channel change tests
+│   ├── tests_modeling.py          ← DJF modeling tests
+│   ├── tests_sidebar.py           ← collapsed sidebar icon tests
+│   ├── tests_stats.py             ← Calculate Statistics modal tests
+│   ├── tests_metadata_wizard.py   ← filename metadata wizard + TSV export tests
+│   ├── tests_reset.py             ← site-logo reset tests
 │   └── results/
 └── unit/
-    ├── run_unit_tests.py   ← unit test orchestrator
-    ├── test_harness.html   ← minimal page loading CDN libs + parser/DJF JS
-    ├── unit_tests_parser.py← FCSParser unit tests (window.FCSParser)
-    └── unit_tests_djf.py   ← DJF model unit tests (window.PhaseFinderDJF)
+    ├── run_unit_tests.py    ← unit test orchestrator
+    ├── test_harness.html    ← minimal page loading CDN libs + parser/ui_controls/DJF JS
+    ├── unit_tests_parser.py ← FCSParser unit tests (window.FCSParser)
+    ├── unit_tests_table.py  ← table/metadata-wizard pure-logic unit tests (ui_controls.js)
+    └── unit_tests_djf.py    ← DJF model unit tests (window.PhaseFinderDJF)
 ```
+
+`drive_flow.py` also temporarily moves aside a `phasefinder_local.json` in the
+repo root, if present, for the duration of the run (restoring it unmodified
+afterward). That file is a personal, uncommitted dev-convenience config (see
+`phasefinder_local.example.json`) that can auto-load an arbitrary session and
+FCS folder on every page load; left in place, the local test server would
+serve it to the app under test exactly like a real browsing session, silently
+loading extra files that desync every row-count assertion in this suite.
 
 ## What it checks
 
 ### E2E — Input/Output
 - D3 / Levenberg–Marquardt / ml-gsd CDN libraries load
 - File loading via drag-and-drop (expanded sidebar)
+- The filename metadata wizard auto-opens once, after the very first file
+  load, and is configured here (Strain/Replicate/Nocodazole Arrest/Timepoint
+  via regex split steps) — downstream sort/filter/plotting/DJF-annotation
+  tests all depend on these columns existing
 - File loading via file-browser click (expanded sidebar)
 - Progress overlay appears and hides during file loading
 - Status bar updates after load
@@ -112,23 +127,59 @@ tests/
 - Collapsed histogram icon is enabled
 - Collapsed histogram icon click triggers replot
 
+### E2E — Summary Statistics
+- Calculate Statistics modal opens; Mean/Std Dev checked by default
+- Computing Mean/Std Dev/Median adds a grouped column header and correct per-file values
+- Reopening the modal disables already-computed statistics for the selected channel
+- The "All" checkbox only checks the remaining enabled (not-yet-computed) statistics
+- Min/Max compute correctly and stay consistent with the mean
+- Escape closes the modal
+- Files loaded after a stat has been computed automatically receive it, with no need to reopen the modal
+
+### E2E — Metadata Wizard
+- Opens via the table title-bar icon; "Filename Only" resets to a single default step
+- Fixed-width step: typing a width and clicking "Set" fills in the break position
+- The live preview reflects delimiter/fixed-width/regex steps and hidden columns
+- Apply commits columns in configured order with correct per-file split values
+- Cancel discards in-progress edits without touching the already-applied table
+- TSV export (via the pure `metadata_table_tsv()` helper, and — where the browser
+  doesn't expose `showSaveFilePicker` — an actual download) includes every
+  configured column and its values
+
 ### E2E — Reset
-- Restart button clears table, hides plot panel, resets status bar and channel
-- Site logo click does the same
+- Site logo click clears the table, hides the plot panel, and resets status bar and channel
 
 ### Unit — FCS Parser (`window.FCSParser`)
 - `parseFCSHeader`: version string, textBegin, dataBegin/textEnd ordering
 - `parseFCSHeader`: eventCount, parameterCount, channel column names
 - `parseFCSHeader`: throws on buffer < 58 bytes and non-FCS headers
 - `parseFCS`: reads event rows and numeric channel values
-- `parseSelectedColumns`: selected channels match full parse and invalid indexes throw
+- `parseSelectedColumns`: selected channels match full parse, an empty index
+  list returns `{}`, and invalid indexes throw
 - `parseFCSHeaderFromSegments`: sliced HEADER/TEXT parsing matches full header parsing
+- `$DATATYPE I` (16-bit integer) files: header metadata, full parse, and
+  `parseSelectedColumns` all read correct values (previously only `F` was covered)
 
 ### Unit — DJF Model (`window.PhaseFinderDJF`)
 - `fit`: returns a non-null result on valid bimodal histogram
 - `fit`: G1 center in expected range, G2/G1 ratio ≈ 2
 - `fractions`: sum ≈ 100 %, each phase ≥ 0
-- `estimateRunG1`: returns a positive value
+- `estimateRunG1`: returns a positive value on one histogram, and picks the
+  median (not the min/max) G1 position across several series
 - `components`: evaluates to > 0 at G1 peak
-- `findAuxiliaryIndexes`: links DNA-A to matching height/width channels
-- `prepareRow` / `correctionSummary`: correction stats and unavailable doublet-channel messaging
+- `findAuxiliaryIndexes`: links DNA-A to matching height/width channels, and
+  to a height-only or width-only channel when only one side is linkable
+- `prepareRow` / `correctionSummary`: correction stats, unavailable
+  doublet-channel messaging, and actual doublet-outlier removal when
+  height/width channels are available
+
+### Unit — Table & Metadata (`ui_controls.js`)
+- `PhaseFinderFrame` / `make_frame` / `concat_frames`: column storage,
+  construction from rows, and concatenation with missing-column null-filling
+- `metadata_field_from_label`: known-label mapping, camelCasing, reserved-name
+  and duplicate-label collision handling
+- `split_filename_metadata`: delimiter, fixed-width, and regex (with/without a
+  capture group) split steps, chained multi-step splits, and non-matching steps
+- `guess_annotations_from_filename`: legacy filename-guessing fallback paths
+- `timepoint_sort_value`, `display_name`, `annotation_input_size`,
+  `parse_fixed_breaks`: small formatting/parsing helpers

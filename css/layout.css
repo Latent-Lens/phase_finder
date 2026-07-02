@@ -51,6 +51,33 @@
   outline-offset: 2px;
 }
 
+.help_link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 14px;
+  font-size: var(--panel_title_font_size);
+  font-weight: 800;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.help_link:hover {
+  background: var(--th_bg);
+}
+
+.help_link:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.3);
+  outline-offset: 2px;
+}
+
 .load_session_button {
   width: auto;
   min-height: 36px;
