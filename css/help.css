@@ -1,0 +1,337 @@
+/* Standalone stylesheet for help.html. Deliberately independent of base.css:
+   the app shell relies on `body { height:100%; overflow:hidden }` for its
+   fixed single-screen layout, which would break a normal scrolling document.
+   Color tokens below mirror the app's tokens in css/base.css. */
+
+:root {
+  color-scheme: light;
+  --bg: #f7f8fb;
+  --panel: #ffffff;
+  --text: #172033;
+  --muted: #647086;
+  --border: #d9dee8;
+  --accent: #2563eb;
+  --accent_strong: #1d4ed8;
+  --accent_soft: #e7efff;
+  --logo_teal: #01a5af;
+  --logo_blue: #072c67;
+  --success: #059669;
+  --restart: #dc2626;
+  --code_bg: #eef1f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.55;
+}
+
+a {
+  color: var(--accent_strong);
+}
+
+code {
+  background: var(--code_bg);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  font-size: 0.92em;
+}
+
+kbd {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.05em 0.5em;
+  font-size: 0.85em;
+  font-family: inherit;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.help_header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.help_header_logo {
+  height: 34px;
+  width: auto;
+}
+
+.help_header_title {
+  flex: 1;
+  font-weight: 800;
+  color: var(--logo_blue);
+  font-size: 1.05rem;
+}
+
+.help_back_link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--logo_teal);
+  background: var(--logo_teal);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.help_back_link:hover {
+  filter: brightness(0.9);
+}
+
+/* ── Layout: sticky TOC + content column ───────────────────────────────── */
+
+.help_layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 800px);
+  justify-content: center;
+  gap: 40px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+  align-items: start;
+}
+
+.help_toc {
+  position: sticky;
+  top: 70px;
+  align-self: start;
+  font-size: 0.88rem;
+}
+
+.help_toc nav {
+  border-left: 2px solid var(--border);
+  padding-left: 14px;
+}
+
+.help_toc p.toc_label {
+  margin: 0 0 8px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+.help_toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.help_toc li {
+  margin: 2px 0;
+}
+
+.help_toc a {
+  display: block;
+  padding: 3px 0;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.help_toc a:hover {
+  color: var(--accent_strong);
+}
+
+.help_toc ol ol {
+  padding-left: 14px;
+  margin-bottom: 4px;
+}
+
+/* ── Content ────────────────────────────────────────────────────────────── */
+
+.help_content {
+  min-width: 0;
+}
+
+.help_intro {
+  background: var(--accent_soft);
+  border: 1px solid #c7d9fb;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 28px;
+}
+
+.help_intro p:last-child {
+  margin-bottom: 0;
+}
+
+section.help_section {
+  margin-bottom: 42px;
+  scroll-margin-top: 76px;
+}
+
+.help_content h1 {
+  font-size: 1.8rem;
+  color: var(--logo_blue);
+  margin: 0 0 6px;
+}
+
+.help_lede {
+  color: var(--muted);
+  margin: 0 0 26px;
+}
+
+.help_content h2 {
+  font-size: 1.28rem;
+  color: var(--logo_blue);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin: 0 0 14px;
+}
+
+.help_content h3 {
+  font-size: 1.02rem;
+  color: var(--text);
+  margin: 22px 0 8px;
+}
+
+.help_content p {
+  margin: 0 0 12px;
+}
+
+.help_content ul,
+.help_content ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.help_content li {
+  margin-bottom: 6px;
+}
+
+.help_content li > ul,
+.help_content li > ol {
+  margin-top: 6px;
+}
+
+.ui_label {
+  display: inline-block;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-weight: 650;
+  font-size: 0.92em;
+  white-space: nowrap;
+}
+
+.callout {
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 14px 0;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.callout p:last-child {
+  margin-bottom: 0;
+}
+
+.callout_title {
+  font-weight: 800;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.callout.tip {
+  border-color: #b7e4c7;
+  background: #f0fbf4;
+}
+
+.callout.tip .callout_title {
+  color: var(--success);
+}
+
+.callout.warn {
+  border-color: #f3d38a;
+  background: #fff8ec;
+}
+
+.callout.warn .callout_title {
+  color: #92620a;
+}
+
+.callout.limit {
+  border-color: #f1b8b3;
+  background: #fdf3f2;
+}
+
+.callout.limit .callout_title {
+  color: var(--restart);
+}
+
+table.help_table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 18px;
+  font-size: 0.92rem;
+}
+
+table.help_table th,
+table.help_table td {
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.help_table th {
+  background: var(--code_bg);
+}
+
+.help_footer {
+  color: var(--muted);
+  font-size: 0.85rem;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 40px;
+}
+
+@media (max-width: 900px) {
+  .help_layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .help_toc {
+    position: static;
+    margin-bottom: 24px;
+  }
+
+  .help_toc nav {
+    border-left: none;
+    padding-left: 0;
+  }
+
+  .help_toc ol ol {
+    display: none;
+  }
+}

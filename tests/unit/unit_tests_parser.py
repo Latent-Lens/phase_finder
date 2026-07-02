@@ -203,3 +203,60 @@ def run_parser_tests(ctx: TestContext):
     }""")
     ctx.check(GROUP, "parseFCSHeaderFromSegments: matches full header summary", result["pass"], result["detail"],
               screenshot=False)
+
+    # --- 14. parseSelectedColumns with an empty index list returns {} ---
+    result = page.evaluate("""() => {
+      const buf = window.TestUtils.buildSyntheticFCS(5);
+      try {
+        const summary = window.FCSParser.parse_fcs_header(buf);
+        const data = buf.slice(summary.data_begin, summary.data_end + 1);
+        const selected = window.FCSParser.parse_selected_columns(data, summary.metadata, []);
+        return { pass: Object.keys(selected).length === 0, detail: JSON.stringify(selected) };
+      } catch(e) { return { pass: false, detail: String(e) }; }
+    }""")
+    ctx.check(GROUP, "parseSelectedColumns: an empty index list returns an empty object", result["pass"], result["detail"],
+              screenshot=False)
+
+    # --- 15. $DATATYPE I (16-bit integer) header metadata reads correctly ---
+    result = page.evaluate("""() => {
+      const buf = window.TestUtils.buildSyntheticIntegerFCS(10);
+      try {
+        const s = window.FCSParser.parse_fcs_header(buf);
+        const ok = s.parameter_count === 2 && s.event_count === 10
+          && s.columns.join(',') === 'Chan-A,Chan-B';
+        return { pass: ok, detail: `columns=${JSON.stringify(s.columns)} params=${s.parameter_count} events=${s.event_count}` };
+      } catch(e) { return { pass: false, detail: String(e) }; }
+    }""")
+    ctx.check(GROUP, "parseFCSHeader: reads $DATATYPE I parameter metadata correctly", result["pass"], result["detail"],
+              screenshot=False)
+
+    # --- 16. parseFCS reads $DATATYPE I (16-bit) values for every event ---
+    result = page.evaluate("""() => {
+      const buf = window.TestUtils.buildSyntheticIntegerFCS(10);
+      try {
+        const parsed = window.FCSParser.parse_fcs(buf);
+        const ok = parsed.rows.length === 10
+          && parsed.rows[3]['Chan-A'] === 300 && parsed.rows[3]['Chan-B'] === 65535 - 300
+          && parsed.rows[9]['Chan-A'] === 900 && parsed.rows[9]['Chan-B'] === 65535 - 900;
+        return { pass: ok, detail: `row3=${JSON.stringify(parsed.rows[3])} row9=${JSON.stringify(parsed.rows[9])}` };
+      } catch(e) { return { pass: false, detail: String(e) }; }
+    }""")
+    ctx.check(GROUP, "parseFCS: reads $DATATYPE I (16-bit) values correctly for every event", result["pass"], result["detail"],
+              screenshot=False)
+
+    # --- 17. parseSelectedColumns matches full parse for an integer channel ---
+    result = page.evaluate("""() => {
+      const buf = window.TestUtils.buildSyntheticIntegerFCS(10);
+      try {
+        const summary = window.FCSParser.parse_fcs_header(buf);
+        const parsed = window.FCSParser.parse_fcs(buf);
+        const data = buf.slice(summary.data_begin, summary.data_end + 1);
+        const selected = window.FCSParser.parse_selected_columns(data, summary.metadata, [2]);
+        const ok = selected[2].length === 10
+          && selected[2][0] === parsed.rows[0]['Chan-B']
+          && selected[2][9] === parsed.rows[9]['Chan-B'];
+        return { pass: ok, detail: JSON.stringify(selected[2]) };
+      } catch(e) { return { pass: false, detail: String(e) }; }
+    }""")
+    ctx.check(GROUP, "parseSelectedColumns: matches full parse for an integer ($DATATYPE I) channel", result["pass"], result["detail"],
+              screenshot=False)

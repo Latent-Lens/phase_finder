@@ -34,10 +34,11 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     page.goto(harness_url)
     page.wait_for_load_state("domcontentloaded")
 
-    # Wait for static JS files (FCSParser and PhaseFinderDJF) — always fast
+    # Wait for static JS files (FCSParser, PhaseFinderFrame, PhaseFinderDJF) — always fast
     try:
         page.wait_for_function(
             "() => typeof window.FCSParser !== 'undefined' "
+            "   && typeof PhaseFinderFrame !== 'undefined' "
             "   && typeof window.PhaseFinderDJF !== 'undefined'",
             timeout=15000,
         )
@@ -47,6 +48,9 @@ def run_unit_tests(ctx: TestContext, app_url: str):
 
     from unit_tests_parser import run_parser_tests
     run_parser_tests(ctx)
+
+    from unit_tests_table import run_table_tests
+    run_table_tests(ctx)
 
     # Wait for CDN module imports (levenbergMarquardt, gsd) — may fail on slow/blocked networks
     try:

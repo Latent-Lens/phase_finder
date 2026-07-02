@@ -173,7 +173,7 @@ function metadata_field_from_label(label, used_fields = new Set()) {
   const lower = trimmed.toLowerCase();
   let base = known[lower] || lower
     .replace(/[^a-z0-9]+(.)/g, (_, chr) => chr.toUpperCase())
-    .replace(/[^a-z0-9]/g, "");
+    .replace(/[^a-zA-Z0-9]/g, "");
   if (!base || /^\d/.test(base)) base = `metadata${base ? `_${base}` : ""}`;
   if (base === "id" || base === "name") base = `${base}Metadata`;
 

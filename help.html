@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="PhaseFinder help: feature reference and typical workflow for the FCS histogram and Dean-Jett-Fox cell-cycle modeling tool." />
+    <title>PhaseFinder Help</title>
+    <link rel="stylesheet" href="./css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <img class="help_header_logo" src="./assets/img/logo.png" alt="PhaseFinder" />
+      <span class="help_header_title">Help &amp; Feature Guide</span>
+      <a class="help_back_link" href="./index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">On this page</p>
+        <nav aria-label="Table of contents">
+          <ol>
+            <li><a href="#overview">1. Overview</a></li>
+            <li><a href="#running">2. Running PhaseFinder</a></li>
+            <li><a href="#loading-files">3. Loading FCS Files</a></li>
+            <li>
+              <a href="#metadata-table">4. The Metadata Table</a>
+              <ol>
+                <li><a href="#editing-annotations">Editing annotations</a></li>
+                <li><a href="#sorting-filtering">Sorting &amp; filtering</a></li>
+                <li><a href="#metadata-wizard">Filename metadata wizard</a></li>
+                <li><a href="#export-tsv">Exporting to TSV</a></li>
+              </ol>
+            </li>
+            <li><a href="#channel-selection">5. Choosing a Channel</a></li>
+            <li>
+              <a href="#plotting">6. Plotting Events</a>
+              <ol>
+                <li><a href="#plot-controls">Color by, bins, corrections</a></li>
+              </ol>
+            </li>
+            <li>
+              <a href="#djf-modeling">7. Cell Cycle Modeling (DJF)</a>
+              <ol>
+                <li><a href="#peak-threshold">Peak threshold</a></li>
+                <li><a href="#fit-results">Fit results table</a></li>
+              </ol>
+            </li>
+            <li><a href="#summary-stats">8. Summary Statistics</a></li>
+            <li><a href="#sessions">9. Saving &amp; Loading Sessions</a></li>
+            <li><a href="#layout">10. Layout Controls</a></li>
+            <li><a href="#resetting">11. Resetting the App</a></li>
+            <li><a href="#workflow">12. Typical Workflow</a></li>
+            <li><a href="#tips">13. Tips, Limits &amp; Troubleshooting</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <h1>PhaseFinder Help</h1>
+        <p class="help_lede">A complete reference for every control in PhaseFinder, plus a step-by-step walkthrough of a typical analysis session.</p>
+
+        <div class="help_intro">
+          <p><strong>PhaseFinder</strong> is a browser-based tool for inspecting flow cytometry <code>.fcs</code> files. Drop files onto the page, annotate them, choose a DNA-content channel, and plot an overlaid event histogram — optionally fitting a Dean&ndash;Jett&ndash;Fox (DJF) cell-cycle model to read off %G1 / %S / %G2. Everything runs locally in your browser: files are never uploaded to a server.</p>
+        </div>
+
+        <section id="overview" class="help_section">
+          <h2>1. Overview</h2>
+          <p>PhaseFinder's screen has three main areas:</p>
+          <ul>
+            <li><strong>Sidebar</strong> (left) &mdash; drop zone for FCS files, the DNA-content channel selector, and the main action buttons (<span class="ui_label">Plot Channel Events</span>, <span class="ui_label">Cell Cycle Modeling</span>, <span class="ui_label">Calculate Statistics</span>).</li>
+            <li><strong>Plot panel</strong> (top of the workspace) &mdash; appears once you plot a channel; shows the overlaid event histogram, its controls, and (once modeling starts) the DJF fit overlay and results table.</li>
+            <li><strong>Metadata table panel</strong> (bottom of the workspace) &mdash; one row per loaded FCS file with editable annotations, sorting, filtering, and optional summary-statistics columns.</li>
+          </ul>
+          <p>The header also has <span class="ui_label">Load session</span> and <span class="ui_label">Save session</span> buttons for saving your work to a file and restoring it later (see <a href="#sessions">Saving &amp; Loading Sessions</a>).</p>
+          <div class="callout warn">
+            <p class="callout_title">Everything lives in memory</p>
+            <p>PhaseFinder keeps all loaded files, annotations, selections, and plots in the browser tab's memory only. Reloading or closing the page clears everything. Use <span class="ui_label">Save session</span> before you navigate away if you want to pick up where you left off.</p>
+          </div>
+        </section>
+
+        <section id="running" class="help_section">
+          <h2>2. Running PhaseFinder</h2>
+          <p>PhaseFinder is a static site with no backend, install step, or account. Open <code>index.html</code> from a local web server (recommended) or directly from disk. A few features &mdash; the Dean&ndash;Jett&ndash;Fox curve-fitting libraries loaded from a CDN, and the background file-loading worker &mdash; are more reliable when served over <code>http://</code> rather than opened as a <code>file://</code> path.</p>
+          <p>If PhaseFinder cannot reach its two CDN-hosted math libraries (used only for curve fitting and peak detection), everything except <a href="#djf-modeling">Cell Cycle Modeling</a> continues to work normally.</p>
+        </section>
+
+        <section id="loading-files" class="help_section">
+          <h2>3. Loading FCS Files</h2>
+          <p>Load one or more <code>.fcs</code> files by either:</p>
+          <ul>
+            <li>Dragging them onto the <span class="ui_label">Drop FCS files here</span> zone in the sidebar, or</li>
+            <li>Clicking the drop zone to open a file picker.</li>
+          </ul>
+          <p>PhaseFinder reads only each file's header and metadata (TEXT segment) at load time, so adding many files is fast &mdash; the actual event data for a channel is only read once you plot or compute statistics on it.</p>
+          <ul>
+            <li>Files that duplicate an already-loaded filename are rejected with a status message; nothing is re-loaded.</li>
+            <li>Newly loaded files appear checked (included) in the metadata table by default &mdash; unless a plot already exists, in which case new files start <em>unchecked</em> so they don't unexpectedly change an existing plot.</li>
+            <li>The sidebar shows a running <span class="ui_label">Loaded FCS files (N)</span> list once at least one file is loaded.</li>
+            <li>A progress overlay reports read progress for larger batches of files.</li>
+          </ul>
+          <p>If you collapse the sidebar (see <a href="#layout">Layout Controls</a>), a compact icon rail still lets you drop or browse for more files, change the channel, and plot.</p>
+        </section>
+
+        <section id="metadata-table" class="help_section">
+          <h2>4. The Metadata Table</h2>
+          <p>Every loaded file becomes one row in <span class="ui_label">Table of Loaded FCS Samples</span>. Each row has a checkbox; only <em>checked</em> rows are included the next time you plot. The filename column is read-only (shown without its <code>.fcs</code> extension); every other column is editable.</p>
+
+          <h3 id="editing-annotations">Editing annotations</h3>
+          <p>Click into any annotation cell to type a value directly &mdash; strain, replicate, arrest status, timepoint, or whatever custom columns you've configured (see below). Edits are stored immediately and are included if you save a session or export the table.</p>
+
+          <h3 id="sorting-filtering">Sorting &amp; filtering</h3>
+          <ul>
+            <li><strong>Sort:</strong> click a column header's label to toggle ascending/descending, or click one of the small <strong>▲</strong> / <strong>▼</strong> arrows to jump straight to that direction. The Timepoint column sorts numerically even though it's stored as text.</li>
+            <li><strong>Filter:</strong> click the pill under a column header to open a checklist of that column's distinct values; check one or more values to show only matching rows. Clear the checkboxes to show all rows again.</li>
+            <li><strong>Filtering hides <em>and</em> deselects:</strong> a row hidden by a filter is automatically unchecked, so what's plotted always matches "visible &cap; checked". Removing the filter does not automatically re-check the row.</li>
+            <li>The header checkbox selects or deselects every currently <em>visible</em> row (it shows an indeterminate dash when only some visible rows are checked).</li>
+          </ul>
+
+          <h3 id="metadata-wizard">Filename metadata wizard</h3>
+          <p>Rather than guessing annotation values, PhaseFinder lets you derive metadata columns directly from each filename. The wizard opens automatically about a second after your first files load (only once per browser tab); you can reopen it any time via the <span class="ui_label">⌗</span> icon in the table's title bar (it's disabled until at least one file is loaded).</p>
+          <p>The wizard splits each filename (extension already stripped) into pieces using one or more <strong>split steps</strong>, applied in order to whatever text remains after the previous step:</p>
+          <ul>
+            <li><strong>Delimiter</strong> &mdash; splits at the first occurrence of a fixed character or string, e.g. <code>_</code>.</li>
+            <li><strong>Fixed width</strong> &mdash; splits at a character position. Enter one or more comma/space-separated break positions, or type a column width into the small box and click <span class="ui_label">Set</span> to convert it into a break position automatically.</li>
+            <li><strong>Regex</strong> &mdash; splits using a JavaScript regular expression. If the pattern has a capture group, the captured text becomes the column value (useful for pulling a token out of the middle of a name); otherwise everything before the match becomes the value.</li>
+          </ul>
+          <p>Every step (and the final <strong>Remainder</strong>, i.e. whatever text is left after all steps) gets its own column name and a <strong>Hide</strong> checkbox to exclude it from the table entirely. Use <span class="ui_label">Add Step</span> to add another split, or the step's <span class="ui_label">Remove</span> button to delete it (at least one step must remain). The <strong>Preview</strong> panel on the right shows how the first 20 loaded filenames would split with the current configuration, updating live as you edit.</p>
+          <ul>
+            <li><span class="ui_label">Apply</span> commits the configured columns, replacing whatever custom columns exist. Values already typed for a column are kept if that column's field key is unchanged; values for genuinely new columns are filled in from the split.</li>
+            <li><span class="ui_label">Filename Only</span> clears all custom columns, leaving just the read-only Filename column.</li>
+            <li><span class="ui_label">Cancel</span> (or the <kbd>Esc</kbd> key) discards any unsaved edits in the wizard.</li>
+          </ul>
+          <p>The last-applied split configuration is remembered in your browser (not tied to any one set of files) and is reapplied automatically to files you load later, and is also captured when you <a href="#sessions">save a session</a>.</p>
+
+          <h3 id="export-tsv">Exporting to TSV</h3>
+          <p>The <span class="ui_label">⇩</span> icon in the table's title bar exports exactly the currently <em>visible</em> rows (respecting active filters) as a tab-separated <code>.tsv</code> file, including every metadata column and any summary-statistics columns currently shown.</p>
+        </section>
+
+        <section id="channel-selection" class="help_section">
+          <h2>5. Choosing a Channel</h2>
+          <p>The <span class="ui_label">Select channel</span> dropdown lists every parameter label seen across all loaded files (preferring each file's <code>$PnS</code> label, falling back to <code>$PnN</code>, then a generic <code>P&lt;n&gt;</code>). PhaseFinder guesses a likely DNA-content area channel automatically (looking for names containing patterns like <code>DAPI_A</code>, <code>DNA_A</code>, or ending in <code>_A</code>/<code>AREA</code>) and pre-selects it when possible &mdash; check that the suggestion is right before plotting.</p>
+          <p><span class="ui_label">Plot Channel Events</span> stays disabled until at least one file is loaded and a channel is chosen.</p>
+          <p>If you change the channel after already plotting, PhaseFinder pre-loads the newly selected channel's data in the background (showing progress) without disturbing the currently visible plot; click <span class="ui_label">Plot Channel Events</span> again to switch the plot over to it.</p>
+        </section>
+
+        <section id="plotting" class="help_section">
+          <h2>6. Plotting Events</h2>
+          <p>Click <span class="ui_label">Plot Channel Events</span> to load the selected channel's data for every <em>checked</em> row and draw an overlaid event histogram (x-axis: the chosen channel; y-axis: number of events). The plot panel title reports the number of plotted samples and total events.</p>
+          <p>The plot stays live afterward: checking or unchecking a row in the metadata table immediately adds or removes its curve &mdash; unchecking a row does not discard its already-loaded data, so re-checking it is instant. After the first plot, the button turns blue as a reminder that a channel is already plotted; click it again any time to refresh.</p>
+
+          <h3 id="plot-controls">Color by, bins, corrections</h3>
+          <ul>
+            <li><strong>Color by</strong> &mdash; <em>File</em> gives every sample its own color; <em>Strain</em> groups samples sharing the same Strain annotation under one color.</li>
+            <li><strong>Bins</strong> &mdash; the histogram bin count (16&ndash;1024, default 512).</li>
+            <li><strong>Remove debris/background</strong> &mdash; before plotting (and fitting), builds a 256-bin histogram over the 0.2&ndash;99.8 percentile range, detects the G1/G2 peaks, estimates each peak's width, and keeps only events between roughly <code>G1 &minus; 4&sigma;</code> and <code>G2 + 4&sigma;</code> (clamped to sane multiples of G1).</li>
+            <li><strong>Remove aggregates/doublets</strong> &mdash; when matching height and/or width channels can be linked to the selected area channel, removes events whose height/width ratio is far from the robust median (median &plusmn; 4 MAD-based sigma). If no matching height/width channel exists for a sample, that sample is left alone and PhaseFinder says so in the readout.</li>
+          </ul>
+          <p>Both correction toggles apply to plotting <em>and</em> to cell-cycle modeling, and the readout below the controls reports how many events were removed (or that the required channels weren't available).</p>
+        </section>
+
+        <section id="djf-modeling" class="help_section">
+          <h2>7. Cell Cycle Modeling (Dean&ndash;Jett&ndash;Fox)</h2>
+          <p>Once a channel is plotted, the <span class="ui_label">Cell Cycle Modeling</span> button becomes enabled. Clicking it fits a Dean&ndash;Jett&ndash;Fox model (a G1 Gaussian, a G2 Gaussian pinned at roughly twice the G1 mean, and an S-phase bridge between them) to the <em>first</em> currently plotted sample and overlays the fitted total plus filled G1/S/G2 components.</p>
+          <p>Each sample's legend entry gains a small checkbox once modeling has started &mdash; check additional samples to fit and overlay them too (each gets an independent fit); uncheck to remove a fit without discarding the underlying data. A shared readout beneath the plot controls lists each shown fit's <strong>%G1 &middot; %S &middot; %G2</strong>.</p>
+          <p>Peak detection first looks for a matching G1/G2 peak pair around a 2&times; DNA-content ratio; when multiple samples are being modeled, PhaseFinder also estimates one shared "run G1" position so every sample's fit is anchored consistently.</p>
+
+          <h3 id="peak-threshold">Peak threshold</h3>
+          <p>Tick <strong>Peak threshold</strong> to reveal a draggable grey line marking the minimum event count a histogram peak must reach to be considered during peak detection (default: 5% of the tallest shown bin). Drag it up to ignore small/noisy peaks, or down to include more candidate peaks; releasing the line re-detects peaks and refits every shown sample.</p>
+
+          <h3 id="fit-results">Fit results table</h3>
+          <p>Every visible fit adds a group to the results table beside the plot: a title row with the sample name and its Strain/Replicate/Nocodazole Arrest/Timepoint annotations, followed by one row per phase (G1, S, G2) giving that phase's percent of events, fitted mean, and fitted standard deviation.</p>
+          <div class="callout warn">
+            <p class="callout_title">Requires a network connection</p>
+            <p>Curve fitting and peak detection depend on two small libraries loaded from a CDN when the page opens. If they fail to load, plotting and the rest of the app still work, but <span class="ui_label">Cell Cycle Modeling</span> reports that the corrected DJF module is unavailable.</p>
+          </div>
+        </section>
+
+        <section id="summary-stats" class="help_section">
+          <h2>8. Summary Statistics</h2>
+          <p><span class="ui_label">Calculate Statistics</span> opens a modal where you can pick any loaded channel and one or more statistics &mdash; <strong>Mean</strong>, <strong>Std Dev</strong>, <strong>Median</strong>, <strong>Min</strong>, <strong>Max</strong>, or <strong>All</strong> &mdash; computed per file across every loaded sample (not just checked rows). Statistics already present for the selected channel are shown as disabled, already-checked boxes so you don't recompute them.</p>
+          <p>Results are added to the metadata table as new grouped columns (e.g. <code>GFP/FITC-A Summary Statistics</code> spanning Mean / Std Dev / &hellip;), and the table header switches to a two-row layout to accommodate them. A progress bar tracks the calculation, which loads each file's data as needed (a file already loaded for plotting reuses that cached data).</p>
+          <div class="callout tip">
+            <p class="callout_title">Stats follow new files automatically</p>
+            <p>Once you've computed a statistic for a channel, PhaseFinder remembers that (channel, statistic) combination for the rest of the session. Any file you load afterward gets the same statistics calculated for it automatically, with no need to reopen the modal.</p>
+          </div>
+        </section>
+
+        <section id="sessions" class="help_section">
+          <h2>9. Saving &amp; Loading Sessions</h2>
+          <p>Because PhaseFinder keeps no server-side state, a <strong>session file</strong> (a human-readable <code>.toml</code> file) is how you resume work later or share a configured analysis with someone else.</p>
+          <p><span class="ui_label">Save session</span> writes:</p>
+          <ul>
+            <li>The list of loaded filenames (not the file contents themselves &mdash; browsers don't expose real filesystem paths to web pages, so only names are stored).</li>
+            <li>Every metadata column and its values, plus the active filename-splitting template.</li>
+            <li>Table state: which rows are checked, the active sort, and active column filters.</li>
+            <li>Plot settings: channel, color-by, bin count, both correction toggles, and the peak-threshold visibility.</li>
+            <li>Any summary statistics you've computed (so they're recomputed automatically on load).</li>
+            <li>Layout: sidebar/panel collapsed states, sidebar width, and panel heights.</li>
+          </ul>
+          <p><span class="ui_label">Load session</span> reads a session file back, restores all of the above, and then tries to relocate the original FCS files by name:</p>
+          <ul>
+            <li><strong>Chrome / Edge / other Chromium browsers</strong> &mdash; prompts you to pick the folder containing the files once; the folder handle is remembered (in the browser's IndexedDB) so future loads of sessions from that folder only need a one-click permission re-grant, not a fresh folder pick.</li>
+            <li><strong>Firefox / Safari</strong> &mdash; opens a native folder picker each time, since these browsers don't expose a persistent folder-handle API.</li>
+            <li>Files from the session that aren't found in the selected folder are reported by name so you can locate them manually.</li>
+          </ul>
+          <div class="callout tip">
+            <p class="callout_title">Local/dev auto-load</p>
+            <p>If a <code>phasefinder_local.json</code> file exists next to <code>index.html</code> (see <code>phasefinder_local.example.json</code>), PhaseFinder can auto-load a named session on startup. Setting its <code>data_directory</code> field to a URL path served alongside the app fetches the session's FCS files directly over HTTP instead of prompting for a folder &mdash; handy for a local development server serving a fixed data folder, not intended for a shared/public deployment.</p>
+          </div>
+        </section>
+
+        <section id="layout" class="help_section">
+          <h2>10. Layout Controls</h2>
+          <ul>
+            <li><strong>Collapse the sidebar</strong> using the arrow icon in its title bar; a slim icon rail remains for uploading files, choosing a channel, and plotting.</li>
+            <li><strong>Resize the sidebar</strong> by dragging the vertical handle between the sidebar and the workspace.</li>
+            <li><strong>Resize the plot vs. table</strong> by dragging the horizontal handle between the plot panel and the metadata table panel (only draggable while both panels are expanded).</li>
+            <li><strong>Collapse the plot panel or the table panel</strong> independently using the minimize icon in each panel's title bar, to focus on the other.</li>
+          </ul>
+          <p>All of the above are captured when you save a session, so a saved layout is restored along with your data.</p>
+        </section>
+
+        <section id="resetting" class="help_section">
+          <h2>11. Resetting the App</h2>
+          <p>Click the PhaseFinder logo in the header to reload the page for a clean slate &mdash; this clears every loaded file, annotation, selection, filter, and plot. Save a session first if you want to keep your work.</p>
+        </section>
+
+        <section id="workflow" class="help_section">
+          <h2>12. Typical Workflow</h2>
+          <ol>
+            <li>Open PhaseFinder in a browser (ideally served over <code>http://</code>, not opened directly from disk).</li>
+            <li>Drop your <code>.fcs</code> files onto the drop zone, or click it to choose files.</li>
+            <li>Wait for metadata loading to finish; watch the progress overlay for large batches.</li>
+            <li>When the filename metadata wizard pops up, configure split steps so your filenames map cleanly onto Strain / Replicate / Nocodazole Arrest / Timepoint (or whatever columns make sense for your experiment), check the live preview, then click <span class="ui_label">Apply</span>.</li>
+            <li>Review and hand-edit any annotations the wizard couldn't infer, using the table's sort and filter controls to spot-check groups of samples.</li>
+            <li>Confirm (or change) the DNA-content channel in the sidebar.</li>
+            <li>Check the rows you want in the plot &mdash; unchecking removes a sample without losing its already-loaded data.</li>
+            <li>Click <span class="ui_label">Plot Channel Events</span>. Adjust <strong>Color by</strong> and <strong>Bins</strong>, and toggle the debris/doublet corrections if your data needs them.</li>
+            <li>Click <span class="ui_label">Cell Cycle Modeling</span> to fit the first plotted sample, then use each sample's legend checkbox to fit additional samples as needed. Tick <strong>Peak threshold</strong> if automatic peak detection needs a nudge.</li>
+            <li>Optionally, use <span class="ui_label">Calculate Statistics</span> to compute per-file summary statistics for any channel, and export the table to TSV for use elsewhere.</li>
+            <li>Click <span class="ui_label">Save session</span> before closing the tab so you (or a collaborator) can pick this exact analysis back up later.</li>
+          </ol>
+        </section>
+
+        <section id="tips" class="help_section">
+          <h2>13. Tips, Limits &amp; Troubleshooting</h2>
+          <table class="help_table">
+            <thead>
+              <tr><th>Topic</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Supported FCS data types</td><td><code>$DATATYPE</code> <code>F</code> (32-bit float), <code>D</code> (64-bit float), and <code>I</code> (integer, using each parameter's <code>$PnB</code> bit width).</td></tr>
+              <tr><td>Parameter labels</td><td>Shown in the channel selector as <code>$PnS</code>, falling back to <code>$PnN</code>, then a generated <code>P&lt;n&gt;</code>.</td></tr>
+              <tr><td>No backend</td><td>Files are read entirely by browser APIs; nothing is uploaded anywhere.</td></tr>
+              <tr><td>State lives in memory</td><td>Reloading the page clears everything that isn't saved to a session file first.</td></tr>
+              <tr><td>Network dependency</td><td>The plotting library (D3) and both DJF curve-fitting libraries load from a CDN when the page opens; without network access, cell-cycle modeling is unavailable but everything else still works.</td></tr>
+              <tr><td>Folder re-linking on session load</td><td>Chromium browsers remember the FCS folder between sessions; Firefox and Safari will ask you to pick it again each time.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <p class="help_footer">PhaseFinder &mdash; <a href="./index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>

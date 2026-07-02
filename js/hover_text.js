@@ -1,5 +1,6 @@
 window.PhaseFinderHoverText = Object.freeze({
   reloadLogo: "Reload PhaseFinder",
+  help: "Open the PhaseFinder help and feature guide in a new tab",
   saveSession: "Save the current session (files, annotations, settings) to a TOML file",
   loadSession: "Load a previously saved session from a TOML file",
   sidebarCollapse: "Collapse sidebar",

@@ -23,6 +23,7 @@
     });
   </script>
   <script src="/js/fcs-parser.js"></script>
+  <script src="/js/ui_controls.js"></script>
   <script src="/js/djf_gpt.js"></script>
 
   <script>
@@ -92,6 +93,67 @@
         const headerBytes = new TextEncoder().encode(headerStr);
 
         // Assemble: header + text + data
+        const total = 58 + textBytes.length + dataSize;
+        const buf = new ArrayBuffer(total);
+        const view = new Uint8Array(buf);
+        view.set(new Uint8Array(headerBytes.buffer).subarray(0, 58), 0);
+        view.set(textBytes, 58);
+        view.set(new Uint8Array(dataBuffer), 58 + textBytes.length);
+        return buf;
+      },
+
+      /**
+       * Build a minimal FCS3.1 ArrayBuffer with 2 integer ($DATATYPE I,
+       * 16-bit) parameters and deterministic per-event values, so the
+       * integer data-reading path (untested by buildSyntheticFCS, which is
+       * always $DATATYPE F) can be exercised with exact expected values.
+       * Param "Chan-A" = index*100; param "Chan-B" = 65535 - index*100.
+       */
+      buildSyntheticIntegerFCS: function(events) {
+        events = events || 10;
+        const paramNames = ["Chan-A", "Chan-B"];
+        const numParams = paramNames.length;
+        const dataSize = events * numParams * 2; // uint16 per value
+
+        const dataBuffer = new ArrayBuffer(dataSize);
+        const dataView = new DataView(dataBuffer);
+        for (let i = 0; i < events; i++) {
+          dataView.setUint16(i * numParams * 2, (i * 100) % 65536, true);
+          dataView.setUint16(i * numParams * 2 + 2, 65535 - ((i * 100) % 65536), true);
+        }
+
+        const pairs = [
+          "$BEGINANALYSIS", "0", "$ENDANALYSIS", "0",
+          "$BYTEORD", "1,2,3,4", "$DATATYPE", "I", "$MODE", "L",
+          "$NEXTDATA", "0", "$PAR", String(numParams), "$TOT", String(events),
+        ];
+        paramNames.forEach((name, idx) => {
+          const p = idx + 1;
+          pairs.push(`$P${p}B`, "16", `$P${p}E`, "0,0", `$P${p}N`, name,
+                     `$P${p}R`, "65536", `$P${p}S`, name);
+        });
+
+        const textBegin = 58;
+        let dataBegin = 0, dataEnd = 0;
+        let textBytes;
+        for (let iter = 0; iter < 20; iter++) {
+          const tokens = [...pairs, "$BEGINDATA", String(dataBegin), "$ENDDATA", String(dataEnd)];
+          const text = "|" + tokens.join("|") + "|";
+          textBytes = new TextEncoder().encode(text);
+          const textEnd = textBegin + textBytes.length - 1;
+          const nextDataBegin = textEnd + 1;
+          const nextDataEnd = nextDataBegin + dataSize - 1;
+          if (nextDataBegin === dataBegin && nextDataEnd === dataEnd) break;
+          dataBegin = nextDataBegin;
+          dataEnd = nextDataEnd;
+        }
+
+        const textEnd = textBegin + textBytes.length - 1;
+        function pad8(n) { return String(n).padStart(8, " "); }
+        const headerStr = "FCS3.1    " + pad8(textBegin) + pad8(textEnd)
+                        + pad8(dataBegin) + pad8(dataEnd) + pad8(0) + pad8(0);
+        const headerBytes = new TextEncoder().encode(headerStr);
+
         const total = 58 + textBytes.length + dataSize;
         const buf = new ArrayBuffer(total);
         const view = new Uint8Array(buf);

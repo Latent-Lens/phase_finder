@@ -40,6 +40,15 @@ def _sort_test(ctx: TestContext, field: str, label: str, col_index: int):
     group = "Filtering"
     page = ctx.page
 
+    # Strain/Replicate/Nocodazole Arrest/Timepoint only exist once the filename
+    # metadata wizard has been applied (see configure_default_metadata_wizard_columns
+    # in tests_io.py); guard against that not having happened rather than hanging
+    # on a locator that will never resolve.
+    if page.locator(f".th_sort[data-sort-field='{field}']").count() == 0:
+        ctx.warn(group, f"{label} column sort toggles ascending/descending",
+                 f"Column {field!r} not present in the table (metadata wizard may not have applied)")
+        return
+
     # Click the label part of the sort button (left edge) to avoid accidentally
     # hitting the sort-direction arrows on the right, which set rather than toggle.
     btn = page.locator(f".th_sort[data-sort-field='{field}']").first
