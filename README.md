@@ -216,6 +216,24 @@ headless Chromium, loads real FCS files, runs analysis, and exercises the plot
 and DJF modeling. Screenshots are written to `tests/e2e/results/` (git-ignored).
 See `tests/e2e/README.md` for the one-time Playwright setup and usage.
 
+The test driver is also the project's regression gate. It runs the browser e2e
+workflow and then the JavaScript unit suites through `tests/unit/test_harness.html`:
+
+```bash
+/tmp/flowvenv/bin/python tests/e2e/drive_flow.py
+```
+
+To require this full suite before local commits, enable the tracked pre-commit
+hook once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+After that, `git commit` is blocked unless the worktree is clean and the full
+regression suite passes. If Playwright is installed in a different environment,
+set `PHASEFINDER_TEST_PYTHON` to that Python executable before committing.
+
 ### `assets/img/*`
 
 Static image assets: `logo.png` (header), the chevron SVGs (metadata panel
