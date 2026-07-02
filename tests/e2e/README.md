@@ -45,6 +45,27 @@ plus legacy root-level `flow_e2e_*.png`, `flow_e2e_*.webm`, and `page@*.webm`
 artifacts.
 The directory is tracked but its contents are git-ignored.
 
+## Commit-time regression gate
+
+This repository includes a tracked Git hook in `.githooks/pre-commit`. Enable it
+once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+After it is enabled, `git commit` runs the full e2e + unit regression driver:
+
+```bash
+/tmp/flowvenv/bin/python tests/e2e/drive_flow.py
+```
+
+The hook blocks the commit if the worktree has unstaged tracked changes or
+untracked non-ignored files, because the tests run against the working tree and
+should cover exactly what is being committed. If your Playwright environment is
+not at `/tmp/flowvenv/bin/python`, set `PHASEFINDER_TEST_PYTHON` to the Python
+executable that has Playwright installed.
+
 ## File layout
 
 ```
