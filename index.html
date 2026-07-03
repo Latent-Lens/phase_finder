@@ -314,6 +314,27 @@
       </div>
     </div>
 
+    <div id="reconnect_modal" class="stats_modal reconnect_modal" hidden role="dialog" aria-modal="true" aria-labelledby="reconnect_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card">
+        <div class="stats_modal_header">
+          <h3 id="reconnect_title" class="stats_modal_title">Reconnect Session Files</h3>
+          <button id="reconnect_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="stats_modal_body">
+          <p id="reconnect_intro" class="reconnect_intro"></p>
+          <ul id="reconnect_file_list" class="reconnect_file_list"></ul>
+          <div class="stats_modal_actions reconnect_actions">
+            <button id="reconnect_choose_folder" type="button" class="secondary_button">Choose folder</button>
+            <button id="reconnect_select_files" type="button" class="secondary_button">Select files</button>
+            <button id="reconnect_cancel" type="button" class="secondary_button">Cancel</button>
+            <button id="reconnect_continue" type="button">Continue without missing</button>
+          </div>
+          <input id="reconnect_file_input" class="visually_hidden_file" type="file" accept=".fcs" multiple />
+        </div>
+      </div>
+    </div>
+
     <div id="progress_overlay" class="progress_overlay" hidden aria-live="polite" aria-busy="false">
       <div class="progress_card" role="status">
         <div class="progress_track" aria-hidden="true">
@@ -343,6 +364,7 @@
     <script src="./js/analysis.js"></script>
     <script src="./js/summary_stats.js"></script>
     <script src="./js/panel_resize.js"></script>
+    <script src="./js/opfs_store.js"></script>
     <script src="./js/session.js"></script>
   </body>
 </html>
