@@ -66,6 +66,13 @@ should cover exactly what is being committed. If your Playwright environment is
 not at `/tmp/flowvenv/bin/python`, set `PHASEFINDER_TEST_PYTHON` to the Python
 executable that has Playwright installed.
 
+During commit-time test runs, the hook also writes live output to a stable log
+file that can be tailed from another terminal:
+
+```bash
+tail -f tests/e2e/results/pre_commit_latest.log
+```
+
 ## File layout
 
 ```

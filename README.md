@@ -232,7 +232,12 @@ git config core.hooksPath .githooks
 
 After that, `git commit` is blocked unless the worktree is clean and the full
 regression suite passes. If Playwright is installed in a different environment,
-set `PHASEFINDER_TEST_PYTHON` to that Python executable before committing.
+set `PHASEFINDER_TEST_PYTHON` to that Python executable before committing. While
+the hook is running, live output is also written to:
+
+```bash
+tail -f tests/e2e/results/pre_commit_latest.log
+```
 
 ### `assets/img/*`
 
@@ -302,10 +307,47 @@ are vendored locally and the tags in `index.html` are changed.
 
 ## Development Notes
 
-- The app stores all state in memory. Reloading the page clears loaded files,
-  annotations, selections, filters, and plots.
-- No files are sent to a backend by this code.
+- The app stores working state in memory, so reloading the page clears loaded
+  files, annotations, selections, filters, and plots. Saving a session, however,
+  caches the loaded FCS files into the browser's OPFS and records enough metadata
+  to auto-restore them when the session is reloaded (see "Session reload via
+  OPFS" below).
+- No files are sent to a backend by this code. OPFS working copies are stored
+  privately by the browser for this site and never leave the machine.
 - There is no package manager configuration or bundler in the repository; the
   JavaScript is plain browser JavaScript, so changes can be tested by refreshing
   the page.
 - We use Tablericons (https://tabler.io/icons) for a lot of the icons on the site.
+
+## Session reload via OPFS
+
+Sessions are saved as TOML by `js/session.js`. To make reloading a session
+"just work" without re-selecting files, loaded FCS files are cached into the
+browser's Origin Private File System (OPFS):
+
+- **On file load**, `js/main.js` hands the loaded files to
+  `window.PhaseFinderSessionFiles.register_loaded_files`, which builds a per-file
+  record (`id`, `original_name`, `relative_path`, `size`, `last_modified`,
+  `mime_type`, `opfs_path`, `status`) and copies each file into OPFS in the
+  background via a Web Worker (`js/opfs_copy_worker.js`), showing
+  "Caching file x of y" in the status bar. OPFS helpers live in
+  `js/opfs_store.js` (`window.PhaseFinderOPFS`).
+- **On save**, those records are written to the session TOML as
+  `[[files.records]]` (alongside the legacy `[files].names`). No absolute OS
+  paths are ever stored — only app-private OPFS paths and file metadata.
+- **On reload**, files are restored automatically from OPFS by `opfs_path`; if
+  every file is present the session loads with no picker. Any missing or
+  size-mismatched files open a reconnect modal that lists the expected files and
+  lets the user pick the containing folder or select the files manually (matched
+  by name/size/lastModified), after which the matches are re-cached into OPFS.
+- **Fallbacks**: legacy sessions without records use the original names-only
+  folder picker; browsers without OPFS skip caching and warn that automatic
+  reload is unavailable, falling back to manual reconnect.
+
+New JS files for this feature:
+
+- `js/opfs_store.js` — `window.PhaseFinderOPFS`; OPFS feature detection plus
+  read/delete helpers and storage-persistence requests (writes are delegated to
+  the worker).
+- `js/opfs_copy_worker.js` — Web Worker that writes a loaded `File` into OPFS off
+  the main thread so caching large files never blocks the UI.
