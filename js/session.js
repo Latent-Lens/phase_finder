@@ -27,6 +27,21 @@
     p('[files]', '# Re-drop or auto-load these files to restore event data and plotted curves.');
     p(`names = [${s.files.names.map(toml_str).join(', ')}]`, '');
 
+    // Per-file records: metadata + OPFS working-copy paths used to auto-restore
+    // files on reload (see the OPFS section below). No absolute OS paths.
+    (s.files.records || []).forEach((r) => {
+      p('[[files.records]]',
+        `id = ${toml_str(r.id)}`,
+        `original_name = ${toml_str(r.original_name)}`,
+        `relative_path = ${toml_str(r.relative_path)}`,
+        `size = ${r.size}`,
+        `last_modified = ${r.last_modified}`,
+        `mime_type = ${toml_str(r.mime_type || 'application/octet-stream')}`,
+        `opfs_path = ${toml_str(r.opfs_path)}`,
+        `status = ${toml_str(r.status || 'available')}`,
+        '');
+    });
+
     p('[metadata]');
     if (s.metadata.columns.length) {
       p('columns = [');
@@ -374,6 +389,401 @@
     }
   }
 
+  // ── OPFS working-copy cache + per-file records ───────────────────────────────
+  // Loaded FCS files are copied into OPFS in the background so a saved session can
+  // auto-restore them on reload without a picker. Each record carries the metadata
+  // needed to reconnect a file manually if its OPFS copy is ever missing.
+
+  const OPFS = () => window.PhaseFinderOPFS;
+
+  function is_test_mode() {
+    try { return new URLSearchParams(location.search).has('test'); }
+    catch (_) { return false; }
+  }
+
+  function esc(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+  }
+
+  function human_size(bytes) {
+    if (bytes == null) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let n = bytes, i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return `${i === 0 ? n : n.toFixed(n >= 10 ? 0 : 1)} ${units[i]}`;
+  }
+
+  // Stable per-page-load id used for the OPFS paths of newly imported files.
+  const runtime_session_id =
+    `session_${new Date().toISOString().slice(0, 10)}_${Math.random().toString(36).slice(2, 8)}`;
+
+  // original_name → record. Pre-populated from a loaded session, appended on import.
+  const file_records = new Map();
+  let persistent_requested = false;
+  let is_resolved = (r) => r.status === 'available' || r.status === 'uncached';
+
+  function make_file_record(entry) {
+    const file = entry.file;
+    const relative_path = (file.webkitRelativePath && file.webkitRelativePath.length)
+      ? file.webkitRelativePath : file.name;
+    return {
+      id: entry.id,
+      original_name: file.name,
+      relative_path,
+      size: file.size,
+      last_modified: file.lastModified,
+      mime_type: file.type || 'application/octet-stream',
+      opfs_path: `sessions/${runtime_session_id}/files/${entry.id}.fcs`,
+      status: 'available',
+    };
+  }
+
+  function build_file_records_for(names) {
+    return names.map((name) => file_records.get(name)).filter(Boolean);
+  }
+
+  // Replace the registry with records parsed from a loaded session file. Status is
+  // reset to "missing" — it is re-derived by verifying each OPFS copy on reload.
+  function set_records_from_session(records) {
+    file_records.clear();
+    (records || []).forEach((r) => {
+      if (r && r.original_name) file_records.set(r.original_name, { ...r, status: 'missing' });
+    });
+  }
+
+  // ── OPFS copy worker driver (background, off the main thread) ────────────────
+
+  const OPFS_COPY_WORKER_URL = './js/opfs_copy_worker.js';
+  let opfs_copy_worker = null;
+  let opfs_copy_worker_request_id = 0;
+  let opfs_copy_worker_unavailable = false;
+  const opfs_copy_worker_requests = new Map();
+
+  function get_opfs_copy_worker() {
+    if (opfs_copy_worker_unavailable || typeof Worker === 'undefined') return null;
+    if (opfs_copy_worker) return opfs_copy_worker;
+    try {
+      opfs_copy_worker = new Worker(OPFS_COPY_WORKER_URL);
+      opfs_copy_worker.addEventListener('message', (event) => {
+        const { request_id, ok, error } = event.data || {};
+        const req = opfs_copy_worker_requests.get(request_id);
+        if (!req) return;
+        opfs_copy_worker_requests.delete(request_id);
+        if (ok) req.resolve(); else req.reject(new Error(error || 'OPFS copy failed'));
+      });
+      opfs_copy_worker.addEventListener('error', () => {
+        opfs_copy_worker_unavailable = true;
+        opfs_copy_worker_requests.forEach((req) => req.reject(new Error('OPFS copy worker error')));
+        opfs_copy_worker_requests.clear();
+        if (opfs_copy_worker) { opfs_copy_worker.terminate(); opfs_copy_worker = null; }
+      });
+    } catch (_) {
+      opfs_copy_worker_unavailable = true;
+      opfs_copy_worker = null;
+    }
+    return opfs_copy_worker;
+  }
+
+  function copy_file_to_opfs(file, opfs_path) {
+    return new Promise((resolve, reject) => {
+      const worker = get_opfs_copy_worker();
+      if (!worker) { reject(new Error('OPFS copy worker unavailable')); return; }
+      const request_id = ++opfs_copy_worker_request_id;
+      opfs_copy_worker_requests.set(request_id, { resolve, reject });
+      try {
+        worker.postMessage({ request_id, file, opfs_path });
+      } catch (err) {
+        opfs_copy_worker_requests.delete(request_id);
+        reject(err);
+      }
+    });
+  }
+
+  // ── Background cache queue (status-bar "Caching file x of y") ─────────────────
+
+  const cache_queue = [];
+  let cache_running = false;
+  let cache_total = 0;
+  let cache_done = 0;
+
+  function enqueue_opfs_cache(items) {
+    if (!persistent_requested) {
+      persistent_requested = true;
+      OPFS()?.request_persistent_storage?.();
+    }
+    cache_queue.push(...items);
+    cache_total += items.length;
+    if (!cache_running) run_cache_queue();
+  }
+
+  async function run_cache_queue() {
+    cache_running = true;
+    const app = window.PhaseFinderApp;
+    while (cache_queue.length) {
+      const { record, file } = cache_queue.shift();
+      const pct = Math.round((cache_done / cache_total) * 100);
+      app.set_status_bar?.(`Caching file ${cache_done + 1} of ${cache_total} (${pct}%) for fast reload: ${file.name}`);
+      try {
+        await copy_file_to_opfs(file, record.opfs_path);
+        record.status = 'available';
+      } catch (_) {
+        record.status = 'error';
+      }
+      cache_done += 1;
+    }
+    app.set_status_bar?.(`Cached ${cache_done} file${cache_done === 1 ? '' : 's'} for fast reload.`);
+    cache_running = false;
+    cache_total = 0;
+    cache_done = 0;
+  }
+
+  // Called by main.js after files load: builds records for genuinely new files and
+  // queues their background OPFS copy. Files already in the registry (restored from
+  // a session or just reconnected) are skipped — they are already cached.
+  function register_loaded_files(entries) {
+    const fresh = [];
+    for (const entry of entries || []) {
+      if (!entry || !entry.file) continue;
+      if (file_records.has(entry.file.name)) continue;
+      const record = make_file_record(entry);
+      record.status = OPFS()?.supports_opfs() ? 'copying' : 'uncached';
+      file_records.set(entry.file.name, record);
+      if (record.status === 'copying') fresh.push({ record, file: entry.file });
+    }
+    if (fresh.length) enqueue_opfs_cache(fresh);
+  }
+
+  // ── OPFS restore + reconnect matching ────────────────────────────────────────
+
+  // Reads each record's OPFS copy, rewrapping it as a File with the original name
+  // and metadata (OPFS stores it under an id-based filename). Buckets results.
+  async function try_load_from_opfs(records) {
+    const found = [], missing = [], mismatch = [];
+    if (!OPFS()?.supports_opfs()) return { found, missing: records.slice(), mismatch };
+    for (const record of records) {
+      try {
+        const raw = await OPFS().read_file_from_opfs(record.opfs_path);
+        const file = new File([raw], record.original_name, {
+          type: record.mime_type || 'application/octet-stream',
+          lastModified: record.last_modified,
+        });
+        if (record.size != null && file.size !== record.size) {
+          record.status = 'mismatch';
+          mismatch.push({ record, file });
+        } else {
+          record.status = 'available';
+          found.push({ record, file });
+        }
+      } catch (_) {
+        record.status = 'missing';
+        missing.push(record);
+      }
+    }
+    return { found, missing, mismatch };
+  }
+
+  function index_selected_files(files) {
+    const by_name_size_lastmod = new Map();
+    const by_name_size = new Map();
+    for (const file of files) {
+      by_name_size_lastmod.set(`${file.name}::${file.size}::${file.lastModified}`, file);
+      const key = `${file.name}::${file.size}`;
+      if (!by_name_size.has(key)) by_name_size.set(key, []);
+      by_name_size.get(key).push(file);
+    }
+    return { by_name_size_lastmod, by_name_size };
+  }
+
+  function match_record_to_selected_file(record, indexes) {
+    const exact = indexes.by_name_size_lastmod.get(
+      `${record.original_name}::${record.size}::${record.last_modified}`);
+    if (exact) return exact;
+    const candidates = indexes.by_name_size.get(`${record.original_name}::${record.size}`) || [];
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  function is_acceptable_match(record, file) {
+    if (record.size != null && file.size !== record.size) return false;
+    return file.name === record.original_name
+      || Boolean(record.relative_path && record.relative_path.endsWith(file.name));
+  }
+
+  // ── Reconnect modal ──────────────────────────────────────────────────────────
+
+  let reconnect_ctx = null;
+
+  function render_reconnect_list() {
+    const list = document.getElementById('reconnect_file_list');
+    if (!list || !reconnect_ctx) return;
+    list.innerHTML = reconnect_ctx.records.map((r) => {
+      const status = r.status || 'missing';
+      const when = r.last_modified ? new Date(r.last_modified).toLocaleDateString() : '';
+      const meta = [human_size(r.size), when].filter(Boolean).join(' · ');
+      return `<li class="reconnect_row reconnect_row__${esc(status)}">
+        <span class="reconnect_status_pill">${esc(status)}</span>
+        <span class="reconnect_row_main">
+          <span class="reconnect_row_name">${esc(r.relative_path || r.original_name)}</span>
+          <span class="reconnect_row_meta">${esc(meta)}</span>
+        </span></li>`;
+    }).join('');
+
+    const outstanding = reconnect_ctx.records.filter((r) => !is_resolved(r)).length;
+    const intro = document.getElementById('reconnect_intro');
+    if (intro) {
+      intro.textContent = outstanding
+        ? `This session needs ${outstanding} file${outstanding === 1 ? '' : 's'}. Choose the folder that contains them, or select the missing files manually.`
+        : 'All session files are reconnected.';
+    }
+  }
+
+  function open_reconnect_modal(records) {
+    reconnect_ctx = { records };
+    render_reconnect_list();
+    const modal = document.getElementById('reconnect_modal');
+    if (modal) modal.hidden = false;
+  }
+
+  function close_reconnect_modal() {
+    const modal = document.getElementById('reconnect_modal');
+    if (modal) modal.hidden = true;
+    reconnect_ctx = null;
+  }
+
+  // Matches provided files against still-missing records, caches + loads matches.
+  async function apply_reconnected_files(files) {
+    if (!reconnect_ctx) return;
+    const app = window.PhaseFinderApp;
+    const indexes = index_selected_files(Array.from(files || []));
+    const to_load = [];
+    for (const record of reconnect_ctx.records) {
+      if (is_resolved(record)) continue;
+      const file = match_record_to_selected_file(record, indexes);
+      if (!file) continue;
+      try { await copy_file_to_opfs(file, record.opfs_path); record.status = 'available'; }
+      catch (_) { record.status = 'uncached'; } // usable now, just not cached
+      to_load.push(file);
+    }
+    if (to_load.length) await load_files(to_load);
+    render_reconnect_list();
+    const remaining = reconnect_ctx.records.filter((r) => !is_resolved(r)).length;
+    app.set_status_bar?.(
+      to_load.length
+        ? `Reconnected ${to_load.length} file${to_load.length === 1 ? '' : 's'}.${remaining ? ` ${remaining} still missing.` : ''}`
+        : 'No matching files found in your selection.',
+      !to_load.length,
+    );
+  }
+
+  // Folder reconnect. Native directory picker is Chromium-only and can't be
+  // automated, so test mode (and non-Chromium browsers) use a webkitdirectory input.
+  async function reconnect_from_directory() {
+    if (!reconnect_ctx) return;
+    const missing = reconnect_ctx.records.filter((r) => !is_resolved(r));
+    if (!missing.length) return;
+
+    if (typeof window.showDirectoryPicker === 'function' && !is_test_mode()) {
+      let dir_handle;
+      const stored = await idb_get();
+      if (stored) {
+        let perm = await stored.queryPermission({ mode: 'read' });
+        if (perm === 'prompt') perm = await stored.requestPermission({ mode: 'read' });
+        if (perm === 'granted') dir_handle = stored;
+      }
+      if (!dir_handle) {
+        try { dir_handle = await window.showDirectoryPicker({ mode: 'read' }); }
+        catch (err) { if (err.name === 'AbortError') return; throw err; }
+        await idb_put(dir_handle);
+      }
+      const found = [];
+      for (const record of missing) {
+        let file = null;
+        try {
+          file = await (await getFileHandleByRelativePath(dir_handle, record.relative_path)).getFile();
+        } catch (_) {
+          try { file = await (await dir_handle.getFileHandle(record.original_name)).getFile(); }
+          catch (_) { file = null; }
+        }
+        if (file && is_acceptable_match(record, file)) found.push(file);
+      }
+      await apply_reconnected_files(found);
+    } else {
+      const files = await pick_dir_fallback(reconnect_ctx.records.map((r) => r.original_name));
+      if (files === null) return; // cancelled
+      await apply_reconnected_files(files);
+    }
+  }
+
+  function reconnect_from_files() {
+    const input = document.getElementById('reconnect_file_input');
+    if (!input) return;
+    input.value = '';
+    input.onchange = async () => {
+      const files = Array.from(input.files || []);
+      if (files.length) await apply_reconnected_files(files);
+    };
+    input.click();
+  }
+
+  // ── Session-file restore orchestration ───────────────────────────────────────
+
+  async function restore_session_files(session, options = {}) {
+    const app = window.PhaseFinderApp;
+    const records = session.files?.records;
+    const names = session.files?.names || [];
+
+    // Legacy sessions without records: keep the original names-only flow.
+    if (!records || !records.length) {
+      if (!names.length) { app.set_status_bar?.('Session loaded.'); return; }
+      if (options.data_directory) {
+        const { files, missing } = await fetch_files_from_url(options.data_directory, names);
+        if (files.length) {
+          await load_files(files);
+          app.set_status_bar?.(missing.length
+            ? `Loaded ${files.length} file(s). Not found: ${missing.join(', ')}`
+            : `Session loaded with ${files.length} file(s).`, missing.length > 0);
+        } else {
+          app.set_status_bar?.(`No FCS files found in "${options.data_directory}".`, true);
+        }
+        return;
+      }
+      app.set_status_bar?.(`Session loaded. Opening folder picker for ${names.length} FCS file${names.length === 1 ? '' : 's'}…`);
+      await auto_load_session_files(names);
+      return;
+    }
+
+    set_records_from_session(records);
+    const all = [...file_records.values()];
+
+    if (OPFS()?.supports_opfs()) {
+      app.set_status_bar?.(`Session loaded. Restoring ${all.length} file${all.length === 1 ? '' : 's'} from local cache…`);
+      const { found } = await try_load_from_opfs(all);
+      if (found.length) await load_files(found.map((f) => f.file));
+    }
+
+    // Dev convenience: fetch any still-missing files over HTTP and re-cache them.
+    if (options.data_directory && all.some((r) => !is_resolved(r))) {
+      const still = all.filter((r) => !is_resolved(r));
+      const { files } = await fetch_files_from_url(options.data_directory, still.map((r) => r.original_name));
+      for (const file of files) {
+        const rec = file_records.get(file.name);
+        if (rec) { try { await copy_file_to_opfs(file, rec.opfs_path); rec.status = 'available'; } catch (_) { rec.status = 'uncached'; } }
+      }
+      if (files.length) await load_files(files);
+    }
+
+    if (all.some((r) => !is_resolved(r))) {
+      if (!OPFS()?.supports_opfs()) {
+        app.set_status_bar?.('Automatic reload is unavailable in this browser. Reconnect the session\'s FCS files manually.', true);
+      }
+      open_reconnect_modal(all);
+    } else {
+      const loaded = all.filter(is_resolved).length;
+      app.set_status_bar?.(`Session restored with ${loaded} file${loaded === 1 ? '' : 's'}.`);
+    }
+  }
+
   // ── State collection ─────────────────────────────────────────────────────────
 
   function collect_session() {
@@ -406,7 +816,7 @@
 
     return {
       session: { created: new Date().toISOString() },
-      files:   { names },
+      files:   { names, records: build_file_records_for(names) },
       stats_plan: window.PhaseFinderSummaryStats?.get_stats_plan?.() ?? [],
       metadata: {
         columns: user_cols.map((c) => ({ field: c.field, label: c.label })),
@@ -510,7 +920,7 @@
   // ── Session file I/O ─────────────────────────────────────────────────────────
 
   async function write_session_file(content, suggested_name) {
-    if (typeof window.showSaveFilePicker === 'function') {
+    if (typeof window.showSaveFilePicker === 'function' && !is_test_mode()) {
       let handle;
       try {
         handle = await window.showSaveFilePicker({
@@ -543,7 +953,7 @@
   }
 
   async function read_session_file() {
-    if (typeof window.showOpenFilePicker === 'function') {
+    if (typeof window.showOpenFilePicker === 'function' && !is_test_mode()) {
       let handles;
       try {
         handles = await window.showOpenFilePicker({
@@ -592,14 +1002,7 @@
         return;
       }
       apply_session(session);
-
-      const names = session.files?.names;
-      if (names?.length) {
-        app.set_status_bar?.(`Session loaded. Opening folder picker for ${names.length} FCS file${names.length === 1 ? '' : 's'}…`);
-        await auto_load_session_files(names);
-      } else {
-        app.set_status_bar?.('Session loaded.');
-      }
+      await restore_session_files(session);
     } catch (err) {
       app.set_status_bar?.(`Failed to load session: ${err.message}`, true);
     }
@@ -607,6 +1010,40 @@
 
   document.getElementById('save_session_button')?.addEventListener('click', handle_save);
   document.getElementById('load_session_button')?.addEventListener('click', handle_load);
+
+  // ── Reconnect modal wiring ───────────────────────────────────────────────────
+
+  function finish_reconnect() {
+    const remaining = reconnect_ctx?.records.filter((r) => !is_resolved(r)).length || 0;
+    close_reconnect_modal();
+    window.PhaseFinderApp.set_status_bar?.(
+      remaining ? `Continuing without ${remaining} missing file${remaining === 1 ? '' : 's'}.` : 'All session files reconnected.');
+  }
+
+  document.getElementById('reconnect_choose_folder')?.addEventListener('click', () => {
+    reconnect_from_directory().catch((err) =>
+      window.PhaseFinderApp.set_status_bar?.(`Folder reconnect failed: ${err.message}`, true));
+  });
+  document.getElementById('reconnect_select_files')?.addEventListener('click', reconnect_from_files);
+  document.getElementById('reconnect_continue')?.addEventListener('click', finish_reconnect);
+  document.getElementById('reconnect_cancel')?.addEventListener('click', close_reconnect_modal);
+  document.getElementById('reconnect_close')?.addEventListener('click', close_reconnect_modal);
+  document.querySelector('#reconnect_modal .stats_modal_backdrop')?.addEventListener('click', close_reconnect_modal);
+
+  // ── Public APIs ──────────────────────────────────────────────────────────────
+
+  // Called by main.js's load_files to cache newly imported files into OPFS.
+  window.PhaseFinderSessionFiles = { register_loaded_files };
+
+  // Exposed so cross-browser e2e tests can drive reconnect without native pickers.
+  window.PhaseFinderReconnect = {
+    is_test_mode,
+    get_records: () => [...file_records.values()],
+    is_open: () => Boolean(reconnect_ctx),
+    reconnect_with_files: (files) => apply_reconnected_files(files),
+    open: () => open_reconnect_modal([...file_records.values()]),
+    close: close_reconnect_modal,
+  };
 
   // ── Startup auto-load (phasefinder_local.json) ───────────────────────────────
   // If a phasefinder_local.json file exists in the app root, the app fetches it
@@ -647,29 +1084,7 @@
 
       apply_session(session);
 
-      const names = session.files?.names;
-      if (names?.length) {
-        if (config.data_directory) {
-          // Local dev fast-path: fetch files directly over HTTP, no picker needed.
-          app.set_status_bar?.(`Loading ${names.length} FCS file${names.length === 1 ? '' : 's'} from "${config.data_directory}"…`);
-          const { files, missing } = await fetch_files_from_url(config.data_directory, names);
-          if (files.length) {
-            await load_files(files);
-            if (missing.length) {
-              app.set_status_bar?.(`Loaded ${files.length} file${files.length === 1 ? '' : 's'}. Not found: ${missing.join(', ')}`, true);
-            } else {
-              app.set_status_bar?.(`Session auto-loaded with ${files.length} FCS file${files.length === 1 ? '' : 's'}.`);
-            }
-          } else {
-            app.set_status_bar?.(`Auto-load: no FCS files found in "${config.data_directory}". Check that the path is correct and the server serves the directory.`, true);
-          }
-        } else {
-          app.set_status_bar?.(`Session auto-loaded. Opening folder for ${names.length} FCS file${names.length === 1 ? '' : 's'}…`);
-          await auto_load_session_files(names);
-        }
-      } else {
-        app.set_status_bar?.('Session auto-loaded from phasefinder_local.json.');
-      }
+      await restore_session_files(session, { data_directory: config.data_directory });
     } catch (err) {
       app.set_status_bar?.(`Auto-load failed: ${err.message}`, true);
     }

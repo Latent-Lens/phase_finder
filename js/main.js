@@ -173,6 +173,10 @@ async function load_files(files) {
     document.dispatchEvent(new CustomEvent("pf-files-loaded", {
       detail: { count: loaded, names: new_tabular_rows.map((r) => r.name) },
     }));
+    // Copy newly loaded files into OPFS in the background so a saved session can
+    // auto-restore them on reload. Already-cached files (session restore /
+    // reconnect) are skipped inside register_loaded_files.
+    window.PhaseFinderSessionFiles?.register_loaded_files(loaded_entries);
   }
   sort_file_table();
   update_views();
