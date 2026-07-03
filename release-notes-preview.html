@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>PhaseFinder v0.1.0</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="/tmp/tmp.iFGkWNS9Hc.css" />
+</head>
+<body>
+<table width="100%" style="width: 100%; border-collapse: collapse; border: none; margin: 0; table-layout: fixed;">
+<tr style="border: none;">
+<td width="55%" style="border: none; vertical-align: middle; padding-right: 8px;">
+<h1 style="white-space: nowrap; margin: 0 0 16px 0; padding: 0; border: none;">
+PhaseFinder v0.1.0
+</h1>
+<p>
+PhaseFinder is a browser-based tool for inspecting and plotting flow
+cytometry <code>.fcs</code> files. It is designed as a lightweight,
+local-first application, where all data and analysis are performed on
+the user’s machine without uploading user data to any server.
+</p>
+<p>
+🔗 <strong>Access the site:</strong>
+<a href="https://PhaseFinder.LatentLens.org">https://PhaseFinder.LatentLens.org</a>
+</p>
+</td>
+<td align="right" width="45%" style="border: none; vertical-align: middle; padding-left: 0;">
+<img src="https://raw.githubusercontent.com/Latent-Lens/PhaseFinder/b0702067be55584d969eaf3449517ef4c40614f2/assets/img/logo.png" alt="PhaseFinder" width="320" />
+</td>
+</tr>
+</table>
+<h2 id="changes">Changes</h2>
+<ul>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/b0702067be55584d969eaf3449517ef4c40614f2">b070206</a>]
+Adding pre-commit hook for testing</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/a830767874a2ba0024de184c5a24a878d4bc089c">a830767</a>]
+Added help page and updated all tests</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/0d925b62c24a3ea6bb111c980a5fb32c21d9278b">0d925b6</a>]
+Additional work on sessions</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/a0fb62ed2ffdc41f16909adaa702d133d8d67c90">a0fb62e</a>]
+Add GitHub Actions workflow for Cloudflare Pages deployment</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/d063bb650685092bb1d76412b49965dc489bb77b">d063bb6</a>]
+Adding session saving and loading functionality</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/373f649db5960d283fe899e29b7c5ae0e09b02dc">373f649</a>]
+Adding filename to metadata columns wizard</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/f398ef593edb69d0fffa6d3cea5a86f1552c8d97">f398ef5</a>]
+Trying to fix issue where hovertext continued offscreen</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/c549ccb0eda52b44d447ebb7d564a05c6803dc62">c549ccb</a>]
+Adding drag to resize sidebar and other panels</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/f9c00f9286148b8b8757d31ba55523656986a5a6">f9c00f9</a>]
+Continue removing old debug code</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/66aec666cc577b2a9202ed691b83f33ad042321c">66aec66</a>]
+Removed old debug functionality</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/3ac7b31f6acaed8dfb4988bb1065b3909ae6ed3e">3ac7b31</a>]
+Added more debuging and tried to improve spacing</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/4cd1a138fd8f462bc33f15cdfc441391d6e9281e">4cd1a13</a>]
+Finish the switch to snake case</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/ead12365e6e09f11598fe348a74f6c074cf5d862">ead1236</a>]
+migrated from camel case to snake case</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/bda85cecfc3d12d0ab83e4da1609e49732b14eb0">bda85ce</a>]
+Moved the calculate button to sidebar</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/ebac87e374c4c721d159203e6c5f325483613381">ebac87e</a>]
+Adding a bit of debugging logic</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/915dd78140ef62e1b0331fb94db2c100339d6f0c">915dd78</a>]
+Adding some new icons</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/1e8f761187b370686407e9b93e0519763a1c841b">1e8f761</a>]
+Added a full testing suite</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/0711f7794372c313a10c6d6536b85c19242c5893">0711f77</a>]
+Adding some functionality to handle non-linear selections in
+workflow</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/78d6b2e0361a9fd4f1e9e3f68bbc302f53fa2980">78d6b2e</a>]
+Adding the ability to load some data in the background to keep UI
+responsive.</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/7b4d01db2023a9aa4134b9d9008421af1878944d">7b4d01d</a>]
+Added custom hover/tooltips</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/d0f665f210b323ac587a7cb62a0b4c19e96d577f">d0f665f</a>]
+Added collpasible sidebar with functoinal icons</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/4374809e2a968da4c564ca30e19b8aebec5c30d3">4374809</a>]
+Doing a little css massaging</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/ed4c3355efbc7f343b8ef577a99d8fe6ad495828">ed4c335</a>]
+Name change</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/843fd2b655286812d8f0dae8045ae232393b16d0">843fd2b</a>]
+Centralizing color definitions</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/ef210aea6a56af2081d2b832b4534b602f1362cb">ef210ae</a>]
+Leave axes behind when no files are selected for plotting</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/efa96ba31731a656787994f792b383c0b8762896">efa96ba</a>]
+Moved arrows on table to be side by side</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/89e502e818ae14b60e9459f935b6d43e1fb3619c">89e502e</a>]
+Fully documented JS files</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/21515fbbdfda473c8ccadde6f8d2eb8a9463c930">21515fb</a>]
+Updated README with architecture changes</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/ce5bd39ccc9b731aaebbaeff05e362b063fc8f3c">ce5bd39</a>]
+Moved plot variables to contants</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/dd00cb2599b26dbf045cf89f5081a6b341147f74">dd00cb2</a>]
+Split up CSS files</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/537ffe685da3be3f1d247f2751be9744bb088f57">537ffe6</a>]
+Updates to plotting and modeling</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/9644660251b72c29346d99da9a09a0c6db33c3ee">9644660</a>]
+Remove duplicate README</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/9ed012ae9f007e8de4373d0f2ded97f2961c4988">9ed012a</a>]
+Adding testing suite</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/d55be6591de2ad063bcf6d8b16b9e5e8a57aa3ec">d55be65</a>]
+Finalized logo and favicon</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/6746fe656b1e9cd3bf31506f8f3d4516bbd18c79">6746fe6</a>]
+Switching from plotly to d3</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/5f8e33661318d4e65270246b9e16ce13c83cacec">5f8e336</a>]
+Limiting analysis to single signal and cleaning a lot</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/b8ad903c599746021e6cca955e5aa6927c29b1de">b8ad903</a>]
+Before limiting it to just the DNA signal dropdown</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/f2c5033eba331a833cd2ef1a125449b955e41087">f2c5033</a>]
+QC removed</li>
+<li>[<a
+href="https://github.com/Latent-Lens/PhaseFinder/commit/7908c0ebb9234fbc482efddd0940d58833250292">7908c0e</a>]
+Init commit with QC stuff</li>
+</ul>
+</body>
+</html>
