@@ -6,6 +6,7 @@ cd "$ROOT"
 
 PYTHON="${PHASEFINDER_TEST_PYTHON:-/tmp/flowvenv/bin/python}"
 TEST_RUNNER="tests/e2e/drive_flow.py"
+LOG_FILE="tests/e2e/results/pre_commit_latest.log"
 
 if ! git diff --quiet --; then
   cat >&2 <<'MSG'
@@ -46,5 +47,25 @@ if [ ! -f "$TEST_RUNNER" ]; then
   exit 1
 fi
 
-echo "Running PhaseFinder full regression suite before commit..."
-"$PYTHON" "$TEST_RUNNER"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+{
+  echo "PhaseFinder pre-commit regression suite"
+  echo "Started: $(date -Is)"
+  echo "Python: $PYTHON"
+  echo "Runner: $TEST_RUNNER"
+  echo "Log: $LOG_FILE"
+  echo
+  echo "Running PhaseFinder full regression suite before commit..."
+} | tee "$LOG_FILE"
+
+"$PYTHON" "$TEST_RUNNER" 2>&1 | tee -a "$LOG_FILE"
+test_status=${PIPESTATUS[0]}
+
+{
+  echo
+  echo "Finished: $(date -Is)"
+  echo "Exit status: $test_status"
+} | tee -a "$LOG_FILE"
+
+exit "$test_status"
