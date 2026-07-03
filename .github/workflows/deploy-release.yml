@@ -4,21 +4,47 @@ name: Deploy release to Cloudflare Pages
 on:
   release:
     types: [published]
+
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to generate release notes for
+        required: true
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  deploy:
+  release:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout release code
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        run: |
+          chmod +x scripts/update-release-notes.sh
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+            DRY_RUN="false"
+          else
+            TAG="${{ inputs.tag }}"
+            DRY_RUN="true"
+          fi
+
+          scripts/update-release-notes.sh "$TAG" "$DRY_RUN"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy to Cloudflare Pages
+        if: github.event_name == 'release'
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy . --project-name=phasefinder --branch=main
