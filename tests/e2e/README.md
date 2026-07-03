@@ -19,7 +19,7 @@ Ubuntu). Without it the run still completes — it just falls back to screenshot
 
 ## Run
 
-Run the driver (it will automatically start a background server on a free port):
+Run the driver (it will automatically start a Vite dev server on a free port):
 
 ```bash
 /tmp/flowvenv/bin/python tests/e2e/drive_flow.py
@@ -29,7 +29,7 @@ Flags:
 - `--files N` — initial FCS files to load (default 4, minimum 2)
 - `--extra-files N` — additional unique files to append (default 2)
 - `--data DIR` — FCS directory (defaults to generated synthetic FCS fixtures)
-- `--url` — app URL (default `http://localhost:8731/index.html`)
+- `--url` — app URL override; when omitted the driver starts Vite locally
 - `--channel` — preferred DNA area channel (default `GFP/FITC-A`)
 - `--headed` — run with a visible browser window
 
@@ -91,16 +91,16 @@ tests/
 │   └── results/
 └── unit/
     ├── run_unit_tests.py    ← unit test orchestrator
-    ├── test_harness.html    ← minimal page loading CDN libs + parser/ui_controls/DJF JS
+    ├── test_harness.html    ← minimal page loading Vite libs + parser/ui_controls/DJF JS
     ├── unit_tests_parser.py ← FCSParser unit tests (window.FCSParser)
     ├── unit_tests_table.py  ← table/metadata-wizard pure-logic unit tests (ui_controls.js)
     └── unit_tests_djf.py    ← DJF model unit tests (window.PhaseFinderDJF)
 ```
 
-`drive_flow.py` also temporarily moves aside a `phasefinder_local.json` in the
-repo root, if present, for the duration of the run (restoring it unmodified
+`drive_flow.py` also temporarily moves aside `public/phasefinder_local.json`, if
+present, for the duration of the run (restoring it unmodified
 afterward). That file is a personal, uncommitted dev-convenience config (see
-`phasefinder_local.example.json`) that can auto-load an arbitrary session and
+`public/phasefinder_local.example.json`) that can auto-load an arbitrary session and
 FCS folder on every page load; left in place, the local test server would
 serve it to the app under test exactly like a real browsing session, silently
 loading extra files that desync every row-count assertion in this suite.
@@ -108,7 +108,7 @@ loading extra files that desync every row-count assertion in this suite.
 ## What it checks
 
 ### E2E — Input/Output
-- D3 / Levenberg–Marquardt / ml-gsd CDN libraries load
+- D3 / Levenberg–Marquardt / ml-gsd libraries load
 - File loading via drag-and-drop (expanded sidebar)
 - The filename metadata wizard auto-opens once, after the very first file
   load, and is configured here (Strain/Replicate/Nocodazole Arrest/Timepoint

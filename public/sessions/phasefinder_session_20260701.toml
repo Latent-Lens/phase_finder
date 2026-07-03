@@ -1,0 +1,138 @@
+# PhaseFinder Session File
+# Created: 2026-07-01T18:45:08.485Z
+
+[session]
+created = "2026-07-01T18:45:08.485Z"
+
+[files]
+# Re-drop or auto-load these files to restore event data and plotted curves.
+names = ["EDS2026-03-06_76aN t0__A1.0001.fcs", "EDS2026-03-06_76aN t5__A4.0001.fcs", "EDS2026-03-06_76aN t10__B1.0001.fcs", "EDS2026-03-06_76aN t15__B4.0001.fcs", "EDS2026-03-06_76aN t20__C1.0001.fcs", "EDS2026-03-06_76aN t25__C4.0001.fcs"]
+
+[metadata]
+columns = [
+  {field = "strain", label = "Strain"},
+  {field = "replicate", label = "Replicate"},
+  {field = "nocodazoleArrest", label = "Nocodazole Arrest"},
+  {field = "timepoint", label = "Timepoint"}
+]
+
+[[metadata.rows]]
+name = "EDS2026-03-06_76aN t0__A1.0001.fcs"
+strain = "76"
+replicate = "a"
+nocodazoleArrest = "N"
+timepoint = "0"
+
+[[metadata.rows]]
+name = "EDS2026-03-06_76aN t5__A4.0001.fcs"
+strain = "76"
+replicate = "a"
+nocodazoleArrest = "N"
+timepoint = "5"
+
+[[metadata.rows]]
+name = "EDS2026-03-06_76aN t10__B1.0001.fcs"
+strain = "76"
+replicate = "a"
+nocodazoleArrest = "N"
+timepoint = "10"
+
+[[metadata.rows]]
+name = "EDS2026-03-06_76aN t15__B4.0001.fcs"
+strain = "76"
+replicate = "a"
+nocodazoleArrest = "N"
+timepoint = "15"
+
+[[metadata.rows]]
+name = "EDS2026-03-06_76aN t20__C1.0001.fcs"
+strain = "76"
+replicate = "a"
+nocodazoleArrest = "N"
+timepoint = "20"
+
+[[metadata.rows]]
+name = "EDS2026-03-06_76aN t25__C4.0001.fcs"
+strain = "76"
+replicate = "a"
+nocodazoleArrest = "N"
+timepoint = "25"
+
+[[metadata_template.steps]]
+type = "delimiter"
+delimiter = "_"
+label = "Column 1"
+hide = true
+
+[[metadata_template.steps]]
+type = "regex"
+pattern = "(\\d{2,3})"
+label = "Strain"
+hide = false
+
+[[metadata_template.steps]]
+type = "fixed"
+breaks = [1]
+label = "Replicate"
+hide = false
+
+[[metadata_template.steps]]
+type = "fixed"
+breaks = [1]
+label = "Nocodazole Arrest"
+hide = false
+
+[[metadata_template.steps]]
+type = "fixed"
+breaks = [2]
+label = "Column 5"
+hide = true
+
+[[metadata_template.steps]]
+type = "delimiter"
+delimiter = "_"
+label = "Timepoint"
+hide = false
+
+[[metadata_template.columns]]
+field = "strain"
+label = "Strain"
+source_index = 1
+
+[[metadata_template.columns]]
+field = "replicate"
+label = "Replicate"
+source_index = 2
+
+[[metadata_template.columns]]
+field = "nocodazoleArrest"
+label = "Nocodazole Arrest"
+source_index = 3
+
+[[metadata_template.columns]]
+field = "timepoint"
+label = "Timepoint"
+source_index = 5
+
+[table]
+selected_files = ["EDS2026-03-06_76aN t0__A1.0001.fcs", "EDS2026-03-06_76aN t5__A4.0001.fcs", "EDS2026-03-06_76aN t10__B1.0001.fcs", "EDS2026-03-06_76aN t15__B4.0001.fcs", "EDS2026-03-06_76aN t20__C1.0001.fcs", "EDS2026-03-06_76aN t25__C4.0001.fcs"]
+sort_field = ""
+sort_direction = "asc"
+
+[table.filters]
+
+[plot]
+channel = "GFP/FITC-A"
+color_by = "file"
+bins = 512
+remove_debris = false
+remove_doublets = false
+show_peak_threshold = false
+
+[ui]
+sidebar_collapsed = false
+sidebar_width_px = 320
+plot_panel_collapsed = false
+plot_panel_height_px = 484
+metadata_panel_collapsed = false
+metadata_panel_height_px = 217

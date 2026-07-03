@@ -25,9 +25,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build site
+        run: npm run build
+
       - name: Generate release notes
         run: |
-          chmod +x scripts/update-release-notes.sh
+          chmod +x .github/scripts/update_release_notes.sh
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
             TAG="${{ github.event.release.tag_name }}"
@@ -37,7 +48,7 @@ jobs:
             DRY_RUN="true"
           fi
 
-          scripts/update-release-notes.sh "$TAG" "$DRY_RUN"
+          .github/scripts/update_release_notes.sh "$TAG" "$DRY_RUN"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -47,4 +58,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: pages deploy . --project-name=phasefinder --branch=main
+          command: pages deploy dist --project-name=phasefinder --branch=main

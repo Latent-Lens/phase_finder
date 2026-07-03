@@ -18,8 +18,8 @@ The project currently focuses on a specific analysis workflow:
 7. Optionally fit a Dean–Jett–Fox (DJF) cell-cycle model to one sample and read
    off its %G1 / %S / %G2 fractions.
 
-Files are read by browser APIs. There is no upload server, database, or build
-pipeline in this repository.
+Files are read by browser APIs. There is no upload server or database. The app
+is built with Svelte + Vite and still runs entirely in the browser.
 
 ## Project Structure
 
@@ -27,87 +27,61 @@ pipeline in this repository.
 .
 ├── index.html
 ├── help.html             # in-app help/feature guide, linked from the header
-├── assets/
-│   └── img/
-│       ├── logo.png
-│       ├── chevron-down-icon.svg
-│       ├── chevron-right-icon.svg
-│       └── favicon/
-├── css/
-│   ├── base.css         # tokens, reset, typography, base form controls
-│   ├── layout.css       # header, app grid, panels, panel titles, Start button
-│   ├── sidebar.css      # drop zone, channel controls, status text
-│   ├── table.css        # metadata table, sort headers, filter dropdowns
-│   ├── plot.css         # plot panel layout, controls bar, DJF readout
-│   ├── feedback.css     # status bar and progress overlay
-│   ├── responsive.css   # @media overrides (loaded last)
-│   └── help.css         # standalone stylesheet for help.html
-├── js/
-│   ├── fcs-parser.js    # window.FCSParser — FCS reading
-│   ├── main.js          # window.PhaseFinderApp — file/table/selection UI
-│   ├── plotting.js      # D3 histogram + DJF modeling
-│   └── analysis.js      # selected-data loading + plot panel orchestration
+├── package.json          # Vite/Svelte scripts and browser dependencies
+├── src/
+│   ├── App.svelte        # Svelte-owned app bootstrap/shell
+│   ├── lib/              # importable parser/loading/bootstrap modules
+│   └── stores/           # Svelte stores for migrated UI state
+├── public/
+│   ├── assets/           # URL-served images, icons, favicon, sample TOML
+│   ├── css/              # existing split stylesheets
+│   ├── js/               # compatibility scripts during migration
+│   └── sessions/         # sample/local session files
 ├── tests/
 │   └── e2e/             # Playwright driver (drive_flow.py) + results/
 └── misc/
     └── README.md
 ```
 
-Note: the file list above predates several JS modules that now also load (see
-`index.html`'s script tags for the current, authoritative load order) —
-`ui_controls.js`, `hover_text.js`, `djf_gpt.js`, `summary_stats.js`,
-`panel_resize.js`, and `session.js`. `help.html` documents all of the features
-they add (the metadata wizard, summary statistics, session save/load, and
-layout controls); see it for an up-to-date feature tour.
+The `public/js/` files are compatibility scripts kept while the UI moves into
+Svelte components and stores. Importable parser/loading code lives under
+`src/lib/`.
 
 ## How The App Works
 
-`index.html` defines the full application shell. It loads D3 (and, for the DJF
-fit, the `ml-levenberg-marquardt` and `ml-gsd` libraries) from CDNs, loads the
-split stylesheets, lays out the header, file drop zone, channel selector,
-metadata table, plot panel, progress overlay, and bottom status bar, then loads
-the local JavaScript files.
+`index.html` is the Vite entry point. `src/App.svelte` renders the application
+shell and loads the current compatibility scripts after the DOM exists. Third
+party libraries (`d3`, `ml-levenberg-marquardt`, and `ml-gsd`) are bundled by
+Vite and attached to the same `window.*` globals that the plotting/modeling code
+expects.
 
 The runtime order matters:
 
-1. `js/fcs-parser.js` creates `window.FCSParser`.
-2. `js/main.js` creates the file-loading/table UI state and exposes
+1. `src/main.js` mounts `src/App.svelte`.
+2. `src/lib/thirdParty.js` creates `window.d3`, `window.levenbergMarquardt`,
+   and `window.gsd`.
+3. `public/js/fcs-parser.js` creates `window.FCSParser` for compatibility.
+4. `public/js/main.js` creates the file-loading/table UI state and exposes
   `window.PhaseFinderApp`.
-3. `js/plotting.js` defines the plot renderer (`initPlot`, `renderDensityPlot`)
+5. `public/js/plotting.js` defines the plot renderer (`initPlot`, `renderDensityPlot`)
    and the DJF model; it listens for selection changes to redraw live.
-4. `js/analysis.js` uses `window.PhaseFinderApp` and `window.FCSParser` to load
+6. `public/js/analysis.js` uses `window.PhaseFinderApp` and `window.FCSParser` to load
    selected event data, then calls `initPlot` to draw the plot.
-
-The third-party libraries are loaded from:
-
-```text
-https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js     # plotting
-https://esm.sh/ml-levenberg-marquardt@4              # DJF curve fitting
-https://esm.sh/ml-gsd@13                             # DJF peak detection
-```
-
-The `ml-*` libraries are imported dynamically and attached to `window`
-(`window.levenbergMarquardt`, `window.gsd`); a load failure is logged and only
-disables DJF modeling, not the rest of the app. Plotting and modeling therefore
-require network access unless these libraries are vendored locally.
 
 ## File Responsibilities
 
 ### `index.html`
 
-The HTML entry point. It contains:
+The Vite HTML entry point. It links the global stylesheets and favicons, creates
+`#app`, and loads `src/main.js`.
 
-- A header with the PhaseFinder logo and the `Start Analysis` button.
-- A sidebar with the FCS file drop zone and DNA-content channel selector.
-- A workspace with two panels:
-  - `plotPanel`, hidden until analysis starts, containing the plot controls bar
-    and the `#plotArea` SVG container.
-  - `metadataPanel`, the loaded-sample table (can collapse).
-- A progress overlay used during metadata and selected-data loading.
-- A fixed status bar for long-running operation feedback.
-- Script tags for D3, the dynamic `ml-*` imports, and the four local JS files.
+### `src/App.svelte`
 
-### `css/*` (split stylesheets)
+The Svelte bootstrap component. It renders the current app shell, installs the
+bundled third-party globals, then loads the compatibility scripts from
+`public/js/` in the same runtime order the static app used.
+
+### `public/css/*` (split stylesheets)
 
 The stylesheet was split from a single file into themed files, linked in cascade
 order in `index.html` (`base → layout → sidebar → table → plot → feedback →
@@ -115,7 +89,7 @@ responsive`). The `@media` block lives in `responsive.css` and is loaded last so
 its breakpoint overrides win. Each file carries a header comment describing its
 scope (see the structure list above).
 
-### `js/fcs-parser.js`
+### `public/js/fcs-parser.js` and `src/lib/fcs/parser.js`
 
 The browser-side FCS parser. It has no external dependencies and exposes its API
 through `window.FCSParser`.
@@ -133,7 +107,7 @@ It handles:
 - Summarizing only the header/TEXT metadata with `parseFCSHeaderFromSegments`,
   which keeps initial file loading fast.
 
-### `js/main.js`
+### `public/js/main.js`
 
 The main UI and metadata workflow. It owns the loaded file list, annotation
 state, table state, selection state, and status/progress helpers.
@@ -163,7 +137,7 @@ Important responsibilities:
 Metadata table columns: Filename (read-only), Strain, Replicate,
 Nocodazole Arrest, Timepoint (editable + filterable).
 
-### `js/plotting.js`
+### `public/js/plotting.js`
 
 The plot renderer and cell-cycle model, drawn with D3 into `#plotArea`.
 
@@ -195,7 +169,7 @@ Important responsibilities:
   line widths, margins, axis tick/title sizes, legend metrics, and threshold
   styling — so the look can be changed in one place.
 
-### `js/analysis.js`
+### `public/js/analysis.js`
 
 The selected-data loading and panel orchestration layer, loaded after
 `plotting.js`. It uses the public `window.PhaseFinderApp` methods.
@@ -239,7 +213,7 @@ the hook is running, live output is also written to:
 tail -f tests/e2e/results/pre_commit_latest.log
 ```
 
-### `assets/img/*`
+### `public/assets/img/*`
 
 Static image assets: `logo.png` (header), the chevron SVGs (metadata panel
 expand/collapse), and a `favicon/` set.
@@ -263,31 +237,37 @@ prefer `$PnS`, then `$PnN`, then a generated `P<number>` fallback.
 
 ## Running Locally
 
-Because this is a static browser app, there is no install step. Opening
-`index.html` directly works, but a static server is recommended (the `ml-*`
-modules import more reliably over `http://`).
-
-With live-reload (auto-refreshes the browser on file changes):
+Install dependencies once, then run the Vite dev server:
 
 ```bash
-~/.local/bin/livereload -p 8080
+npm install
+npm run dev
 ```
 
-Then open:
+Then open the URL printed by Vite, usually:
 
 ```text
-http://localhost:8080/
+http://127.0.0.1:5173/
 ```
 
-Or with the Python built-in server (no live-reload):
+Create a production build with:
 
 ```bash
-python3 -m http.server 8080
+npm run build
 ```
 
-D3, `ml-levenberg-marquardt`, and `ml-gsd` are loaded from CDNs (see "How The App
-Works"), so plotting and DJF modeling need network access unless those libraries
-are vendored locally and the tags in `index.html` are changed.
+Preview the production build locally with:
+
+```bash
+npm run preview
+```
+
+The Playwright regression runner starts a Vite dev server automatically when
+`package.json` is present:
+
+```bash
+/tmp/flowvenv/bin/python tests/e2e/drive_flow.py
+```
 
 ## Typical Workflow
 
@@ -321,17 +301,17 @@ are vendored locally and the tags in `index.html` are changed.
 
 ## Session reload via OPFS
 
-Sessions are saved as TOML by `js/session.js`. To make reloading a session
+Sessions are saved as TOML by `public/js/session.js`. To make reloading a session
 "just work" without re-selecting files, loaded FCS files are cached into the
 browser's Origin Private File System (OPFS):
 
-- **On file load**, `js/main.js` hands the loaded files to
+- **On file load**, `public/js/main.js` hands the loaded files to
   `window.PhaseFinderSessionFiles.register_loaded_files`, which builds a per-file
   record (`id`, `original_name`, `relative_path`, `size`, `last_modified`,
   `mime_type`, `opfs_path`, `status`) and copies each file into OPFS in the
-  background via a Web Worker (`js/opfs_copy_worker.js`), showing
+  background via a Web Worker (`public/js/opfs_copy_worker.js`), showing
   "Caching file x of y" in the status bar. OPFS helpers live in
-  `js/opfs_store.js` (`window.PhaseFinderOPFS`).
+  `public/js/opfs_store.js` (`window.PhaseFinderOPFS`).
 - **On save**, those records are written to the session TOML as
   `[[files.records]]` (alongside the legacy `[files].names`). No absolute OS
   paths are ever stored — only app-private OPFS paths and file metadata.
@@ -346,8 +326,8 @@ browser's Origin Private File System (OPFS):
 
 New JS files for this feature:
 
-- `js/opfs_store.js` — `window.PhaseFinderOPFS`; OPFS feature detection plus
+- `public/js/opfs_store.js` — `window.PhaseFinderOPFS`; OPFS feature detection plus
   read/delete helpers and storage-persistence requests (writes are delegated to
   the worker).
-- `js/opfs_copy_worker.js` — Web Worker that writes a loaded `File` into OPFS off
+- `public/js/opfs_copy_worker.js` — Web Worker that writes a loaded `File` into OPFS off
   the main thread so caching large files never blocks the UI.

@@ -1,0 +1,21 @@
+{
+  "name": "phasefinder",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:e2e": "/tmp/flowvenv/bin/python tests/e2e/drive_flow.py"
+  },
+  "dependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.0.0",
+    "d3": "^7.9.0",
+    "ml-gsd": "^13.0.0",
+    "ml-levenberg-marquardt": "^4.0.0",
+    "svelte": "^5.0.0",
+    "vite": "^7.0.0"
+  },
+  "devDependencies": {}
+}

@@ -4,22 +4,17 @@
   <meta charset="utf-8" />
   <title>PhaseFinder Unit Test Harness</title>
   <!--
-    Minimal page that loads the same CDN libraries and app JS files as index.html
+    Minimal page that loads the same third-party libraries and app JS files as index.html
     so that Playwright's page.evaluate() can invoke window.FCSParser and
     window.PhaseFinderDJF without spinning up the full app UI.
   -->
-  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script type="module">
-    Promise.all([
-      import("https://esm.sh/ml-levenberg-marquardt@4")
-        .then(m => { window.levenbergMarquardt = m.default || m.levenbergMarquardt || m; }),
-      import("https://esm.sh/ml-gsd@13")
-        .then(m => { window.gsd = m.gsd || m.default || m; }),
-    ])
+    import("/src/lib/thirdParty.js")
+    .then(({ installThirdPartyGlobals }) => installThirdPartyGlobals())
     .then(() => { window.__libsReady = true; })
     .catch(e => {
       window.__libsError = String(e);
-      console.error("[test-harness] CDN import failed:", e);
+      console.error("[test-harness] third-party import failed:", e);
     });
   </script>
   <script src="/js/fcs-parser.js"></script>

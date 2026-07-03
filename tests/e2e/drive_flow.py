@@ -18,6 +18,9 @@ import time
 import threading
 import http.server
 import socketserver
+import socket
+import subprocess
+import urllib.request
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -207,9 +210,49 @@ def start_test_server(directory: str) -> tuple:
     return port, httpd
 
 
+def find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def start_vite_server(repo_root: Path) -> tuple:
+    vite_bin = repo_root / "node_modules" / ".bin" / "vite"
+    if not vite_bin.exists():
+        raise RuntimeError(
+            "Vite dependencies are not installed. Install the package manager/toolchain, "
+            "run the project dependency install, then retry the test runner."
+        )
+
+    port = find_free_port()
+    proc = subprocess.Popen(
+        [str(vite_bin), "--host", "127.0.0.1", "--port", str(port), "--strictPort"],
+        cwd=str(repo_root),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+    )
+    url = f"http://127.0.0.1:{port}/index.html"
+
+    deadline = time.monotonic() + 20
+    last_error = None
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(f"Vite dev server exited early with status {proc.returncode}")
+        try:
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                if resp.status < 500:
+                    return url, proc
+        except Exception as err:
+            last_error = err
+            time.sleep(0.25)
+
+    proc.terminate()
+    raise RuntimeError(f"Timed out waiting for Vite dev server at {url}: {last_error}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="PhaseFinder E2E + unit test runner")
-    parser.add_argument("--url", default=None, help="App URL. If omitted, starts a local server on a random port.")
+    parser.add_argument("--url", default=None, help="App URL. If omitted, starts Vite or a local static server on a random port.")
     parser.add_argument("--data", default=None,
                         help=f"FCS directory to test with; omitted uses synthetic fixtures. Legacy default was {DEFAULT_DATA}")
     parser.add_argument("--files", type=int, default=4, help="initial FCS files to load")
@@ -219,18 +262,25 @@ def main():
     args = parser.parse_args()
 
     httpd = None
+    vite_proc = None
     local_autoload_guard = nullcontext()
 
     if not args.url:
         repo_root = Path(_HERE.parents[1])
-        print(f"Starting up a new local server process to serve the app...", flush=True)
-        port, httpd = start_test_server(str(repo_root))
-        args.url = f"http://127.0.0.1:{port}/index.html"
-        print(f"Server successfully started at {args.url}", flush=True)
-        # A personal, uncommitted phasefinder_local.json in the repo root
-        # would otherwise get served to the app under test and silently
-        # auto-load unrelated files, desyncing every row-count assertion.
-        local_autoload_guard = suspended_local_autoload_config(repo_root)
+        if (repo_root / "package.json").exists():
+            print("Starting a local Vite dev server to serve the app...", flush=True)
+            args.url, vite_proc = start_vite_server(repo_root)
+            print(f"Vite server successfully started at {args.url}", flush=True)
+            local_autoload_guard = suspended_local_autoload_config(repo_root / "public")
+        else:
+            print(f"Starting up a new local server process to serve the app...", flush=True)
+            port, httpd = start_test_server(str(repo_root))
+            args.url = f"http://127.0.0.1:{port}/index.html"
+            print(f"Server successfully started at {args.url}", flush=True)
+            # A personal, uncommitted phasefinder_local.json in the repo root
+            # would otherwise get served to the app under test and silently
+            # auto-load unrelated files, desyncing every row-count assertion.
+            local_autoload_guard = suspended_local_autoload_config(repo_root)
 
     with local_autoload_guard:
         try:
@@ -247,6 +297,15 @@ def main():
                 httpd.shutdown()
                 httpd.server_close()
                 print("Server shutdown complete.", flush=True)
+            if vite_proc:
+                print(f"\nShutting down local Vite server process...", flush=True)
+                vite_proc.terminate()
+                try:
+                    vite_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    vite_proc.kill()
+                    vite_proc.wait(timeout=5)
+                print("Vite server shutdown complete.", flush=True)
 
     return ret
 

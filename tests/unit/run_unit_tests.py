@@ -2,7 +2,7 @@
 """Unit test orchestrator.
 
 Called from drive_flow.py after the e2e phase. Navigates a separate Playwright
-page to the test harness, waits for CDN libraries, then runs all unit test
+page to the test harness, waits for third-party libraries, then runs all unit test
 modules and records results into the provided TestContext.
 """
 
@@ -19,7 +19,7 @@ for _p in (_E2E, _UNIT):
 from helpers import TestContext
 
 HARNESS_PATH = "/tests/unit/test_harness.html"
-LIBS_READY_TIMEOUT = 60000  # ms to wait for CDN libraries
+LIBS_READY_TIMEOUT = 60000  # ms to wait for third-party libraries
 
 
 def run_unit_tests(ctx: TestContext, app_url: str):
@@ -52,7 +52,7 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     from unit_tests_table import run_table_tests
     run_table_tests(ctx)
 
-    # Wait for CDN module imports (levenbergMarquardt, gsd) — may fail on slow/blocked networks
+    # Wait for Vite module imports (levenbergMarquardt, gsd).
     try:
         page.wait_for_function(
             "() => typeof window.levenbergMarquardt === 'function' "
@@ -61,14 +61,14 @@ def run_unit_tests(ctx: TestContext, app_url: str):
             timeout=LIBS_READY_TIMEOUT,
         )
     except Exception as err:
-        ctx.warn("Unit / Setup", "CDN libraries did not load in time",
+        ctx.warn("Unit / Setup", "Third-party libraries did not load in time",
                  f"levenbergMarquardt/gsd unavailable — DJF unit tests skipped: {err!s:.120}",
                  screenshot=False)
         return
 
     libs_err = page.evaluate("() => window.__libsError || null")
     if libs_err:
-        ctx.warn("Unit / Setup", "CDN library import failed",
+        ctx.warn("Unit / Setup", "Third-party library import failed",
                  f"{libs_err!s:.200} — DJF unit tests skipped", screenshot=False)
         return
 

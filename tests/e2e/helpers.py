@@ -158,7 +158,7 @@ def suspended_local_autoload_config(repo_root: Path):
     phasefinder_local.json is a personal, uncommitted dev-convenience file
     (see phasefinder_local.example.json) that can point session.js's startup
     auto-load at an arbitrary session file + data directory on every page
-    load. When the local test server serves the repo root, the app under
+    load. When the local test server serves the app root, the app under
     test picks it up exactly like a real user's browser would — silently
     loading extra files that desync every row-count assertion in this suite.
     Move it aside before the run and restore it (unmodified) afterward.

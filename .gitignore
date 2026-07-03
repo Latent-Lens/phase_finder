@@ -8,6 +8,10 @@ tests/unit/__pycache__
 tests/test_data/*
 flow_data
 
+# Vite / package manager output
+node_modules/
+dist/
+
 
 # Local AI tooling
 .claude/
