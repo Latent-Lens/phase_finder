@@ -146,6 +146,9 @@ function concat_frames(frame1, frame2) {
 // filename-derived columns are appended by the metadata wizard.
 const FILENAME_TABLE_COLUMN = { field: "name", label: "Filename", editable: false, filterable: false };
 let TABLE_COLUMNS = [FILENAME_TABLE_COLUMN];
+let pending_header_focus_field = null;
+let metadata_unlinked_row_counter = 0;
+let preserve_metadata_row_order = false;
 
 // IDs of files whose row checkbox is ticked. Persists across re-renders so
 // sorting/filtering don't drop the selection.
@@ -185,6 +188,121 @@ function metadata_field_from_label(label, used_fields = new Set()) {
   }
   used_fields.add(field);
   return field;
+}
+
+function unique_metadata_label(label, used_labels = new Set()) {
+  const base = String(label || "").trim() || "Column";
+  let candidate = base;
+  let suffix = 2;
+  while (used_labels.has(candidate.toLowerCase())) {
+    candidate = `${base} ${suffix}`;
+    suffix += 1;
+  }
+  used_labels.add(candidate.toLowerCase());
+  return candidate;
+}
+
+function normalize_metadata_columns(columns, { default_source = "metadata" } = {}) {
+  const used_fields = new Set(["id", "name"]);
+  const used_labels = new Set();
+  return (columns || []).filter(Boolean).map((column) => {
+    const label = unique_metadata_label(column.label ?? column.header ?? "Column", used_labels);
+    let field = String(column.field || "").trim();
+    if (!field || used_fields.has(field)) {
+      field = metadata_field_from_label(label, used_fields);
+    } else {
+      used_fields.add(field);
+    }
+    return {
+      field,
+      label,
+      editable: column.editable !== false,
+      filterable: column.filterable !== false,
+      headerEditable: Boolean(column.headerEditable ?? column.header_editable ?? false),
+      source: column.source || default_source,
+      source_header: column.source_header || column.header || column.label || "",
+    };
+  });
+}
+
+function metadata_row_is_linked(row) {
+  return Boolean(row?.id && typeof file_map !== "undefined" && file_map.has(row.id));
+}
+
+function loaded_file_count() {
+  return typeof file_map !== "undefined" ? file_map.size : 0;
+}
+
+function metadata_unlinked_row_id(index = 0) {
+  metadata_unlinked_row_counter += 1;
+  return `metadata-unlinked-${Date.now()}-${metadata_unlinked_row_counter}-${index}`;
+}
+
+function loaded_file_by_metadata_key(rows) {
+  const index = new Map();
+  (rows || []).forEach((row) => {
+    if (!row?.id || !row?.name) return;
+    const key = metadata_filename_key(row.name);
+    if (key && !index.has(key)) index.set(key, row);
+  });
+  return index;
+}
+
+function build_metadata_frame_from_records(records, columns, loaded_rows = [], options = {}) {
+  const normalized_columns = normalize_metadata_columns(columns, { default_source: options.source || "metadata" });
+  const loaded_by_key = loaded_file_by_metadata_key(loaded_rows);
+  const used_loaded_ids = new Set();
+  const col_data = {
+    id: [],
+    name: [],
+  };
+
+  normalized_columns.forEach((column) => {
+    col_data[column.field] = [];
+  });
+
+  let matched = 0;
+  let unmatched = 0;
+  let duplicates = 0;
+  let empty_filenames = 0;
+
+  (records || []).forEach((record, index) => {
+    const imported_name = String(record.name ?? record.Filename ?? record.filename ?? "").trim();
+    const key = metadata_filename_key(imported_name);
+    const loaded = key ? loaded_by_key.get(key) : null;
+    const can_link = loaded && !used_loaded_ids.has(loaded.id);
+
+    if (!key) empty_filenames += 1;
+    if (loaded && !can_link) duplicates += 1;
+
+    if (can_link) {
+      col_data.id.push(loaded.id);
+      col_data.name.push(loaded.name);
+      used_loaded_ids.add(loaded.id);
+      matched += 1;
+    } else {
+      col_data.id.push(metadata_unlinked_row_id(index));
+      col_data.name.push(imported_name);
+      unmatched += 1;
+    }
+
+    normalized_columns.forEach((column) => {
+      col_data[column.field].push(record[column.field] ?? "");
+    });
+  });
+
+  return {
+    frame: new PhaseFinderFrame(col_data, ["id", "name", ...normalized_columns.map((column) => column.field)]),
+    columns: normalized_columns,
+    matched,
+    unmatched,
+    duplicates,
+    empty_filenames,
+  };
+}
+
+function should_preserve_metadata_row_order() {
+  return preserve_metadata_row_order;
 }
 
 function table_base_field_set() {
@@ -312,9 +430,7 @@ function update_loaded_files_list() {
     return;
   }
 
-  const names = file_table_frame && file_table_frame.length
-    ? file_table_frame.col("name")
-    : [...file_map.values()].map((entry) => entry.name);
+  const names = [...file_map.values()].map((entry) => entry.name);
   loaded_files_list.value = names.join("\n");
 }
 
@@ -653,7 +769,9 @@ Output:
 
 */
 function update_start_button_state() {
-  const is_disabled = !channel_select.value || file_map.size === 0;
+  const has_selected_loaded_rows = Boolean(file_table_frame && file_table_frame.col("id")
+    .some((id) => selected_file_ids.has(id) && typeof file_map !== "undefined" && file_map.has(id)));
+  const is_disabled = !channel_select.value || !has_selected_loaded_rows;
   [start_analysis_button, collapsed_plot_button].forEach((button) => {
     if (!button) {
       return;
@@ -661,16 +779,262 @@ function update_start_button_state() {
     button.disabled = is_disabled;
   });
 
-  const has_files = file_map.size > 0;
+  const has_files = loaded_file_count() > 0;
+  const has_table_rows = Boolean(file_table_frame && file_table_frame.length > 0);
   ["#calculate_stats_button", "#collapsed_calculate_stats_button"].forEach((sel) => {
     const btn = document.querySelector(sel);
     if (btn) btn.disabled = !has_files;
   });
-  if (metadata_parse_button) metadata_parse_button.disabled = !has_files;
-  if (metadata_export_button) metadata_export_button.disabled = !has_files;
+  if (metadata_add_column_button) metadata_add_column_button.disabled = !has_table_rows;
+  if (metadata_import_button) metadata_import_button.disabled = !has_table_rows;
+  if (metadata_parse_button) metadata_parse_button.disabled = !has_table_rows;
+  if (metadata_export_button) metadata_export_button.disabled = !has_table_rows;
 }
 
 const TABLE_EXPORT_STAT_LABELS = { mean: "Mean", stddev: "Std Dev", median: "Median", min: "Min", max: "Max" };
+
+function current_metadata_columns() {
+  return TABLE_COLUMNS.filter((column) => column.field !== "name");
+}
+
+function rebuild_table_with_metadata_columns(columns, value_overrides = {}) {
+  if (!file_table_frame) return;
+
+  const normalized_columns = normalize_metadata_columns(columns);
+  const rows = frame_to_rows(file_table_frame);
+  const stat_columns = file_table_frame.columns.filter((field) => field.includes(":"));
+  const col_data = {
+    id: rows.map((row) => row.id),
+    name: rows.map((row) => row.name),
+  };
+
+  normalized_columns.forEach((column) => {
+    col_data[column.field] = rows.map((row, index) => {
+      const overrides = value_overrides[column.field];
+      if (overrides && Object.prototype.hasOwnProperty.call(overrides, index)) {
+        return overrides[index];
+      }
+      return row[column.field] ?? "";
+    });
+  });
+
+  stat_columns.forEach((field) => {
+    col_data[field] = rows.map((row) => row[field] ?? null);
+  });
+
+  set_metadata_table_columns(normalized_columns);
+  file_table_frame = new PhaseFinderFrame(
+    col_data,
+    ["id", "name", ...normalized_columns.map((column) => column.field), ...stat_columns],
+  );
+  render_file_table();
+}
+
+function add_manual_metadata_column() {
+  if (!file_table_frame || file_table_frame.length === 0) {
+    set_status("Load FCS files or import metadata before adding metadata columns.", true);
+    return;
+  }
+
+  const existing = current_metadata_columns();
+  const used_labels = new Set(existing.map((column) => column.label.toLowerCase()));
+  const label = unique_metadata_label("New Column", used_labels);
+  const used = new Set(["id", "name", ...existing.map((column) => column.field), ...file_table_frame.columns]);
+  const field = metadata_field_from_label(label, used);
+  const column = {
+    field,
+    label,
+    editable: true,
+    filterable: true,
+    headerEditable: true,
+    source: "manual",
+  };
+  pending_header_focus_field = field;
+  rebuild_table_with_metadata_columns([...existing, column], { [field]: Array(file_table_frame.length).fill("") });
+  set_status_bar(`Added metadata column "${label}".`);
+}
+
+function open_metadata_import_picker() {
+  if (!file_table_frame || file_table_frame.length === 0) {
+    set_status("Load FCS files or an existing metadata table before importing metadata.", true);
+    return;
+  }
+  if (!metadata_import_input) return;
+  metadata_import_input.value = "";
+  metadata_import_input.click();
+}
+
+function detect_metadata_delimiter(text) {
+  const first_line = String(text || "").replace(/^\uFEFF/, "").split(/\r?\n/).find((line) => line.trim()) || "";
+  const tab_count = (first_line.match(/\t/g) || []).length;
+  const comma_count = (first_line.match(/,/g) || []).length;
+  return tab_count > comma_count ? "\t" : ",";
+}
+
+function parse_delimited_metadata(text, delimiter = detect_metadata_delimiter(text)) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let in_quotes = false;
+  const input = String(text || "").replace(/^\uFEFF/, "");
+
+  for (let i = 0; i < input.length; i += 1) {
+    const chr = input[i];
+    if (in_quotes) {
+      if (chr === '"' && input[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else if (chr === '"') {
+        in_quotes = false;
+      } else {
+        field += chr;
+      }
+      continue;
+    }
+
+    if (chr === '"') {
+      in_quotes = true;
+    } else if (chr === delimiter) {
+      row.push(field);
+      field = "";
+    } else if (chr === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (chr === "\r") {
+      // Ignore CR in CRLF input.
+    } else {
+      field += chr;
+    }
+  }
+
+  row.push(field);
+  rows.push(row);
+  while (rows.length && rows[rows.length - 1].every((value) => String(value || "").trim() === "")) {
+    rows.pop();
+  }
+  if (!rows.length) return { headers: [], records: [], delimiter };
+
+  const headers = rows[0].map((value) => String(value || "").trim());
+  const records = rows.slice(1).map((values) => {
+    const record = {};
+    headers.forEach((header, index) => {
+      record[header] = values[index] ?? "";
+    });
+    return record;
+  });
+  return { headers, records, delimiter };
+}
+
+function normalized_metadata_header(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function find_metadata_filename_column(headers) {
+  const preferred = new Set([
+    "filename",
+    "file",
+    "fileid",
+    "fcs",
+    "fcsfile",
+    "fcsfilename",
+    "samplename",
+    "sample",
+    "name",
+  ]);
+  return headers.find((header) => preferred.has(normalized_metadata_header(header))) || "";
+}
+
+function metadata_filename_key(value) {
+  const basename = String(value || "").trim().split(/[\\/]/).pop();
+  return display_name(basename).trim().toLowerCase();
+}
+
+function loaded_file_index_by_metadata_key(rows) {
+  const index = new Map();
+  rows.forEach((row, row_index) => {
+    [row.name, display_name(row.name)].forEach((name) => {
+      const key = metadata_filename_key(name);
+      if (key && !index.has(key)) index.set(key, row_index);
+    });
+  });
+  return index;
+}
+
+function import_metadata_records(parsed, source_name = "metadata file") {
+  if (!file_table_frame || file_table_frame.length === 0) {
+    set_status("Load FCS files or an existing metadata table before importing metadata.", true);
+    return;
+  }
+
+  const filename_header = find_metadata_filename_column(parsed.headers);
+  if (!filename_header) {
+    set_status_bar("Metadata import failed: no Filename column was found.", true);
+    return;
+  }
+
+  const used_labels = new Set();
+  const used_fields = new Set(["id", "name"]);
+  const imported_columns = parsed.headers
+    .filter((header) => header && header !== filename_header)
+    .map((header) => {
+      const label = unique_metadata_label(header, used_labels);
+      return {
+        field: metadata_field_from_label(label, used_fields),
+        label,
+        editable: true,
+        filterable: true,
+        headerEditable: true,
+        source: "import",
+        source_header: header,
+      };
+    });
+
+  if (!imported_columns.length) {
+    set_status_bar("Metadata import failed: no metadata columns were found after the Filename column.", true);
+    return;
+  }
+
+  const records = parsed.records.map((record) => {
+    const row = { name: record[filename_header] ?? "" };
+    imported_columns.forEach((column) => {
+      row[column.field] = record[column.source_header] ?? "";
+    });
+    return row;
+  });
+
+  const loaded_rows = frame_to_rows(file_table_frame).filter((row) => metadata_row_is_linked(row));
+  const result = build_metadata_frame_from_records(records, imported_columns, loaded_rows, { source: "import" });
+
+  preserve_metadata_row_order = true;
+  window.PhaseFinderSummaryStats?.clear_stats_plan?.();
+  set_metadata_table_columns(result.columns);
+  file_table_frame = result.frame;
+  selected_file_ids.clear();
+  result.frame.col("id").forEach((id) => {
+    if (typeof file_map !== "undefined" && file_map.has(id)) selected_file_ids.add(id);
+  });
+  sync_file_annotations();
+  render_file_table();
+  set_status_bar(
+    `Imported ${result.frame.length} metadata row${result.frame.length === 1 ? "" : "s"} from ${source_name}; ` +
+    `${result.matched} matched loaded FCS file${result.matched === 1 ? "" : "s"}, ` +
+    `${result.unmatched} unmatched.`,
+    result.unmatched > 0,
+  );
+}
+
+async function handle_metadata_import_file() {
+  const file = metadata_import_input?.files?.[0];
+  if (!file) return;
+  try {
+    const parsed = parse_delimited_metadata(await file.text());
+    import_metadata_records(parsed, file.name);
+  } catch (error) {
+    set_status_bar(`Metadata import failed: ${error.message}`, true);
+  }
+}
 
 /*
 
@@ -996,6 +1360,28 @@ function filter_control(column) {
           </div>`;
 }
 
+function header_label_control(column) {
+  if (column.headerEditable) {
+    return `
+          <div class="metadata_header_editor">
+            <input
+              class="metadata_header_input"
+              data-field="${escape_html(column.field)}"
+              type="text"
+              value="${escape_html(column.label)}"
+              aria-label="Metadata column header"
+            />
+            <button
+              class="metadata_header_ok"
+              data-field="${escape_html(column.field)}"
+              type="button"
+              aria-label="Confirm metadata column header"
+            >OK</button>
+          </div>`;
+  }
+  return `<button type="button" class="th_sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button>`;
+}
+
 /*
 
 Purpose:
@@ -1015,7 +1401,7 @@ function header_cell(column) {
   return `
         <th>
           <div class="th_inner">
-            <button type="button" class="th_sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button>
+            ${header_label_control(column)}
             ${filter}
           </div>
         </th>`;
@@ -1035,7 +1421,7 @@ Output:
 
 */
 function header_label_cell(column) {
-  return `<th class="stats_label_th"><button type="button" class="th_sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button></th>`;
+  return `<th class="stats_label_th">${header_label_control(column)}</th>`;
 }
 
 /*
@@ -1416,12 +1802,17 @@ function handle_metadata_split_step_click(event) {
 function apply_filename_metadata_columns(spec, columns, { render = true, preserve_existing = false } = {}) {
   if (!file_table_frame) return;
 
-  set_metadata_table_columns(columns.map((column) => ({
+  const normalized_columns = columns.map((column) => ({
     field: column.field,
     label: column.label,
+    source_index: column.source_index,
     editable: true,
     filterable: true,
-  })));
+    headerEditable: false,
+    source: "filename",
+  }));
+
+  set_metadata_table_columns(normalized_columns);
 
   const rows = frame_to_rows(file_table_frame);
   const stat_columns = file_table_frame.columns.filter((field) => field.includes(":"));
@@ -1430,7 +1821,7 @@ function apply_filename_metadata_columns(spec, columns, { render = true, preserv
     name: rows.map((row) => row.name),
   };
 
-  columns.forEach((column) => {
+  normalized_columns.forEach((column) => {
     col_data[column.field] = rows.map((row) => {
       const existing = row[column.field];
       if (preserve_existing && existing != null && String(existing) !== "") return existing;
@@ -1441,9 +1832,17 @@ function apply_filename_metadata_columns(spec, columns, { render = true, preserv
     col_data[field] = rows.map((row) => row[field] ?? null);
   });
 
-  file_table_frame = new PhaseFinderFrame(col_data, ["id", "name", ...columns.map((column) => column.field), ...stat_columns]);
+  file_table_frame = new PhaseFinderFrame(col_data, ["id", "name", ...normalized_columns.map((column) => column.field), ...stat_columns]);
   sync_file_annotations();
   if (render) render_file_table();
+}
+
+function can_auto_apply_filename_metadata_template() {
+  if (!filename_metadata_template?.columns?.length || !file_table_frame) return false;
+  const current = current_metadata_columns();
+  if (current.length === 0) return true;
+  if (current.length !== filename_metadata_template.columns.length) return false;
+  return current.every((column, index) => column.field === filename_metadata_template.columns[index].field);
 }
 
 function apply_current_filename_metadata_template({ render = true, preserve_existing = true } = {}) {
@@ -1490,6 +1889,26 @@ function schedule_metadata_wizard_after_file_load() {
   window.setTimeout(() => open_metadata_wizard(), 750);
 }
 
+function link_existing_metadata_row_to_loaded_entry(entry) {
+  if (!file_table_frame || !entry?.id || !entry?.name) return false;
+  const target_key = metadata_filename_key(entry.name);
+  if (!target_key) return false;
+
+  const ids = [...file_table_frame.col("id")];
+  const names = [...file_table_frame.col("name")];
+  const index = names.findIndex((name, row_index) => {
+    if (typeof file_map !== "undefined" && file_map.has(ids[row_index])) return false;
+    return metadata_filename_key(name) === target_key;
+  });
+  if (index < 0) return false;
+
+  ids[index] = entry.id;
+  names[index] = entry.name;
+  file_table_frame.setCol("id", ids);
+  file_table_frame.setCol("name", names);
+  return true;
+}
+
 /*
 
 Purpose:
@@ -1507,7 +1926,7 @@ Output:
 */
 function render_file_table() {
   if (!file_table_frame || file_table_frame.length === 0) {
-    file_table.innerHTML = '<p class="empty_note">Upload FCS files to initialize the table.</p>';
+    file_table.innerHTML = '<p class="empty_note">Load FCS files to initialize the table.</p>';
     return;
   }
 
@@ -1520,7 +1939,7 @@ function render_file_table() {
   const visible_files = displayed_files();
 
   // A row filtered out of the display is automatically deselected.
-  const visible_ids = new Set(visible_files.map((row) => row.id));
+  const visible_ids = new Set(visible_files.filter((row) => metadata_row_is_linked(row)).map((row) => row.id));
   let pruned_selection = false;
   selected_file_ids.forEach((id) => {
     if (!visible_ids.has(id)) {
@@ -1590,9 +2009,12 @@ function render_file_table() {
   const empty_colspan = TABLE_COLUMNS.length + 1 + total_stat_cols;
   const body = visible_files.length
     ? visible_files.map((row) => {
+        const is_linked = metadata_row_is_linked(row);
         const metadata_tds = TABLE_COLUMNS.map((column) => {
           if (column.field === "name") {
-            return `<td class="filename_cell" title="${escape_html(row.name)}">${escape_html(display_name(row.name))}</td>`;
+            const title = is_linked ? row.name : `${row.name || "(blank filename)"} — FCS file is not loaded`;
+            const class_name = is_linked ? "filename_cell" : "filename_cell filename_cell_unlinked";
+            return `<td class="${class_name}" title="${escape_html(title)}">${escape_html(display_name(row.name || ""))}</td>`;
           }
           return cell(row, column.field);
         }).join("");
@@ -1603,8 +2025,8 @@ function render_file_table() {
           }).join("")
         ).join("") : "";
         return `
-        <tr>
-          <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) ? " checked" : ""} /></td>
+        <tr class="${is_linked ? "" : "metadata_row_unlinked"}">
+          <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) && is_linked ? " checked" : ""}${is_linked ? "" : " disabled"} /></td>
           ${metadata_tds}
           ${stats_tds}
         </tr>`;
@@ -1621,6 +2043,19 @@ function render_file_table() {
   update_select_all_checkbox();
   update_start_button_state();
   sync_file_annotations();
+
+  if (pending_header_focus_field) {
+    const field = pending_header_focus_field;
+    pending_header_focus_field = null;
+    window.requestAnimationFrame(() => {
+      const input = [...file_table.querySelectorAll(".metadata_header_input")]
+        .find((candidate) => candidate.dataset.field === field);
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    });
+  }
 }
 
 /*
@@ -1643,13 +2078,47 @@ function update_select_all_checkbox() {
     return;
   }
 
-  const displayed = displayed_files();
+  const displayed = displayed_files().filter((entry) => metadata_row_is_linked(entry));
   const selected_count = displayed.reduce(
     (count, entry) => count + (selected_file_ids.has(entry.id) ? 1 : 0),
     0,
   );
   checkbox.checked = displayed.length > 0 && selected_count === displayed.length;
   checkbox.indeterminate = selected_count > 0 && selected_count < displayed.length;
+}
+
+function handle_metadata_header_input(event) {
+  const input = event.target.closest(".metadata_header_input");
+  if (!input) return false;
+
+  const column = TABLE_COLUMNS.find((entry) => entry.field === input.dataset.field);
+  if (!column) return true;
+  column.label = input.value;
+  sync_file_annotations();
+  return true;
+}
+
+function finalize_metadata_header_input(input) {
+  const column = TABLE_COLUMNS.find((entry) => entry.field === input.dataset.field);
+  if (!column) return;
+
+  const used = new Set(TABLE_COLUMNS
+    .filter((entry) => entry.field !== "name" && entry.field !== column.field)
+    .map((entry) => entry.label.toLowerCase()));
+  const label = unique_metadata_label(input.value, used);
+  column.label = label;
+  column.headerEditable = false;
+  input.value = label;
+  sync_file_annotations();
+}
+
+function finalize_metadata_header_by_field(field) {
+  const input = [...file_table.querySelectorAll(".metadata_header_input")]
+    .find((candidate) => candidate.dataset.field === field);
+  if (!input) return false;
+  finalize_metadata_header_input(input);
+  render_file_table();
+  return true;
 }
 
 /*
@@ -1669,6 +2138,10 @@ Output:
 function handle_table_change(event) {
   const target = event.target;
 
+  if (target.classList.contains("metadata_header_input")) {
+    return;
+  }
+
   if (target.classList.contains("th_filter_option")) {
     const field = target.dataset.filterField;
     const selected = column_filters[field] || (column_filters[field] = new Set());
@@ -1682,7 +2155,7 @@ function handle_table_change(event) {
   }
 
   if (target.id === "select_all_files") {
-    displayed_files().forEach((entry) => {
+    displayed_files().filter((entry) => metadata_row_is_linked(entry)).forEach((entry) => {
       if (target.checked) {
         selected_file_ids.add(entry.id);
       } else {
@@ -1697,6 +2170,10 @@ function handle_table_change(event) {
 
   if (target.classList.contains("row_select")) {
     const file_id = target.dataset.fileId;
+    if (!file_id || (typeof file_map !== "undefined" && !file_map.has(file_id))) {
+      target.checked = false;
+      return;
+    }
     if (target.checked) {
       selected_file_ids.add(file_id);
     } else {
@@ -1722,6 +2199,12 @@ Output:
 
 */
 function handle_table_click(event) {
+  const header_ok = event.target.closest(".metadata_header_ok");
+  if (header_ok) {
+    finalize_metadata_header_by_field(header_ok.dataset.field);
+    return;
+  }
+
   const filter_toggle = event.target.closest(".th_filter_toggle");
   if (filter_toggle) {
     const field = filter_toggle.dataset.filterField;
