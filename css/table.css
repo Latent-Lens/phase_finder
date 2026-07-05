@@ -183,7 +183,8 @@ th {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   background: none;
   border: 0;
   padding: 0;
@@ -197,6 +198,76 @@ th {
 
 .th_sort:hover {
   color: var(--accent);
+}
+
+.metadata_header_editor {
+  position: relative;
+  display: block;
+  width: max-content;
+  min-width: 100%;
+}
+
+.file_table .metadata_header_input {
+  width: 100%;
+  min-width: 12ch;
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 4px 42px 4px 7px;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.file_table .metadata_header_ok {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  height: 22px;
+  min-height: 0;
+  transform: translateY(-50%);
+  border: 1px solid var(--success_strong);
+  border-radius: 5px;
+  background: var(--success);
+  color: #fff;
+  padding: 0 7px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.file_table .metadata_header_ok:hover {
+  background: var(--success_strong);
+}
+
+.file_table .metadata_header_input:focus {
+  border-color: var(--accent);
+  outline: 3px solid rgba(37, 99, 235, 0.18);
+  outline-offset: 1px;
+}
+
+.filename_cell_unlinked {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.metadata_row_unlinked {
+  background: rgba(220, 38, 38, 0.035);
+}
+
+.metadata_row_unlinked .row_select:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 /* Always-visible up/down sort arrows, side by side; the active one highlights. */
@@ -225,7 +296,8 @@ th {
 
 .th_filter {
   margin-top: auto;
-  max-width: 180px;
+  width: 100%;
+  max-width: none;
   font-weight: 400;
 }
 
@@ -246,6 +318,17 @@ th {
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+/* The "no files loaded yet" note sits directly in the table wrapper (not a
+   table row) and is the metadata panel's only content before any files are
+   loaded. Since the panel now sizes to its content, give this state some
+   breathing room instead of the panel collapsing to a single text line. */
+#file_table > .empty_note {
+  /* The panel title's separator rule already has a 10px margin-bottom above
+     us, so a smaller top padding here keeps the text visually centered
+     against the bottom padding instead of sitting low in the panel. */
+  padding: 2px 4px 12px;
 }
 
 /* ---- Statistics columns ---- */

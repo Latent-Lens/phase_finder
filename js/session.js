@@ -47,7 +47,10 @@
       p('columns = [');
       s.metadata.columns.forEach((c, i) => {
         const comma = i < s.metadata.columns.length - 1 ? ',' : '';
-        p(`  {field = ${toml_str(c.field)}, label = ${toml_str(c.label)}}${comma}`);
+        const extras = [];
+        if (c.headerEditable != null) extras.push(`header_editable = ${Boolean(c.headerEditable)}`);
+        if (c.source) extras.push(`source = ${toml_str(c.source)}`);
+        p(`  {field = ${toml_str(c.field)}, label = ${toml_str(c.label)}${extras.length ? ', ' + extras.join(', ') : ''}}${comma}`);
       });
       p(']');
     } else {
@@ -791,10 +794,11 @@
     const ts    = app.get_session_table_state();
     const frame = app.get_file_table();
 
-    const names     = frame ? [...frame.col('name')] : [];
+    const names     = app.get_parsed_files?.().map((entry) => entry.name) || [];
     const user_cols = ts.table_columns.filter((c) => c.field !== 'name');
+    const table_names = frame ? [...frame.col('name')] : [];
 
-    const meta_rows = names.map((name, idx) => {
+    const meta_rows = table_names.map((name, idx) => {
       const row = { name };
       user_cols.forEach((c) => { row[c.field] = frame.col(c.field)[idx] ?? ''; });
       return row;
@@ -819,7 +823,12 @@
       files:   { names, records: build_file_records_for(names) },
       stats_plan: window.PhaseFinderSummaryStats?.get_stats_plan?.() ?? [],
       metadata: {
-        columns: user_cols.map((c) => ({ field: c.field, label: c.label })),
+        columns: user_cols.map((c) => ({
+          field: c.field,
+          label: c.label,
+          headerEditable: Boolean(c.headerEditable),
+          source: c.source || '',
+        })),
         rows:    meta_rows,
       },
       metadata_template: ts.template,
@@ -881,6 +890,7 @@
     if (!app.apply_session_state) return;
     app.apply_session_state({
       template:       session.metadata_template || null,
+      columns:        session.metadata?.columns || [],
       annotations:    session.metadata?.rows || [],
       sort:           { field: session.table?.sort_field || null, direction: session.table?.sort_direction || 'asc' },
       filters:        session.table?.filters || {},
@@ -903,7 +913,7 @@
     }
 
     const has_files = Boolean(window.PhaseFinderApp.get_file_table()?.length);
-    if (has_files) {
+    if (has_files || session.metadata?.rows?.length) {
       apply_table_session(session);
     } else if (session.metadata_template && window.PhaseFinderApp.save_metadata_template) {
       window.PhaseFinderApp.save_metadata_template(session.metadata_template);
@@ -1008,8 +1018,19 @@
     }
   }
 
+  async function handle_reset() {
+    if (!window.confirm('Reset session? This deletes this session\'s cached files and cannot be undone.')) return;
+    try {
+      const root = await OPFS().get_opfs_root();
+      const sessions_dir = await OPFS().ensure_directory(root, ['sessions'], false);
+      await sessions_dir.removeEntry(runtime_session_id, { recursive: true });
+    } catch (_) { /* nothing cached yet, or OPFS unavailable — non-fatal */ }
+    window.location.reload();
+  }
+
   document.getElementById('save_session_button')?.addEventListener('click', handle_save);
   document.getElementById('load_session_button')?.addEventListener('click', handle_load);
+  document.getElementById('reset_session_button')?.addEventListener('click', handle_reset);
 
   // ── Reconnect modal wiring ───────────────────────────────────────────────────
 
