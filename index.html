@@ -41,30 +41,33 @@
         <img id="site_logo" class="site_logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
       </div>
       <div class="header_actions">
-        <button
-          id="load_session_button"
-          class="load_session_button quick_tooltip"
-          type="button"
-          data-tooltip-key="loadSession"
-        >
-          Load session
-        </button>
-        <button
-          id="save_session_button"
-          class="save_session_button quick_tooltip"
-          type="button"
-          data-tooltip-key="saveSession"
-        >
-          Save session
-        </button>
-        <button
-          id="reset_session_button"
-          class="reset_session_button quick_tooltip"
-          type="button"
-          data-tooltip-key="resetSession"
-        >
-          Reset session
-        </button>
+        <fieldset class="session_control_group">
+          <legend>Session Control</legend>
+          <button
+            id="load_session_button"
+            class="load_session_button quick_tooltip"
+            type="button"
+            data-tooltip-key="loadSession"
+          >
+            Load
+          </button>
+          <button
+            id="save_session_button"
+            class="save_session_button quick_tooltip"
+            type="button"
+            data-tooltip-key="saveSession"
+          >
+            Save
+          </button>
+          <button
+            id="reset_session_button"
+            class="reset_session_button quick_tooltip"
+            type="button"
+            data-tooltip-key="resetSession"
+          >
+            Reset
+          </button>
+        </fieldset>
       </div>
     </header>
 

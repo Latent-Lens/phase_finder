@@ -32,6 +32,23 @@
   margin-right: 15px;
 }
 
+.session_control_group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 12px 8px 10px;
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
+}
+
+.session_control_group legend {
+  padding: 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .save_session_button {
   width: auto;
   min-height: 36px;
