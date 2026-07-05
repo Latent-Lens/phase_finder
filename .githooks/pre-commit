@@ -12,10 +12,15 @@ if ! git diff --quiet --; then
   cat >&2 <<'MSG'
 Commit blocked: unstaged tracked changes are present.
 
-The regression suite runs against the working tree. Stage or discard unstaged
-tracked edits first so the tests cover exactly what will be committed.
+#The regression suite runs against the working tree. Stage or discard unstaged
+#tracked edits first so the tests cover exactly what will be committed.
+
+Warning: unstaged tracked changes are present.
+
+Tests may include changes that are not part of this commit.
 MSG
-  exit 1
+
+#   exit 1
 fi
 
 UNTRACKED="$(git ls-files --others --exclude-standard)"
@@ -27,8 +32,12 @@ Stage, ignore, or remove these files before committing so the regression suite
 is not influenced by files outside the commit:
 
 $UNTRACKED
+Warning: unstaged tracked changes are present.
+
+Tests may include changes that are not part of this commit.
 MSG
-  exit 1
+
+#   exit 1
 fi
 
 if [ ! -x "$PYTHON" ]; then

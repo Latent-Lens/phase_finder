@@ -52,6 +52,7 @@ from tests_modeling import test_modeling
 from tests_sidebar import test_sidebar_icons
 from tests_stats import test_summary_statistics
 from tests_metadata_wizard import test_metadata_wizard
+from tests_metadata_table import test_metadata_table_actions
 from tests_reset import test_reset
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -121,6 +122,7 @@ def run(args):
         test_sidebar_icons(e2e_ctx)
         test_summary_statistics(e2e_ctx)
         test_metadata_wizard(e2e_ctx)
+        test_metadata_table_actions(e2e_ctx)
         test_reset(e2e_ctx, reset_files)
         # Filter out expected channel-not-found errors (arise from channel change tests
         # when some loaded FCS files lack data for the selected secondary channel)

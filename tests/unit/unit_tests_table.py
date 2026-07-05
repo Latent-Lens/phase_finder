@@ -176,6 +176,86 @@ _FULL_SUITE = """() => {
        JSON.stringify(parse_fixed_breaks('0, -3, abc, 4')) === JSON.stringify([4]),
        JSON.stringify(parse_fixed_breaks('0, -3, abc, 4')));
 
+  // ---- metadata import helpers --------------------------------------------
+  const parsedTsv = parse_delimited_metadata('Filename\\tCondition\\tDose\\nA.fcs\\tcontrol\\t0\\nB.fcs\\tdrug\\t10\\n');
+  push('parse_delimited_metadata: parses TSV headers and records',
+       parsedTsv.headers[0] === 'Filename' && parsedTsv.records.length === 2
+       && parsedTsv.records[1].Condition === 'drug',
+       JSON.stringify(parsedTsv));
+
+  const parsedCsv = parse_delimited_metadata('Filename,Note\\nA.fcs,\"alpha, beta\"\\n');
+  push('parse_delimited_metadata: preserves quoted CSV commas',
+       parsedCsv.records[0].Note === 'alpha, beta', JSON.stringify(parsedCsv.records[0]));
+
+  push('find_metadata_filename_column: recognizes common filename headers',
+       find_metadata_filename_column(['Sample Name', 'Condition']) === 'Sample Name',
+       find_metadata_filename_column(['Sample Name', 'Condition']));
+
+  push('metadata_filename_key: strips paths and .fcs extensions case-insensitively',
+       metadata_filename_key('C:/data/Sample_01.FCS') === 'sample_01',
+       metadata_filename_key('C:/data/Sample_01.FCS'));
+
+  const loadedIndex = loaded_file_index_by_metadata_key([
+    { name: 'Alpha.fcs' },
+    { name: 'Beta.fcs' },
+  ]);
+  push('loaded_file_index_by_metadata_key: maps imported filenames to loaded FCS rows',
+       loadedIndex.get(metadata_filename_key('/tmp/Alpha.FCS')) === 0
+       && loadedIndex.get(metadata_filename_key('Beta')) === 1
+       && !loadedIndex.has(metadata_filename_key('Gamma.fcs')),
+       JSON.stringify([...loadedIndex.entries()]));
+
+  const importedBuild = build_metadata_frame_from_records(
+    [
+      { name: 'Alpha.fcs', condition: 'control', dose: '0' },
+      { name: 'Missing.fcs', condition: 'drug', dose: '10' },
+    ],
+    [
+      { field: 'condition', label: 'Condition', headerEditable: true, source: 'import' },
+      { field: 'dose', label: 'Dose', headerEditable: true, source: 'import' },
+    ],
+    [{ id: 'loaded-alpha', name: 'Alpha.fcs' }],
+    { source: 'import' },
+  );
+  push('build_metadata_frame_from_records: preserves imported row order',
+       JSON.stringify(importedBuild.frame.col('name')) === JSON.stringify(['Alpha.fcs', 'Missing.fcs']),
+       JSON.stringify(importedBuild.frame.col('name')));
+  push('build_metadata_frame_from_records: links matching rows and flags unmatched rows',
+       importedBuild.matched === 1
+       && importedBuild.unmatched === 1
+       && importedBuild.frame.col('id')[0] === 'loaded-alpha'
+       && String(importedBuild.frame.col('id')[1]).startsWith('metadata-unlinked-'),
+       JSON.stringify({ matched: importedBuild.matched, unmatched: importedBuild.unmatched, ids: importedBuild.frame.col('id') }));
+  push('build_metadata_frame_from_records: preserves imported metadata values',
+       importedBuild.frame.col('condition')[0] === 'control'
+       && importedBuild.frame.col('dose')[1] === '10',
+       JSON.stringify({ condition: importedBuild.frame.col('condition'), dose: importedBuild.frame.col('dose') }));
+
+  const duplicateBuild = build_metadata_frame_from_records(
+    [
+      { name: 'Alpha.fcs', condition: 'first' },
+      { name: '/other/path/alpha.FCS', condition: 'duplicate' },
+    ],
+    [{ field: 'condition', label: 'Condition', headerEditable: true }],
+    [{ id: 'loaded-alpha', name: 'Alpha.fcs' }],
+    { source: 'import' },
+  );
+  push('build_metadata_frame_from_records: duplicate imported filenames link deterministically to the first row only',
+       duplicateBuild.matched === 1
+       && duplicateBuild.duplicates === 1
+       && duplicateBuild.frame.col('id')[0] === 'loaded-alpha'
+       && String(duplicateBuild.frame.col('id')[1]).startsWith('metadata-unlinked-'),
+       JSON.stringify({ matched: duplicateBuild.matched, duplicates: duplicateBuild.duplicates, ids: duplicateBuild.frame.col('id') }));
+
+  const duplicateColumns = normalize_metadata_columns([
+    { label: 'Condition', source: 'manual', headerEditable: true },
+    { label: 'Condition', source: 'manual', headerEditable: true },
+  ]);
+  push('normalize_metadata_columns: duplicate labels are made unique for editable metadata columns',
+       duplicateColumns[0].label === 'Condition' && duplicateColumns[1].label === 'Condition 2'
+       && duplicateColumns[0].field !== duplicateColumns[1].field,
+       JSON.stringify(duplicateColumns));
+
   return results;
 }"""
 
