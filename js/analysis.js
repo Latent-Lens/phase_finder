@@ -557,20 +557,20 @@ async function load_analysis_batch(
     display_total = total,
     display_suffix = "",
   } = options;
-  const tasks = batch.map(({ row }) => load_analysis_row(row, selected, { allow_main_thread_fallback, activate }));
+  const tasks = batch.map(({ row }) =>
+    load_analysis_row(row, selected, { allow_main_thread_fallback, activate }).then(async () => {
+      completed.count += 1;
+      const percent = (completed.count / total) * 100;
+      const detail = `${detail_prefix} for file ${completed.count} of ${display_total}${display_suffix}`;
 
-  for (const { row, index } of batch) {
-    completed.count += 1;
-    const percent = (completed.count / total) * 100;
-    const detail = `${detail_prefix} for file ${index + 1} of ${display_total}${display_suffix}`;
-
-    if (use_overlay) {
-      app.update_progress(percent, label, detail, row.name);
-    } else {
-      app.set_status_bar(`${detail}: ${row.name}`);
-    }
-    await app.next_frame();
-  }
+      if (use_overlay) {
+        app.update_progress(percent, label, detail, row.name);
+      } else {
+        app.set_status_bar(`${detail}: ${row.name}`);
+      }
+      await app.next_frame();
+    }),
+  );
 
   await Promise.all(tasks);
 }

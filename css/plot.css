@@ -112,7 +112,7 @@
 .info_icon::after {
   position: absolute;
   z-index: 100;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   left: 50%;
   width: min(360px, 80vw);
   padding: 9px 10px;
@@ -128,7 +128,7 @@
   opacity: 0;
   pointer-events: none;
   text-align: left;
-  transform: translateX(-50%) translateY(2px);
+  transform: translateX(-50%) translateY(-2px);
   transition: opacity 70ms ease, transform 70ms ease, visibility 70ms ease;
   visibility: hidden;
   white-space: pre-line;
@@ -137,7 +137,7 @@
 .info_icon::before {
   position: absolute;
   z-index: 101;
-  bottom: calc(100% + 3px);
+  top: calc(100% + 3px);
   left: 50%;
   width: 9px;
   height: 9px;
