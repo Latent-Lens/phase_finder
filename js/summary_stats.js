@@ -284,7 +284,7 @@
       calculate_button.disabled = true;
 
       // Phase 1: load all file data in parallel (results cached for phase 2).
-      if (stats_progress_label) stats_progress_label.textContent = `Loading data for ${rows.length} file${rows.length === 1 ? "" : "s"}…`;
+      if (stats_progress_label) stats_progress_label.textContent = `Loading ${channel_label} data for ${rows.length} file${rows.length === 1 ? "" : "s"}…`;
       const loaded_data = await Promise.all(rows.map(async (row) => {
         try {
           const data = await load_analysis_row(row, { dna_area: channel_label }, { activate: false });
