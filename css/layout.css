@@ -26,6 +26,10 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  /* Shifted left by the workspace's reserved scrollbar-gutter width (see
+     .workspace's scrollbar-gutter: stable) so the rightmost button lines up
+     with the table/plot panels' right edge instead of the true page edge. */
+  margin-right: 15px;
 }
 
 .save_session_button {
@@ -98,6 +102,29 @@
 
 .load_session_button:focus-visible {
   outline: 3px solid rgba(1, 165, 175, 0.35);
+  outline-offset: 2px;
+}
+
+.reset_session_button {
+  width: auto;
+  min-height: 36px;
+  border: 1px solid #b91c1c;
+  border-radius: 8px;
+  background: #b91c1c;
+  color: var(--panel);
+  padding: 0 14px;
+  font-size: var(--panel_title_font_size);
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.reset_session_button:hover {
+  filter: brightness(1.15);
+}
+
+.reset_session_button:focus-visible {
+  outline: 3px solid rgba(185, 28, 28, 0.35);
   outline-offset: 2px;
 }
 
@@ -254,6 +281,17 @@
   flex-direction: column;
 }
 
+/* The metadata table panel sizes itself to its content (title bar + however
+   tall the table currently is) instead of stretching to fill the workspace,
+   so it grows and shrinks with the row/column count. Any leftover vertical
+   space goes to the plot panel (still flex: 1), and .workspace's own
+   overflow-y: auto scrolls the page if the table gets taller than the
+   viewport. */
+#metadata_panel {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
 .table_wrap {
   flex: 1;
   min-height: 0;
@@ -282,7 +320,21 @@
   min-height: 0;
   max-height: none;
   overflow-x: auto;
-  overflow-y: hidden;
+  /* Not "hidden": the panel now sizes itself to fit the whole table (see
+     #metadata_panel above), so there's nothing to vertically clip. Leaving
+     this hidden clipped off the last row(s) whenever a horizontal scrollbar
+     appeared, since the scrollbar's own height ate into the box's content
+     area and "hidden" hid whatever no longer fit instead of letting the
+     (already auto-sized) box grow to include it. */
+  overflow-y: auto;
+}
+
+/* Small gap so the last data row isn't flush against the panel's bottom
+   edge. Scoped to when a real table is rendered (not the empty-state
+   placeholder) so .empty_note's own top/bottom padding stays symmetrical
+   when no files are loaded yet. */
+#metadata_panel_body > .table_wrap:has(> table.file_table) {
+  padding-bottom: 10px;
 }
 
 #metadata_panel.is_collapsed #metadata_panel_body {
