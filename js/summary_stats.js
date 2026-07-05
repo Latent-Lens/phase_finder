@@ -38,6 +38,10 @@
     }
   }
 
+  function clear_stats_plan() {
+    stats_session.clear();
+  }
+
   // Scans the current frame for "CHANNEL:metric" columns and re-populates
   // stats_session. Called on pf-files-loaded so a restored session (whose
   // TOML carried a stats_plan) is always reflected in memory.
@@ -365,5 +369,6 @@
     close_modal: close_stats_modal,
     get_stats_plan,
     restore_stats_plan,
+    clear_stats_plan,
   });
 }());
