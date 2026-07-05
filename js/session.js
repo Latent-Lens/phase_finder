@@ -747,7 +747,7 @@
             ? `Loaded ${files.length} file(s). Not found: ${missing.join(', ')}`
             : `Session loaded with ${files.length} file(s).`, missing.length > 0);
         } else {
-          app.set_status_bar?.(`No FCS files found in "${options.data_directory}".`, true);
+          app.set_status_bar?.(`No FCS files found in "${options.data_directory}". Re-drag or reload the FCS files.`, true);
         }
         return;
       }
