@@ -41,16 +41,6 @@
         <img id="site_logo" class="site_logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
       </div>
       <div class="header_actions">
-        <a
-          id="help_link"
-          class="help_link quick_tooltip"
-          href="./help.html"
-          target="_blank"
-          rel="noopener"
-          data-tooltip-key="help"
-        >
-          Help
-        </a>
         <button
           id="load_session_button"
           class="load_session_button quick_tooltip"
@@ -232,6 +222,12 @@
                 <button id="metadata_parse_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="configureMetadata" aria-label="Configure filename metadata columns" disabled>
                   <img class="panel_toggle_icon" src="./assets/img/text_to_col.svg" alt="" aria-hidden="true" />
                 </button>
+                <button id="metadata_add_column_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="addMetadataColumn" aria-label="Add a metadata column" disabled>
+                  <img class="panel_toggle_icon" src="./assets/img/manual_add_column.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="metadata_import_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="importMetadataTable" aria-label="Import metadata table" disabled>
+                  <img class="panel_toggle_icon" src="./assets/img/table_import.svg" alt="" aria-hidden="true" />
+                </button>
                 <button id="metadata_export_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="exportTable" aria-label="Export table as TSV" disabled>
                   <img class="panel_toggle_icon" src="./assets/img/table_export.svg" alt="" aria-hidden="true" />
                 </button>
@@ -245,6 +241,7 @@
           <div id="metadata_panel_body" class="metadata_panel_body">
             <div id="file_table" class="table_wrap"></div>
           </div>
+          <input id="metadata_import_input" class="visually_hidden_file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" />
         </section>
       </section>
     </main>
@@ -253,7 +250,7 @@
       <div class="stats_modal_backdrop"></div>
       <div class="stats_modal_card metadata_wizard_card">
         <div class="stats_modal_header">
-          <h3 id="metadata_wizard_title" class="stats_modal_title">Filename Metadata Columns</h3>
+          <h3 id="metadata_wizard_title" class="stats_modal_title">Filename to Metadata Wizard</h3>
           <button id="metadata_wizard_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
         </div>
         <div class="stats_modal_body metadata_wizard_body">
@@ -335,6 +332,51 @@
       </div>
     </div>
 
+    <div id="axis_range_modal" class="stats_modal axis_range_modal" hidden role="dialog" aria-modal="true" aria-labelledby="axis_range_modal_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card axis_range_card">
+        <div class="stats_modal_header axis_range_header">
+          <div class="axis_range_title_row">
+            <h3 id="axis_range_modal_title" class="stats_modal_title">Set Axis Range Limits</h3>
+            <button id="axis_range_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
+          </div>
+          <span class="axis_range_title_rule"></span>
+        </div>
+        <div class="stats_modal_body">
+          <div class="axis_range_columns">
+            <div class="axis_range_column">
+              <div class="axis_range_column_title">X-Axis</div>
+              <label class="axis_range_field">
+                <span>Min</span>
+                <input id="axis_range_x_min" type="number" step="any" placeholder="auto" />
+              </label>
+              <label class="axis_range_field">
+                <span>Max</span>
+                <input id="axis_range_x_max" type="number" step="any" placeholder="auto" />
+              </label>
+            </div>
+            <div class="axis_range_column">
+              <div class="axis_range_column_title">Y-Axis</div>
+              <label class="axis_range_field">
+                <span>Min</span>
+                <input id="axis_range_y_min" type="number" step="any" placeholder="auto" />
+              </label>
+              <label class="axis_range_field">
+                <span>Max</span>
+                <input id="axis_range_y_max" type="number" step="any" placeholder="auto" />
+              </label>
+            </div>
+          </div>
+          <p class="axis_range_hint">Leave a field empty to use the current auto-scaled value.</p>
+          <div class="stats_modal_actions axis_range_actions">
+            <button id="axis_range_reset" type="button" class="secondary_button">Reset</button>
+            <button id="axis_range_cancel" type="button" class="secondary_button">Cancel</button>
+            <button id="axis_range_apply" type="button">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="progress_overlay" class="progress_overlay" hidden aria-live="polite" aria-busy="false">
       <div class="progress_card" role="status">
         <div class="progress_track" aria-hidden="true">
@@ -350,6 +392,9 @@
 
     <footer id="status_bar" class="status_bar">
       <span id="status_bar_message" class="status_bar_message">Ready.</span>
+      <span class="status_bar_help">
+        <a href="help.html">Get Help</a>
+      </span>
       <span class="status_bar_copyright">
         © 2026 <a href="https://latentlens.org">LatentLens</a>. All rights reserved
       </span>
