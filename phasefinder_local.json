@@ -1,4 +1,4 @@
 {
-  "autoload_session": "sessions/phasefinder_session_20260701.toml",
-  "data_directory": "flow_data"
+  "autoload_session": "sessions/phasefinder_session_20260705.toml",
+  "data_directory": "../flow_data"
 }
