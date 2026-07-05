@@ -12,7 +12,7 @@
   left: 0;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 0;
   z-index: 20;
   min-height: 36px;
   border-top: 3.5px solid var(--logo_teal);
@@ -21,8 +21,8 @@
   color: var(--panel);
   padding: 2px 16px;
   overflow: hidden;
-  font-size: 0.75rem;
-  line-height: 1;
+  font-size: 0.9rem;
+  line-height: 1.2;
 }
 
 .status_bar.error {
@@ -33,13 +33,54 @@
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  padding-right: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.status_bar_help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0 24px;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+.status_bar_help::before,
+.status_bar_help::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 20px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-50%);
+}
+
+.status_bar_help::before {
+  left: 0;
+}
+
+.status_bar_help::after {
+  right: 0;
+}
+
+.status_bar_help a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.status_bar_help a:hover {
+  opacity: 0.8;
+}
+
 .status_bar_copyright {
   flex: 0 0 auto;
-  margin-left: auto;
+  padding-left: 14px;
   white-space: nowrap;
   opacity: 0.9;
 }
