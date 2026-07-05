@@ -150,6 +150,23 @@ def test_metadata_wizard(ctx: TestContext):
 
     # --- Cancel discards in-progress edits without touching the applied table ---
     page.click("#metadata_parse_button")
+    reopened_steps = page.eval_on_selector_all(
+        "#metadata_split_steps .metadata_split_step",
+        """rows => rows.map(row => ({
+          type: row.querySelector('.metadata_split_type')?.value,
+          label: row.querySelector('.metadata_step_column_name')?.value,
+          hidden: Boolean(row.querySelector('.metadata_step_hide')?.checked),
+          regex: row.querySelector('.metadata_step_regex')?.value || '',
+          breaks: row.querySelector('.metadata_step_breaks')?.value || '',
+        }))""",
+    )
+    ctx.check(group, "Reopening the wizard restores the applied split settings",
+              len(reopened_steps) >= 5
+              and reopened_steps[0]["type"] == "delimiter"
+              and reopened_steps[0]["hidden"]
+              and reopened_steps[1]["label"] == "Strain"
+              and reopened_steps[4]["regex"] == r"t(\d+)",
+              str(reopened_steps[:5]))
     page.fill('.metadata_split_step[data-step-index="0"] .metadata_step_delimiter', "-")
     page.click("#metadata_wizard_cancel")
     headers_after_cancel = _th_sort_labels(page)
