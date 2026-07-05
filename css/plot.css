@@ -28,9 +28,9 @@
    right-side legend margin and does not take height away from the SVG. */
 .plot_panel #plot_area {
   position: relative;
-  flex: 0 0 clamp(360px, 42vh, 520px);
-  height: clamp(360px, 42vh, 520px);
-  min-height: 360px;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 220px;
 }
 
 .plot_controls {
@@ -229,4 +229,133 @@
 .djf_fit_table .numeric_cell {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Axis min/max modal (double-click an axis to open) */
+
+/* feedback.css (the other stats_modal_* dialogs) loads after this file, so a
+   bare .axis_range_card / .axis_range_header selector ties in specificity
+   with .stats_modal_card / .stats_modal_header and LOSES the cascade (later
+   stylesheet wins ties) — that's what caused the header to keep its default
+   padding/border and the title to sit off-center before. Prefixing every
+   override with .axis_range_modal raises specificity so these always win,
+   regardless of stylesheet order. */
+
+.axis_range_modal .stats_modal_card {
+  width: min(300px, 100%);
+  border: 3px solid var(--logo_blue);
+}
+
+/* No dimming backdrop: the modal is meant to be dragged aside so the plot
+   underneath stays fully visible while picking axis bounds. Kept clickable
+   (not pointer-events: none) so clicking outside the card still closes it. */
+.axis_range_modal .stats_modal_backdrop {
+  background: transparent;
+}
+
+/* Compact, panel-title-style header: a tight title row over a rule that
+   stops short of the card edges (matching .panel_title_row/.panel_title_rule)
+   instead of the taller default modal header with its edge-to-edge border. */
+.axis_range_modal .stats_modal_header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 8px 14px 6px;
+  border-bottom: none;
+  cursor: grab;
+}
+
+.axis_range_modal .stats_modal_header:active {
+  cursor: grabbing;
+}
+
+.axis_range_modal.axis_range_modal__dragging .stats_modal_card {
+  user-select: none;
+}
+
+.axis_range_title_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Font size for the "Set Axis Range Limits" title — tweak here. */
+.axis_range_modal .stats_modal_title {
+  font-size: 1.2rem;
+}
+
+.axis_range_modal .stats_modal_close {
+  width: 28px;
+  min-height: 28px;
+  height: 28px;
+  font-size: 1.1rem;
+}
+
+.axis_range_title_rule {
+  display: block;
+  width: 90%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--logo_teal);
+}
+
+.axis_range_columns {
+  display: flex;
+  gap: 25%;
+}
+
+.axis_range_column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.axis_range_column_title {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: underline;
+  text-transform: uppercase;
+}
+
+.axis_range_field {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.axis_range_field input {
+  width: 70px;
+  min-height: 28px;
+  height: 28px;
+}
+
+.axis_range_hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.axis_range_actions {
+  gap: 10px;
+}
+
+.x_axis_group,
+.y_axis_group {
+  cursor: pointer;
+}
+
+.plot_axis_title {
+  cursor: pointer;
 }

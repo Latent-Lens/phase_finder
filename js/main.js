@@ -13,6 +13,9 @@ const status_bar_message = document.querySelector("#status_bar_message");
 const channel_select = document.querySelector("#channel_select");
 const collapsed_channel_select = document.querySelector("#collapsed_channel_select");
 const file_table = document.querySelector("#file_table");
+const metadata_add_column_button = document.querySelector("#metadata_add_column_button");
+const metadata_import_button = document.querySelector("#metadata_import_button");
+const metadata_import_input = document.querySelector("#metadata_import_input");
 const metadata_parse_button = document.querySelector("#metadata_parse_button");
 const metadata_export_button = document.querySelector("#metadata_export_button");
 const metadata_wizard_modal = document.querySelector("#metadata_wizard_modal");
@@ -147,10 +150,15 @@ async function load_files(files) {
       if (!has_initialized_plot()) {
         selected_file_ids.add(entry.id);
       }
-      new_tabular_rows.push({
-        id: entry.id,
-        name: entry.name,
-      });
+      const linked_existing_row = typeof link_existing_metadata_row_to_loaded_entry === "function"
+        ? link_existing_metadata_row_to_loaded_entry(entry)
+        : false;
+      if (!linked_existing_row) {
+        new_tabular_rows.push({
+          id: entry.id,
+          name: entry.name,
+        });
+      }
       queued_names.add(file.name);
       loaded_entries.push(entry);
       loaded += 1;
@@ -167,18 +175,26 @@ async function load_files(files) {
     // concat_frames fills missing columns (e.g. existing stats cols) with null
     // for new rows, which is the correct default until stats are calculated.
     file_table_frame = file_table_frame ? concat_frames(file_table_frame, new_frame) : new_frame;
-    apply_current_filename_metadata_template({ render: false });
+    if (can_auto_apply_filename_metadata_template()) {
+      apply_current_filename_metadata_template({ render: false });
+    } else {
+      sync_file_annotations();
+    }
+  } else if (loaded_entries.length) {
+    sync_file_annotations();
   }
   if (loaded_entries.length) {
     document.dispatchEvent(new CustomEvent("pf-files-loaded", {
-      detail: { count: loaded, names: new_tabular_rows.map((r) => r.name) },
+      detail: { count: loaded, names: loaded_entries.map((entry) => entry.name) },
     }));
     // Copy newly loaded files into OPFS in the background so a saved session can
     // auto-restore them on reload. Already-cached files (session restore /
     // reconnect) are skipped inside register_loaded_files.
     window.PhaseFinderSessionFiles?.register_loaded_files(loaded_entries);
   }
-  sort_file_table();
+  if (!should_preserve_metadata_row_order()) {
+    sort_file_table();
+  }
   update_views();
   update_drop_zone_text();
   if (loaded) schedule_metadata_wizard_after_file_load();
@@ -250,6 +266,10 @@ Output:
 
 */
 function update_annotation(event) {
+  if (typeof handle_metadata_header_input === "function" && handle_metadata_header_input(event)) {
+    return;
+  }
+
   const input = event.target.closest("input[data-file-id][data-field]");
   if (!input || !file_table_frame) {
     return;
@@ -353,6 +373,9 @@ file_table.addEventListener("input", update_annotation);
 file_table.addEventListener("change", handle_table_change);
 file_table.addEventListener("click", handle_table_click);
 metadata_parse_button?.addEventListener("click", open_metadata_wizard);
+metadata_add_column_button?.addEventListener("click", add_manual_metadata_column);
+metadata_import_button?.addEventListener("click", open_metadata_import_picker);
+metadata_import_input?.addEventListener("change", handle_metadata_import_file);
 metadata_export_button?.addEventListener("click", handle_metadata_table_export);
 metadata_wizard_close?.addEventListener("click", close_metadata_wizard);
 metadata_wizard_cancel?.addEventListener("click", close_metadata_wizard);
@@ -425,7 +448,7 @@ window.PhaseFinderApp = {
     const ids   = frame ? [...frame.col("id")]   : [];
     const names = frame ? [...frame.col("name")] : [];
     const selected_names = ids
-      .map((id, i) => (selected_file_ids.has(id) ? names[i] : null))
+      .map((id, i) => (selected_file_ids.has(id) && file_map.has(id) ? names[i] : null))
       .filter(Boolean);
     const filters_plain = {};
     for (const [field, set] of Object.entries(column_filters)) {
@@ -444,10 +467,10 @@ window.PhaseFinderApp = {
 
   // Applies a parsed session's table portion: template, annotations, sort,
   // filters, and row selection.
-  apply_session_state({ template, annotations, sort, filters, selected_names }) {
+  apply_session_state({ template, columns, annotations, sort, filters, selected_names }) {
     if (template?.columns?.length) {
       save_filename_metadata_template(template);
-      if (file_table_frame) {
+      if (file_table_frame && !columns?.length) {
         apply_filename_metadata_columns(template, template.columns, {
           render: false,
           preserve_existing: false,
@@ -455,6 +478,23 @@ window.PhaseFinderApp = {
       }
     } else if (template) {
       save_filename_metadata_template(template);
+    }
+
+    if (columns?.length && annotations?.length) {
+      const loaded_rows = file_table_frame ? frame_to_rows(file_table_frame).filter((row) => file_map.has(row.id)) : [];
+      const normalized_columns = columns.map((column) => ({
+        field: column.field,
+        label: column.label,
+        editable: column.editable !== false,
+        filterable: column.filterable !== false,
+        headerEditable: Boolean(column.headerEditable ?? column.header_editable ?? false),
+        source: column.source || "session",
+      }));
+      const result = build_metadata_frame_from_records(annotations, normalized_columns, loaded_rows, { source: "session" });
+      preserve_metadata_row_order = true;
+      set_metadata_table_columns(result.columns);
+      file_table_frame = result.frame;
+      sync_file_annotations();
     }
 
     if (annotations?.length && file_table_frame) {

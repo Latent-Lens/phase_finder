@@ -806,8 +806,9 @@ function enter_plotting_mode() {
 
 Purpose:
 	After a plot exists and the selected channel changes, load missing data for
-	the new channel with the modal progress UI, but do not activate it in the
-	visible plot until the user clicks Plot Channel Events.
+	the new channel with the modal progress UI, then switch the visible plot
+	over to it once loading finishes (or immediately, if its data was already
+	cached from an earlier plot).
 
 Input:
 	(none)
@@ -833,10 +834,6 @@ async function prepare_selected_channel_for_plotting() {
     update_start_button_state();
   }
 
-  if (typeof init_plot === "function") {
-    init_plot(selected);
-  }
-
   if (!selected.dna_area || !rows.length) {
     app.set_status_bar("Load files and select a channel before plotting.", true);
     return;
@@ -844,12 +841,19 @@ async function prepare_selected_channel_for_plotting() {
 
   const missing_rows = rows.filter((row) => !is_analysis_data_loaded(row, selected));
   if (!missing_rows.length) {
+    // Data for this channel is already cached (e.g. switching back to a
+    // previously-plotted channel) — activate it as row.data and switch the
+    // visible plot over now.
+    rows.forEach((row) => activate_analysis_data(row, selected));
+    if (typeof init_plot === "function") {
+      init_plot(selected);
+    }
     app.set_status_bar(`Channel ${selected.dna_area} data ready.`);
     return;
   }
 
   const completed = { count: 0 };
-  const label = "Loading FCS Data";
+  const label = `Loading ${selected.dna_area} Channel FCS Data`;
   set_plot_action_controls_disabled(true);
   app.show_progress(label);
   app.set_status_bar(`Working: ${label}`);
@@ -869,6 +873,14 @@ async function prepare_selected_channel_for_plotting() {
     }
 
     if (request_id === channel_change_load_id) {
+      // Now that the new channel's data has actually finished loading,
+      // activate it for every row (it was loaded with activate: false to
+      // avoid disturbing the still-visible old plot mid-load) and switch
+      // the visible plot over to it.
+      rows.forEach((row) => activate_analysis_data(row, selected));
+      if (typeof init_plot === "function") {
+        init_plot(selected);
+      }
       app.set_status_bar(`Channel ${selected.dna_area} data ready — pre-loaded ${missing_rows.length} file(s).`);
       app.update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`);
     }
