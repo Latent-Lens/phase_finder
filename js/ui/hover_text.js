@@ -1,3 +1,11 @@
+// Central tooltip text registry and tooltip runtime. This file defines the
+// strings used by quick tooltips, native titles, help icons, and control
+// descriptions throughout the app. It exposes window.PhaseFinderHoverText for
+// static text and window.PhaseFinderTooltips for applying and rendering
+// tooltips. The runtime creates one positioned tooltip element, keeps it inside
+// the viewport, and supports both mouse and keyboard focus. Other modules only
+// reference tooltip keys instead of duplicating text.
+
 window.PhaseFinderHoverText = Object.freeze({
   reloadLogo: "Reload PhaseFinder",
   help: "Open the PhaseFinder help and feature guide in a new tab",

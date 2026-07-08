@@ -1,4 +1,10 @@
-// User-selected per-file summary statistics and their modal workflow.
+// Summary-statistics modal and per-file metric workflow. This file lets users
+// choose channels and metrics, loads the needed channel arrays, and writes the
+// computed values back into the metadata frame as statistic columns. It tracks a
+// stats plan so later file loads and session restores can repeat the same
+// channel/metric calculations. It updates modal progress while long calculations
+// run and reports completion through the status bar. It exposes
+// window.PhaseFinderSummaryStats for session code and file-load refreshes.
 (function () {
   "use strict";
 

@@ -1,6 +1,11 @@
-// Corrected Dean-Jett-Fox-style modeling and optional event preprocessing.
-// This file owns the model used by plotting.js; the original histogram renderer
-// stays separate so raw plotting remains simple.
+// Dean-Jett-Fox-style cell-cycle modeling and optional event preprocessing.
+// This file provides window.PhaseFinderDJF, which plot rendering calls to clean
+// events, estimate peaks, fit model components, and compute phase statistics.
+// It contains the numeric helpers, robust peak selection, debris correction, and
+// aggregate/doublet masking used before fitting. It wraps the external
+// Levenberg-Marquardt and peak-detection libraries when those libraries are
+// available. It intentionally does not draw anything; the plotting modules turn
+// these model outputs into curves, filled components, legends, and readouts.
 
 (function () {
   const S_NODES = 64;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for window.PhaseFinderDJF (djf_gpt.js).
+"""Unit tests for window.PhaseFinderDJF (js/analysis/djf.js).
 
 Uses a synthetic bimodal histogram (two Gaussian peaks at ~64 000 and ~128 000)
 built by window.TestUtils.buildBimodalHistogram() and invokes fit/fractions/

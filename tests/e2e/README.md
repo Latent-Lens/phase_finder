@@ -91,9 +91,9 @@ tests/
 │   └── results/
 └── unit/
     ├── run_unit_tests.py    ← unit test orchestrator
-    ├── test_harness.html    ← minimal page loading CDN libs + parser/ui_controls/DJF JS
+    ├── test_harness.html    ← minimal page loading CDN libs + app JS helpers
     ├── unit_tests_parser.py ← FCSParser unit tests (window.FCSParser)
-    ├── unit_tests_table.py  ← table/metadata-wizard pure-logic unit tests (ui_controls.js)
+    ├── unit_tests_table.py  ← table/data_structs/metadata-wizard unit tests
     └── unit_tests_djf.py    ← DJF model unit tests (window.PhaseFinderDJF)
 ```
 
@@ -201,7 +201,7 @@ loading extra files that desync every row-count assertion in this suite.
   doublet-channel messaging, and actual doublet-outlier removal when
   height/width channels are available
 
-### Unit — Table & Metadata (`ui_controls.js`)
+### Unit — Table & Metadata (`js/ui/`)
 - `PhaseFinderFrame` / `make_frame` / `concat_frames`: column storage,
   construction from rows, and concatenation with missing-column null-filling
 - `metadata_field_from_label`: known-label mapping, camelCasing, reserved-name

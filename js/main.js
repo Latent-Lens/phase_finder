@@ -1,3 +1,12 @@
+// Main browser bootstrap for PhaseFinder. This file captures the shared DOM
+// references for upload targets, metadata controls, channel selectors, panels,
+// progress UI, and table elements. It owns the loaded-file map and the current
+// metadata frame, while FCS metadata extraction and table import/export live in
+// dedicated IO modules. It wires top-level UI events for file selection,
+// drag/drop, channel changes, table edits, metadata workflows, sidebar toggles,
+// and hard restart. It exposes window.PhaseFinderApp as the cross-module API for
+// analysis, plotting, stats, table rendering, and session restore.
+
 const file_input = document.querySelector("#file_input");
 const file_upload_section = document.querySelector("#file_upload_section");
 const drop_zone = document.querySelector("#drop_zone");
@@ -49,208 +58,10 @@ const SIDEBAR_TRANSITION_MS = 220;
 let file_map = new Map();
 
 // Tabular view of loaded files. Columns: id, name, user-defined filename
-// metadata columns, plus stats columns added by summary_stats.js
+// metadata columns, plus stats columns added by js/analysis/stats.js
 // in the form "CHANNEL:metric" (e.g. "DAPI-A:mean"). Single source of truth
 // for annotation edits and all stats.
 let file_table_frame = null;
-
-/*
-
-Purpose:
-	Reads only an FCS file's HEADER and TEXT segments to build a loaded-file
-	entry (id, name, file, summary, guessed annotations) without loading event
-	data.
-
-Input:
-	file [File]: the FCS File object
-
-Output:
-	entry [Promise<Object>]: resolves to a loaded-file entry
-
-*/
-async function read_fcs_header(file) {
-  const header_buffer = await file.slice(0, 58).arrayBuffer();
-  const header = window.FCSParser.parse_header(header_buffer);
-
-  if (header.text_end < header.text_begin) {
-    throw new Error("FCS header has an invalid TEXT segment range.");
-  }
-
-  const text_buffer = await file.slice(header.text_begin, header.text_end + 1).arrayBuffer();
-  const summary = window.FCSParser.parse_fcs_header_from_segments(header_buffer, text_buffer);
-
-  return {
-    id: create_id(),
-    name: file.name,
-    file,
-    summary,
-  };
-}
-
-/*
-
-Purpose:
-	Loads metadata for dropped/selected FCS files: reads each file's header,
-	skips duplicates, records failures, sorts and re-renders, and reports the
-	outcome through the status/progress UI. Newly loaded files are checked by
-	default until plotting has started; after that, they start unchecked.
-
-Input:
-	files [FileList|Array<File>]: the files to load
-
-Output:
-	(none) [Promise<void>]: loads metadata and updates the UI
-
-*/
-function has_initialized_plot() {
-  return typeof plot_channels !== "undefined" && Boolean(plot_channels);
-}
-
-async function refresh_downstream_after_file_load() {
-  if (typeof refresh_analysis_after_metadata_change !== "function") {
-    return { refreshed: false, loaded_rows: 0 };
-  }
-  return refresh_analysis_after_metadata_change();
-}
-
-async function load_files(files) {
-  const selected_files = Array.from(files || []);
-  if (!selected_files.length) {
-    return;
-  }
-
-  let loaded = 0;
-  const loaded_entries = [];
-  const new_tabular_rows = [];
-  const failures = [];
-  const duplicates = [];
-  const existing_names = new Set([...file_map.values()].map((e) => e.name));
-  const queued_names = new Set();
-  show_progress("Loading FCS Metadata");
-  update_progress(0, "Loading FCS Metadata", `Preparing ${selected_files.length} file(s)...`);
-  await next_frame();
-
-  for (const [index, file] of selected_files.entries()) {
-    const current = index + 1;
-    const start_percent = (index / selected_files.length) * 100;
-    set_status_bar("Working: Loading FCS Metadata");
-    update_progress(start_percent, "Loading FCS Metadata", `Reading metadata for file ${current} of ${selected_files.length}`, file.name);
-    await next_frame();
-
-    if (existing_names.has(file.name) || queued_names.has(file.name)) {
-      duplicates.push(file.name);
-      update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Skipped duplicate file ${current} of ${selected_files.length}`, file.name);
-      await next_frame();
-      continue;
-    }
-
-    try {
-      const entry = await read_fcs_header(file);
-      file_map.set(entry.id, entry);
-      if (!has_initialized_plot()) {
-        selected_file_ids.add(entry.id);
-      }
-      const linked_existing_row = typeof link_existing_metadata_row_to_loaded_entry === "function"
-        ? link_existing_metadata_row_to_loaded_entry(entry)
-        : false;
-      if (!linked_existing_row) {
-        new_tabular_rows.push({
-          id: entry.id,
-          name: entry.name,
-        });
-      }
-      queued_names.add(file.name);
-      loaded_entries.push(entry);
-      loaded += 1;
-    } catch (error) {
-      failures.push(`${file.name}: ${error.message}`);
-    }
-
-    update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Finished file ${current} of ${selected_files.length}`, file.name);
-    await next_frame();
-  }
-
-  if (new_tabular_rows.length) {
-    const new_frame = make_frame(new_tabular_rows);
-    // concat_frames fills missing columns (e.g. existing stats cols) with null
-    // for new rows, which is the correct default until stats are calculated.
-    file_table_frame = file_table_frame ? concat_frames(file_table_frame, new_frame) : new_frame;
-    if (can_auto_apply_filename_metadata_template()) {
-      apply_current_filename_metadata_template({ render: false });
-    } else {
-      sync_file_annotations();
-    }
-  } else if (loaded_entries.length) {
-    sync_file_annotations();
-  }
-  if (loaded_entries.length) {
-    document.dispatchEvent(new CustomEvent("pf-files-loaded", {
-      detail: { count: loaded, names: loaded_entries.map((entry) => entry.name) },
-    }));
-    // Copy newly loaded files into OPFS in the background so a saved session can
-    // auto-restore them on reload. Already-cached files (session restore /
-    // reconnect) are skipped inside register_loaded_files.
-    window.PhaseFinderSessionFiles?.register_loaded_files(loaded_entries);
-  }
-  if (!should_preserve_metadata_row_order()) {
-    sort_file_table();
-  }
-  update_views();
-  update_drop_zone_text();
-  if (loaded) schedule_metadata_wizard_after_file_load();
-
-  let downstream_refresh = { refreshed: false, loaded_rows: 0 };
-  if (loaded) {
-    try {
-      downstream_refresh = await refresh_downstream_after_file_load();
-    } catch (error) {
-      set_status(`Read metadata from ${loaded} file(s), but the existing plot could not be updated: ${error.message}`, true);
-      set_status_bar("Existing plot refresh failed.", true);
-      update_progress(100, "Loading Added FCS Data", error.message);
-      hide_progress(1400);
-      return;
-    }
-  }
-
-  const final_progress_label = downstream_refresh.refreshed ? "Loading Added FCS Data" : "Loading FCS Metadata";
-  const downstream_message = downstream_refresh.refreshed
-    ? ` Existing plot updated${downstream_refresh.loaded_rows ? ` with ${downstream_refresh.loaded_rows} added file(s)` : ""}.`
-    : "";
-
-  const duplicate_message = duplicates.length
-    ? ` Rejected duplicate file${duplicates.length === 1 ? "" : "s"}: ${duplicates.join(", ")}.`
-    : "";
-
-  if (loaded && (failures.length || duplicates.length)) {
-    const failure_message = failures.length ? ` ${failures.join(" ")}` : "";
-    set_status(`Read metadata from ${loaded} file(s).${downstream_message}${duplicate_message}${failure_message}`, true);
-    set_status_bar(`Finished with ${failures.length + duplicates.length} issue(s).`, true);
-    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated, with file-load issue(s)." : `Finished with ${failures.length + duplicates.length} issue(s).`);
-    hide_progress(900);
-  } else if (loaded) {
-    set_status(`Read metadata from ${loaded} file(s).${downstream_message} Configure filename metadata columns before plotting if needed.`);
-    set_status_bar(downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
-    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
-    hide_progress(600);
-  } else if (duplicates.length) {
-    set_status(`No new files loaded.${duplicate_message}`, true);
-    set_status_bar("Duplicate FCS file rejected.", true);
-    update_progress(100, "Loading FCS Metadata", "Duplicate FCS file rejected.");
-    hide_progress(1200);
-  } else {
-    set_status(failures.join(" "), true);
-    set_status_bar("No metadata could be read.", true);
-    update_progress(100, "Loading FCS Metadata", "No metadata could be read.");
-    hide_progress(1200);
-  }
-
-  if (loaded_entries.length && has_initialized_plot() && typeof preload_analysis_rows_in_background === "function") {
-    preload_analysis_rows_in_background(loaded_entries).catch((error) => {
-      set_status_bar(`Background FCS data load failed: ${error.message}`, true);
-    });
-  }
-
-}
 
 /*
 
@@ -417,10 +228,10 @@ function get_selected_channels() {
 window.PhaseFinderApp = {
   // Non-tabular entry objects (file, summary, event cache) keyed by id.
   get_file_by_id: (id) => file_map.get(id),
-  // All entries — used by analysis.js for background preload progress tracking.
+  // All entries, used by channel loading for background preload progress tracking.
   get_parsed_files: () => [...file_map.values()],
-  // Selected entries returned as full file_map objects so analysis.js can read
-  // and mutate file/summary/event-cache fields directly.
+  // Selected entries returned as full file_map objects so channel loading can
+  // read and mutate file/summary/event-cache fields directly.
   get_selected_files: () => {
     if (!file_table_frame) return [];
     sync_file_annotations();

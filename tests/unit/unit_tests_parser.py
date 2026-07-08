@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for window.FCSParser (fcs-parser.js).
+"""Unit tests for window.FCSParser (js/fcs/parser.js).
 
 Each test calls page.evaluate() with a self-contained JS expression that builds
 a synthetic FCS ArrayBuffer using window.TestUtils.buildSyntheticFCS() and then
