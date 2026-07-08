@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PhaseFinder JavaScript Functionality Summary</title>
+    <style>
+      body {
+        color: #172033;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.55;
+        margin: 0 auto;
+        max-width: 1100px;
+        padding: 32px 24px 56px;
+      }
+      h1 {
+        font-size: 2rem;
+        margin: 0 0 24px;
+      }
+      h2 {
+        border-bottom: 1px solid #d7dde8;
+        font-size: 1.35rem;
+        margin: 34px 0 18px;
+        padding-bottom: 6px;
+      }
+      h3 {
+        color: #0f5f6f;
+        font-size: 1rem;
+        margin: 22px 0 6px;
+      }
+      p {
+        margin: 0 0 14px;
+      }
+      code {
+        background: #f4f6f8;
+        border-radius: 4px;
+        padding: 1px 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PhaseFinder JavaScript Functionality Summary</h1>
+
+    <h2>js</h2>
+
+    <h3>main.js</h3>
+    <p>
+      This is the browser bootstrap file for the PhaseFinder application shell. It captures the central DOM references for file inputs, upload targets, channel selectors, metadata controls, table elements, progress UI, and sidebar controls. It owns global file/table state such as <code>file_map</code> and <code>file_table_frame</code>, while delegating FCS metadata reading and table import/export workflows to the IO modules. It wires the main UI events for file selection, drag and drop, channel changes, metadata edits, metadata wizard buttons, import/export buttons, sidebar toggling, and hard restart. It exposes <code>window.PhaseFinderApp</code>, which is the shared API used by analysis, plotting, stats, table, and session code.
+    </p>
+
+    <h2>js/analysis</h2>
+
+    <h3>djf.js</h3>
+    <p>
+      This file provides the active Dean-Jett-Fox cell-cycle modeling implementation exposed as <code>window.PhaseFinderDJF</code>. It contains numeric helpers, peak detection, robust G1/G2 seeding, debris/background correction, aggregate/doublet correction, model functions, and fitting wrappers around the external fitting libraries. Plot rendering calls it to prepare corrected event arrays, estimate shared run-level G1 positions, fit each selected sample, compute G1/S/G2 components, and report phase statistics. It also formats correction summaries so the plot readout can explain how many events were removed by preprocessing. This module is analysis logic only; D3 drawing and plot controls live under <code>js/plotting</code>.
+    </p>
+
+    <h3>start.js</h3>
+    <p>
+      This file coordinates the user-facing plot and modeling workflow. It switches the app between initial plotting mode and DJF modeling mode, disables controls during channel loading, and responds to channel changes after a plot already exists. When the user starts plotting, it reveals the plot panel, loads missing selected-channel data, initializes the plot, and dispatches completion events. When modeling starts, it preserves the loaded event arrays and asks the plotting layer to show DJF fits. It depends on UI panel controls, IO channel loading, the channel cache, and plotting functions.
+    </p>
+
+    <h3>stats.js</h3>
+    <p>
+      This file implements the summary-statistics workflow and modal. It lets users choose one or more channels and statistics such as mean, standard deviation, median, minimum, and maximum. It loads the required channel data for each file without necessarily switching the active plotted channel, computes requested metrics, and writes the results into the metadata frame as new statistic columns. It keeps a stats plan so the same calculations can be restored from sessions and applied to newly loaded files. It exposes <code>window.PhaseFinderSummaryStats</code> for session save/load and downstream coordination.
+    </p>
+
+    <h2>js/data_structs</h2>
+
+    <h3>channel_cache.js</h3>
+    <p>
+      This file owns the per-row, per-channel event-data cache. It builds stable cache keys from selected channels, retrieves cached channel arrays, stores newly loaded channel data, and activates cached data onto <code>row.data</code> for plotting. The cache is what lets channel switching or plot refreshes reuse already parsed event arrays instead of re-reading an FCS DATA segment. It also exposes simple loaded/activate checks used by analysis start and background preload flows. This is data state, not file IO, so it lives outside <code>js/io</code>.
+    </p>
+
+    <h3>metadata_columns.js</h3>
+    <p>
+      This file handles metadata-column naming and normalization. It converts labels into safe field names, makes duplicate labels unique, normalizes imported/session/wizard column definitions, and tracks the stat-label names used for table export. It rebuilds the table frame when metadata columns change, preserving rows and computed statistic columns. It also implements the manual "add metadata column" action by creating a new editable column and requesting header focus. The UI modules call these helpers instead of duplicating field-name rules.
+    </p>
+
+    <h3>metadata_frame.js</h3>
+    <p>
+      This file defines the lightweight column-store frame used for metadata and computed statistics. The <code>PhaseFinderFrame</code> class stores data as arrays by column and provides row count, column access, and column replacement. It also provides <code>make_frame</code> and <code>concat_frames</code> for building and appending frames from row objects. Its metadata import helper builds a linked/unlinked metadata frame from parsed records, preserving imported order while linking rows to loaded FCS files when names match. This is the core in-memory table structure used by UI, metadata IO, stats, and session modules.
+    </p>
+
+    <h3>table_state.js</h3>
+    <p>
+      This file owns shared metadata-table state that needs to persist across renders. It stores the active table column definitions, selected file ids, column filters, sort state, open filter menu, unlinked-row counter, and the "preserve imported row order" flag. It provides helpers for row-link checks, loaded-file counts, generated unlinked row ids, base/stat column detection, and metadata-column state updates. It also synchronizes metadata-frame values back onto each loaded file entry's <code>annotations</code> object. Table rendering, metadata IO, session restore, and stats all read this shared state.
+    </p>
+
+    <h2>js/fcs</h2>
+
+    <h3>channel_cleaning.js</h3>
+    <p>
+      This file handles selected-channel cleanup and companion-channel detection for FCS data. It normalizes channel names into lowercase hyphenated forms while keeping measurement suffixes such as <code>-a</code>, <code>-h</code>, <code>-w</code>, and <code>-t</code> meaningful. It detects optional matching height and width channels for a selected area channel by comparing normalized base names and measurement suffixes. It filters loaded primary-channel values to keep only finite positive events, while applying the same event mask to optional height and width arrays. It returns cleaned arrays, <code>keep_mask</code>, removed counts, total counts, and auxiliary channel metadata for later analysis.
+    </p>
+
+    <h3>data_worker.js</h3>
+    <p>
+      This is the Web Worker used for heavy FCS event-data reads. It imports the parser, receives a <code>File</code>, FCS summary, and selected parameter indexes, then slices the DATA segment. It calls <code>FCSParser.parse_selected_columns</code> off the main thread so large files do not block the UI. It converts parsed arrays into <code>Float64Array</code> instances and transfers their buffers back to the main thread. If parsing fails, it posts an error response tied to the worker request id.
+    </p>
+
+    <h3>metadata_processing.js</h3>
+    <p>
+      This file reads only the FCS HEADER and TEXT segments needed to create a loaded-file entry. It parses the fixed 58-byte header, validates the TEXT range, reads that segment, and asks <code>FCSParser</code> to summarize the file metadata. It returns the generated file id, filename, original <code>File</code> object, and parsed summary without loading event data. The file-loading workflow in <code>js/io/metadata_io.js</code> calls this before adding entries to <code>file_map</code>. This keeps FCS metadata extraction separate from UI table import/export code.
+    </p>
+
+    <h3>parser.js</h3>
+    <p>
+      This file contains the low-level FCS parsing logic. It reads fixed FCS headers, parses TEXT key/value pairs, normalizes keywords, determines byte order, and identifies parameter labels from <code>$PnS</code> or <code>$PnN</code>. It can parse full DATA segments into rows, but the app mostly uses its selected-column path to avoid loading unused channels. The selected-column parser walks event records by byte offset and reads only requested 1-based parameter indexes. It exposes <code>globalThis.FCSParser</code> for both the main thread and workers.
+    </p>
+
+    <h2>js/io</h2>
+
+    <h3>cache.js</h3>
+    <p>
+      This file owns FCS parameter-index helpers used during selected-channel loading. It maps FCS parameter metadata into 1-based indexes, finds the selected channel by label/name/description, and de-duplicates requested indexes before loading. It intentionally does not store loaded data anymore; the row data cache lives in <code>js/data_structs/channel_cache.js</code>. Keeping this file in <code>js/io</code> makes sense because it supports deciding which FCS columns the loading code should read. The event arrays themselves are still parsed by <code>channel_loading.js</code> and the FCS worker.
+    </p>
+
+    <h3>channel_loading.js</h3>
+    <p>
+      This file orchestrates selected-channel FCS event loading. It creates and manages the FCS data worker, falls back to main-thread parsing when needed, and loads selected parameter columns from each file. It resolves the selected primary channel plus optional matching height and width channels, then sends only those indexes to the parser. After raw columns are read, it calls the FCS channel-cleaning helpers and stores cleaned arrays, masks, counts, and indexes in the per-row analysis cache. It also handles batch loading, progress overlay updates, existing-plot refreshes, and background preloading for files added after plotting has started.
+    </p>
+
+    <h3>metadata_io.js</h3>
+    <p>
+      This file now owns FCS file-load metadata IO plus CSV/TSV metadata table import/export. For dropped or selected FCS files, it calls <code>read_fcs_header</code>, rejects duplicate filenames, builds or extends the metadata frame, links existing imported rows, applies filename templates when configured, refreshes downstream state, and registers files for OPFS caching. For metadata imports, it detects delimiters, parses quoted delimited text, finds the filename column, matches rows to loaded files, and preserves unmatched rows as unlinked metadata entries. For exports, it serializes the visible metadata table as TSV and triggers a browser download. This module is the bridge between file metadata, user metadata tables, and session file registration.
+    </p>
+
+    <h2>js/plotting</h2>
+
+    <h3>axis_modal.js</h3>
+    <p>
+      This file controls the manual axis-range modal for the plot. It opens from axis double-clicks, fills fields with current overrides, and uses the most recent auto-computed bounds as placeholders. It applies valid numeric x/y min and max overrides, resets bounds back to auto, and re-renders when settings change. It wires plot controls such as color-by, display mode, bins, correction toggles, and threshold toggles to redraw behavior. It also exposes <code>window.PhaseFinderPlot</code> so other code can inspect rendered series and cached histogram summaries.
+    </p>
+
+    <h3>data.js</h3>
+    <p>
+      This file holds shared plot state, DOM references, styling constants, and histogram-data helpers. It tracks the active plotted channel, last plot ranges, current series, cached histograms, axis overrides, peak-threshold state, and DJF modeling selections. It provides helpers for choosing plottable rows, assigning colors, computing shared ranges, building histogram bins, formatting fit values, and reading plot-control settings. Rendering and modeling modules rely on these globals instead of duplicating plot state. It is the data-preparation layer between loaded channel arrays and D3 drawing.
+    </p>
+
+    <h3>modeling.js</h3>
+    <p>
+      This file manages the UI state for showing DJF modeling results on top of the plot. It updates plot titles, renders the fit-results table, resets modeling state when channels change, and initializes the plot after analysis loading. It starts modeling by enabling fit display for the first plotted sample and then triggering a redraw. It toggles individual sample fits from legend checkboxes without changing which raw sample histograms are selected. It depends on state and formatting helpers from <code>data.js</code> and redraw behavior from <code>render.js</code>.
+    </p>
+
+    <h3>render.js</h3>
+    <p>
+      This file performs the main D3 rendering for the plot panel. It gathers checked rows with loaded data, applies DJF preprocessing when available, bins events into histograms, computes ranges, and draws axes, sample histograms, legends, threshold controls, and optional model overlays. The sample histogram can now be displayed as a smooth curve, bins plus curve, or bins without the sample curve. When modeling is active, it fits selected samples and overlays the fitted total curve plus filled G1, S, and G2 components. It keeps plot titles, readouts, cached series, and cached histogram summaries synchronized with the current controls.
+    </p>
+
+    <h2>js/session</h2>
+
+    <h3>copy_worker.js</h3>
+    <p>
+      This Web Worker writes loaded FCS files into OPFS without blocking the main UI thread. It receives a file and destination OPFS path, creates any needed directories, opens or creates the destination file, and streams the file content to disk. It posts success or error responses keyed by request id so the main thread can update record status. The worker includes the small path and directory helpers it needs because it runs outside normal window scope. It is used by <code>opfs.js</code> when caching large FCS files for later session restore.
+    </p>
+
+    <h3>core.js</h3>
+    <p>
+      This file orchestrates session save, load, reset, and startup auto-load behavior. It collects current app state from <code>PhaseFinderApp</code>, metadata frames, plot controls, UI layout, OPFS records, and the stats plan. It applies loaded session state back to plot controls, metadata tables, selected files, sort/filter state, templates, and UI dimensions. It reads and writes TOML session files through browser file picker APIs or download fallbacks. It wires the session buttons, handles local configuration auto-load, exposes reconnect hooks, and registers loaded files for background caching.
+    </p>
+
+    <h3>opfs.js</h3>
+    <p>
+      This file manages FCS file restoration and caching around OPFS and directory handles. It stores and retrieves a directory handle through IndexedDB, supports Chromium directory picking, provides a fallback directory input, and can fetch expected FCS files from a configured URL. It registers loaded files as session file records, builds OPFS paths, and copies files into OPFS in the background through <code>copy_worker.js</code>. It tracks record status such as available, missing, mismatch, or uncached. Session restore and reconnect workflows use these functions to recover event data for saved sessions.
+    </p>
+
+    <h3>reconnect.js</h3>
+    <p>
+      This file restores session file records from OPFS when possible and handles manual reconnect when cached files are missing. It reads cached OPFS files, rewraps them with original names and metadata, and checks size mismatches. It matches manually selected files to session records by filename, size, and last-modified metadata. It renders and controls the reconnect modal, including folder reconnect and file-by-file reconnect flows. When matches are found, it loads them back into the app and attempts to re-cache them for future session restores.
+    </p>
+
+    <h3>store.js</h3>
+    <p>
+      This file exposes <code>window.PhaseFinderOPFS</code>, a small wrapper around the browser Origin Private File System. It feature-detects OPFS support, opens the root directory, creates directory chains, splits OPFS paths, reads cached files, deletes cached files, requests persistent storage, and reads storage estimates. It does not store OS paths; it works only with app-private OPFS paths. Session restore uses these helpers to reload cached FCS files without requiring the user to pick them again. Heavy file writing is delegated to the session copy worker so this file remains a thin storage API.
+    </p>
+
+    <h3>toml_io.js</h3>
+    <p>
+      This file serializes and parses PhaseFinder session TOML files. The serializer writes session metadata, file records, metadata columns and rows, filename-splitting templates, table filters, plot settings, UI layout, and stats plans. The parser reads TOML sections, arrays, inline tables, booleans, numbers, and quoted strings back into plain JavaScript objects. It supports multi-line arrays and nested section paths used by the session format. Other session modules use this file as the format layer while they handle state collection, file loading, and UI application.
+    </p>
+
+    <h2>js/ui</h2>
+
+    <h3>hover_text.js</h3>
+    <p>
+      This file centralizes tooltip and hover/help text for the application. It defines <code>window.PhaseFinderHoverText</code> and <code>window.PhaseFinderTooltips</code>, giving other modules a single place to read tooltip strings. It applies static tooltip text to elements with data attributes and supports dynamic tooltip text through helper functions. It creates a shared positioned tooltip element that stays inside the viewport, supports mouse and keyboard focus, and hides on scroll or resize. This keeps tooltip behavior consistent across the sidebar, table, plot controls, and modal buttons.
+    </p>
+
+    <h3>metadata_wizard.js</h3>
+    <p>
+      This file implements the filename-splitting metadata wizard. It lets users define split steps using delimiters, fixed-width breaks, or regular expressions, then preview how filenames become metadata columns. It stores the chosen template in localStorage and can auto-apply it to later loaded files. It builds editable column definitions, applies them to the shared metadata frame, and resets the table back to filename-only metadata when requested. It is the main workflow for deriving structured metadata directly from FCS filenames.
+    </p>
+
+    <h3>panel_resize.js</h3>
+    <p>
+      This file implements drag resizing for the app layout. It lets users resize the sidebar horizontally through the sidebar/workspace divider while respecting minimum width and a viewport-based maximum. It also lets users resize the plot and metadata panels vertically when both panels are visible and expanded. It watches panel hidden/collapsed state to enable or disable the vertical resizer and clears inline sizing when panels collapse. After resizing, it dispatches resize events so the plot can redraw to the new dimensions.
+    </p>
+
+    <h3>panels.js</h3>
+    <p>
+      This file defines shared DOM references for the plot panel, metadata panel, and analysis action buttons. It implements collapse and expand behavior for metadata and plot panels, including CSS classes, ARIA state, inert state, icon changes, and resize notifications. It dispatches resize events after panel transitions so D3 can redraw with the new layout. It provides wrappers such as <code>toggle_metadata_panel</code> and <code>toggle_plot_panel</code> that are wired by the analysis start flow. Its role is UI shell management around the analysis workspace.
+    </p>
+
+    <h3>status_channels.js</h3>
+    <p>
+      This file manages status messages, progress overlays, loaded-file display text, channel selectors, and action-button enabled states. It creates file ids, updates sidebar/footer status text, shows and hides progress UI, and yields to the next animation frame so long operations can paint progress. It collects unique FCS parameter labels from loaded files and populates both expanded and collapsed channel selectors. It converts frames to row objects, finds distinct filter values, guesses likely DNA-area channels, and enables buttons only when required data is available. Its helpers are used across file loading, table rendering, plotting, and stats.
+    </p>
+
+    <h3>table_render.js</h3>
+    <p>
+      This file renders the metadata table and handles delegated table events. It builds the table header, row checkboxes, editable metadata cells, grouped stats columns, empty states, and unlinked metadata-row styling. It prunes selected rows that become hidden by filters, keeps the select-all checkbox in sync, and updates button state after rendering. It handles row selection changes, filter checkbox changes, sorting clicks, metadata header editing, and select-all behavior. It also links existing imported metadata rows to newly loaded FCS file entries when filenames match.
+    </p>
+
+    <h3>table_support.js</h3>
+    <p>
+      This file provides support functions for the metadata table and sidebar behavior. It dispatches selection-change events, collapses or expands the sidebar, filters and sorts displayed rows, and builds table header controls. It creates filter dropdown markup, sort indicators, editable header controls, and display-name helpers. It guesses metadata fields from filenames and manages row sorting/reconstruction so frame columns stay aligned. Table rendering uses this module to determine which rows are visible and how their headers should behave.
+    </p>
+  </body>
+</html>

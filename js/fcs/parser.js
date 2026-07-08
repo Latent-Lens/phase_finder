@@ -1,3 +1,12 @@
+// Low-level FCS parser used by both the main thread and the data worker. This
+// file knows how to parse fixed FCS headers, TEXT key/value segments, byte order,
+// parameter metadata, and DATA values for supported numeric data types. It can
+// parse full event rows when needed, but PhaseFinder mainly uses the
+// selected-column reader so only requested channels are loaded into memory. It
+// exposes globalThis.FCSParser rather than ES modules because the app is loaded
+// by plain script tags and the worker imports the same file. Higher-level file
+// loading and cleanup live outside this parser.
+
 /*
 
 Purpose:

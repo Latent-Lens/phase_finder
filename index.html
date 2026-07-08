@@ -177,6 +177,13 @@
               <label class="plot_control">Bins
                 <input id="plot_bins" type="number" min="16" max="1024" step="16" value="512" />
               </label>
+              <label class="plot_control">Display
+                <select id="plot_display_mode">
+                  <option value="curve">Curve</option>
+                  <option value="curve_bins">Curve + bins</option>
+                  <option value="bins">Bins</option>
+                </select>
+              </label>
               <label class="plot_control plot_control_check">
                 <span class="plot_check_row">
                   <input type="checkbox" id="plot_debris_correction" />
@@ -411,16 +418,35 @@
       </span>
     </footer>
 
-    <script src="./js/fcs-parser.js"></script>
-    <script src="./js/hover_text.js"></script>
-    <script src="./js/ui_controls.js"></script>
+    <script src="./js/fcs/parser.js"></script>
+    <script src="./js/fcs/metadata_processing.js"></script>
+    <script src="./js/ui/hover_text.js"></script>
+    <script src="./js/data_structs/metadata_frame.js"></script>
+    <script src="./js/data_structs/table_state.js"></script>
+    <script src="./js/data_structs/metadata_columns.js"></script>
+    <script src="./js/data_structs/channel_cache.js"></script>
+    <script src="./js/ui/status_channels.js"></script>
+    <script src="./js/io/metadata_io.js"></script>
+    <script src="./js/ui/metadata_wizard.js"></script>
+    <script src="./js/ui/table_support.js"></script>
+    <script src="./js/ui/table_render.js"></script>
     <script src="./js/main.js"></script>
-    <script src="./js/djf_gpt.js"></script>
-    <script src="./js/plotting.js"></script>
-    <script src="./js/analysis.js"></script>
-    <script src="./js/summary_stats.js"></script>
-    <script src="./js/panel_resize.js"></script>
-    <script src="./js/opfs_store.js"></script>
-    <script src="./js/session.js"></script>
+    <script src="./js/analysis/djf.js"></script>
+    <script src="./js/plotting/data.js"></script>
+    <script src="./js/plotting/modeling.js"></script>
+    <script src="./js/plotting/render.js"></script>
+    <script src="./js/plotting/axis_modal.js"></script>
+    <script src="./js/ui/panels.js"></script>
+    <script src="./js/io/cache.js"></script>
+    <script src="./js/fcs/channel_cleaning.js"></script>
+    <script src="./js/io/channel_loading.js"></script>
+    <script src="./js/analysis/start.js"></script>
+    <script src="./js/analysis/stats.js"></script>
+    <script src="./js/ui/panel_resize.js"></script>
+    <script src="./js/session/store.js"></script>
+    <script src="./js/session/toml_io.js"></script>
+    <script src="./js/session/opfs.js"></script>
+    <script src="./js/session/reconnect.js"></script>
+    <script src="./js/session/core.js"></script>
   </body>
 </html>

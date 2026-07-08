@@ -1,7 +1,10 @@
-// ---------------------------------------------------------------------------
-// Drag-to-resize for the sidebar↔workspace divider and the
-// plot-panel↔metadata-panel divider.
-// ---------------------------------------------------------------------------
+// Drag-resize behavior for the sidebar and workspace panels. This file lets the
+// user resize the sidebar horizontally through the sidebar/workspace divider
+// while respecting minimum and viewport-bounded maximum widths. It also lets the
+// plot and metadata panels share vertical space when both are visible and
+// expanded. It watches panel hidden/collapsed state so resizing handles are only
+// active when the layout can actually change. After each resize, it dispatches
+// resize events so the plot can redraw against the new dimensions.
 
 (function () {
   'use strict';
