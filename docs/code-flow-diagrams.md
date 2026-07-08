@@ -4,6 +4,14 @@ These diagrams document the browser app code outside tests, sample data, binary
 assets, and git metadata. HTML and CSS are shown as structural entrypoints.
 JavaScript modules list their named functions and public browser globals.
 
+> Note: the `js/` subgraphs group related files by responsibility rather than
+> showing every script tag as a separate box. The authoritative runtime order is
+> still the script list in `index.html`. Data models and shared table state now
+> live in `js/data_structs/`, FCS parsing and cleanup live in `js/fcs/`, IO and
+> loading workflows live in `js/io/`, UI widgets live in `js/ui/`, plotting
+> lives in `js/plotting/`, analysis/model orchestration lives in `js/analysis/`,
+> and session persistence lives in `js/session/`.
+
 ## Giant Project And Function Map
 
 ```mermaid
@@ -13,7 +21,7 @@ flowchart LR
     HTMLShell["index.html app shell<br/>header, sidebar, metadata table, plot panel, modals, status bar"]
     CSSFiles["CSS cascade<br/>base.css, layout.css, sidebar.css, table.css, plot.css, feedback.css, responsive.css<br/>help.css for help.html"]
     ExternalLibs["External libraries<br/>d3 v7<br/>ml-levenberg-marquardt<br/>ml-gsd"]
-    ScriptOrder["Script load order<br/>fcs-parser, hover_text, ui_controls, main, djf_gpt, plotting, analysis, summary_stats, panel_resize, opfs_store, session"]
+    ScriptOrder["Script load order<br/>fcs parser, FCS metadata processing, UI/data helpers, main, analysis DJF, plotting, IO loading, stats, session"]
     HTMLShell --> CSSFiles
     HTMLShell --> ExternalLibs
     HTMLShell --> ScriptOrder
@@ -38,7 +46,7 @@ flowchart LR
     EvResize["window resize"]
   end
 
-  subgraph fcs["js/fcs-parser.js"]
+  subgraph fcs["js/fcs/parser.js + js/fcs/*"]
     direction TB
     FCSHeader["Header and TEXT helpers<br/>read_ascii, parse_offset, parse_header, parse_text_segment, normalize_keyword, keyword"]
     FCSMeta["Metadata summary helpers<br/>is_little_endian, parameter_columns, summarize_fcs_header, parse_fcs_header, parse_fcs_header_from_segments"]
@@ -59,7 +67,7 @@ flowchart LR
     HoverRuntime --> GTooltips
   end
 
-  subgraph ui["js/ui_controls.js"]
+  subgraph ui["js/data_structs/* + js/ui/* + js/io/metadata_io.js"]
     direction TB
     UIFrame["PhaseFinderFrame class<br/>constructor, length, columns, col, setCol<br/>make_frame, concat_frames, frame_to_rows"]
     UIColumns["Metadata column and row model<br/>metadata_field_from_label, unique_metadata_label, normalize_metadata_columns<br/>metadata_row_is_linked, loaded_file_count, metadata_unlinked_row_id, loaded_file_by_metadata_key<br/>build_metadata_frame_from_records, should_preserve_metadata_row_order, table_base_field_set, table_stat_columns, set_metadata_table_columns, sync_file_annotations"]
@@ -95,7 +103,7 @@ flowchart LR
     MainListeners --> MainEvents
   end
 
-  subgraph djf["js/djf_gpt.js"]
+  subgraph djf["js/analysis/djf.js"]
     direction TB
     DJFNumbers["Numeric and histogram helpers<br/>finite_number, positive_number, sorted_finite, quantile_sorted, median_sorted, robust_sigma, build_histogram"]
     DJFPeaks["Peak and debris detection<br/>detect_peaks, best_g1g2_pair, nearest_y, estimate_sigma_from_peak, estimate_g1_from_points, debris_bounds"]
@@ -110,7 +118,7 @@ flowchart LR
     DJFAux --> GDJF
   end
 
-  subgraph plot["js/plotting.js"]
+  subgraph plot["js/plotting/*"]
     direction TB
     PlotPrep["Plot helpers<br/>css_color, strip_fcs, plot_escape_html, format_fit_number, plot_bin_count, correction_state, plottable_rows<br/>sample_color, build_color_assigner, shared_range, shared_range_for_values, axis_opts, histogram_curve"]
     PlotRender["Main plotting and modeling UI<br/>update_plot_title, render_fit_results_table, reset_modeling_state, init_plot, start_modeling, toggle_fit, render_density_plot"]
@@ -125,7 +133,7 @@ flowchart LR
     PlotRender --> EvResize
   end
 
-  subgraph analysis["js/analysis.js"]
+  subgraph analysis["js/io/channel_loading.js + js/analysis/start.js"]
     direction TB
     AnalysisPanels["Panel controls<br/>set_metadata_panel_collapsed, collapse_metadata_panel, toggle_metadata_panel<br/>set_plot_panel_collapsed, toggle_plot_panel"]
     AnalysisIndexes["Channel and cache helpers<br/>parameter_map, find_param_index, unique_indexes, analysis_data_key, cached_analysis_data<br/>store_analysis_data, is_analysis_data_loaded, activate_analysis_data, selected_indexes_for_file"]
@@ -144,7 +152,7 @@ flowchart LR
     AnalysisListeners --> AnalysisLoad
   end
 
-  subgraph stats["js/summary_stats.js"]
+  subgraph stats["js/analysis/stats.js"]
     direction TB
     StatsSession["Stats session state<br/>record_stats, get_stats_plan, restore_stats_plan, clear_stats_plan, rebuild_session_from_frame, compute_stats_for_new_files"]
     StatsCompute["Stats compute<br/>compute_column_stats"]
@@ -167,13 +175,13 @@ flowchart LR
     ResizeWorkspace --> EvResize
   end
 
-  subgraph opfs["js/opfs_store.js"]
+  subgraph opfs["js/session/store.js + js/session/opfs.js"]
     direction TB
     OPFSStore["OPFS storage helpers<br/>supports_opfs, get_opfs_root, ensure_directory, split_opfs_path, read_file_from_opfs<br/>delete_opfs_path, request_persistent_storage, get_storage_estimate"]
     OPFSStore --> GOPFS
   end
 
-  subgraph session["js/session.js"]
+  subgraph session["js/session/core.js + js/session/toml_io.js + reconnect.js"]
     direction TB
     SessionToml["TOML serialization and parsing<br/>toml_str, serialize_session, p, split_csv, parse_toml_value, parse_inline_table, get_path, parse_session_toml"]
     SessionIDB["Directory handle and legacy file loading<br/>open_idb, idb_put, idb_get, files_from_dir_handle, pick_dir_chromium, pick_dir_fallback, fetch_files_from_url, auto_load_session_files"]
@@ -197,7 +205,7 @@ flowchart LR
 
   subgraph workers["Worker files"]
     direction TB
-    FCSWorker["js/fcs_data_worker.js<br/>importScripts fcs-parser<br/>message listener reads DATA slice<br/>globalThis.FCSParser.parse_selected_columns<br/>postMessage columns as Float64Array transfers"]
+    FCSWorker["js/fcs/data_worker.js<br/>importScripts parser.js<br/>message listener reads DATA slice<br/>globalThis.FCSParser.parse_selected_columns<br/>postMessage columns as Float64Array transfers"]
     OPFSCopyWorker["js/opfs_copy_worker.js<br/>ensure_directory, split_opfs_path, write_file_to_opfs<br/>message listener writes File to OPFS<br/>postMessage ok or error"]
   end
 
@@ -290,7 +298,7 @@ flowchart TD
 
   PlotUI["5. Click Plot Channel Events"]
   AnalysisFns["Analysis loading functions<br/>start_analysis, load_analysis_data, load_analysis_batch, load_analysis_row<br/>selected_indexes_for_file, load_selected_fcs_columns, load_selected_fcs_columns_in_worker, get_fcs_data_worker<br/>store_analysis_data, activate_analysis_data, refresh_analysis_after_metadata_change, prepare_selected_channel_for_plotting"]
-  FCSWorkerFns["Selected-column worker path<br/>fcs_data_worker message listener<br/>FCSParser.parse_selected_columns<br/>main-thread fallback when worker unavailable"]
+  FCSWorkerFns["Selected-column worker path<br/>data_worker.js message listener<br/>FCSParser.parse_selected_columns<br/>main-thread fallback when worker unavailable"]
   PlotFns["Plot rendering functions<br/>init_plot, render_density_plot, plottable_rows, correction_state, shared_range_for_values<br/>axis_opts, histogram_curve, build_color_assigner, update_plot_title, render_fit_results_table"]
   PlotEvents["Custom events<br/>pf-plot-started and pf-plot-complete"]
 
@@ -357,15 +365,15 @@ flowchart TB
   subgraph startup["Startup and global setup"]
     direction TB
     S0["index.html loads CSS and scripts"]
-    S1["fcs-parser.js<br/>read_ascii -> parse_offset -> parse_header<br/>parse_text_segment -> normalize_keyword -> keyword<br/>parameter_columns -> summarize_fcs_header<br/>parse_fcs_header / parse_fcs_header_from_segments<br/>integer_reader -> parameter_byte_widths -> read_data_value<br/>parse_data / parse_selected_columns / parse_fcs"]
+    S1["js/fcs/parser.js<br/>read_ascii -> parse_offset -> parse_header<br/>parse_text_segment -> normalize_keyword -> keyword<br/>parameter_columns -> summarize_fcs_header<br/>parse_fcs_header / parse_fcs_header_from_segments<br/>integer_reader -> parameter_byte_widths -> read_data_value<br/>parse_data / parse_selected_columns / parse_fcs"]
     S2["hover_text.js<br/>PhaseFinderHoverText registry<br/>PhaseFinderTooltips.text -> set_quick_tooltip / set_native_title / apply_static<br/>tooltip runtime show / hide"]
-    S3["ui_controls.js initializes table state<br/>PhaseFinderFrame constructor / length / columns / col / setCol<br/>clear_channel_controls -> render_file_table -> update_drop_zone_text"]
+    S3["data_structs + ui modules initialize table state<br/>PhaseFinderFrame constructor / length / columns / col / setCol<br/>clear_channel_controls -> render_file_table -> update_drop_zone_text"]
     S4["main.js starts app<br/>PhaseFinderTooltips.apply_static<br/>set_status / set_status_bar<br/>registers listeners and exposes PhaseFinderApp"]
-    S5["djf_gpt.js exposes PhaseFinderDJF<br/>numeric helpers -> peak helpers -> correction masks -> model fit helpers"]
-    S6["plotting.js registers plot listeners<br/>control changes -> render_density_plot<br/>ResizeObserver / resize -> schedule_plot_resize"]
-    S7["analysis.js registers analysis listeners<br/>panel buttons -> panel toggles<br/>plot buttons -> start_analysis<br/>selection/channel events -> refresh/prepare"]
-    S8["summary_stats.js registers stats listeners<br/>stats buttons -> open_stats_modal<br/>pf-files-loaded -> compute_stats_for_new_files<br/>pf-stats-complete -> record_stats"]
-    S9["panel_resize.js, opfs_store.js, session.js<br/>resize listeners, PhaseFinderOPFS, session save/load/reconnect listeners"]
+    S5["analysis/djf.js exposes PhaseFinderDJF<br/>numeric helpers -> peak helpers -> correction masks -> model fit helpers"]
+    S6["js/plotting/* registers plot listeners<br/>control changes -> render_density_plot<br/>ResizeObserver / resize -> schedule_plot_resize"]
+    S7["analysis/start.js + io/channel_loading.js register analysis listeners<br/>panel buttons -> panel toggles<br/>plot buttons -> start_analysis<br/>selection/channel events -> refresh/prepare"]
+    S8["analysis/stats.js registers stats listeners<br/>stats buttons -> open_stats_modal<br/>pf-files-loaded -> compute_stats_for_new_files<br/>pf-stats-complete -> record_stats"]
+    S9["panel_resize.js + session/*<br/>resize listeners, PhaseFinderOPFS, session save/load/reconnect listeners"]
     S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9
   end
 
@@ -418,7 +426,7 @@ flowchart TB
     A2["prepare_selected_channel_for_plotting<br/>enter_plotting_mode -> update_start_button_state"]
     A3["selected channel not loaded?<br/>load_analysis_batch -> load_analysis_row"]
     A4["selected_indexes_for_file<br/>parameter_map -> find_param_index<br/>PhaseFinderDJF.find_auxiliary_indexes<br/>unique_indexes"]
-    A5["load_selected_fcs_columns<br/>load_selected_fcs_columns_in_worker -> get_fcs_data_worker<br/>fcs_data_worker message -> FCSParser.parse_selected_columns<br/>main-thread fallback uses FCSParser.parse_selected_columns"]
+    A5["load_selected_fcs_columns<br/>load_selected_fcs_columns_in_worker -> get_fcs_data_worker<br/>data_worker.js message -> FCSParser.parse_selected_columns<br/>main-thread fallback uses FCSParser.parse_selected_columns"]
     A6["store_analysis_data / activate_analysis_data<br/>cached_analysis_data / is_analysis_data_loaded / analysis_data_key"]
     A7["#start_analysis_button / #collapsed_plot_button<br/>start_analysis -> dispatch pf-plot-started"]
     A8["load_analysis_data<br/>load_analysis_batch -> load_analysis_row"]

@@ -1,14 +1,11 @@
-// ---------------------------------------------------------------------------
-// OPFS store — window.PhaseFinderOPFS
-//
-// Thin helpers over the browser's Origin Private File System (OPFS). The app
-// keeps app-private working copies of loaded FCS files here so a saved session
-// can auto-restore its files on reload without asking the user to reselect them.
-//
-// Reads run on the main thread (getFile() is cheap). Writes are heavy for large
-// FCS files, so they are delegated to js/opfs_copy_worker.js off the main thread
-// (see session.js). No OS paths are ever stored — only app-private OPFS paths.
-// ---------------------------------------------------------------------------
+// OPFS store wrapper exposed as window.PhaseFinderOPFS. This file provides thin
+// helpers over the browser's Origin Private File System for feature detection,
+// directory creation, path splitting, file reads, deletes, persistent-storage
+// requests, and quota estimates. PhaseFinder keeps app-private working copies of
+// loaded FCS files here so saved sessions can auto-restore files on reload
+// without asking the user to reselect them. Reads run on the main thread because
+// getFile() is cheap, while large writes are delegated to js/session/copy_worker.js
+// through js/session/opfs.js. No OS paths are stored, only app-private OPFS paths.
 
 (function () {
   'use strict';

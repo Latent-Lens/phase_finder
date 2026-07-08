@@ -1,16 +1,10 @@
-// ---------------------------------------------------------------------------
-// OPFS copy worker
-//
-// Writes a loaded FCS File into OPFS off the main thread so caching large files
-// (tens of MB) never blocks the UI. session.js drives this worker one file at a
-// time and reports "Caching file x of y" to the status bar.
-//
-// Message in:  { request_id, file, opfs_path }
-// Message out: { request_id, ok, error }
-//
-// Runs in a Worker scope, so it cannot use window.PhaseFinderOPFS — the small
-// amount of directory/handle logic it needs is inlined here.
-// ---------------------------------------------------------------------------
+// OPFS copy worker for background FCS file caching. This worker writes a loaded
+// FCS File into the browser's Origin Private File System so large cache writes
+// do not block the main UI thread. js/session/opfs.js drives one request at a
+// time and reports cache progress through the status bar. Messages include a
+// request id, file, and OPFS path on input, then return success or error with
+// the same request id. Because workers cannot use window.PhaseFinderOPFS, this
+// file inlines the small directory and path helpers it needs.
 
 async function ensure_directory(root, parts) {
   let dir = root;

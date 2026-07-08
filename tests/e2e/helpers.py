@@ -156,7 +156,7 @@ def suspended_local_autoload_config(repo_root: Path):
     """Temporarily move phasefinder_local.json out of the way for a test run.
 
     phasefinder_local.json is a personal, uncommitted dev-convenience file
-    (see phasefinder_local.example.json) that can point session.js's startup
+    (see phasefinder_local.example.json) that can point js/session/core.js startup
     auto-load at an arbitrary session file + data directory on every page
     load. When the local test server serves the repo root, the app under
     test picks it up exactly like a real user's browser would — silently
@@ -382,7 +382,7 @@ def dismiss_metadata_wizard_if_open(page, timeout_ms=1500):
     """Close the filename metadata wizard if it auto-opened after a file load.
 
     The wizard opens ~750ms after the *first* successful file load in a
-    session (see schedule_metadata_wizard_after_file_load in ui_controls.js)
+    session (see schedule_metadata_wizard_after_file_load in js/ui/metadata_wizard.js)
     and never again afterward. Left open, its modal backdrop blocks clicks on
     everything behind it, so callers should invoke this once, right after the
     very first file load of a run, before doing anything else.
@@ -403,7 +403,7 @@ def configure_default_metadata_wizard_columns(page, timeout_ms=3000):
     session): "<strain digits><replicate letter><arrest letter> t<timepoint>".
 
     Annotation guessing from filenames is no longer automatic (that logic is
-    dead code in ui_controls.js) — the wizard is now the only way these
+    dead code kept in js/ui/table_support.js) — the wizard is now the only way these
     columns get populated. Downstream tests (sorting/filtering by
     strain/replicate/timepoint, coloring plots by strain, per-sample
     annotations in the DJF fit table) all depend on these columns existing,

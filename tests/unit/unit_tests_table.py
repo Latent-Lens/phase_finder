@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Unit tests for the table/metadata helpers in ui_controls.js.
+"""Unit tests for table/metadata helpers in js/data_structs/ and js/ui/.
 
 These are pure-logic pieces of the table: the PhaseFinderFrame column store,
 frame construction/concatenation, filename-metadata-wizard field naming and
 splitting, the (currently unused but still reachable) legacy filename guesser,
-and small formatting helpers. None of them touch the DOM, so ui_controls.js
-can be loaded directly into the harness page without the rest of the app.
+and small formatting helpers. None of them touch the DOM, so these files can
+be loaded directly into the harness page without the rest of the app.
 """
 
 import sys
