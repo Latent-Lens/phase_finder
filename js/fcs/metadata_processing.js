@@ -1,4 +1,4 @@
-// FCS metadata-entry creation from HEADER and TEXT segments. This file reads
+// FCS metadata-entry creation from HEADER and TEXT segments. This module reads
 // just enough of a dropped or selected FCS file to build the app's loaded-file
 // entry without touching the event DATA segment. It parses the fixed header,
 // validates the TEXT segment offsets, reads the TEXT bytes, and delegates the

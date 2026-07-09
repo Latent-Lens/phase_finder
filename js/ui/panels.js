@@ -1,4 +1,4 @@
-// Metadata and plot panel collapse/expand behavior. This file owns shared DOM
+// Metadata and plot panel collapse/expand behavior. This module owns shared DOM
 // references for analysis buttons, modeling buttons, plot panels, metadata
 // panels, panel bodies, and panel toggle icons. It applies collapsed state by
 // updating CSS classes, ARIA attributes, inert state, icons, and resize

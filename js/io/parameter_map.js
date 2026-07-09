@@ -1,4 +1,4 @@
-// FCS parameter/index helpers used by selected-channel loading. This file maps a
+// FCS parameter/index helpers used by selected-channel loading. This module maps a
 // parsed FCS summary into parameter records with labels, names, descriptions,
 // and 1-based FCS indexes. It finds the selected channel in that parameter map
 // and throws a clear error if the selected label cannot be resolved for a file.

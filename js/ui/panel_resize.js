@@ -1,4 +1,4 @@
-// Drag-resize behavior for the sidebar and workspace panels. This file lets the
+// Drag-resize behavior for the sidebar and workspace panels. This module lets the
 // user resize the sidebar horizontally through the sidebar/workspace divider
 // while respecting minimum and viewport-bounded maximum widths. It also lets the
 // plot and metadata panels share vertical space when both are visible and

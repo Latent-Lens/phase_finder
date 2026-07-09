@@ -1,8 +1,12 @@
-// Shared filename helpers. These are pure string utilities used by core data
-// structures (metadata frame, table state) as well as the UI and IO layers, so
-// they live in a leaf module that imports nothing. Keeping them here keeps the
-// core modules from having to reach up into the UI/IO layers just for a filename
-// transform.
+// Shared filename helpers. This leaf module holds the two pure string transforms
+// used to display and match FCS filenames: stripping the ".fcs" extension for
+// display, and building a normalized key (path- and extension-stripped,
+// lowercased) for matching imported/session rows to loaded files. They are used
+// by core data structures (metadata frame, table state) as well as the UI and IO
+// layers, so keeping them in a module that imports nothing avoids forcing the
+// core modules to reach up into the UI/IO layers just for a filename transform.
+// The full entry.name is kept elsewhere for dedup, so these only shape the
+// display/match forms.
 
 /*
 
