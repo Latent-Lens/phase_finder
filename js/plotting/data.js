@@ -1,31 +1,34 @@
 // Shared plot state, DOM references, layout constants, and histogram helpers.
-// This file is the data-preparation layer between loaded channel arrays and the
+// This module is the data-preparation layer between loaded channel arrays and the
 // D3 rendering modules. It tracks active channels, cached series, histogram
 // summaries, axis overrides, threshold state, model visibility, and plot-control
 // values such as color grouping, bin count, and display mode. It provides the
 // helpers that choose plottable rows, assign colors, compute shared x ranges,
-// build histogram bins, and format model-table values. Rendering and modeling
-// modules depend on this state but keep their drawing and UI actions separate.
+// build histogram bins, and format model-table values. State that other plotting
+// modules reassign is exposed through setters so their imported bindings stay
+// live. Rendering and modeling modules import this state but keep their drawing
+// and UI actions separate.
 
-const plot_area = document.querySelector("#plot_area");
-const plot_title = document.querySelector("#plot_title");
-const plot_color_by_select = document.querySelector("#plot_color_by");
-const plot_display_mode_select = document.querySelector("#plot_display_mode");
-const plot_x_scale_select = document.querySelector("#plot_x_scale");
-const plot_bins_input = document.querySelector("#plot_bins");
-let djf_fit_table = null;
-const plot_debris_correction_toggle = document.querySelector("#plot_debris_correction");
-const plot_doublet_correction_toggle = document.querySelector("#plot_doublet_correction");
-const plot_threshold_toggle = document.querySelector("#plot_threshold_toggle");
-const djf_readout = document.querySelector("#djf_readout");
+import { get_selected_files } from "../state/files.js";
 
-const axis_range_modal = document.querySelector("#axis_range_modal");
-const axis_range_x_min_input = document.querySelector("#axis_range_x_min");
-const axis_range_x_max_input = document.querySelector("#axis_range_x_max");
-const axis_range_y_min_input = document.querySelector("#axis_range_y_min");
-const axis_range_y_max_input = document.querySelector("#axis_range_y_max");
+export const plot_area = document.querySelector("#plot_area");
+export const plot_title = document.querySelector("#plot_title");
+export const plot_color_by_select = document.querySelector("#plot_color_by");
+export const plot_display_mode_select = document.querySelector("#plot_display_mode");
+export const plot_x_scale_select = document.querySelector("#plot_x_scale");
+export const plot_bins_input = document.querySelector("#plot_bins");
+export const plot_debris_correction_toggle = document.querySelector("#plot_debris_correction");
+export const plot_doublet_correction_toggle = document.querySelector("#plot_doublet_correction");
+export const plot_threshold_toggle = document.querySelector("#plot_threshold_toggle");
+export const djf_readout = document.querySelector("#djf_readout");
 
-const DEFAULT_BINS = 512;
+export const axis_range_modal = document.querySelector("#axis_range_modal");
+export const axis_range_x_min_input = document.querySelector("#axis_range_x_min");
+export const axis_range_x_max_input = document.querySelector("#axis_range_x_max");
+export const axis_range_y_min_input = document.querySelector("#axis_range_y_min");
+export const axis_range_y_max_input = document.querySelector("#axis_range_y_max");
+
+export const DEFAULT_BINS = 512;
 
 // Colors come from the CSS custom properties in base.css so there is a single
 // source of truth for the whole app; the fallback is used only if a token is
@@ -34,88 +37,96 @@ const css_color = (name, fallback) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
 // Dean–Jett–Fox cell-cycle component colors.
-const DJF_G1_COLOR = css_color("--djf_g1", "#95c1dc");
-const DJF_S_COLOR = css_color("--djf_s", "#d5eec8");
-const DJF_G2_COLOR = css_color("--djf_g2", "#ef8b8d");
-const DJF_TOTAL_COLOR = css_color("--djf_total", "#111827");
+export const DJF_G1_COLOR = css_color("--djf_g1", "#95c1dc");
+export const DJF_S_COLOR = css_color("--djf_s", "#d5eec8");
+export const DJF_G2_COLOR = css_color("--djf_g2", "#ef8b8d");
+export const DJF_TOTAL_COLOR = css_color("--djf_total", "#111827");
 // Fill opacity for the DJF component areas (0 = transparent, 1 = solid).
-const DJF_FILL_OPACITY = 0.8;
-const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
-const DJF_TOTAL_LINE_WIDTH = 2; // fitted total
+export const DJF_FILL_OPACITY = 0.8;
+export const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
+export const DJF_TOTAL_LINE_WIDTH = 2; // fitted total
 
 // ---- Plot layout & styling (tweak here) ----
-const PLOT_MARGIN = { top: 14, right: 250, bottom: 48, left: 70 };
-const PLOT_FALLBACK_WIDTH = 800;
-const PLOT_FALLBACK_HEIGHT = 420;
+export const PLOT_MARGIN = { top: 14, right: 250, bottom: 48, left: 70 };
+export const PLOT_FALLBACK_WIDTH = 800;
+export const PLOT_FALLBACK_HEIGHT = 420;
 
-const AXIS_LINE_WIDTH = 1;
-const AXIS_TICK_FONT_SIZE = 11;
-const AXIS_TITLE_FONT_SIZE = 12;
-const AXIS_LABEL_COLOR = css_color("--text", "#172033");
+export const AXIS_LINE_WIDTH = 1;
+export const AXIS_TICK_FONT_SIZE = 11;
+export const AXIS_TITLE_FONT_SIZE = 12;
+export const AXIS_LABEL_COLOR = css_color("--text", "#172033");
 // Extra px the double-click hit area extends past each axis's own margin
 // band, into the plot area, so opening the range modal doesn't require a
 // precise click on a thin tick line or label.
-const AXIS_HIT_PAD = 10;
-const X_AXIS_TICKS = 6;
-const Y_AXIS_TICKS = 5;
-const X_TITLE_OFFSET = 10; // px above the bottom edge
-const Y_TITLE_OFFSET = 16; // px from the left edge
+export const AXIS_HIT_PAD = 10;
+export const X_AXIS_TICKS = 6;
+export const Y_AXIS_TICKS = 5;
+export const X_TITLE_OFFSET = 10; // px above the bottom edge
+export const Y_TITLE_OFFSET = 16; // px from the left edge
 
-const SAMPLE_LINE_WIDTH = 1.5; // per-sample histogram curves
-const SAMPLE_BIN_OPACITY_WITH_CURVE = 0.18;
-const SAMPLE_BIN_OPACITY_ONLY = 0.42;
-const SAMPLE_BIN_WIDTH_RATIO = 0.9;
+export const SAMPLE_LINE_WIDTH = 1.5; // per-sample histogram curves
+export const SAMPLE_BIN_OPACITY_WITH_CURVE = 0.18;
+export const SAMPLE_BIN_OPACITY_ONLY = 0.42;
+export const SAMPLE_BIN_WIDTH_RATIO = 0.9;
 
-const LEGEND_OFFSET_X = 14; // gap right of the plot area
-const LEGEND_ROW_HEIGHT = 18;
-const LEGEND_SWATCH_WIDTH = 18;
-const LEGEND_TEXT_OFFSET = 24;
-const LEGEND_LINE_WIDTH = 2;
-const LEGEND_FONT_SIZE = 11;
-const LEGEND_SWATCH_Y = 6; // swatch line vertical position within a row
-const LEGEND_TEXT_Y = 9; // label baseline within a row
-const LEGEND_CHECKBOX_SIZE = 11; // fit-toggle checkbox on sample legend rows
+export const LEGEND_OFFSET_X = 14; // gap right of the plot area
+export const LEGEND_ROW_HEIGHT = 18;
+export const LEGEND_SWATCH_WIDTH = 18;
+export const LEGEND_TEXT_OFFSET = 24;
+export const LEGEND_LINE_WIDTH = 2;
+export const LEGEND_FONT_SIZE = 11;
+export const LEGEND_SWATCH_Y = 6; // swatch line vertical position within a row
+export const LEGEND_TEXT_Y = 9; // label baseline within a row
+export const LEGEND_CHECKBOX_SIZE = 11; // fit-toggle checkbox on sample legend rows
 
-const THRESHOLD_COLOR = css_color("--threshold", "#9ca3af");
-const THRESHOLD_LINE_WIDTH = 1.5;
-const THRESHOLD_FILL_OPACITY = 0.12;
-const THRESHOLD_HANDLE_WIDTH = 14; // invisible drag target thickness
-const THRESHOLD_LABEL_FONT_SIZE = 10;
-const THRESHOLD_LABEL_COLOR = css_color("--threshold_label", "#6b7280");
-const THRESHOLD_LABEL_X_OFFSET = 6; // label inset from the left edge
-const THRESHOLD_LABEL_Y_OFFSET = 5; // label sits this far above the line
-const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot top
+export const THRESHOLD_COLOR = css_color("--threshold", "#9ca3af");
+export const THRESHOLD_LINE_WIDTH = 1.5;
+export const THRESHOLD_FILL_OPACITY = 0.12;
+export const THRESHOLD_HANDLE_WIDTH = 14; // invisible drag target thickness
+export const THRESHOLD_LABEL_FONT_SIZE = 10;
+export const THRESHOLD_LABEL_COLOR = css_color("--threshold_label", "#6b7280");
+export const THRESHOLD_LABEL_X_OFFSET = 6; // label inset from the left edge
+export const THRESHOLD_LABEL_Y_OFFSET = 5; // label sits this far above the line
+export const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot top
+
+// ── Shared plot state ────────────────────────────────────────────────────────
+// Bindings reassigned by other plotting modules (render/modeling/axis_modal) are
+// exported as `let` with a setter so importers keep seeing the live value.
 
 // DNA-content channel(s) of the most recent analysis; null until analysis runs.
-let plot_channels = null;
-// Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
-// when no samples are selected.
-let last_range = null;
-let last_y_max = null;
+export let plot_channels = null;
+export function set_plot_channels(channels) { plot_channels = channels; }
+
 // Per-sample histogram series (name, color, points, etc.) from the most recent
-// render, exposed via window.PhaseFinderPlot for other modules to read.
-let last_series = [];
+// render, exposed via window.PhaseFinder.plot for other modules to read.
+export let last_series = [];
+export function set_last_series(series) { last_series = series; }
+
 // All series ever rendered, keyed by sample name (the metadata Filename column).
 // Entries persist across renders/deselection so a sample's histogram stays
 // available by name even after it drops off the current plot.
-const series_by_name = new Map();
+export const series_by_name = new Map();
 // Histogram summaries ({ binEdges, binCenters, counts, binWidth, min, max }),
 // keyed the same way as series_by_name.
-const histograms_by_name = new Map();
+export const histograms_by_name = new Map();
 // User-entered axis bounds, set via the axis-range modal; null means "keep
-// using the auto-computed value" for that end of the axis.
-const axis_range_override = { x_min: null, x_max: null, y_min: null, y_max: null };
+// using the auto-computed value" for that end of the axis. Mutated in place.
+export const axis_range_override = { x_min: null, x_max: null, y_min: null, y_max: null };
 // The most recent auto-computed bounds, remembered so the modal can show
 // them as placeholders even for the axis that wasn't double-clicked.
-let last_auto_x_range = [0, 1];
-let last_auto_y_max = 1;
+export let last_auto_x_range = [0, 1];
+export function set_last_auto_x_range(range) { last_auto_x_range = range; }
+export let last_auto_y_max = 1;
+export function set_last_auto_y_max(value) { last_auto_y_max = value; }
 // Global event-count cutoff for peak detection, set by dragging the threshold
 // line on the plot; applies to every sample's fit.
-let peak_threshold = null;
+export let peak_threshold = null;
+export function set_peak_threshold(value) { peak_threshold = value; }
 // DJF modeling state: whether the user has started modeling, and the set of
 // sample names whose fit is shown (toggled via the legend checkboxes).
-let modeling_started = false;
-const shown_fits = new Set();
+export let modeling_started = false;
+export function set_modeling_started(value) { modeling_started = value; }
+export const shown_fits = new Set();
 
 /*
 
@@ -131,7 +142,7 @@ Output:
 	label [string]: the filename with any trailing ".fcs" (case-insensitive) removed
 
 */
-function strip_fcs(name) {
+export function strip_fcs(name) {
   return name.replace(/\.fcs$/i, "");
 }
 
@@ -147,7 +158,7 @@ Output:
 	text [string]: HTML-safe text
 
 */
-function plot_escape_html(value) {
+export function plot_escape_html(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -170,7 +181,7 @@ Output:
 	text [string]: formatted number, or blank for non-finite values
 
 */
-function format_fit_number(value, digits = 2) {
+export function format_fit_number(value, digits = 2) {
   if (!Number.isFinite(value)) return "";
   return value.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
@@ -188,7 +199,7 @@ Output:
 	bins [number]: the bin count, clamped to [16, 1024] (default 256)
 
 */
-function plot_bin_count() {
+export function plot_bin_count() {
   const raw = Number.parseInt(plot_bins_input && plot_bins_input.value, 10);
   if (!Number.isFinite(raw)) return DEFAULT_BINS;
   return Math.max(16, Math.min(1024, raw));
@@ -206,7 +217,7 @@ Output:
 	mode [string]: "curve", "curve_bins", or "bins"
 
 */
-function plot_display_mode() {
+export function plot_display_mode() {
   const mode = plot_display_mode_select ? plot_display_mode_select.value : "curve";
   return ["curve", "curve_bins", "bins"].includes(mode) ? mode : "curve";
 }
@@ -224,7 +235,7 @@ Output:
 	state [Object]: { remove_debris, remove_doublets }
 
 */
-function correction_state() {
+export function correction_state() {
   return {
     remove_debris: Boolean(plot_debris_correction_toggle && plot_debris_correction_toggle.checked),
     remove_doublets: Boolean(plot_doublet_correction_toggle && plot_doublet_correction_toggle.checked),
@@ -244,7 +255,7 @@ Output:
 	rows [Array<Object>]: the subset with row.data.dna_a loaded for the active channel
 
 */
-function loaded_rows_for_active_channel(rows) {
+export function loaded_rows_for_active_channel(rows) {
   const active_channel = plot_channels && plot_channels.dna_area;
   return rows.filter((row) =>
     row.data && row.data.dna_a && (!row.data.channel_key || row.data.channel_key === active_channel)
@@ -254,21 +265,18 @@ function loaded_rows_for_active_channel(rows) {
 /*
 
 Purpose:
-  Returns the samples that should be drawn: those currently checked in the
-  table AND already loaded with event data. Reads the selection through
-  window.PhaseFinderApp.
+	Returns the samples that should be drawn: those currently checked in the
+	table AND already loaded with event data.
 
 Input:
-  (none)
+	(none)
 
 Output:
-  rows [Array<Object>]: checked sample objects whose row.data.dna_a is loaded
+	rows [Array<Object>]: checked sample objects whose row.data.dna_a is loaded
 
 */
-function plottable_rows() {
-  const app = window.PhaseFinderApp;
-  if (!app) return [];
-  return loaded_rows_for_active_channel(app.get_selected_files());
+export function plottable_rows() {
+  return loaded_rows_for_active_channel(get_selected_files());
 }
 
 /*
@@ -285,7 +293,7 @@ Output:
 	color [string]: an HSL color string
 
 */
-function sample_color(index, total) {
+export function sample_color(index, total) {
   const hue = total > 1 ? Math.round((index * 360) / total) % 360 : 210;
   return `hsl(${hue}, 70%, 45%)`;
 }
@@ -305,7 +313,7 @@ Output:
 	assign [Function]: (row, index) => { color [string], group [string] }
 
 */
-function build_color_assigner(rows, color_by) {
+export function build_color_assigner(rows, color_by) {
   if (color_by === "strain") {
     const strain_of = (row) => (row.annotations.strain || "").trim() || "(none)";
     const strains = [...new Set(rows.map(strain_of))].sort((a, b) =>
@@ -332,7 +340,7 @@ Output:
 	range [Array<number>]: the [lo, hi] x-range
 
 */
-function shared_range(rows, positive_only) {
+export function shared_range(rows, positive_only) {
   return shared_range_for_values(rows.map((row) => row.data.dna_a), positive_only);
 }
 
@@ -350,7 +358,7 @@ Output:
 	range [Array<number>]: the [lo, hi] x-range
 
 */
-function shared_range_for_values(value_sets, positive_only) {
+export function shared_range_for_values(value_sets, positive_only) {
   const total = value_sets.reduce((sum, values) => sum + values.length, 0);
   const stride = Math.max(1, Math.floor(total / 50000));
   const sample = [];
@@ -389,7 +397,7 @@ Output:
 	opts [Object]: { t_lo, t_hi, bins, to_data, to_t } used by histogram_curve
 
 */
-function axis_opts(range, is_log, bins) {
+export function axis_opts(range, is_log, bins) {
   const [lo, hi] = range;
   if (is_log) {
     return { t_lo: Math.log10(lo), t_hi: Math.log10(hi), bins, to_data: (t) => 10 ** t, to_t: (v) => (v > 0 ? Math.log10(v) : NaN) };
@@ -411,7 +419,7 @@ Output:
 	points [Array<{x,y}>]: per-bin { x: bin center, y: event count } points
 
 */
-function histogram_curve(values, opts) {
+export function histogram_curve(values, opts) {
   const { t_lo, t_hi, bins, to_data, to_t } = opts;
   const width = (t_hi - t_lo) / bins;
   const counts = new Float64Array(bins);
@@ -446,7 +454,7 @@ Output:
 	summary [Object]: { binEdges, binCenters, counts, binWidth, min, max }
 
 */
-function build_histogram_summary(points, opts) {
+export function build_histogram_summary(points, opts) {
   const { t_lo, t_hi, bins, to_data } = opts;
   const width = (t_hi - t_lo) / bins;
   const binEdges = new Array(bins + 1);

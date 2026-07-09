@@ -1,10 +1,15 @@
-// OPFS working-copy cache, file records, and directory-handle loading. This file
-// manages the session file registry, app-private OPFS paths, background copy
-// requests, directory-handle persistence, and local-data autoload fallbacks. It
-// registers loaded FCS files so saved sessions can later restore them without
-// storing OS paths. It can also fetch expected files from a configured data URL
-// or ask the user for a directory when OPFS copies are unavailable. Reconnect
-// and core session modules build on these records and helpers.
+// OPFS working-copy cache, file records, and directory-handle loading. This
+// module manages the session file registry, app-private OPFS paths, background
+// copy requests (via a module copy worker), directory-handle persistence, and
+// local-data autoload fallbacks. It registers loaded FCS files so saved sessions
+// can later restore them without storing OS paths. It can also fetch expected
+// files from a configured data URL or ask the user for a directory when OPFS
+// copies are unavailable. Reconnect and core session modules build on these
+// records and helpers.
+
+import { supports_opfs, request_persistent_storage } from "./opfs_fs.js";
+import { set_status_bar } from "../ui/status_channels.js";
+import { load_files } from "../io/metadata_io.js";
 
 // ── IndexedDB directory handle cache (Chromium — persists across page loads) ─
 
@@ -21,7 +26,7 @@ function open_idb() {
   });
 }
 
-async function idb_put(value) {
+export async function idb_put(value) {
   try {
     const db = await open_idb();
     await new Promise((resolve, reject) => {
@@ -33,7 +38,7 @@ async function idb_put(value) {
   } catch (_) { /* storage unavailable — non-fatal */ }
 }
 
-async function idb_get() {
+export async function idb_get() {
   try {
     const db = await open_idb();
     return await new Promise((resolve, reject) => {
@@ -83,7 +88,7 @@ async function pick_dir_chromium(names) {
 
 // Firefox / Safari: <input webkitdirectory> gives a native directory picker
 // in both browsers; filter results by expected filenames.
-function pick_dir_fallback(names) {
+export function pick_dir_fallback(names) {
   const name_set = new Set(names);
   return new Promise((resolve) => {
     const input = document.createElement('input');
@@ -99,7 +104,7 @@ function pick_dir_fallback(names) {
 }
 
 // Fetch FCS files directly from an HTTP base URL — no picker required.
-async function fetch_files_from_url(base_url, names) {
+export async function fetch_files_from_url(base_url, names) {
   const base = base_url.replace(/\/$/, '');
   const results = await Promise.allSettled(
     names.map(async (name) => {
@@ -118,11 +123,10 @@ async function fetch_files_from_url(base_url, names) {
 }
 
 // Entry point: route to the right picker, then pass found files to load_files.
-async function auto_load_session_files(names) {
+export async function auto_load_session_files(names) {
   if (!names?.length) return;
-  const app = window.PhaseFinderApp;
 
-  app.set_status_bar?.('Select the folder containing your FCS files…');
+  set_status_bar('Select the folder containing your FCS files…');
 
   let files;
   try {
@@ -130,18 +134,18 @@ async function auto_load_session_files(names) {
       ? await pick_dir_chromium(names)
       : await pick_dir_fallback(names);
   } catch (err) {
-    app.set_status_bar?.(`Could not open FCS directory: ${err.message}`, true);
+    set_status_bar(`Could not open FCS directory: ${err.message}`, true);
     return;
   }
 
   if (files === null) {
     // User cancelled the directory picker.
-    app.set_status_bar?.('Directory selection cancelled. Drop FCS files manually to restore event data.');
+    set_status_bar('Directory selection cancelled. Drop FCS files manually to restore event data.');
     return;
   }
 
   if (!files.length) {
-    app.set_status_bar?.('None of the session\'s FCS files were found in the selected folder.', true);
+    set_status_bar('None of the session\'s FCS files were found in the selected folder.', true);
     return;
   }
 
@@ -149,7 +153,7 @@ async function auto_load_session_files(names) {
   await load_files(files);
 
   if (missing.length) {
-    app.set_status_bar?.(
+    set_status_bar(
       `Loaded ${files.length} file${files.length === 1 ? '' : 's'}. ` +
       `Not found in folder: ${missing.join(', ')}`,
       true,
@@ -162,20 +166,18 @@ async function auto_load_session_files(names) {
 // auto-restore them on reload without a picker. Each record carries the metadata
 // needed to reconnect a file manually if its OPFS copy is ever missing.
 
-const OPFS = () => window.PhaseFinderOPFS;
-
-function is_test_mode() {
+export function is_test_mode() {
   try { return new URLSearchParams(location.search).has('test'); }
   catch (_) { return false; }
 }
 
-function esc(value) {
+export function esc(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 }
 
-function human_size(bytes) {
+export function human_size(bytes) {
   if (bytes == null) return '';
   const units = ['B', 'KB', 'MB', 'GB'];
   let n = bytes, i = 0;
@@ -184,13 +186,13 @@ function human_size(bytes) {
 }
 
 // Stable per-page-load id used for the OPFS paths of newly imported files.
-const runtime_session_id =
+export const runtime_session_id =
   `session_${new Date().toISOString().slice(0, 10)}_${Math.random().toString(36).slice(2, 8)}`;
 
 // original_name → record. Pre-populated from a loaded session, appended on import.
-const file_records = new Map();
+export const file_records = new Map();
 let persistent_requested = false;
-let is_resolved = (r) => r.status === 'available' || r.status === 'uncached';
+export const is_resolved = (r) => r.status === 'available' || r.status === 'uncached';
 
 function make_file_record(entry) {
   const file = entry.file;
@@ -208,13 +210,13 @@ function make_file_record(entry) {
   };
 }
 
-function build_file_records_for(names) {
+export function build_file_records_for(names) {
   return names.map((name) => file_records.get(name)).filter(Boolean);
 }
 
 // Replace the registry with records parsed from a loaded session file. Status is
 // reset to "missing" — it is re-derived by verifying each OPFS copy on reload.
-function set_records_from_session(records) {
+export function set_records_from_session(records) {
   file_records.clear();
   (records || []).forEach((r) => {
     if (r && r.original_name) file_records.set(r.original_name, { ...r, status: 'missing' });
@@ -223,7 +225,7 @@ function set_records_from_session(records) {
 
 // ── OPFS copy worker driver (background, off the main thread) ────────────────
 
-const OPFS_COPY_WORKER_URL = './js/session/copy_worker.js';
+const OPFS_COPY_WORKER_URL = new URL('./copy_worker.js', import.meta.url);
 let opfs_copy_worker = null;
 let opfs_copy_worker_request_id = 0;
 let opfs_copy_worker_unavailable = false;
@@ -233,7 +235,7 @@ function get_opfs_copy_worker() {
   if (opfs_copy_worker_unavailable || typeof Worker === 'undefined') return null;
   if (opfs_copy_worker) return opfs_copy_worker;
   try {
-    opfs_copy_worker = new Worker(OPFS_COPY_WORKER_URL);
+    opfs_copy_worker = new Worker(OPFS_COPY_WORKER_URL, { type: 'module' });
     opfs_copy_worker.addEventListener('message', (event) => {
       const { request_id, ok, error } = event.data || {};
       const req = opfs_copy_worker_requests.get(request_id);
@@ -254,7 +256,7 @@ function get_opfs_copy_worker() {
   return opfs_copy_worker;
 }
 
-function copy_file_to_opfs(file, opfs_path) {
+export function copy_file_to_opfs(file, opfs_path) {
   return new Promise((resolve, reject) => {
     const worker = get_opfs_copy_worker();
     if (!worker) { reject(new Error('OPFS copy worker unavailable')); return; }
@@ -279,7 +281,7 @@ let cache_done = 0;
 function enqueue_opfs_cache(items) {
   if (!persistent_requested) {
     persistent_requested = true;
-    OPFS()?.request_persistent_storage?.();
+    request_persistent_storage();
   }
   cache_queue.push(...items);
   cache_total += items.length;
@@ -288,11 +290,10 @@ function enqueue_opfs_cache(items) {
 
 async function run_cache_queue() {
   cache_running = true;
-  const app = window.PhaseFinderApp;
   while (cache_queue.length) {
     const { record, file } = cache_queue.shift();
     const pct = Math.round((cache_done / cache_total) * 100);
-    app.set_status_bar?.(`Caching file ${cache_done + 1} of ${cache_total} (${pct}%) for fast reload: ${file.name}`);
+    set_status_bar(`Caching file ${cache_done + 1} of ${cache_total} (${pct}%) for fast reload: ${file.name}`);
     try {
       await copy_file_to_opfs(file, record.opfs_path);
       record.status = 'available';
@@ -301,22 +302,23 @@ async function run_cache_queue() {
     }
     cache_done += 1;
   }
-  app.set_status_bar?.(`Cached ${cache_done} file${cache_done === 1 ? '' : 's'} for fast reload.`);
+  set_status_bar(`Cached ${cache_done} file${cache_done === 1 ? '' : 's'} for fast reload.`);
   cache_running = false;
   cache_total = 0;
   cache_done = 0;
 }
 
-// Called by main.js after files load: builds records for genuinely new files and
-// queues their background OPFS copy. Files already in the registry (restored from
-// a session or just reconnected) are skipped — they are already cached.
-function register_loaded_files(entries) {
+// Called by metadata_io's load_files after files load: builds records for
+// genuinely new files and queues their background OPFS copy. Files already in the
+// registry (restored from a session or just reconnected) are skipped — they are
+// already cached.
+export function register_loaded_files(entries) {
   const fresh = [];
   for (const entry of entries || []) {
     if (!entry || !entry.file) continue;
     if (file_records.has(entry.file.name)) continue;
     const record = make_file_record(entry);
-    record.status = OPFS()?.supports_opfs() ? 'copying' : 'uncached';
+    record.status = supports_opfs() ? 'copying' : 'uncached';
     file_records.set(entry.file.name, record);
     if (record.status === 'copying') fresh.push({ record, file: entry.file });
   }

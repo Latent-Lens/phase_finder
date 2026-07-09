@@ -18,7 +18,7 @@ Output:
 	key [string]: the cache key for this analysis channel
 
 */
-function analysis_data_key(selected) {
+export function analysis_data_key(selected) {
   return selected && selected.dna_area ? selected.dna_area : "";
 }
 
@@ -36,7 +36,7 @@ Output:
 	data [Object|null]: cached row data for the selected channel
 
 */
-function cached_analysis_data(row, selected) {
+export function cached_analysis_data(row, selected) {
   const key = analysis_data_key(selected);
   return row.analysis_data_by_channel ? row.analysis_data_by_channel.get(key) || null : null;
 }
@@ -57,7 +57,7 @@ Output:
 	data [Object]: the stored row data
 
 */
-function store_analysis_data(row, selected, data, activate = true) {
+export function store_analysis_data(row, selected, data, activate = true) {
   if (!row.analysis_data_by_channel) {
     row.analysis_data_by_channel = new Map();
   }
@@ -81,7 +81,7 @@ Output:
 	loaded [boolean]: true when cached data exists for the selected channel
 
 */
-function is_analysis_data_loaded(row, selected) {
+export function is_analysis_data_loaded(row, selected) {
   const data = cached_analysis_data(row, selected);
   return Boolean(data && data.dna_a);
 }
@@ -100,7 +100,7 @@ Output:
 	activated [boolean]: true if cached data was activated
 
 */
-function activate_analysis_data(row, selected) {
+export function activate_analysis_data(row, selected) {
   const data = cached_analysis_data(row, selected);
   if (!data) {
     return false;

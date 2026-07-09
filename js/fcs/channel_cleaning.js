@@ -20,7 +20,7 @@ Output:
 	name [string]: lowercase hyphenated channel name
 
 */
-function normalize_measurement_name(value) {
+export function normalize_measurement_name(value) {
   return String(value || "")
     .toLowerCase()
     .replace(/\barea\b/g, "a")
@@ -43,7 +43,7 @@ Output:
 	kind [string|null]: "area", "height", "width", or null
 
 */
-function measurement_kind(value) {
+export function measurement_kind(value) {
   const normalized = normalize_measurement_name(value);
   const last = normalized.split("-").pop();
   if (last === "a") return "area";
@@ -64,7 +64,7 @@ Output:
 	base [string]: normalized channel base name
 
 */
-function measurement_base(value) {
+export function measurement_base(value) {
   const tokens = normalize_measurement_name(value).split("-").filter(Boolean);
   const last = tokens[tokens.length - 1];
   if (last === "a" || last === "h" || last === "w") {
@@ -85,7 +85,7 @@ Output:
 	fields [Array<string>]: non-empty parameter names
 
 */
-function parameter_fields(param) {
+export function parameter_fields(param) {
   return [param.label, param.name, param.desc].filter(Boolean);
 }
 
@@ -104,7 +104,7 @@ Output:
 	param [Object|null]: matching linked parameter, if present
 
 */
-function find_linked_measurement_param(params, selected_param, target_kind) {
+export function find_linked_measurement_param(params, selected_param, target_kind) {
   const selected_bases = parameter_fields(selected_param).map(measurement_base).filter(Boolean);
   const base_set = new Set(selected_bases);
 
@@ -140,7 +140,7 @@ Output:
 	aux [Object]: optional dna_h/dna_w indexes and labels
 
 */
-function find_auxiliary_indexes_for_file(params, selected_label) {
+export function find_auxiliary_indexes_for_file(params, selected_label) {
   const selected_param = params.find((param) =>
     param.label === selected_label || param.name === selected_label || param.desc === selected_label
   );
@@ -173,7 +173,7 @@ Output:
 	result [Object]: filtered arrays plus removed/total event counts
 
 */
-function filter_selected_channel_values(columns, indexes) {
+export function filter_selected_channel_values(columns, indexes) {
   const dna_a = columns[indexes.dna_a] || [];
   const dna_h = indexes.dna_h ? columns[indexes.dna_h] || null : null;
   const dna_w = indexes.dna_w ? columns[indexes.dna_w] || null : null;

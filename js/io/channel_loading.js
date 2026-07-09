@@ -1,14 +1,38 @@
-// Selected-channel FCS DATA loading and worker orchestration. This file creates
-// the shared FCS data worker, falls back to main-thread parsing when appropriate,
-// and loads only the requested parameter columns for each file. It resolves the
-// selected DNA-area channel plus optional height/width companions, then cleans
-// the loaded arrays through js/fcs/channel_cleaning.js. It stores cleaned arrays,
-// event masks, counts, and parameter indexes through the channel cache. It also
-// handles batch progress, plot refresh after new files arrive, and background
-// preload for files added after plotting has started.
+// Selected-channel FCS DATA loading and worker orchestration. This module creates
+// the shared FCS data worker (a module worker), falls back to main-thread parsing
+// when appropriate, and loads only the requested parameter columns for each file.
+// It resolves the selected DNA-area channel plus optional height/width companions,
+// then cleans the loaded arrays through js/fcs/channel_cleaning.js. It stores
+// cleaned arrays, event masks, counts, and parameter indexes through the channel
+// cache. It also handles batch progress, plot refresh after new files arrive, and
+// background preload for files added after plotting has started.
 
-const ANALYSIS_FILE_CONCURRENCY = 4;
-const FCS_DATA_WORKER_URL = "./js/fcs/data_worker.js";
+import { FCSParser } from "../fcs/parser.js";
+import { find_auxiliary_indexes_for_file, filter_selected_channel_values } from "../fcs/channel_cleaning.js";
+import { parameter_map, find_param_index, unique_indexes } from "./parameter_map.js";
+import {
+  analysis_data_key,
+  cached_analysis_data,
+  store_analysis_data,
+  is_analysis_data_loaded,
+  activate_analysis_data,
+} from "../data_structs/channel_cache.js";
+import { get_parsed_files } from "../state/files.js";
+import {
+  get_selected_channels,
+  set_status,
+  set_status_bar,
+  show_progress,
+  update_progress,
+  hide_progress,
+  next_frame,
+} from "../ui/status_channels.js";
+import { plot_channels } from "../plotting/data.js";
+import { init_plot } from "../plotting/modeling.js";
+import { render_density_plot } from "../plotting/render.js";
+
+export const ANALYSIS_FILE_CONCURRENCY = 4;
+const FCS_DATA_WORKER_URL = new URL("../fcs/data_worker.js", import.meta.url);
 
 let fcs_data_worker = null;
 let fcs_data_worker_request_id = 0;
@@ -38,7 +62,7 @@ function get_fcs_data_worker() {
   }
 
   try {
-    fcs_data_worker = new Worker(FCS_DATA_WORKER_URL);
+    fcs_data_worker = new Worker(FCS_DATA_WORKER_URL, { type: "module" });
     fcs_data_worker.addEventListener("message", (event) => {
       const { request_id, ok, columns, error } = event.data || {};
       const request = fcs_data_worker_requests.get(request_id);
@@ -139,7 +163,7 @@ async function load_selected_fcs_columns(file, summary, selected_indexes, option
   }
 
   const data_buffer = await file.slice(summary.data_begin, summary.data_end + 1).arrayBuffer();
-  return window.FCSParser.parse_selected_columns(data_buffer, summary.metadata, selected_indexes);
+  return FCSParser.parse_selected_columns(data_buffer, summary.metadata, selected_indexes);
 }
 
 /*
@@ -184,7 +208,7 @@ Output:
 	(none) [Promise<void>]: sets row.data = { dna_a, indexes }
 
 */
-async function load_analysis_row(row, selected, options = {}) {
+export async function load_analysis_row(row, selected, options = {}) {
   const { activate = true } = options;
   const key = analysis_data_key(selected);
   const cached = cached_analysis_data(row, selected);
@@ -251,23 +275,21 @@ async function load_analysis_row(row, selected, options = {}) {
 
 Purpose:
 	Loads a batch of samples concurrently while reporting per-file progress
-	through the app's progress UI.
+	through the progress UI.
 
 Input:
-  batch [Array<Object>]: { row, index } entries to load
-  selected [Object]:     the selected channels
-  app [Object]:          window.PhaseFinderApp (progress/status helpers)
-  completed [Object]:    shared { count } progress counter (mutated)
-  total [number]:        total number of files being loaded
+	batch [Array<Object>]: { row, index } entries to load
+	selected [Object]:     the selected channels
+	completed [Object]:    shared { count } progress counter (mutated)
+	total [number]:        total number of files being loaded
 
 Output:
 	(none) [Promise<void>]: loads each row's data and advances progress
 
 */
-async function load_analysis_batch(
+export async function load_analysis_batch(
   batch,
   selected,
-  app,
   completed,
   total,
   label = "Loading Selected FCS Data",
@@ -288,11 +310,11 @@ async function load_analysis_batch(
       const detail = `${detail_prefix} for file ${completed.count} of ${display_total}${display_suffix}`;
 
       if (use_overlay) {
-        app.update_progress(percent, label, detail, row.name);
+        update_progress(percent, label, detail, row.name);
       } else {
-        app.set_status_bar(`${detail}: ${row.name}`);
+        set_status_bar(`${detail}: ${row.name}`);
       }
-      await app.next_frame();
+      await next_frame();
     }),
   );
 
@@ -313,40 +335,39 @@ Output:
 	(none) [Promise<void>]: loads the selected data and initializes the plot
 
 */
-async function load_analysis_data() {
-  const app = window.PhaseFinderApp;
-  const rows = app.get_parsed_files();
-  const selected = app.get_selected_channels();
+export async function load_analysis_data() {
+  const rows = get_parsed_files();
+  const selected = get_selected_channels();
   const completed = { count: 0 };
 
   if (!rows.length) {
-    app.set_status("Load at least one FCS file before starting analysis.", true);
-    app.set_status_bar("No files loaded for analysis.", true);
+    set_status("Load at least one FCS file before starting analysis.", true);
+    set_status_bar("No files loaded for analysis.", true);
     return;
   }
 
-  app.show_progress("Loading FCS Data");
-  app.set_status_bar("Working: Loading FCS Data");
-  app.update_progress(0, "Loading FCS Data", `Preparing ${rows.length} file(s)...`);
-  await app.next_frame();
+  show_progress("Loading FCS Data");
+  set_status_bar("Working: Loading FCS Data");
+  update_progress(0, "Loading FCS Data", `Preparing ${rows.length} file(s)...`);
+  await next_frame();
 
   for (let start = 0; start < rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
     const batch = rows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
       row,
       index: start + offset,
     }));
-    await load_analysis_batch(batch, selected, app, completed, rows.length, "Loading FCS Data", {
+    await load_analysis_batch(batch, selected, completed, rows.length, "Loading FCS Data", {
       detail_prefix: "Loading data",
     });
   }
 
-  app.set_status("Data loaded for all files. Curves shown for checked rows.");
-  app.set_status_bar(`Loaded event data for all ${rows.length} file(s).`);
-  app.update_progress(100, "Loading FCS Data", `Finished loading data for ${rows.length} file(s).`);
+  set_status("Data loaded for all files. Curves shown for checked rows.");
+  set_status_bar(`Loaded event data for all ${rows.length} file(s).`);
+  update_progress(100, "Loading FCS Data", `Finished loading data for ${rows.length} file(s).`);
 
   init_plot(selected);
 
-  app.hide_progress(700);
+  hide_progress(700);
 }
 
 /*
@@ -363,14 +384,13 @@ Output:
 	result [Promise<Object>]: { refreshed, loaded_rows }
 
 */
-async function refresh_analysis_after_metadata_change({ redraw_if_no_missing = true } = {}) {
-  if (typeof plot_channels === "undefined" || !plot_channels || typeof init_plot !== "function") {
+export async function refresh_analysis_after_metadata_change({ redraw_if_no_missing = true } = {}) {
+  if (!plot_channels) {
     return { refreshed: false, loaded_rows: 0 };
   }
 
-  const app = window.PhaseFinderApp;
-  const selected = app.get_selected_channels();
-  const rows = app.get_parsed_files();
+  const selected = get_selected_channels();
+  const rows = get_parsed_files();
   const should_activate_plot = !plot_channels || selected.dna_area === plot_channels.dna_area;
   const missing_rows = rows.filter((row) => !is_analysis_data_loaded(row, selected));
 
@@ -384,10 +404,10 @@ async function refresh_analysis_after_metadata_change({ redraw_if_no_missing = t
 
   const completed = { count: 0 };
   const label = "Loading Added FCS Data";
-  app.show_progress(label);
-  app.set_status_bar(`Working: ${label}`);
-  app.update_progress(0, label, `Preparing ${missing_rows.length} added file(s)...`);
-  await app.next_frame();
+  show_progress(label);
+  set_status_bar(`Working: ${label}`);
+  update_progress(0, label, `Preparing ${missing_rows.length} added file(s)...`);
+  await next_frame();
 
   try {
     for (let start = 0; start < missing_rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
@@ -395,14 +415,12 @@ async function refresh_analysis_after_metadata_change({ redraw_if_no_missing = t
         row,
         index: start + offset,
       }));
-      await load_analysis_batch(batch, selected, app, completed, missing_rows.length, label, {
+      await load_analysis_batch(batch, selected, completed, missing_rows.length, label, {
         activate: should_activate_plot,
       });
     }
   } catch (error) {
-    if (typeof render_density_plot === "function") {
-      render_density_plot();
-    }
+    render_density_plot();
     throw error;
   }
 
@@ -426,13 +444,12 @@ Output:
 	result [Promise<Object>]: { preloaded, loaded_rows }
 
 */
-async function preload_analysis_rows_in_background(rows) {
-  if (typeof plot_channels === "undefined" || !plot_channels || !rows || !rows.length) {
+export async function preload_analysis_rows_in_background(rows) {
+  if (!plot_channels || !rows || !rows.length) {
     return { preloaded: false, loaded_rows: 0 };
   }
 
-  const app = window.PhaseFinderApp;
-  const selected = app.get_selected_channels();
+  const selected = get_selected_channels();
   const targets = rows.filter((row) => !is_analysis_data_loaded(row, selected));
 
   if (!targets.length) {
@@ -440,15 +457,15 @@ async function preload_analysis_rows_in_background(rows) {
   }
 
   if (!get_fcs_data_worker()) {
-    app.set_status_bar("Background worker unavailable; added FCS data will load when selected.");
+    set_status_bar("Background worker unavailable; added FCS data will load when selected.");
     return { preloaded: false, loaded_rows: 0 };
   }
 
   const completed = { count: 0 };
   const label = "Loading Added FCS Data";
-  const all_rows = typeof app.get_parsed_files === "function" ? app.get_parsed_files() : targets;
+  const all_rows = get_parsed_files();
   const overall_index_by_row = new Map(all_rows.map((row, index) => [row, index]));
-  app.set_status_bar(`Preparing ${targets.length} added FCS file(s) for background loading...`);
+  set_status_bar(`Preparing ${targets.length} added FCS file(s) for background loading...`);
 
   try {
     for (let start = 0; start < targets.length; start += ANALYSIS_FILE_CONCURRENCY) {
@@ -456,7 +473,7 @@ async function preload_analysis_rows_in_background(rows) {
         row,
         index: overall_index_by_row.get(row) ?? 0,
       }));
-      await load_analysis_batch(batch, selected, app, completed, targets.length, label, {
+      await load_analysis_batch(batch, selected, completed, targets.length, label, {
         use_overlay: false,
         detail_prefix: "Loading selected data",
         allow_main_thread_fallback: false,
@@ -466,10 +483,10 @@ async function preload_analysis_rows_in_background(rows) {
       });
     }
   } catch (error) {
-    app.set_status_bar(`Background FCS data load failed: ${error.message}`, true);
+    set_status_bar(`Background FCS data load failed: ${error.message}`, true);
     return { preloaded: false, loaded_rows: completed.count };
   }
 
-  app.set_status_bar(`Background loaded event data for ${targets.length} added file(s).`);
+  set_status_bar(`Background loaded event data for ${targets.length} added file(s).`);
   return { preloaded: true, loaded_rows: targets.length };
 }

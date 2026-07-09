@@ -4,9 +4,10 @@
 // plot and metadata panels share vertical space when both are visible and
 // expanded. It watches panel hidden/collapsed state so resizing handles are only
 // active when the layout can actually change. After each resize, it dispatches
-// resize events so the plot can redraw against the new dimensions.
+// resize events so the plot can redraw against the new dimensions. The entry
+// bootstrap installs the drag handlers once via init_panel_resize().
 
-(function () {
+export function init_panel_resize() {
   'use strict';
 
   const MIN_SIDEBAR_WIDTH = 150;
@@ -147,4 +148,4 @@
       window.dispatchEvent(new Event('resize'));
     });
   }
-})();
+}

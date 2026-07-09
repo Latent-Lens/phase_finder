@@ -3,9 +3,8 @@
 // parameter metadata, and DATA values for supported numeric data types. It can
 // parse full event rows when needed, but PhaseFinder mainly uses the
 // selected-column reader so only requested channels are loaded into memory. It
-// exposes globalThis.FCSParser rather than ES modules because the app is loaded
-// by plain script tags and the worker imports the same file. Higher-level file
-// loading and cleanup live outside this parser.
+// exports the FCSParser API as a plain ES module; the module data worker imports
+// the same file. Higher-level file loading and cleanup live outside this parser.
 
 /*
 
@@ -537,7 +536,7 @@ function parse_fcs_header_from_segments(header_buffer, text_buffer) {
   return summarize_fcs_header(header, metadata);
 }
 
-globalThis.FCSParser = {
+export const FCSParser = {
   parse_fcs,
   parse_fcs_header,
   parse_fcs_header_from_segments,

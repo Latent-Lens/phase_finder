@@ -1,21 +1,35 @@
 // OPFS restore, manual reconnect matching, and reconnect modal behavior. This
-// file attempts to recover saved-session FCS files from cached OPFS copies and
+// module attempts to recover saved-session FCS files from cached OPFS copies and
 // marks each record as available, missing, or mismatched. When cached files are
 // unavailable, it matches manually selected files to expected session records by
 // filename, size, and last-modified metadata. It renders the reconnect modal and
 // handles file-by-file or folder-style reconnect flows. Session core calls this
 // during restore and after users pick replacement files.
 
+import { supports_opfs, read_file_from_opfs } from "./opfs_fs.js";
+import {
+  is_resolved,
+  human_size,
+  esc,
+  is_test_mode,
+  idb_get,
+  idb_put,
+  pick_dir_fallback,
+  copy_file_to_opfs,
+} from "./file_cache.js";
+import { set_status_bar } from "../ui/status_channels.js";
+import { load_files } from "../io/metadata_io.js";
+
 // ── OPFS restore + reconnect matching ────────────────────────────────────────
 
 // Reads each record's OPFS copy, rewrapping it as a File with the original name
 // and metadata (OPFS stores it under an id-based filename). Buckets results.
-async function try_load_from_opfs(records) {
+export async function try_load_from_opfs(records) {
   const found = [], missing = [], mismatch = [];
-  if (!OPFS()?.supports_opfs()) return { found, missing: records.slice(), mismatch };
+  if (!supports_opfs()) return { found, missing: records.slice(), mismatch };
   for (const record of records) {
     try {
-      const raw = await OPFS().read_file_from_opfs(record.opfs_path);
+      const raw = await read_file_from_opfs(record.opfs_path);
       const file = new File([raw], record.original_name, {
         type: record.mime_type || 'application/octet-stream',
         lastModified: record.last_modified,
@@ -65,6 +79,12 @@ function is_acceptable_match(record, file) {
 
 let reconnect_ctx = null;
 
+// Exposed so session/core can read outstanding-file counts for its status/close
+// wiring without touching this module's private state.
+export function get_reconnect_records() {
+  return reconnect_ctx ? reconnect_ctx.records : null;
+}
+
 function render_reconnect_list() {
   const list = document.getElementById('reconnect_file_list');
   if (!list || !reconnect_ctx) return;
@@ -89,23 +109,22 @@ function render_reconnect_list() {
   }
 }
 
-function open_reconnect_modal(records) {
+export function open_reconnect_modal(records) {
   reconnect_ctx = { records };
   render_reconnect_list();
   const modal = document.getElementById('reconnect_modal');
   if (modal) modal.hidden = false;
 }
 
-function close_reconnect_modal() {
+export function close_reconnect_modal() {
   const modal = document.getElementById('reconnect_modal');
   if (modal) modal.hidden = true;
   reconnect_ctx = null;
 }
 
 // Matches provided files against still-missing records, caches + loads matches.
-async function apply_reconnected_files(files) {
+export async function apply_reconnected_files(files) {
   if (!reconnect_ctx) return;
-  const app = window.PhaseFinderApp;
   const indexes = index_selected_files(Array.from(files || []));
   const to_load = [];
   for (const record of reconnect_ctx.records) {
@@ -119,7 +138,7 @@ async function apply_reconnected_files(files) {
   if (to_load.length) await load_files(to_load);
   render_reconnect_list();
   const remaining = reconnect_ctx.records.filter((r) => !is_resolved(r)).length;
-  app.set_status_bar?.(
+  set_status_bar(
     to_load.length
       ? `Reconnected ${to_load.length} file${to_load.length === 1 ? '' : 's'}.${remaining ? ` ${remaining} still missing.` : ''}`
       : 'No matching files found in your selection.',
@@ -129,7 +148,7 @@ async function apply_reconnected_files(files) {
 
 // Folder reconnect. Native directory picker is Chromium-only and can't be
 // automated, so test mode (and non-Chromium browsers) use a webkitdirectory input.
-async function reconnect_from_directory() {
+export async function reconnect_from_directory() {
   if (!reconnect_ctx) return;
   const missing = reconnect_ctx.records.filter((r) => !is_resolved(r));
   if (!missing.length) return;
@@ -150,12 +169,8 @@ async function reconnect_from_directory() {
     const found = [];
     for (const record of missing) {
       let file = null;
-      try {
-        file = await (await getFileHandleByRelativePath(dir_handle, record.relative_path)).getFile();
-      } catch (_) {
-        try { file = await (await dir_handle.getFileHandle(record.original_name)).getFile(); }
-        catch (_) { file = null; }
-      }
+      try { file = await (await dir_handle.getFileHandle(record.original_name)).getFile(); }
+      catch (_) { file = null; }
       if (file && is_acceptable_match(record, file)) found.push(file);
     }
     await apply_reconnected_files(found);
@@ -166,7 +181,7 @@ async function reconnect_from_directory() {
   }
 }
 
-function reconnect_from_files() {
+export function reconnect_from_files() {
   const input = document.getElementById('reconnect_file_input');
   if (!input) return;
   input.value = '';
