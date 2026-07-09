@@ -1,10 +1,44 @@
-// User-facing analysis and modeling orchestration. This file coordinates the
+// User-facing analysis and modeling orchestration. This module coordinates the
 // transition from loaded metadata to plotted channel data, then from plotted
 // data to DJF modeling mode. It enables and disables plot action controls while
 // channel data is loading so users cannot start conflicting workflows. It
 // responds to channel changes by loading or activating the selected channel
-// cache and redrawing the plot. It wires the analysis buttons, plot-panel
-// toggles, selection-change handling, and channel-change handling.
+// cache and redrawing the plot. init_analysis_listeners() (called once by the
+// entry bootstrap) wires the analysis buttons, plot-panel toggles,
+// selection-change handling, and channel-change handling.
+
+import {
+  analysis_start_button,
+  analysis_collapsed_plot_button,
+  cell_cycle_modeling_button,
+  collapsed_cell_cycle_modeling_button,
+  plot_panel,
+  metadata_panel_toggle,
+  plot_panel_toggle,
+  toggle_metadata_panel,
+  toggle_plot_panel,
+} from "../ui/panels.js";
+import { Tooltips } from "../ui/hover_text.js";
+import { get_parsed_files } from "../state/files.js";
+import {
+  get_selected_channels,
+  set_status,
+  set_status_bar,
+  show_progress,
+  update_progress,
+  hide_progress,
+  next_frame,
+  update_start_button_state,
+} from "../ui/status_channels.js";
+import { is_analysis_data_loaded, activate_analysis_data } from "../data_structs/channel_cache.js";
+import { plot_channels } from "../plotting/data.js";
+import { reset_modeling_state, init_plot, start_modeling } from "../plotting/modeling.js";
+import {
+  ANALYSIS_FILE_CONCURRENCY,
+  load_analysis_data,
+  load_analysis_batch,
+  refresh_analysis_after_metadata_change,
+} from "../io/channel_loading.js";
 
 // Whether analysis has run; once true the button drives DJF modeling instead.
 let modeling_mode = false;
@@ -47,14 +81,12 @@ Output:
 function enter_plotting_mode() {
   modeling_mode = false;
   if (analysis_start_button) analysis_start_button.classList.remove("modeling");
-  if (typeof reset_modeling_state === "function") {
-    reset_modeling_state();
-  }
+  reset_modeling_state();
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (!btn) return;
     btn.disabled = true;
-    btn.setAttribute("aria-label", window.PhaseFinderTooltips.text("cellCycleModelingDisabled"));
-    window.PhaseFinderTooltips.set_quick_tooltip(btn, "cellCycleModelingDisabled");
+    btn.setAttribute("aria-label", Tooltips.text("cellCycleModelingDisabled"));
+    Tooltips.set_quick_tooltip(btn, "cellCycleModelingDisabled");
   });
 }
 
@@ -74,24 +106,21 @@ Output:
 
 */
 async function prepare_selected_channel_for_plotting() {
-  const app = window.PhaseFinderApp;
-  const selected = app.get_selected_channels();
+  const selected = get_selected_channels();
 
-  if (typeof plot_channels === "undefined" || !plot_channels) {
+  if (!plot_channels) {
     return;
   }
 
   const request_id = ++channel_change_load_id;
-  const rows = app.get_parsed_files();
+  const rows = get_parsed_files();
 
   enter_plotting_mode();
 
-  if (typeof update_start_button_state === "function") {
-    update_start_button_state();
-  }
+  update_start_button_state();
 
   if (!selected.dna_area || !rows.length) {
-    app.set_status_bar("Load files and select a channel before plotting.", true);
+    set_status_bar("Load files and select a channel before plotting.", true);
     return;
   }
 
@@ -101,20 +130,18 @@ async function prepare_selected_channel_for_plotting() {
     // previously-plotted channel) — activate it as row.data and switch the
     // visible plot over now.
     rows.forEach((row) => activate_analysis_data(row, selected));
-    if (typeof init_plot === "function") {
-      init_plot(selected);
-    }
-    app.set_status_bar(`Channel ${selected.dna_area} data ready.`);
+    init_plot(selected);
+    set_status_bar(`Channel ${selected.dna_area} data ready.`);
     return;
   }
 
   const completed = { count: 0 };
   const label = `Loading ${selected.dna_area} Channel FCS Data`;
   set_plot_action_controls_disabled(true);
-  app.show_progress(label);
-  app.set_status_bar(`Working: ${label}`);
-  app.update_progress(0, label, `Preparing ${missing_rows.length} file(s)...`);
-  await app.next_frame();
+  show_progress(label);
+  set_status_bar(`Working: ${label}`);
+  update_progress(0, label, `Preparing ${missing_rows.length} file(s)...`);
+  await next_frame();
 
   try {
     for (let start = 0; start < missing_rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
@@ -122,7 +149,7 @@ async function prepare_selected_channel_for_plotting() {
         row,
         index: start + offset,
       }));
-      await load_analysis_batch(batch, selected, app, completed, missing_rows.length, label, {
+      await load_analysis_batch(batch, selected, completed, missing_rows.length, label, {
         activate: false,
         detail_prefix: "Loading data",
       });
@@ -134,20 +161,14 @@ async function prepare_selected_channel_for_plotting() {
       // avoid disturbing the still-visible old plot mid-load) and switch
       // the visible plot over to it.
       rows.forEach((row) => activate_analysis_data(row, selected));
-      if (typeof init_plot === "function") {
-        init_plot(selected);
-      }
-      app.set_status_bar(`Channel ${selected.dna_area} data ready — pre-loaded ${missing_rows.length} file(s).`);
-      app.update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`);
+      init_plot(selected);
+      set_status_bar(`Channel ${selected.dna_area} data ready — pre-loaded ${missing_rows.length} file(s).`);
+      update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`);
     }
   } finally {
     if (request_id === channel_change_load_id) {
-      app.hide_progress(700);
-      if (typeof update_start_button_state === "function") {
-        update_start_button_state();
-      } else {
-        set_plot_action_controls_disabled(false);
-      }
+      hide_progress(700);
+      update_start_button_state();
     }
   }
 }
@@ -171,8 +192,8 @@ function enter_modeling_mode() {
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (!btn) return;
     btn.disabled = false;
-    btn.setAttribute("aria-label", window.PhaseFinderTooltips.text("cellCycleModeling"));
-    window.PhaseFinderTooltips.set_quick_tooltip(btn, "cellCycleModeling");
+    btn.setAttribute("aria-label", Tooltips.text("cellCycleModeling"));
+    Tooltips.set_quick_tooltip(btn, "cellCycleModeling");
   });
 }
 
@@ -193,51 +214,68 @@ Output:
 async function start_analysis() {
   plot_panel.hidden = false;
   document.dispatchEvent(new CustomEvent("pf-plot-started", {
-    detail: { channel: window.PhaseFinderApp.get_selected_channels().dna_area },
+    detail: { channel: get_selected_channels().dna_area },
   }));
 
   try {
     await load_analysis_data();
     enter_modeling_mode();
     document.dispatchEvent(new CustomEvent("pf-plot-complete", {
-      detail: { channel: window.PhaseFinderApp.get_selected_channels().dna_area },
+      detail: { channel: get_selected_channels().dna_area },
     }));
   } catch (error) {
-    window.PhaseFinderApp.set_status(error.message, true);
-    window.PhaseFinderApp.set_status_bar("Selected data loading failed.", true);
-    window.PhaseFinderApp.update_progress(100, "Loading Selected FCS Data", error.message);
-    window.PhaseFinderApp.hide_progress(1400);
+    set_status(error.message, true);
+    set_status_bar("Selected data loading failed.", true);
+    update_progress(100, "Loading Selected FCS Data", error.message);
+    hide_progress(1400);
   }
 }
 
-metadata_panel_toggle.addEventListener("click", toggle_metadata_panel);
-plot_panel_toggle.addEventListener("click", toggle_plot_panel);
-analysis_start_button.addEventListener("click", start_analysis);
-analysis_collapsed_plot_button.addEventListener("click", start_analysis);
-document.addEventListener("fcs-selection-change", () => {
-  refresh_analysis_after_metadata_change({ redraw_if_no_missing: false }).catch((error) => {
-    window.PhaseFinderApp.set_status(error.message, true);
-    window.PhaseFinderApp.set_status_bar("Selected data loading failed.", true);
-    window.PhaseFinderApp.update_progress(100, "Loading Added FCS Data", error.message);
-    window.PhaseFinderApp.hide_progress(1400);
-  });
-});
+/*
 
-document.addEventListener("fcs-channel-change", () => {
-  prepare_selected_channel_for_plotting().catch((error) => {
-    window.PhaseFinderApp.set_status(error.message, true);
-    window.PhaseFinderApp.set_status_bar("Selected channel data loading failed.", true);
-    window.PhaseFinderApp.update_progress(100, "Loading Selected FCS Data", error.message);
-    window.PhaseFinderApp.hide_progress(1400);
-    if (typeof update_start_button_state === "function") {
+Purpose:
+	Wires the analysis buttons, plot-panel toggles, selection-change refresh, and
+	channel-change reload. Called once by the entry bootstrap.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: installs analysis-related listeners
+
+*/
+export function init_analysis_listeners() {
+  metadata_panel_toggle.addEventListener("click", toggle_metadata_panel);
+  plot_panel_toggle.addEventListener("click", toggle_plot_panel);
+  analysis_start_button.addEventListener("click", start_analysis);
+  analysis_collapsed_plot_button.addEventListener("click", start_analysis);
+
+  document.addEventListener("fcs-selection-change", () => {
+    refresh_analysis_after_metadata_change({ redraw_if_no_missing: false }).catch((error) => {
+      set_status(error.message, true);
+      set_status_bar("Selected data loading failed.", true);
+      update_progress(100, "Loading Added FCS Data", error.message);
+      hide_progress(1400);
+    });
+  });
+
+  document.addEventListener("fcs-channel-change", () => {
+    prepare_selected_channel_for_plotting().catch((error) => {
+      set_status(error.message, true);
+      set_status_bar("Selected channel data loading failed.", true);
+      update_progress(100, "Loading Selected FCS Data", error.message);
+      hide_progress(1400);
       update_start_button_state();
-    }
+    });
   });
-});
 
-// Cell Cycle Modeling buttons — call start_modeling directly (defined in js/plotting/modeling.js).
-[cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
-  if (btn) btn.addEventListener("click", () => {
-    if (typeof start_modeling === "function") start_modeling();
+  // Cell Cycle Modeling buttons — call start_modeling directly (defined in
+  // js/plotting/modeling.js). It lazy-loads the DJF stack, so it can reject.
+  [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
+    if (btn) btn.addEventListener("click", () => {
+      start_modeling().catch((error) => {
+        set_status_bar(`Cell-cycle modeling failed to load: ${error.message}`, true);
+      });
+    });
   });
-});
+}

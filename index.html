@@ -5,23 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="PhaseFinder: A browser-based tool for inspecting and plotting flow cytometry FCS files with Dean-Jett-Fox cell-cycle modeling." />
     <title>PhaseFinder</title>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-    <script type="module">
-      // Levenberg–Marquardt solver for Dean–Jett–Fox curve fitting. Loaded
-      // dynamically (and ready well before the user triggers a fit) so a load
-      // failure or export-shape change can't throw at parse time.
-      import("https://esm.sh/ml-levenberg-marquardt@4")
-        .then((mod) => {
-          window.levenbergMarquardt = mod.default || mod.levenbergMarquardt || mod;
-        })
-        .catch((error) => console.warn("Levenberg–Marquardt failed to load:", error));
-      // ml-gsd peak finder, used to seed the DJF fit by locating the G1/G2 peaks.
-      import("https://esm.sh/ml-gsd@13")
-        .then((mod) => {
-          window.gsd = mod.gsd || mod.default || mod;
-        })
-        .catch((error) => console.warn("ml-gsd failed to load:", error));
+    <!--
+      Native ES modules, no build step. d3 and the two ml-* numeric libraries are
+      locally vendored ESM bundles (js/vendor/) mapped to their bare specifiers
+      here, so app modules can `import * as d3 from "d3"` etc. with no runtime CDN
+      dependency. The app must be served over HTTP — ES modules cannot load over
+      file://.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "d3": "./js/vendor/d3.min.js",
+          "ml-levenberg-marquardt": "./js/vendor/ml-levenberg-marquardt.js",
+          "ml-gsd": "./js/vendor/ml-gsd.js"
+        }
+      }
     </script>
+    <link rel="modulepreload" href="./js/main.js" />
     <link rel="stylesheet" href="./css/base.css" />
     <link rel="stylesheet" href="./css/layout.css" />
     <link rel="stylesheet" href="./css/sidebar.css" />
@@ -418,35 +418,13 @@
       </span>
     </footer>
 
-    <script src="./js/fcs/parser.js"></script>
-    <script src="./js/fcs/metadata_processing.js"></script>
-    <script src="./js/ui/hover_text.js"></script>
-    <script src="./js/data_structs/metadata_frame.js"></script>
-    <script src="./js/data_structs/table_state.js"></script>
-    <script src="./js/data_structs/metadata_columns.js"></script>
-    <script src="./js/data_structs/channel_cache.js"></script>
-    <script src="./js/ui/status_channels.js"></script>
-    <script src="./js/io/metadata_io.js"></script>
-    <script src="./js/ui/metadata_wizard.js"></script>
-    <script src="./js/ui/table_support.js"></script>
-    <script src="./js/ui/table_render.js"></script>
-    <script src="./js/main.js"></script>
-    <script src="./js/analysis/djf.js"></script>
-    <script src="./js/plotting/data.js"></script>
-    <script src="./js/plotting/modeling.js"></script>
-    <script src="./js/plotting/render.js"></script>
-    <script src="./js/plotting/axis_modal.js"></script>
-    <script src="./js/ui/panels.js"></script>
-    <script src="./js/io/cache.js"></script>
-    <script src="./js/fcs/channel_cleaning.js"></script>
-    <script src="./js/io/channel_loading.js"></script>
-    <script src="./js/analysis/start.js"></script>
-    <script src="./js/analysis/stats.js"></script>
-    <script src="./js/ui/panel_resize.js"></script>
-    <script src="./js/session/store.js"></script>
-    <script src="./js/session/toml_io.js"></script>
-    <script src="./js/session/opfs.js"></script>
-    <script src="./js/session/reconnect.js"></script>
-    <script src="./js/session/core.js"></script>
+    <!--
+      Single module entry. main.js imports every layer and runs the ordered
+      init_*() bootstrap, replacing the former hand-maintained load order of ~31
+      classic <script> tags. type="module" is deferred, so it runs after the
+      document is parsed (the modules' top-level querySelector DOM captures rely
+      on that).
+    -->
+    <script type="module" src="./js/main.js"></script>
   </body>
 </html>

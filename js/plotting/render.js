@@ -1,10 +1,91 @@
-// Main D3 render pass for the plot panel. This file gathers checked rows with
+// Main D3 render pass for the plot panel. This module gathers checked rows with
 // loaded channel data, applies optional DJF preprocessing, builds histogram
 // points, computes axis domains, and draws the SVG. It supports curve-only,
 // curve-plus-bins, and bins-only sample histogram display modes. When modeling
-// is active, it fits visible samples and overlays the DJF total curve plus G1,
-// S, and G2 components. It also draws legends, threshold controls, axis hit
-// areas, plot titles, readouts, and fit-result tables.
+// is active (or a debris/doublet correction is enabled) it uses the lazily loaded
+// DJF numeric stack; the histogram always draws immediately and DJF is fetched in
+// the background, triggering a redraw once ready. It also draws legends, threshold
+// controls, axis hit areas, plot titles, readouts, and fit-result tables.
+
+import * as d3 from "d3";
+import {
+  plot_area,
+  plot_channels,
+  djf_readout,
+  plot_color_by_select,
+  plot_bin_count,
+  plot_display_mode,
+  correction_state,
+  shared_range_for_values,
+  axis_opts,
+  build_color_assigner,
+  histogram_curve,
+  build_histogram_summary,
+  loaded_rows_for_active_channel,
+  plottable_rows,
+  set_last_series,
+  series_by_name,
+  histograms_by_name,
+  axis_range_override,
+  modeling_started,
+  shown_fits,
+  peak_threshold,
+  set_peak_threshold,
+  set_last_auto_x_range,
+  set_last_auto_y_max,
+  strip_fcs,
+  plot_threshold_toggle,
+  PLOT_MARGIN,
+  PLOT_FALLBACK_WIDTH,
+  PLOT_FALLBACK_HEIGHT,
+  AXIS_LINE_WIDTH,
+  AXIS_TICK_FONT_SIZE,
+  AXIS_TITLE_FONT_SIZE,
+  AXIS_LABEL_COLOR,
+  AXIS_HIT_PAD,
+  X_AXIS_TICKS,
+  Y_AXIS_TICKS,
+  X_TITLE_OFFSET,
+  Y_TITLE_OFFSET,
+  SAMPLE_LINE_WIDTH,
+  SAMPLE_BIN_OPACITY_WITH_CURVE,
+  SAMPLE_BIN_OPACITY_ONLY,
+  SAMPLE_BIN_WIDTH_RATIO,
+  DJF_G1_COLOR,
+  DJF_S_COLOR,
+  DJF_G2_COLOR,
+  DJF_TOTAL_COLOR,
+  DJF_FILL_OPACITY,
+  DJF_COMPONENT_LINE_WIDTH,
+  DJF_TOTAL_LINE_WIDTH,
+  LEGEND_OFFSET_X,
+  LEGEND_ROW_HEIGHT,
+  LEGEND_SWATCH_WIDTH,
+  LEGEND_TEXT_OFFSET,
+  LEGEND_LINE_WIDTH,
+  LEGEND_FONT_SIZE,
+  LEGEND_SWATCH_Y,
+  LEGEND_TEXT_Y,
+  LEGEND_CHECKBOX_SIZE,
+  THRESHOLD_COLOR,
+  THRESHOLD_LINE_WIDTH,
+  THRESHOLD_FILL_OPACITY,
+  THRESHOLD_HANDLE_WIDTH,
+  THRESHOLD_LABEL_FONT_SIZE,
+  THRESHOLD_LABEL_COLOR,
+  THRESHOLD_LABEL_X_OFFSET,
+  THRESHOLD_LABEL_Y_OFFSET,
+  THRESHOLD_LABEL_TOP_PAD,
+} from "./data.js";
+import { get_parsed_files } from "../state/files.js";
+import { load_djf, get_djf } from "./djf_loader.js";
+import { update_plot_title, toggle_fit, render_fit_results_table } from "./modeling.js";
+import { open_axis_range_modal } from "./axis_modal.js";
+
+// Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
+// when no samples are selected. Only this render pass reads or writes them.
+let last_range = null;
+let last_y_max = null;
 
 /*
 
@@ -13,7 +94,9 @@ Purpose:
 	checked samples with D3, applying the controls (color-by, axis scale, bins).
 	When a sample is chosen under Model (DJF) it overlays the fitted curve and
 	filled G1/S/G2 components, a draggable peak-threshold line, and a fraction
-	readout. Also draws the legend and updates the title.
+	readout. Also draws the legend and updates the title. DJF is loaded lazily;
+	the histogram draws immediately and the fit/correction pass redraws once the
+	numeric stack has loaded.
 
 Input:
 	(none)
@@ -22,11 +105,9 @@ Output:
 	(none) [void]: rebuilds the #plot_area SVG
 
 */
-function render_density_plot() {
-  const d3 = window.d3;
-  if (!d3 || !plot_area || !plot_channels) return;
+export function render_density_plot() {
+  if (!plot_area || !plot_channels) return;
 
-  const djf = window.PhaseFinderDJF;
   const rows = plottable_rows();
 
   plot_area.innerHTML = "";
@@ -39,6 +120,18 @@ function render_density_plot() {
   const show_bins = display_mode === "bins" || display_mode === "curve_bins";
   const show_curves = display_mode !== "bins";
   const corrections = correction_state();
+
+  // The DJF numeric stack is only needed for corrections and fitting. Load it on
+  // demand the first time either is requested; draw raw meanwhile and redraw when
+  // the module resolves.
+  const djf = get_djf();
+  const needs_djf = modeling_started || corrections.remove_debris || corrections.remove_doublets;
+  if (needs_djf && !djf) {
+    load_djf().then(() => render_density_plot()).catch(() => {
+      if (djf_readout) djf_readout.textContent = "Cell-cycle modeling failed to load.";
+    });
+  }
+
   const prepared_rows = rows.map((row) => ({
     row,
     prepared: djf ? djf.prepare_row(row, corrections) : { values: row.data.dna_a, stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length } },
@@ -63,7 +156,7 @@ function render_density_plot() {
     const points = histogram_curve(prepared.values, opts);
     return { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points, histogram: build_histogram_summary(points, opts) };
   });
-  last_series = series;
+  set_last_series(series);
   series.forEach((entry) => {
     series_by_name.set(entry.name, entry);
     histograms_by_name.set(entry.name, entry.histogram);
@@ -71,21 +164,18 @@ function render_density_plot() {
 
   // Also compute histograms for loaded-but-unchecked files (not drawn, so no
   // color/group), using the same bins/range/corrections as the current plot,
-  // so window.PhaseFinderPlot.get_histogram() works for every loaded sample
+  // so window.PhaseFinder.plot.get_histogram() works for every loaded sample
   // regardless of its table checkbox state.
-  const app = window.PhaseFinderApp;
-  if (app) {
-    const plotted_names = new Set(series.map((entry) => entry.name));
-    loaded_rows_for_active_channel(app.get_parsed_files())
-      .filter((row) => !plotted_names.has(row.name))
-      .forEach((row) => {
-        const prepared = djf ? djf.prepare_row(row, corrections) : { values: row.data.dna_a, stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length } };
-        const points = histogram_curve(prepared.values, opts);
-        const entry = { row, name: row.name, color: null, group: null, values: prepared.values, stats: prepared.stats, points, histogram: build_histogram_summary(points, opts) };
-        series_by_name.set(entry.name, entry);
-        histograms_by_name.set(entry.name, entry.histogram);
-      });
-  }
+  const plotted_names = new Set(series.map((entry) => entry.name));
+  loaded_rows_for_active_channel(get_parsed_files())
+    .filter((row) => !plotted_names.has(row.name))
+    .forEach((row) => {
+      const prepared = djf ? djf.prepare_row(row, corrections) : { values: row.data.dna_a, stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length } };
+      const points = histogram_curve(prepared.values, opts);
+      const entry = { row, name: row.name, color: null, group: null, values: prepared.values, stats: prepared.stats, points, histogram: build_histogram_summary(points, opts) };
+      series_by_name.set(entry.name, entry);
+      histograms_by_name.set(entry.name, entry.histogram);
+    });
 
   update_plot_title(rows, series.reduce((sum, item) => sum + item.values.length, 0));
 
@@ -99,12 +189,12 @@ function render_density_plot() {
     if (is_log) {
       if (djf_readout) djf_readout.textContent = "DJF requires a linear X-axis.";
     } else if (!djf) {
-      if (djf_readout) djf_readout.textContent = "Corrected DJF module is unavailable.";
+      if (djf_readout) djf_readout.textContent = "Loading cell-cycle modeling…";
     } else {
       const shown_series = series.filter((s) => shown_fits.has(s.name));
       if (shown_series.length) {
         const shown_max = d3.max(shown_series, (s) => d3.max(s.points, (pt) => pt.y)) || 1;
-        if (peak_threshold == null) peak_threshold = 0.05 * shown_max;
+        if (peak_threshold == null) set_peak_threshold(0.05 * shown_max);
         threshold_value = peak_threshold;
         const run_g1 = djf.estimate_run_g1(series, threshold_value);
         for (const s of shown_series) {
@@ -173,8 +263,8 @@ function render_density_plot() {
 
   // Remembered so the axis-range modal can show live placeholders for both
   // axes no matter which one was double-clicked to open it.
-  last_auto_x_range = auto_x_range;
-  last_auto_y_max = auto_y_max;
+  set_last_auto_x_range(auto_x_range);
+  set_last_auto_y_max(auto_y_max);
 
   const svg = d3.select(plot_area).append("svg").attr("width", width).attr("height", height);
 
@@ -351,7 +441,7 @@ function render_density_plot() {
           group.select(".threshold_label").text(`peak threshold: ${Math.round(value).toLocaleString()} events`);
         })
         .on("end", (event) => {
-          peak_threshold = clamp_value(event.y);
+          set_peak_threshold(clamp_value(event.y));
           render_density_plot();
         }),
     );

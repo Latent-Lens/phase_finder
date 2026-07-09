@@ -1,10 +1,31 @@
-// DJF modeling UI state and fit-summary presentation. This file updates the
+// DJF modeling UI state and fit-summary presentation. This module updates the
 // plot title, manages whether modeling has started, chooses which sample fits
 // are visible, and renders the fit-results overlay table. It resets modeling
 // state when the plotted channel changes so stale fits are not shown for a new
-// channel. It starts modeling by selecting an initial sample fit and asking the
-// renderer to redraw with model overlays. Raw histogram drawing and model math
-// live in other plotting/analysis files.
+// channel. Starting modeling first lazy-loads the DJF numeric stack, then selects
+// an initial sample fit and asks the renderer to redraw with model overlays. Raw
+// histogram drawing and model math live in other plotting/analysis files.
+
+import {
+  plot_title,
+  plot_area,
+  djf_readout,
+  plot_channels,
+  set_plot_channels,
+  set_modeling_started,
+  shown_fits,
+  set_peak_threshold,
+  plottable_rows,
+  strip_fcs,
+  plot_escape_html,
+  format_fit_number,
+} from "./data.js";
+import { render_density_plot } from "./render.js";
+import { load_djf } from "./djf_loader.js";
+
+// The fit-results overlay element; recreated each render. Owned here because
+// only this module reads or replaces it.
+let djf_fit_table = null;
 
 /*
 
@@ -20,7 +41,7 @@ Output:
 	(none) [void]: sets the #plot_title text
 
 */
-function update_plot_title(rows, event_count = null) {
+export function update_plot_title(rows, event_count = null) {
   if (!plot_title) return;
   const events = event_count == null
     ? rows.reduce((sum, row) => sum + row.data.dna_a.length, 0)
@@ -42,7 +63,7 @@ Output:
 	(none) [void]: updates #djf_fit_table
 
 */
-function render_fit_results_table(fits, placement = {}) {
+export function render_fit_results_table(fits, placement = {}) {
   if (!plot_area) return;
   if (!fits.length) {
     if (djf_fit_table) {
@@ -117,10 +138,10 @@ Output:
 	(none) [void]: resets modeling flags and fit selections
 
 */
-function reset_modeling_state() {
-  modeling_started = false;
+export function reset_modeling_state() {
+  set_modeling_started(false);
   shown_fits.clear();
-  peak_threshold = null;
+  set_peak_threshold(null);
   if (djf_readout) {
     djf_readout.textContent = "";
   }
@@ -140,28 +161,29 @@ Output:
 	(none) [void]: stores plot state and triggers the first render
 
 */
-function init_plot(channels) {
-  plot_channels = channels;
+export function init_plot(channels) {
+  set_plot_channels(channels);
   render_density_plot();
 }
 
 /*
 
 Purpose:
-	Begins DJF modeling (triggered by the "Start Modeling (DJF)" button). Shows
-	only the first plotted sample's fit; the rest are toggled on via their legend
-	checkboxes.
+	Begins DJF modeling (triggered by the "Start Modeling (DJF)" button). Lazily
+	loads the DJF numeric stack on first use, then shows only the first plotted
+	sample's fit; the rest are toggled on via their legend checkboxes.
 
 Input:
 	(none)
 
 Output:
-	(none) [void]: enables modeling and re-renders
+	(none) [Promise<void>]: loads DJF if needed, enables modeling, and re-renders
 
 */
-function start_modeling() {
+export async function start_modeling() {
   if (!plot_channels) return;
-  modeling_started = true;
+  await load_djf();
+  set_modeling_started(true);
   const rows = plottable_rows();
   shown_fits.clear();
   if (rows.length) shown_fits.add(rows[0].name);
@@ -181,7 +203,7 @@ Output:
 	(none) [void]: updates shown_fits and re-renders
 
 */
-function toggle_fit(name) {
+export function toggle_fit(name) {
   if (shown_fits.has(name)) {
     shown_fits.delete(name);
   } else {

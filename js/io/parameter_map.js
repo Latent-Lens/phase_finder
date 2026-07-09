@@ -19,7 +19,7 @@ Output:
 	params [Array<Object>]: { index, label, name, desc } per parameter
 
 */
-function parameter_map(summary) {
+export function parameter_map(summary) {
   return summary.columns.map((label, index) => ({
     index: index + 1,
     label,
@@ -42,7 +42,7 @@ Output:
 	index [number]: the 1-based FCS parameter index
 
 */
-function find_param_index(params, selected_label) {
+export function find_param_index(params, selected_label) {
   const hit = params.find((param) =>
     param.label === selected_label || param.name === selected_label || param.desc === selected_label
   );
@@ -67,6 +67,6 @@ Output:
 	unique [Array<number>]: the distinct integer indexes
 
 */
-function unique_indexes(indexes) {
+export function unique_indexes(indexes) {
   return Array.from(new Set(indexes.filter((index) => Number.isInteger(index))));
 }

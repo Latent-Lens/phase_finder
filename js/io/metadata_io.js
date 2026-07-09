@@ -1,5 +1,5 @@
 // Metadata and file-table IO for FCS files plus CSV/TSV metadata tables. This
-// file loads dropped or selected FCS files at the metadata level by calling the
+// module loads dropped or selected FCS files at the metadata level by calling the
 // FCS HEADER/TEXT reader, rejecting duplicate filenames, extending the metadata
 // frame, and registering files for session caching. It also imports external
 // metadata tables, matches imported filename rows to loaded FCS entries, and
@@ -7,14 +7,53 @@
 // currently visible metadata table as TSV. Plot refresh and background preload
 // hooks are triggered here when new files arrive after analysis has started.
 
+import { metadata_import_input } from "../ui/dom.js";
+import { display_name, metadata_filename_key } from "../util/names.js";
+import { get_file_map, get_file_table, set_file_table } from "../state/app_state.js";
+import { make_frame, concat_frames, build_metadata_frame_from_records } from "../data_structs/metadata_frame.js";
+import {
+  TABLE_COLUMNS,
+  selected_file_ids,
+  set_metadata_table_columns,
+  set_preserve_metadata_row_order,
+  should_preserve_metadata_row_order,
+  metadata_row_is_linked,
+  sync_file_annotations,
+  table_base_field_set,
+} from "../data_structs/table_state.js";
+import {
+  metadata_field_from_label,
+  unique_metadata_label,
+  TABLE_EXPORT_STAT_LABELS,
+} from "../data_structs/metadata_columns.js";
+import { read_fcs_header } from "../fcs/metadata_processing.js";
+import { plot_channels } from "../plotting/data.js";
+import { refresh_analysis_after_metadata_change, preload_analysis_rows_in_background } from "./channel_loading.js";
+import {
+  set_status,
+  set_status_bar,
+  show_progress,
+  update_progress,
+  hide_progress,
+  next_frame,
+  update_drop_zone_text,
+  frame_to_rows,
+} from "../ui/status_channels.js";
+import { sort_file_table, update_views, displayed_files } from "../ui/table_support.js";
+import { link_existing_metadata_row_to_loaded_entry, render_file_table } from "../ui/table_render.js";
+import {
+  can_auto_apply_filename_metadata_template,
+  apply_current_filename_metadata_template,
+  schedule_metadata_wizard_after_file_load,
+} from "../ui/metadata_wizard.js";
+import { register_loaded_files } from "../session/file_cache.js";
+import { clear_stats_plan } from "../analysis/stats.js";
+
 function has_initialized_plot() {
-  return typeof plot_channels !== "undefined" && Boolean(plot_channels);
+  return Boolean(plot_channels);
 }
 
 async function refresh_downstream_after_file_load() {
-  if (typeof refresh_analysis_after_metadata_change !== "function") {
-    return { refreshed: false, loaded_rows: 0 };
-  }
   return refresh_analysis_after_metadata_change();
 }
 
@@ -33,12 +72,13 @@ Output:
 	(none) [Promise<void>]: loads metadata and updates the UI
 
 */
-async function load_files(files) {
+export async function load_files(files) {
   const selected_files = Array.from(files || []);
   if (!selected_files.length) {
     return;
   }
 
+  const file_map = get_file_map();
   let loaded = 0;
   const loaded_entries = [];
   const new_tabular_rows = [];
@@ -70,9 +110,7 @@ async function load_files(files) {
       if (!has_initialized_plot()) {
         selected_file_ids.add(entry.id);
       }
-      const linked_existing_row = typeof link_existing_metadata_row_to_loaded_entry === "function"
-        ? link_existing_metadata_row_to_loaded_entry(entry)
-        : false;
+      const linked_existing_row = link_existing_metadata_row_to_loaded_entry(entry);
       if (!linked_existing_row) {
         new_tabular_rows.push({
           id: entry.id,
@@ -94,7 +132,8 @@ async function load_files(files) {
     const new_frame = make_frame(new_tabular_rows);
     // concat_frames fills missing columns (e.g. existing stats cols) with null
     // for new rows, which is the correct default until stats are calculated.
-    file_table_frame = file_table_frame ? concat_frames(file_table_frame, new_frame) : new_frame;
+    const current_frame = get_file_table();
+    set_file_table(current_frame ? concat_frames(current_frame, new_frame) : new_frame);
     if (can_auto_apply_filename_metadata_template()) {
       apply_current_filename_metadata_template({ render: false });
     } else {
@@ -110,7 +149,7 @@ async function load_files(files) {
     // Copy newly loaded files into OPFS in the background so a saved session can
     // auto-restore them on reload. Already-cached files (session restore /
     // reconnect) are skipped inside register_loaded_files.
-    window.PhaseFinderSessionFiles?.register_loaded_files(loaded_entries);
+    register_loaded_files(loaded_entries);
   }
   if (!should_preserve_metadata_row_order()) {
     sort_file_table();
@@ -164,15 +203,16 @@ async function load_files(files) {
     hide_progress(1200);
   }
 
-  if (loaded_entries.length && has_initialized_plot() && typeof preload_analysis_rows_in_background === "function") {
+  if (loaded_entries.length && has_initialized_plot()) {
     preload_analysis_rows_in_background(loaded_entries).catch((error) => {
       set_status_bar(`Background FCS data load failed: ${error.message}`, true);
     });
   }
 }
 
-function open_metadata_import_picker() {
-  if (!file_table_frame || file_table_frame.length === 0) {
+export function open_metadata_import_picker() {
+  const frame = get_file_table();
+  if (!frame || frame.length === 0) {
     set_status("Load FCS files or an existing metadata table before importing metadata.", true);
     return;
   }
@@ -188,7 +228,7 @@ function detect_metadata_delimiter(text) {
   return tab_count > comma_count ? "\t" : ",";
 }
 
-function parse_delimited_metadata(text, delimiter = detect_metadata_delimiter(text)) {
+export function parse_delimited_metadata(text, delimiter = detect_metadata_delimiter(text)) {
   const rows = [];
   let row = [];
   let field = "";
@@ -248,7 +288,7 @@ function normalized_metadata_header(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-function find_metadata_filename_column(headers) {
+export function find_metadata_filename_column(headers) {
   const preferred = new Set([
     "filename",
     "file",
@@ -263,12 +303,7 @@ function find_metadata_filename_column(headers) {
   return headers.find((header) => preferred.has(normalized_metadata_header(header))) || "";
 }
 
-function metadata_filename_key(value) {
-  const basename = String(value || "").trim().split(/[\\/]/).pop();
-  return display_name(basename).trim().toLowerCase();
-}
-
-function loaded_file_index_by_metadata_key(rows) {
+export function loaded_file_index_by_metadata_key(rows) {
   const index = new Map();
   rows.forEach((row, row_index) => {
     [row.name, display_name(row.name)].forEach((name) => {
@@ -280,7 +315,8 @@ function loaded_file_index_by_metadata_key(rows) {
 }
 
 function import_metadata_records(parsed, source_name = "metadata file") {
-  if (!file_table_frame || file_table_frame.length === 0) {
+  const frame = get_file_table();
+  if (!frame || frame.length === 0) {
     set_status("Load FCS files or an existing metadata table before importing metadata.", true);
     return;
   }
@@ -321,16 +357,17 @@ function import_metadata_records(parsed, source_name = "metadata file") {
     return row;
   });
 
-  const loaded_rows = frame_to_rows(file_table_frame).filter((row) => metadata_row_is_linked(row));
+  const loaded_rows = frame_to_rows(frame).filter((row) => metadata_row_is_linked(row));
   const result = build_metadata_frame_from_records(records, imported_columns, loaded_rows, { source: "import" });
 
-  preserve_metadata_row_order = true;
-  window.PhaseFinderSummaryStats?.clear_stats_plan?.();
+  set_preserve_metadata_row_order(true);
+  clear_stats_plan();
   set_metadata_table_columns(result.columns);
-  file_table_frame = result.frame;
+  set_file_table(result.frame);
   selected_file_ids.clear();
+  const file_map = get_file_map();
   result.frame.col("id").forEach((id) => {
-    if (typeof file_map !== "undefined" && file_map.has(id)) selected_file_ids.add(id);
+    if (file_map.has(id)) selected_file_ids.add(id);
   });
   sync_file_annotations();
   render_file_table();
@@ -342,7 +379,7 @@ function import_metadata_records(parsed, source_name = "metadata file") {
   );
 }
 
-async function handle_metadata_import_file() {
+export async function handle_metadata_import_file() {
   const file = metadata_import_input?.files?.[0];
   if (!file) return;
   try {
@@ -391,10 +428,11 @@ function metadata_export_columns() {
     value: (row) => column.field === "name" ? display_name(row.name) : row[column.field],
   }));
 
-  if (!file_table_frame) return columns;
+  const frame = get_file_table();
+  if (!frame) return columns;
 
   const base_fields = table_base_field_set();
-  file_table_frame.columns.forEach((field) => {
+  frame.columns.forEach((field) => {
     if (base_fields.has(field)) return;
     const sep = field.lastIndexOf(":");
     const header = sep > 0
@@ -419,7 +457,7 @@ Output:
 	tsv [string]: tab-separated metadata table text
 
 */
-function metadata_table_tsv() {
+export function metadata_table_tsv() {
   const columns = metadata_export_columns();
   const rows = displayed_files();
   return [
@@ -485,8 +523,9 @@ Output:
 	(none) [Promise<void>]: prompts the user to save/download a TSV file
 
 */
-async function handle_metadata_table_export() {
-  if (!file_table_frame || file_table_frame.length === 0) {
+export async function handle_metadata_table_export() {
+  const frame = get_file_table();
+  if (!frame || frame.length === 0) {
     set_status("Load FCS files before exporting the table.", true);
     return;
   }
