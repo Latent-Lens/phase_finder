@@ -38,7 +38,7 @@ def _row_field(page, field, name_fragment):
     many other rows earlier test modules have loaded."""
     return page.evaluate(
         """({ field, fragment }) => {
-          const frame = window.PhaseFinderApp.get_file_table();
+          const frame = window.PhaseFinder.app.get_file_table();
           const names = [...frame.col('name')];
           const idx = names.findIndex((n) => n.includes(fragment));
           if (idx < 0) return undefined;
@@ -175,7 +175,7 @@ def test_metadata_wizard(ctx: TestContext):
               str(headers_after_cancel))
 
     # --- TSV export includes the configured columns and their values ---
-    tsv = page.evaluate("() => metadata_table_tsv()")
+    tsv = page.evaluate("() => window.PhaseFinder.app.metadata_table_tsv()")
     lines = tsv.strip("\n").split("\n")
     ctx.check(group, "Exported TSV header includes every configured metadata column",
               lines[0].split("\t")[:5] == ["Filename", "Strain", "Replicate", "Nocodazole Arrest", "Timepoint"],

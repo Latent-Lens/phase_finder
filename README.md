@@ -57,19 +57,25 @@ pipeline in this repository.
     └── README.md
 ```
 
-Note: the file list above is a high-level map, not exhaustive — see
-`index.html`'s script tags for the current, authoritative load order of every
-JS file. `help.html` documents all of the features the app adds (the metadata
-wizard, summary statistics, session save/load, and layout controls); see it
-for an up-to-date feature tour.
+Note: the file list above is a high-level map, not exhaustive. The app loads as
+native ES modules: `index.html` has a single `<script type="module"
+src="./js/main.js">`, and `js/main.js` imports every layer and runs an ordered
+`init_*()` bootstrap, so the dependency graph lives in the `import` statements
+rather than a hand-maintained list of script tags. `help.html` documents all of
+the features the app adds (the metadata wizard, summary statistics, session
+save/load, and layout controls); see it for an up-to-date feature tour.
 
 ## How The App Works
 
-`index.html` defines the full application shell. It loads D3 (and, for the DJF
-fit, the `ml-levenberg-marquardt` and `ml-gsd` libraries) from CDNs, loads the
-split stylesheets, lays out the header, file drop zone, channel selector,
+`index.html` defines the full application shell. It declares an import map that
+points D3 and the DJF fit's `ml-levenberg-marquardt` and `ml-gsd` libraries at
+locally vendored ESM bundles in `js/vendor/` (no runtime CDN dependency), loads
+the split stylesheets, lays out the header, file drop zone, channel selector,
 metadata table, plot panel, progress overlay, and bottom status bar, then loads
-the local JavaScript files.
+the app as a single ES module entry (`js/main.js`). The heavy DJF numeric stack
+(`analysis/djf.js` plus the two `ml-*` libraries) is lazy-loaded via dynamic
+`import()` on the first correction or modeling action, so it stays off the
+initial load path.
 
 The runtime order matters:
 
@@ -111,7 +117,8 @@ The HTML entry point. It contains:
   - `metadataPanel`, the loaded-sample table (can collapse).
 - A progress overlay used during metadata and selected-data loading.
 - A fixed status bar for long-running operation feedback.
-- Script tags for D3, the dynamic `ml-*` imports, and the four local JS files.
+- An import map mapping `d3`/`ml-*` to the vendored ESM bundles, and a single
+  `<script type="module" src="./js/main.js">` entry.
 
 ### `css/*` (split stylesheets)
 
@@ -283,14 +290,15 @@ prefer `$PnS`, then `$PnN`, then a generated `P<number>` fallback.
 
 ## Running Locally
 
-Because this is a static browser app, there is no install step. Opening
-`index.html` directly works, but a static server is recommended (the `ml-*`
-modules import more reliably over `http://`).
+Because this is a static browser app, there is no install or build step. The app
+loads as native ES modules, which the browser refuses to load over `file://`
+(module CORS), so **a static HTTP server is required** — opening `index.html`
+directly from disk will not work.
 
-With live-reload (auto-refreshes the browser on file changes):
+With the Python built-in server:
 
 ```bash
-~/.local/bin/livereload -p 8080
+python3 -m http.server 8080
 ```
 
 Then open:
@@ -299,15 +307,15 @@ Then open:
 http://localhost:8080/
 ```
 
-Or with the Python built-in server (no live-reload):
+Or, with live-reload (auto-refreshes the browser on file changes):
 
 ```bash
-python3 -m http.server 8080
+~/.local/bin/livereload -p 8080
 ```
 
-D3, `ml-levenberg-marquardt`, and `ml-gsd` are loaded from CDNs (see "How The App
-Works"), so plotting and DJF modeling need network access unless those libraries
-are vendored locally and the tags in `index.html` are changed.
+D3, `ml-levenberg-marquardt`, and `ml-gsd` are vendored locally as ESM bundles in
+`js/vendor/` and mapped via the import map in `index.html`, so plotting and DJF
+modeling work fully offline — no network access or CDN is needed at runtime.
 
 ## Typical Workflow
 

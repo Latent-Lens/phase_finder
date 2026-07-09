@@ -31,7 +31,7 @@ def _frame_stat(page, channel, metric, name_fragment):
     regardless of what else has been loaded earlier in the suite."""
     return page.evaluate(
         """({ channel, metric, fragment }) => {
-          const frame = window.PhaseFinderApp.get_file_table();
+          const frame = window.PhaseFinder.app.get_file_table();
           const names = [...frame.col('name')];
           const idx = names.findIndex((n) => n.includes(fragment));
           if (idx < 0) return null;
@@ -133,7 +133,7 @@ def test_summary_statistics(ctx: TestContext):
     try:
         page.wait_for_function(
             """(fragment) => {
-              const frame = window.PhaseFinderApp.get_file_table();
+              const frame = window.PhaseFinder.app.get_file_table();
               const names = [...frame.col('name')];
               const idx = names.findIndex((n) => n.includes(fragment));
               if (idx < 0) return false;

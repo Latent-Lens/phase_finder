@@ -34,16 +34,17 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     page.goto(harness_url)
     page.wait_for_load_state("domcontentloaded")
 
-    # Wait for static JS files (FCSParser, PhaseFinderFrame, PhaseFinderDJF) — always fast
+    # The harness module imports the app's ES modules (parser, metadata frame,
+    # DJF, etc.) and its vendored ml-* stack, then exposes them on window. Waiting
+    # for that assignment covers every unit suite, including DJF.
     try:
         page.wait_for_function(
-            "() => typeof window.FCSParser !== 'undefined' "
-            "   && typeof PhaseFinderFrame !== 'undefined' "
-            "   && typeof window.PhaseFinderDJF !== 'undefined'",
+            "() => !!(window.FCSParser && window.PhaseFinderFrame "
+            "   && window.PhaseFinder && window.PhaseFinder.djf)",
             timeout=15000,
         )
     except Exception as err:
-        ctx.warn("Unit / Setup", "Core JS files did not load", str(err), screenshot=False)
+        ctx.warn("Unit / Setup", "Core JS modules did not load", str(err), screenshot=False)
         return
 
     from unit_tests_parser import run_parser_tests
@@ -51,26 +52,6 @@ def run_unit_tests(ctx: TestContext, app_url: str):
 
     from unit_tests_table import run_table_tests
     run_table_tests(ctx)
-
-    # Wait for CDN module imports (levenbergMarquardt, gsd) — may fail on slow/blocked networks
-    try:
-        page.wait_for_function(
-            "() => typeof window.levenbergMarquardt === 'function' "
-            "   && typeof window.gsd === 'function'"
-            "   || !!window.__libsError",
-            timeout=LIBS_READY_TIMEOUT,
-        )
-    except Exception as err:
-        ctx.warn("Unit / Setup", "CDN libraries did not load in time",
-                 f"levenbergMarquardt/gsd unavailable — DJF unit tests skipped: {err!s:.120}",
-                 screenshot=False)
-        return
-
-    libs_err = page.evaluate("() => window.__libsError || null")
-    if libs_err:
-        ctx.warn("Unit / Setup", "CDN library import failed",
-                 f"{libs_err!s:.200} — DJF unit tests skipped", screenshot=False)
-        return
 
     from unit_tests_djf import run_djf_tests
     run_djf_tests(ctx)

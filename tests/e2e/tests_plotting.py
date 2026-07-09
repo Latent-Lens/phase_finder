@@ -121,7 +121,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
 
     # Data should still be cached
     ctx.check(group, "Unchecked rows retain loaded data",
-              page.evaluate("window.PhaseFinderApp.get_parsed_files().filter(r => r.data).length") >= total_rows,
+              page.evaluate("window.PhaseFinder.app.get_parsed_files().filter(r => r.data).length") >= total_rows,
               "data cache retained")
 
     # Re-check one row

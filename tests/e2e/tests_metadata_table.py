@@ -19,17 +19,17 @@ def _write_text(path: Path, text: str):
 
 
 def _first_loaded_name(page):
-    return page.evaluate("() => window.PhaseFinderApp.get_parsed_files()[0]?.name || ''")
+    return page.evaluate("() => window.PhaseFinder.app.get_parsed_files()[0]?.name || ''")
 
 
 def _table_headers(page):
-    return page.evaluate("() => TABLE_COLUMNS.map((column) => column.label)")
+    return page.evaluate("() => window.PhaseFinder.app.get_table_columns().map((column) => column.label)")
 
 
 def _field_for_label(page, label):
     return page.evaluate(
         """(label) => {
-          const column = TABLE_COLUMNS.find((entry) => entry.label === label);
+          const column = window.PhaseFinder.app.get_table_columns().find((entry) => entry.label === label);
           return column ? column.field : "";
         }""",
         label,
@@ -76,7 +76,7 @@ def test_metadata_table_actions(ctx: TestContext):
               sort_label)
 
     page.fill(f'.file_table tbody input[data-field="{treatment_field}"]', "HU")
-    tsv_after_manual = page.evaluate("() => metadata_table_tsv()")
+    tsv_after_manual = page.evaluate("() => window.PhaseFinder.app.metadata_table_tsv()")
     ctx.check(group, "Blank-column value edits are reflected in TSV export",
               "Treatment" in tsv_after_manual and "\tHU" in tsv_after_manual,
               tsv_after_manual.split("\n")[0])
@@ -101,7 +101,7 @@ def test_metadata_table_actions(ctx: TestContext):
         f"{missing_name}\tmissing-drug\t10\n",
     )
     page.set_input_files("#metadata_import_input", metadata_path)
-    page.wait_for_function("() => TABLE_COLUMNS.some((column) => column.label === 'Condition')", timeout=5000)
+    page.wait_for_function("() => window.PhaseFinder.app.get_table_columns().some((column) => column.label === 'Condition')", timeout=5000)
 
     headers_after_import = _table_headers(page)
     ctx.check(group, "Imported metadata table overwrites previous editable columns",
@@ -126,7 +126,7 @@ def test_metadata_table_actions(ctx: TestContext):
     if page.eval_on_selector("#select_all_files", "e => e.checked"):
         page.click("#select_all_files")
     page.click("#select_all_files")
-    selected_count = page.evaluate("() => window.PhaseFinderApp.get_selected_files().length")
+    selected_count = page.evaluate("() => window.PhaseFinder.app.get_selected_files().length")
     disabled_checked = page.eval_on_selector_all(
         ".metadata_row_unlinked .row_select",
         "boxes => boxes.some(box => box.checked)",
@@ -147,7 +147,7 @@ def test_metadata_table_actions(ctx: TestContext):
               table_row_count(page) == 2 and "missing-drug" in condition_values,
               f"rows={table_row_count(page)}, conditions={condition_values}")
 
-    tsv_after_import = page.evaluate("() => metadata_table_tsv()")
+    tsv_after_import = page.evaluate("() => window.PhaseFinder.app.metadata_table_tsv()")
     ctx.check(group, "TSV export after import includes linked and formerly unlinked rows",
               loaded_name.replace(".fcs", "") in tsv_after_import
               and missing_name.replace(".fcs", "") in tsv_after_import
@@ -156,7 +156,7 @@ def test_metadata_table_actions(ctx: TestContext):
               tsv_after_import)
 
     # --- Invalid import leaves the current table unchanged ---
-    before_invalid = page.evaluate("() => ({ headers: TABLE_COLUMNS.map(c => c.label), rows: metadata_table_tsv() })")
+    before_invalid = page.evaluate("() => ({ headers: window.PhaseFinder.app.get_table_columns().map(c => c.label), rows: window.PhaseFinder.app.metadata_table_tsv() })")
     invalid_path = _write_text(
         ctx.results_dir / f"{ctx.report_stem}_metadata_import_invalid.tsv",
         "Condition\tDose\nno-filename\t99\n",
@@ -166,6 +166,6 @@ def test_metadata_table_actions(ctx: TestContext):
         "() => /Filename column/.test(document.querySelector('#status_bar_message')?.textContent || '')",
         timeout=5000,
     )
-    after_invalid = page.evaluate("() => ({ headers: TABLE_COLUMNS.map(c => c.label), rows: metadata_table_tsv() })")
+    after_invalid = page.evaluate("() => ({ headers: window.PhaseFinder.app.get_table_columns().map(c => c.label), rows: window.PhaseFinder.app.metadata_table_tsv() })")
     ctx.check(group, "Import without a filename column leaves the current table unchanged",
               after_invalid == before_invalid, str(after_invalid["headers"]))

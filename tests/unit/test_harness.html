@@ -4,34 +4,44 @@
   <meta charset="utf-8" />
   <title>PhaseFinder Unit Test Harness</title>
   <!--
-    Minimal page that loads the same CDN libraries and app JS files as index.html
-    so that Playwright's page.evaluate() can invoke window.FCSParser and
-    window.PhaseFinderDJF without spinning up the full app UI.
+    Minimal page that imports the app's ES modules (with the same vendored-library
+    import map as index.html) and re-exposes the functions the Python unit test
+    modules call via page.evaluate(). Assigning them to window makes them available
+    as bare globals too, so the existing test snippets keep working. No app UI is
+    rendered; the modules' top-level querySelector captures simply resolve to null.
   -->
-  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-  <script type="module">
-    Promise.all([
-      import("https://esm.sh/ml-levenberg-marquardt@4")
-        .then(m => { window.levenbergMarquardt = m.default || m.levenbergMarquardt || m; }),
-      import("https://esm.sh/ml-gsd@13")
-        .then(m => { window.gsd = m.gsd || m.default || m; }),
-    ])
-    .then(() => { window.__libsReady = true; })
-    .catch(e => {
-      window.__libsError = String(e);
-      console.error("[test-harness] CDN import failed:", e);
-    });
+  <script type="importmap">
+    {
+      "imports": {
+        "d3": "/js/vendor/d3.min.js",
+        "ml-levenberg-marquardt": "/js/vendor/ml-levenberg-marquardt.js",
+        "ml-gsd": "/js/vendor/ml-gsd.js"
+      }
+    }
   </script>
-  <script src="/js/fcs/parser.js"></script>
-  <script src="/js/data_structs/metadata_frame.js"></script>
-  <script src="/js/data_structs/table_state.js"></script>
-  <script src="/js/data_structs/metadata_columns.js"></script>
-  <script src="/js/ui/status_channels.js"></script>
-  <script src="/js/io/metadata_io.js"></script>
-  <script src="/js/ui/metadata_wizard.js"></script>
-  <script src="/js/ui/table_support.js"></script>
-  <script src="/js/ui/table_render.js"></script>
-  <script src="/js/analysis/djf.js"></script>
+  <script type="module">
+    import { FCSParser } from "/js/fcs/parser.js";
+    import { PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records } from "/js/data_structs/metadata_frame.js";
+    import { metadata_field_from_label, normalize_metadata_columns } from "/js/data_structs/metadata_columns.js";
+    import { split_filename_metadata, parse_fixed_breaks } from "/js/ui/metadata_wizard.js";
+    import { guess_annotations_from_filename, timepoint_sort_value, annotation_input_size } from "/js/ui/table_support.js";
+    import { display_name, metadata_filename_key } from "/js/util/names.js";
+    import { parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key } from "/js/io/metadata_io.js";
+    import * as DJF from "/js/analysis/djf.js";
+
+    Object.assign(window, {
+      FCSParser, PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records,
+      metadata_field_from_label, normalize_metadata_columns,
+      split_filename_metadata, parse_fixed_breaks,
+      guess_annotations_from_filename, timepoint_sort_value, annotation_input_size,
+      display_name, metadata_filename_key,
+      parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key,
+    });
+    // DJF (and its statically imported ml-* stack) is loaded eagerly here so the
+    // unit tests can call window.PhaseFinder.djf.* synchronously.
+    window.PhaseFinder = { djf: DJF };
+    window.__libsReady = true;
+  </script>
 
   <script>
     // ---------------------------------------------------------------------------
