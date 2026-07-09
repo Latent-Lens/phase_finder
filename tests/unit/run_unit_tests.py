@@ -53,5 +53,11 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     from unit_tests_table import run_table_tests
     run_table_tests(ctx)
 
+    from unit_tests_io import run_io_tests
+    run_io_tests(ctx)
+
+    from unit_tests_session import run_session_tests
+    run_session_tests(ctx)
+
     from unit_tests_djf import run_djf_tests
     run_djf_tests(ctx)

@@ -34,12 +34,25 @@ def test_modeling(ctx: TestContext):
 
     bar_before = status_bar_text(page)
 
+    # Lazy DJF: the numeric stack (analysis/djf.js + the ml-* libraries) is kept
+    # off the initial load path and only fetched on the first modeling/correction
+    # action, so window.PhaseFinder.djf is still null before this first click.
+    djf_before = page.evaluate("() => window.PhaseFinder.djf")
+    ctx.check(group, "DJF numeric stack is lazy-loaded (null before first modeling)",
+              djf_before is None, f"djf={djf_before!r}")
+
     page.click("#cell_cycle_modeling_button")
     page.wait_for_function(
         "() => /G1/.test(document.querySelector('#djf_readout').textContent)",
         timeout=30000,
     )
     wait_briefly(0.4)
+
+    # After the first modeling action the module is loaded and exposed on the hook.
+    djf_after = page.evaluate(
+        "() => window.PhaseFinder.djf !== null && typeof window.PhaseFinder.djf.fit === 'function'")
+    ctx.check(group, "DJF loads on first modeling action and is exposed on window.PhaseFinder.djf",
+              djf_after is True, f"loaded={djf_after}")
 
     text = page.eval_on_selector("#djf_readout", "e => e.textContent")
     nums = [float(x) for x in re.findall(r"([\d.]+)%", text)]

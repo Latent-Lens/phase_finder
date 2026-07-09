@@ -143,6 +143,19 @@ _FULL_SUITE = """() => {
                  pass: auxWidthOnly.dna_w === 3 && (auxWidthOnly.dna_h === null || auxWidthOnly.dna_h === undefined),
                  detail: JSON.stringify(auxWidthOnly) });
 
+  // 14b. find_auxiliary_indexes (the thin adapter over channel_cleaning after the
+  // H/W-dedup) must keep the surviving word-boundary tokenizer: "width" inside
+  // "Bandwidth" is not a standalone word, so Bandwidth-A still links to
+  // Bandwidth-H / Bandwidth-W rather than being mis-tokenized.
+  const summaryBandwidth = {
+    columns: ['Bandwidth-A', 'Bandwidth-H', 'Bandwidth-W'],
+    metadata: { P1N: 'Bandwidth-A', P2N: 'Bandwidth-H', P3N: 'Bandwidth-W' },
+  };
+  const auxBandwidth = DJF.find_auxiliary_indexes(summaryBandwidth, 'Bandwidth-A');
+  results.push({ name: 'find_auxiliary_indexes: word-boundary tokenizer keeps "Bandwidth-A" linked to its H/W companions',
+                 pass: auxBandwidth.dna_h === 2 && auxBandwidth.dna_w === 3,
+                 detail: JSON.stringify(auxBandwidth) });
+
   // 15. prepare_row: doublet correction actually removes ratio-outlier events
   // when height/width channels are available (12 above only covered the
   // "channels unavailable" case).
