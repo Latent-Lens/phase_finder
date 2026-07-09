@@ -34,7 +34,7 @@ import { save_filename_metadata_template } from "../ui/metadata_wizard.js";
 import { get_stats_plan, restore_stats_plan } from "../analysis/stats.js";
 import { get_file_table } from "../state/app_state.js";
 import { get_parsed_files } from "../state/files.js";
-import { get_session_table_state, apply_session_state } from "../main.js";
+import { get_session_table_state, apply_session_state } from "./table_session.js";
 
 // ── Session-file restore orchestration ───────────────────────────────────────
 
