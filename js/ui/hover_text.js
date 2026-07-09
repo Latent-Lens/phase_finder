@@ -1,12 +1,12 @@
-// Central tooltip text registry and tooltip runtime. This file defines the
+// Central tooltip text registry and tooltip runtime. This module defines the
 // strings used by quick tooltips, native titles, help icons, and control
-// descriptions throughout the app. It exposes window.PhaseFinderHoverText for
-// static text and window.PhaseFinderTooltips for applying and rendering
-// tooltips. The runtime creates one positioned tooltip element, keeps it inside
-// the viewport, and supports both mouse and keyboard focus. Other modules only
-// reference tooltip keys instead of duplicating text.
+// descriptions throughout the app. It exports HoverText for static text and
+// Tooltips for applying and rendering tooltips, plus init_tooltips() which the
+// entry bootstrap calls once to install the shared tooltip element and its
+// mouse/focus listeners. Other modules only reference tooltip keys instead of
+// duplicating text.
 
-window.PhaseFinderHoverText = Object.freeze({
+const HoverText = Object.freeze({
   reloadLogo: "Reload PhaseFinder",
   help: "Open the PhaseFinder help and feature guide in a new tab",
   saveSession: "Save the current session (files, annotations, settings) to a TOML file",
@@ -47,9 +47,11 @@ Method: on eligible events, compute log(A/H) for height and/or log(W) for width,
 Drag it up to ignore small/noisy peaks or down to include more; release to re-detect peaks and refit.`,
 });
 
-window.PhaseFinderTooltips = {
+export { HoverText };
+
+export const Tooltips = {
   text(key, ...args) {
-    const value = window.PhaseFinderHoverText[key];
+    const value = HoverText[key];
     if (typeof value === "function") {
       return value(...args);
     }
@@ -77,9 +79,10 @@ window.PhaseFinderTooltips = {
 
 // ---------------------------------------------------------------------------
 // JS-positioned tooltip — stays fully within the viewport by measuring the
-// tooltip box before committing to a position.
+// tooltip box before committing to a position. Installed once by the entry
+// bootstrap via init_tooltips().
 // ---------------------------------------------------------------------------
-(function () {
+export function init_tooltips() {
   'use strict';
 
   const GAP        = 8;   // px between anchor edge and tooltip box
@@ -191,4 +194,4 @@ window.PhaseFinderTooltips = {
 
   window.addEventListener('scroll', hide, { passive: true, capture: true });
   window.addEventListener('resize', hide, { passive: true });
-})();
+}

@@ -18,7 +18,7 @@ function toml_str(v) {
     .replace(/\t/g, '\\t') + '"';
 }
 
-function serialize_session(s) {
+export function serialize_session(s) {
   const L = [];
   const p = (...x) => L.push(...x);
 
@@ -186,7 +186,7 @@ function get_path(obj, path) {
   return node;
 }
 
-function parse_session_toml(text) {
+export function parse_session_toml(text) {
   const result = {};
   let section_path = [];
   let arr_obj = null;

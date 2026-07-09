@@ -1,29 +1,61 @@
-// Metadata table rendering and delegated table event handling. This file builds
-// the visible table header, filter row, checkbox column, editable metadata
-// cells, grouped stat columns, empty states, and unlinked-row styling. It keeps
-// selection state coherent when filters hide rows and keeps the select-all
-// checkbox synchronized with visible linked rows. It handles row selection,
-// filter checkbox changes, sort clicks, header edits, and select-all behavior
-// through delegated events. It also links imported metadata rows to newly loaded
-// FCS entries when filenames match.
+// Metadata table rendering and delegated table event handling. This module
+// builds the visible table header, filter row, checkbox column, editable
+// metadata cells, grouped stat columns, empty states, and unlinked-row styling.
+// It keeps selection state coherent when filters hide rows and keeps the
+// select-all checkbox synchronized with visible linked rows. It handles row
+// selection, filter checkbox changes, sort clicks, header edits, and select-all
+// behavior through delegated events. It also links imported metadata rows to
+// newly loaded FCS entries when filenames match.
 
-function link_existing_metadata_row_to_loaded_entry(entry) {
-  if (!file_table_frame || !entry?.id || !entry?.name) return false;
+import { file_table } from "./dom.js";
+import { Tooltips } from "./hover_text.js";
+import { escape_html } from "../util/html.js";
+import { display_name, metadata_filename_key } from "../util/names.js";
+import { get_file_map, get_file_table } from "../state/app_state.js";
+import {
+  TABLE_COLUMNS,
+  selected_file_ids,
+  column_filters,
+  sort_state,
+  set_sort_state,
+  open_filter_field,
+  set_open_filter_field,
+  pending_header_focus_field,
+  set_pending_header_focus_field,
+  metadata_row_is_linked,
+  table_base_field_set,
+  sync_file_annotations,
+} from "../data_structs/table_state.js";
+import { unique_metadata_label } from "../data_structs/metadata_columns.js";
+import {
+  displayed_files,
+  annotation_input_size,
+  header_cell,
+  header_label_cell,
+  header_filter_cell,
+  notify_selection_changed,
+} from "./table_support.js";
+import { update_start_button_state } from "./status_channels.js";
+
+export function link_existing_metadata_row_to_loaded_entry(entry) {
+  const frame = get_file_table();
+  if (!frame || !entry?.id || !entry?.name) return false;
   const target_key = metadata_filename_key(entry.name);
   if (!target_key) return false;
 
-  const ids = [...file_table_frame.col("id")];
-  const names = [...file_table_frame.col("name")];
+  const file_map = get_file_map();
+  const ids = [...frame.col("id")];
+  const names = [...frame.col("name")];
   const index = names.findIndex((name, row_index) => {
-    if (typeof file_map !== "undefined" && file_map.has(ids[row_index])) return false;
+    if (file_map.has(ids[row_index])) return false;
     return metadata_filename_key(name) === target_key;
   });
   if (index < 0) return false;
 
   ids[index] = entry.id;
   names[index] = entry.name;
-  file_table_frame.setCol("id", ids);
-  file_table_frame.setCol("name", names);
+  frame.setCol("id", ids);
+  frame.setCol("name", names);
   return true;
 }
 
@@ -42,8 +74,9 @@ Output:
 	(none) [void]: rebuilds the #file_table markup
 
 */
-function render_file_table() {
-  if (!file_table_frame || file_table_frame.length === 0) {
+export function render_file_table() {
+  const frame = get_file_table();
+  if (!frame || frame.length === 0) {
     file_table.innerHTML = '<p class="empty_note">Load FCS files to initialize the table.</p>';
     return;
   }
@@ -74,7 +107,7 @@ function render_file_table() {
   // Group them by channel to build the two-row stats header.
   const BASE_COLS = table_base_field_set();
   const channel_groups = {};
-  for (const col of file_table_frame.columns) {
+  for (const col of frame.columns) {
     if (!BASE_COLS.has(col)) {
       const sep = col.lastIndexOf(":");
       if (sep > 0) {
@@ -89,7 +122,7 @@ function render_file_table() {
   // NaN means "not computed for this file" — show a dash.
   const fmt = (v) => (v != null && !Number.isNaN(v) ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
 
-  const checkbox_th_inner = `<input type="checkbox" id="select_all_files" title="${escape_html(window.PhaseFinderTooltips.text("selectAllDisplayedFiles"))}" />`;
+  const checkbox_th_inner = `<input type="checkbox" id="select_all_files" title="${escape_html(Tooltips.text("selectAllDisplayedFiles"))}" />`;
 
   let head_html;
   if (has_stats) {
@@ -164,7 +197,7 @@ function render_file_table() {
 
   if (pending_header_focus_field) {
     const field = pending_header_focus_field;
-    pending_header_focus_field = null;
+    set_pending_header_focus_field(null);
     window.requestAnimationFrame(() => {
       const input = [...file_table.querySelectorAll(".metadata_header_input")]
         .find((candidate) => candidate.dataset.field === field);
@@ -190,7 +223,7 @@ Output:
 	(none) [void]: updates the select-all checkbox state
 
 */
-function update_select_all_checkbox() {
+export function update_select_all_checkbox() {
   const checkbox = document.querySelector("#select_all_files");
   if (!checkbox) {
     return;
@@ -205,7 +238,7 @@ function update_select_all_checkbox() {
   checkbox.indeterminate = selected_count > 0 && selected_count < displayed.length;
 }
 
-function handle_metadata_header_input(event) {
+export function handle_metadata_header_input(event) {
   const input = event.target.closest(".metadata_header_input");
   if (!input) return false;
 
@@ -216,7 +249,7 @@ function handle_metadata_header_input(event) {
   return true;
 }
 
-function finalize_metadata_header_input(input) {
+export function finalize_metadata_header_input(input) {
   const column = TABLE_COLUMNS.find((entry) => entry.field === input.dataset.field);
   if (!column) return;
 
@@ -253,7 +286,7 @@ Output:
 	(none) [void]: updates selection/filter state and re-renders
 
 */
-function handle_table_change(event) {
+export function handle_table_change(event) {
   const target = event.target;
 
   if (target.classList.contains("metadata_header_input")) {
@@ -288,7 +321,7 @@ function handle_table_change(event) {
 
   if (target.classList.contains("row_select")) {
     const file_id = target.dataset.fileId;
-    if (!file_id || (typeof file_map !== "undefined" && !file_map.has(file_id))) {
+    if (!file_id || !get_file_map().has(file_id)) {
       target.checked = false;
       return;
     }
@@ -316,7 +349,7 @@ Output:
 	(none) [void]: updates sort/filter state and re-renders
 
 */
-function handle_table_click(event) {
+export function handle_table_click(event) {
   const header_ok = event.target.closest(".metadata_header_ok");
   if (header_ok) {
     finalize_metadata_header_by_field(header_ok.dataset.field);
@@ -326,7 +359,7 @@ function handle_table_click(event) {
   const filter_toggle = event.target.closest(".th_filter_toggle");
   if (filter_toggle) {
     const field = filter_toggle.dataset.filterField;
-    open_filter_field = open_filter_field === field ? null : field;
+    set_open_filter_field(open_filter_field === field ? null : field);
     render_file_table();
     return;
   }
@@ -337,7 +370,7 @@ function handle_table_click(event) {
   if (sort_arrow) {
     const arrow_button = sort_arrow.closest(".th_sort");
     if (arrow_button) {
-      sort_state = { field: arrow_button.dataset.sortField, direction: sort_arrow.dataset.sortDir };
+      set_sort_state(arrow_button.dataset.sortField, sort_arrow.dataset.sortDir);
       render_file_table();
     }
     return;
@@ -353,7 +386,7 @@ function handle_table_click(event) {
   if (sort_state.field === field) {
     sort_state.direction = sort_state.direction === "asc" ? "desc" : "asc";
   } else {
-    sort_state = { field, direction: "asc" };
+    set_sort_state(field, "asc");
   }
   render_file_table();
 }
@@ -371,10 +404,10 @@ Output:
 	(none) [void]: may close the open filter menu and re-render
 
 */
-function handle_document_click(event) {
+export function handle_document_click(event) {
   if (open_filter_field === null || event.target.closest(".th_filter")) {
     return;
   }
-  open_filter_field = null;
+  set_open_filter_field(null);
   render_file_table();
 }

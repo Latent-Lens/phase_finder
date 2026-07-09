@@ -1,4 +1,4 @@
-// Filename-splitting metadata wizard and template persistence. This file lets
+// Filename-splitting metadata wizard and template persistence. This module lets
 // users derive structured metadata columns from FCS filenames using delimiter,
 // fixed-width, or regular-expression split steps. It renders the split-step
 // editor, column editor, live preview, and modal buttons used to apply or reset
@@ -7,9 +7,19 @@
 // shared metadata frame through js/data_structs helpers and relies on table
 // rendering for the final visible update.
 
+import { metadata_split_steps, metadata_column_editor, metadata_preview, metadata_wizard_modal, metadata_wizard_apply } from "./dom.js";
+import { escape_html } from "../util/html.js";
+import { display_name } from "../util/names.js";
+import { get_file_table, set_file_table } from "../state/app_state.js";
+import { PhaseFinderFrame } from "../data_structs/metadata_frame.js";
+import { TABLE_COLUMNS, set_metadata_table_columns, sync_file_annotations } from "../data_structs/table_state.js";
+import { metadata_field_from_label, current_metadata_columns } from "../data_structs/metadata_columns.js";
+import { frame_to_rows, set_status_bar } from "./status_channels.js";
+import { render_file_table } from "./table_render.js";
+
 const METADATA_TEMPLATE_STORAGE_KEY = "phasefinder_filename_metadata_template";
 let metadata_wizard_seen_this_session = false;
-let filename_metadata_template = load_filename_metadata_template();
+export let filename_metadata_template = load_filename_metadata_template();
 
 function load_filename_metadata_template() {
   try {
@@ -32,7 +42,7 @@ function normalize_filename_metadata_template(template) {
   return { ...template, steps: [step] };
 }
 
-function save_filename_metadata_template(template) {
+export function save_filename_metadata_template(template) {
   filename_metadata_template = normalize_filename_metadata_template(template);
   try {
     window.localStorage?.setItem(METADATA_TEMPLATE_STORAGE_KEY, JSON.stringify(filename_metadata_template));
@@ -45,7 +55,7 @@ function default_metadata_split_steps() {
   return [{ type: "delimiter", delimiter: "_" }];
 }
 
-function parse_fixed_breaks(value) {
+export function parse_fixed_breaks(value) {
   return String(value || "")
     .split(/[,\s]+/)
     .map((candidate) => Number.parseInt(candidate, 10))
@@ -173,7 +183,7 @@ function split_text_binary_step(text, step) {
   };
 }
 
-function split_filename_metadata(name, spec) {
+export function split_filename_metadata(name, spec) {
   const base = display_name(name);
   const template = normalize_filename_metadata_template(spec) || { steps: default_metadata_split_steps() };
   const parts = [];
@@ -246,15 +256,16 @@ function metadata_wizard_columns_from_editor() {
     });
 }
 
-function render_metadata_wizard_preview() {
-  if (!metadata_preview || !file_table_frame) return;
+export function render_metadata_wizard_preview() {
+  const frame = get_file_table();
+  if (!metadata_preview || !frame) return;
   const spec = current_metadata_wizard_spec();
   const part_count = metadata_part_count(spec);
   const remainder_row = metadata_column_editor?.querySelector(".metadata_column_row");
   const remainder_index = Number.parseInt(remainder_row?.dataset.columnIndex || "", 10);
   if (!remainder_row || remainder_index !== part_count - 1) render_metadata_column_editor(part_count);
   const columns = metadata_wizard_columns_from_editor();
-  const names = file_table_frame.col("name").slice(0, 20);
+  const names = frame.col("name").slice(0, 20);
 
   const header = ["Filename", ...columns.map((column) => column.label)]
     .map((label) => `<th>${escape_html(label)}</th>`)
@@ -280,13 +291,14 @@ function fill_metadata_wizard_from_template() {
   render_metadata_split_steps(template?.steps?.length ? template.steps : default_metadata_split_steps());
 }
 
-function add_metadata_split_step() {
+export function add_metadata_split_step() {
   render_metadata_split_steps([...collect_metadata_split_steps(), { type: "delimiter", delimiter: "_" }]);
   render_metadata_wizard_preview();
 }
 
-function open_metadata_wizard() {
-  if (!metadata_wizard_modal || !file_table_frame || file_table_frame.length === 0) return;
+export function open_metadata_wizard() {
+  const frame = get_file_table();
+  if (!metadata_wizard_modal || !frame || frame.length === 0) return;
   metadata_wizard_seen_this_session = true;
   if (metadata_column_editor) metadata_column_editor.innerHTML = "";
   fill_metadata_wizard_from_template();
@@ -295,7 +307,7 @@ function open_metadata_wizard() {
   metadata_wizard_apply?.focus();
 }
 
-function close_metadata_wizard() {
+export function close_metadata_wizard() {
   if (metadata_wizard_modal) metadata_wizard_modal.hidden = true;
 }
 
@@ -307,7 +319,7 @@ function set_fixed_width_breaks_from_width(row) {
   render_metadata_wizard_preview();
 }
 
-function handle_metadata_split_step_input(event) {
+export function handle_metadata_split_step_input(event) {
   const row = event.target.closest(".metadata_split_step");
   if (!row) return;
   if (event.target.classList.contains("metadata_split_type")) {
@@ -327,7 +339,7 @@ function handle_metadata_split_step_input(event) {
   render_metadata_wizard_preview();
 }
 
-function handle_metadata_split_step_click(event) {
+export function handle_metadata_split_step_click(event) {
   const remove_button = event.target.closest(".metadata_split_step_remove");
   if (remove_button) {
     const row = remove_button.closest(".metadata_split_step");
@@ -347,8 +359,9 @@ function handle_metadata_split_step_click(event) {
   }
 }
 
-function apply_filename_metadata_columns(spec, columns, { render = true, preserve_existing = false } = {}) {
-  if (!file_table_frame) return;
+export function apply_filename_metadata_columns(spec, columns, { render = true, preserve_existing = false } = {}) {
+  const frame = get_file_table();
+  if (!frame) return;
 
   const normalized_columns = columns.map((column) => ({
     field: column.field,
@@ -362,8 +375,8 @@ function apply_filename_metadata_columns(spec, columns, { render = true, preserv
 
   set_metadata_table_columns(normalized_columns);
 
-  const rows = frame_to_rows(file_table_frame);
-  const stat_columns = file_table_frame.columns.filter((field) => field.includes(":"));
+  const rows = frame_to_rows(frame);
+  const stat_columns = frame.columns.filter((field) => field.includes(":"));
   const col_data = {
     id: rows.map((row) => row.id),
     name: rows.map((row) => row.name),
@@ -380,29 +393,29 @@ function apply_filename_metadata_columns(spec, columns, { render = true, preserv
     col_data[field] = rows.map((row) => row[field] ?? null);
   });
 
-  file_table_frame = new PhaseFinderFrame(col_data, ["id", "name", ...normalized_columns.map((column) => column.field), ...stat_columns]);
+  set_file_table(new PhaseFinderFrame(col_data, ["id", "name", ...normalized_columns.map((column) => column.field), ...stat_columns]));
   sync_file_annotations();
   if (render) render_file_table();
 }
 
-function can_auto_apply_filename_metadata_template() {
-  if (!filename_metadata_template?.columns?.length || !file_table_frame) return false;
+export function can_auto_apply_filename_metadata_template() {
+  if (!filename_metadata_template?.columns?.length || !get_file_table()) return false;
   const current = current_metadata_columns();
   if (current.length === 0) return true;
   if (current.length !== filename_metadata_template.columns.length) return false;
   return current.every((column, index) => column.field === filename_metadata_template.columns[index].field);
 }
 
-function apply_current_filename_metadata_template({ render = true, preserve_existing = true } = {}) {
-  if (!filename_metadata_template?.columns?.length || !file_table_frame) {
+export function apply_current_filename_metadata_template({ render = true, preserve_existing = true } = {}) {
+  if (!filename_metadata_template?.columns?.length || !get_file_table()) {
     sync_file_annotations();
     return;
   }
   apply_filename_metadata_columns(filename_metadata_template, filename_metadata_template.columns, { render, preserve_existing });
 }
 
-function apply_metadata_wizard() {
-  if (!file_table_frame) return;
+export function apply_metadata_wizard() {
+  if (!get_file_table()) return;
   const spec = current_metadata_wizard_spec();
   const columns = metadata_wizard_columns_from_editor();
   const template = { ...spec, columns, leaves: current_column_editor_state() };
@@ -412,12 +425,13 @@ function apply_metadata_wizard() {
   set_status_bar(`Filename metadata columns applied (${columns.length} column${columns.length === 1 ? "" : "s"}).`);
 }
 
-function reset_filename_metadata_columns() {
-  if (!file_table_frame) return;
+export function reset_filename_metadata_columns() {
+  const frame = get_file_table();
+  if (!frame) return;
   save_filename_metadata_template({ steps: default_metadata_split_steps(), columns: [] });
   set_metadata_table_columns([]);
-  const rows = frame_to_rows(file_table_frame);
-  const stat_columns = file_table_frame.columns.filter((field) => field.includes(":"));
+  const rows = frame_to_rows(frame);
+  const stat_columns = frame.columns.filter((field) => field.includes(":"));
   const col_data = {
     id: rows.map((row) => row.id),
     name: rows.map((row) => row.name),
@@ -425,14 +439,14 @@ function reset_filename_metadata_columns() {
   stat_columns.forEach((field) => {
     col_data[field] = rows.map((row) => row[field] ?? null);
   });
-  file_table_frame = new PhaseFinderFrame(col_data, ["id", "name", ...stat_columns]);
+  set_file_table(new PhaseFinderFrame(col_data, ["id", "name", ...stat_columns]));
   sync_file_annotations();
   render_file_table();
   close_metadata_wizard();
   set_status_bar("Metadata table reset to Filename only.");
 }
 
-function schedule_metadata_wizard_after_file_load() {
+export function schedule_metadata_wizard_after_file_load() {
   if (metadata_wizard_seen_this_session || TABLE_COLUMNS.length > 1) return;
   window.setTimeout(() => open_metadata_wizard(), 750);
 }

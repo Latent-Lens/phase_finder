@@ -1,10 +1,32 @@
-// Sidebar toggle, table support helpers, and display-row preparation. This file
-// dispatches table selection events, controls sidebar collapsed state, filters
-// rows, sorts rows, and builds table header/control markup. It formats display
-// names, filter controls, sort indicators, editable header labels, and stat
-// header groupings used by the renderer. It also contains filename annotation
-// guessing and timepoint sorting helpers used by table workflows and unit tests.
-// Rendering and delegated DOM event handling live in js/ui/table_render.js.
+// Sidebar toggle, table support helpers, and display-row preparation. This
+// module dispatches table selection events, controls sidebar collapsed state,
+// filters rows, sorts rows, and builds table header/control markup. It formats
+// display names, filter controls, sort indicators, editable header labels, and
+// stat header groupings used by the renderer. It also contains filename
+// annotation guessing and timepoint sorting helpers used by table workflows and
+// unit tests. Rendering and delegated DOM event handling live in
+// js/ui/table_render.js.
+
+import {
+  app_shell,
+  sidebar,
+  sidebar_content,
+  sidebar_toggle,
+  sidebar_toggle_icon,
+  SIDEBAR_OPEN_ICON,
+  SIDEBAR_CLOSE_ICON,
+  SIDEBAR_TRANSITION_MS,
+  channel_select,
+  collapsed_channel_select,
+} from "./dom.js";
+import { Tooltips } from "./hover_text.js";
+import { escape_html } from "../util/html.js";
+import { display_name } from "../util/names.js";
+import { get_file_table, set_file_table } from "../state/app_state.js";
+import { TABLE_COLUMNS, column_filters, sort_state, open_filter_field } from "../data_structs/table_state.js";
+import { PhaseFinderFrame } from "../data_structs/metadata_frame.js";
+import { frame_to_rows, unique_column_values, populate_channel_controls, update_start_button_state } from "./status_channels.js";
+import { render_file_table } from "./table_render.js";
 
 /*
 
@@ -20,7 +42,7 @@ Output:
 	(none) [void]: dispatches a document event
 
 */
-function notify_selection_changed() {
+export function notify_selection_changed() {
   document.dispatchEvent(new CustomEvent("fcs-selection-change"));
 }
 
@@ -37,14 +59,14 @@ Output:
 	(none) [void]: updates sidebar state and layout-dependent controls
 
 */
-function set_sidebar_collapsed(is_collapsed) {
+export function set_sidebar_collapsed(is_collapsed) {
   app_shell.classList.toggle("sidebar_collapsed", is_collapsed);
   sidebar.classList.toggle("is_collapsed", is_collapsed);
   sidebar_content.setAttribute("aria-hidden", String(is_collapsed));
   if ("inert" in sidebar_content) sidebar_content.inert = is_collapsed;
 
   sidebar_toggle.setAttribute("aria-expanded", String(!is_collapsed));
-  window.PhaseFinderTooltips.set_quick_tooltip(sidebar_toggle, is_collapsed ? "sidebarExpand" : "sidebarCollapse");
+  Tooltips.set_quick_tooltip(sidebar_toggle, is_collapsed ? "sidebarExpand" : "sidebarCollapse");
   sidebar_toggle.setAttribute("aria-label", is_collapsed ? "Expand sidebar" : "Collapse sidebar");
   sidebar_toggle_icon.src = is_collapsed ? SIDEBAR_OPEN_ICON : SIDEBAR_CLOSE_ICON;
 
@@ -65,7 +87,7 @@ Output:
 	(none) [void]: toggles the sidebar collapsed state
 
 */
-function toggle_sidebar() {
+export function toggle_sidebar() {
   set_sidebar_collapsed(!app_shell.classList.contains("sidebar_collapsed"));
 }
 
@@ -82,10 +104,11 @@ Output:
 	files [Array<Object>]: the filtered and sorted loaded files
 
 */
-function displayed_files() {
-  if (!file_table_frame || file_table_frame.length === 0) return [];
+export function displayed_files() {
+  const frame = get_file_table();
+  if (!frame || frame.length === 0) return [];
 
-  let rows = frame_to_rows(file_table_frame);
+  let rows = frame_to_rows(frame);
 
   // Filter: each active column filter keeps only rows whose cell value is in
   // the allowed Set. An empty (or absent) Set means "no filter applied".
@@ -131,12 +154,12 @@ Output:
 	html [string]: the sort-indicator markup
 
 */
-function sort_indicator(field) {
+export function sort_indicator(field) {
   const active = sort_state.field === field;
   const asc_class = active && sort_state.direction === "asc" ? "sort_arrow active" : "sort_arrow";
   const desc_class = active && sort_state.direction === "desc" ? "sort_arrow active" : "sort_arrow";
-  const sort_ascending_title = escape_html(window.PhaseFinderTooltips.text("sortAscending"));
-  const sort_descending_title = escape_html(window.PhaseFinderTooltips.text("sortDescending"));
+  const sort_ascending_title = escape_html(Tooltips.text("sortAscending"));
+  const sort_descending_title = escape_html(Tooltips.text("sortDescending"));
   return `<span class="sort_indicator"><span class="${asc_class}" data-sort-dir="asc" title="${sort_ascending_title}">▲</span><span class="${desc_class}" data-sort-dir="desc" title="${sort_descending_title}">▼</span></span>`;
 }
 
@@ -154,7 +177,7 @@ Output:
 	html [string]: the filter control markup
 
 */
-function filter_control(column) {
+export function filter_control(column) {
   const selected = column_filters[column.field] || new Set();
   const summary = [...selected].sort((a, b) =>
     a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
@@ -173,12 +196,12 @@ function filter_control(column) {
 
   return `
           <div class="th_filter multi_select">
-            <button type="button" class="th_filter_toggle multi_select_toggle" data-filter-field="${column.field}" aria-expanded="${is_open}" title="${escape_html(window.PhaseFinderTooltips.text("filterBy", column.label))}">${escape_html(summary.join(", "))}</button>
+            <button type="button" class="th_filter_toggle multi_select_toggle" data-filter-field="${column.field}" aria-expanded="${is_open}" title="${escape_html(Tooltips.text("filterBy", column.label))}">${escape_html(summary.join(", "))}</button>
             <div class="multi_select_menu" data-filter-menu="${column.field}"${is_open ? "" : " hidden"}>${options}</div>
           </div>`;
 }
 
-function header_label_control(column) {
+export function header_label_control(column) {
   if (column.headerEditable) {
     return `
           <div class="metadata_header_editor">
@@ -213,7 +236,7 @@ Output:
 	html [string]: the header cell markup
 
 */
-function header_cell(column) {
+export function header_cell(column) {
   const filter = column.filterable ? filter_control(column) : "";
 
   return `
@@ -238,7 +261,7 @@ Output:
 	html [string]: the stats-mode label header cell markup
 
 */
-function header_label_cell(column) {
+export function header_label_cell(column) {
   return `<th class="stats_label_th">${header_label_control(column)}</th>`;
 }
 
@@ -255,26 +278,9 @@ Output:
 	html [string]: the stats-mode filter header cell markup
 
 */
-function header_filter_cell(column) {
+export function header_filter_cell(column) {
   const filter = column.filterable ? filter_control(column) : "";
   return `<th class="stats_filter_th">${filter}</th>`;
-}
-
-/*
-
-Purpose:
-	Returns the filename shown to the user, without the .fcs extension. The full
-	entry.name is kept for dedup/matching.
-
-Input:
-	name [string]: a sample filename
-
-Output:
-	label [string]: the filename without a trailing ".fcs"
-
-*/
-function display_name(name) {
-  return name.replace(/\.fcs$/i, "");
 }
 
 /*
@@ -290,7 +296,7 @@ Output:
 	size [number]: the input's size attribute (4–28)
 
 */
-function annotation_input_size(value) {
+export function annotation_input_size(value) {
   return Math.min(28, Math.max(4, String(value).length + 1));
 }
 
@@ -307,7 +313,7 @@ Output:
 	(none) [void]: refreshes the table and channel controls
 
 */
-function update_views() {
+export function update_views() {
   render_file_table();
   populate_channel_controls();
   collapsed_channel_select.value = channel_select.value;
@@ -328,7 +334,7 @@ Output:
 	guess [Object]: { strain, replicate, nocodazoleArrest, timepoint }
 
 */
-function guess_annotations_from_filename(filename) {
+export function guess_annotations_from_filename(filename) {
   const basename = filename.replace(/\.[^.]+$/, "");
   const guess = {
     strain: "",
@@ -376,7 +382,7 @@ Output:
 	sort_value [number]: the numeric value, or +Infinity if not numeric
 
 */
-function timepoint_sort_value(value) {
+export function timepoint_sort_value(value) {
   const numeric = Number.parseFloat(value);
   return Number.isFinite(numeric) ? numeric : Number.POSITIVE_INFINITY;
 }
@@ -395,16 +401,17 @@ Output:
 	(none) [void]: replaces file_table_frame with a sorted copy
 
 */
-function sort_file_table() {
-  if (!file_table_frame || file_table_frame.length === 0) return;
+export function sort_file_table() {
+  const frame = get_file_table();
+  if (!frame || frame.length === 0) return;
 
-  const rows = frame_to_rows(file_table_frame);
+  const rows = frame_to_rows(frame);
   rows.sort((a, b) => {
     return String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true, sensitivity: "base" });
   });
 
   // Reconstruct column-oriented data and rebuild the frame.
-  const cols = file_table_frame.columns;
+  const cols = frame.columns;
   const col_data = Object.fromEntries(cols.map((col) => [col, rows.map((row) => row[col] ?? null)]));
-  file_table_frame = new PhaseFinderFrame(col_data, [...cols]);
+  set_file_table(new PhaseFinderFrame(col_data, [...cols]));
 }

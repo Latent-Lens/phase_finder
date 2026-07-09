@@ -7,7 +7,11 @@
 // not own table selection, filters, or column editing rules; those live in the
 // neighboring data_structs modules.
 
-class PhaseFinderFrame {
+import { normalize_metadata_columns } from "./metadata_columns.js";
+import { loaded_file_by_metadata_key, metadata_unlinked_row_id } from "./table_state.js";
+import { metadata_filename_key } from "../util/names.js";
+
+export class PhaseFinderFrame {
   /*
 
   Purpose:
@@ -109,7 +113,7 @@ Output:
 	frame [PhaseFinderFrame]: column-oriented frame
 
 */
-function make_frame(rows) {
+export function make_frame(rows) {
   if (!rows || !rows.length) return new PhaseFinderFrame({}, []);
   const cols = Object.keys(rows[0]);
   const col_data = Object.fromEntries(cols.map((c) => [c, rows.map((r) => r[c] ?? null)]));
@@ -130,7 +134,7 @@ Output:
 	frame [PhaseFinderFrame]: combined frame
 
 */
-function concat_frames(frame1, frame2) {
+export function concat_frames(frame1, frame2) {
   const seen = new Set(frame1.columns);
   const all_cols = [...frame1.columns, ...frame2.columns.filter((c) => !seen.has(c))];
   const n1 = frame1.length;
@@ -144,7 +148,7 @@ function concat_frames(frame1, frame2) {
   return new PhaseFinderFrame(col_data, all_cols);
 }
 
-function build_metadata_frame_from_records(records, columns, loaded_rows = [], options = {}) {
+export function build_metadata_frame_from_records(records, columns, loaded_rows = [], options = {}) {
   const normalized_columns = normalize_metadata_columns(columns, { default_source: options.source || "metadata" });
   const loaded_by_key = loaded_file_by_metadata_key(loaded_rows);
   const used_loaded_ids = new Set();

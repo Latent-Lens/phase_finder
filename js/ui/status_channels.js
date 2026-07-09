@@ -1,10 +1,45 @@
 // Status, progress overlay, loaded-file labels, and channel selector helpers.
-// This file creates file ids, writes sidebar and footer status messages, shows
+// This module creates file ids, writes sidebar and footer status messages, shows
 // and hides progress UI, and yields animation frames during long-running work.
 // It builds channel selector options from loaded FCS parameter labels and guesses
 // likely DNA-area channels for the user. It also converts frames to row objects,
-// gathers distinct filter values, and controls whether action buttons should be
-// enabled. The shared table state itself lives in js/data_structs.
+// gathers distinct filter values, reads the selected analysis channel, and
+// controls whether action buttons should be enabled. The shared table state
+// itself lives in js/data_structs.
+
+import {
+  status_el,
+  status_bar,
+  status_bar_message,
+  loaded_files_panel,
+  loaded_files_label,
+  loaded_files_list,
+  file_upload_section,
+  drop_zone_title,
+  drop_zone_hint,
+  progress_overlay,
+  progress_fill,
+  progress_label,
+  progress_percent,
+  progress_detail,
+  channel_select,
+  collapsed_channel_select,
+  start_analysis_button,
+  collapsed_plot_button,
+  metadata_add_column_button,
+  metadata_import_button,
+  metadata_parse_button,
+  metadata_export_button,
+} from "./dom.js";
+import { escape_html } from "../util/html.js";
+import { get_file_map, get_file_table } from "../state/app_state.js";
+import {
+  selected_file_ids,
+  column_filters,
+  set_sort_state,
+  set_open_filter_field,
+  loaded_file_count,
+} from "../data_structs/table_state.js";
 
 /*
 
@@ -19,11 +54,30 @@ Output:
 	id [string]: a unique file identifier
 
 */
-function create_id() {
+export function create_id() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
   }
   return `file-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/*
+
+Purpose:
+	Returns the currently selected analysis channels (the DNA-content area
+	channel chosen in the sidebar).
+
+Input:
+	(none)
+
+Output:
+	channels [Object]: { dna_area }
+
+*/
+export function get_selected_channels() {
+  return {
+    dna_area: channel_select.value,
+  };
 }
 
 /*
@@ -39,7 +93,7 @@ Output:
 	(none) [void]: updates the #status element
 
 */
-function set_status(message, is_error = false) {
+export function set_status(message, is_error = false) {
   status_el.textContent = message;
   status_el.classList.toggle("error", is_error);
 }
@@ -57,7 +111,7 @@ Output:
 	(none) [void]: updates the status bar
 
 */
-function set_status_bar(message, is_error = false) {
+export function set_status_bar(message, is_error = false) {
   status_bar_message.textContent = message;
   status_bar.classList.toggle("error", is_error);
 }
@@ -74,11 +128,12 @@ Output:
 	(none) [void]: updates and shows/hides the loaded-file list
 
 */
-function update_loaded_files_list() {
+export function update_loaded_files_list() {
   if (!loaded_files_panel || !loaded_files_label || !loaded_files_list) {
     return;
   }
 
+  const file_map = get_file_map();
   const count = file_map.size;
   file_upload_section?.classList.toggle("has_loaded_files", count > 0);
   loaded_files_panel.hidden = count === 0;
@@ -105,8 +160,8 @@ Output:
 	(none) [void]: updates the drop zone text
 
 */
-function update_drop_zone_text() {
-  const count = file_map.size;
+export function update_drop_zone_text() {
+  const count = get_file_map().size;
   update_loaded_files_list();
 
   if (!count) {
@@ -133,7 +188,7 @@ Output:
 	(none) [void]: shows the progress overlay
 
 */
-function show_progress(label = "Loading FCS Metadata") {
+export function show_progress(label = "Loading FCS Metadata") {
   progress_overlay.hidden = false;
   progress_overlay.setAttribute("aria-busy", "true");
   update_progress(0, label, "Preparing files...");
@@ -155,7 +210,7 @@ Output:
 	(none) [void]: updates the progress overlay
 
 */
-function update_progress(percent, label = "Loading FCS Metadata", detail = "", filename = "") {
+export function update_progress(percent, label = "Loading FCS Metadata", detail = "", filename = "") {
   const bounded_percent = Math.max(0, Math.min(100, percent));
   progress_fill.style.width = `${bounded_percent}%`;
   progress_label.textContent = label;
@@ -177,7 +232,7 @@ Output:
 	(none) [void]: hides the progress overlay after the delay
 
 */
-function hide_progress(delay = 500) {
+export function hide_progress(delay = 500) {
   window.setTimeout(() => {
     progress_overlay.hidden = true;
     progress_overlay.setAttribute("aria-busy", "false");
@@ -197,7 +252,7 @@ Output:
 	frame [Promise<void>]: resolves on the next animation frame
 
 */
-function next_frame() {
+export function next_frame() {
   return new Promise((resolve) => window.requestAnimationFrame(resolve));
 }
 
@@ -214,7 +269,7 @@ Output:
 	(none) [void]: clears the channel selector and table state
 
 */
-function clear_channel_controls() {
+export function clear_channel_controls() {
   [channel_select, collapsed_channel_select].forEach((select) => {
     select.innerHTML = "";
     select.add(new Option("", "", true, true));
@@ -223,8 +278,8 @@ function clear_channel_controls() {
 
   selected_file_ids.clear();
   Object.keys(column_filters).forEach((field) => delete column_filters[field]);
-  sort_state = { field: null, direction: "asc" };
-  open_filter_field = null;
+  set_sort_state(null);
+  set_open_filter_field(null);
 }
 
 /*
@@ -240,11 +295,11 @@ Output:
 	columns [Array<string>]: the distinct parameter labels
 
 */
-function unique_columns() {
+export function unique_columns() {
   const seen = new Set();
   const columns = [];
 
-  file_map.forEach((entry) => {
+  get_file_map().forEach((entry) => {
     entry.summary.columns.forEach((column) => {
       if (!seen.has(column)) {
         seen.add(column);
@@ -269,11 +324,12 @@ Output:
 	values [Array<string>]: the sorted distinct values
 
 */
-function unique_column_values(field) {
-  if (!file_table_frame) return [];
+export function unique_column_values(field) {
+  const frame = get_file_table();
+  if (!frame) return [];
   const seen = new Set();
   const values = [];
-  for (const v of file_table_frame.col(field)) {
+  for (const v of frame.col(field)) {
     const str = (v != null && !Number.isNaN(v)) ? String(v).trim() : "";
     if (str && !seen.has(str)) {
       seen.add(str);
@@ -300,7 +356,7 @@ Output:
 	(none) [void]: replaces the select's options
 
 */
-function populate_single_select(select, columns, placeholder, suggested_value = "") {
+export function populate_single_select(select, columns, placeholder, suggested_value = "") {
   select.innerHTML = "";
   select.disabled = columns.length === 0;
   select.add(new Option(placeholder, "", true, true));
@@ -324,7 +380,7 @@ Output:
 	match [string]: the first matching column, or "" if none match
 
 */
-function suggest_column(columns, patterns) {
+export function suggest_column(columns, patterns) {
   const upper_patterns = patterns.map((pattern) => pattern.toUpperCase());
   return columns.find((column) => {
     const normalized = column.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
@@ -345,7 +401,7 @@ Output:
 	(none) [void]: fills the channel selector
 
 */
-function populate_channel_controls() {
+export function populate_channel_controls() {
   const columns = unique_columns();
   const previous = channel_select.value || collapsed_channel_select.value;
   const selected = columns.includes(previous)
@@ -371,7 +427,7 @@ Output:
 	selected [boolean]: true if the value existed and was selected
 
 */
-function select_if_option_exists(select, value) {
+export function select_if_option_exists(select, value) {
   if (!value) {
     return false;
   }
@@ -398,7 +454,7 @@ Output:
 	rows [Array<Object>]: one plain object per row
 
 */
-function frame_to_rows(frame) {
+export function frame_to_rows(frame) {
   if (!frame || frame.length === 0) return [];
   const cols = frame.columns;
   const arrays = cols.map((c) => frame.col(c));
@@ -427,9 +483,11 @@ Output:
 	(none) [void]: updates plot and statistics button disabled states
 
 */
-function update_start_button_state() {
-  const has_selected_loaded_rows = Boolean(file_table_frame && file_table_frame.col("id")
-    .some((id) => selected_file_ids.has(id) && typeof file_map !== "undefined" && file_map.has(id)));
+export function update_start_button_state() {
+  const frame = get_file_table();
+  const file_map = get_file_map();
+  const has_selected_loaded_rows = Boolean(frame && frame.col("id")
+    .some((id) => selected_file_ids.has(id) && file_map.has(id)));
   const is_disabled = !channel_select.value || !has_selected_loaded_rows;
   [start_analysis_button, collapsed_plot_button].forEach((button) => {
     if (!button) {
@@ -439,7 +497,7 @@ function update_start_button_state() {
   });
 
   const has_files = loaded_file_count() > 0;
-  const has_table_rows = Boolean(file_table_frame && file_table_frame.length > 0);
+  const has_table_rows = Boolean(frame && frame.length > 0);
   ["#calculate_stats_button", "#collapsed_calculate_stats_button"].forEach((sel) => {
     const btn = document.querySelector(sel);
     if (btn) btn.disabled = !has_files;
