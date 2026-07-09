@@ -75,6 +75,29 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
               or "plotted" in bar_after_plot.lower() or bar_after_plot != "",
               bar_after_plot)
 
+    # --- plot inspection API (window.PhaseFinder.plot) ---
+    # series = the currently drawn (checked) samples; series_names / get_histogram
+    # cover every loaded sample, checked or not, so tests/tools can read any
+    # sample's binned histogram by name.
+    plot_api = page.evaluate(
+        """() => {
+            const p = window.PhaseFinder.plot;
+            const names = p.series_names;
+            const hist = names.length ? p.get_histogram(names[0]) : null;
+            return {
+                seriesIsArray: Array.isArray(p.series),
+                seriesLen: p.series.length,
+                namesLen: names.length,
+                histHasBins: !!(hist && Array.isArray(hist.counts) && Array.isArray(hist.binEdges) && hist.counts.length > 0),
+            };
+        }""")
+    ctx.check(group, "Plot inspection API exposes the drawn series (window.PhaseFinder.plot.series)",
+              plot_api["seriesIsArray"] and plot_api["seriesLen"] == subset_count,
+              str(plot_api))
+    ctx.check(group, "Plot inspection API exposes a binned histogram for every loaded sample",
+              plot_api["namesLen"] >= total_rows and plot_api["histHasBins"],
+              str(plot_api))
+
     # --- re-select all rows and plot all ---
     select_all_visible_rows(page)
     wait_briefly(0.2)

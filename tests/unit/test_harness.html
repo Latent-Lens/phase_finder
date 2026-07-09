@@ -27,6 +27,9 @@
     import { guess_annotations_from_filename, timepoint_sort_value, annotation_input_size } from "/js/ui/table_support.js";
     import { display_name, metadata_filename_key } from "/js/util/names.js";
     import { parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key } from "/js/io/metadata_io.js";
+    import { parameter_map, find_param_index, unique_indexes } from "/js/io/parameter_map.js";
+    import { find_auxiliary_indexes_for_file, filter_selected_channel_values } from "/js/fcs/channel_cleaning.js";
+    import { serialize_session, parse_session_toml } from "/js/session/toml_io.js";
     import * as DJF from "/js/analysis/djf.js";
 
     Object.assign(window, {
@@ -36,6 +39,9 @@
       guess_annotations_from_filename, timepoint_sort_value, annotation_input_size,
       display_name, metadata_filename_key,
       parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key,
+      parameter_map, find_param_index, unique_indexes,
+      find_auxiliary_indexes_for_file, filter_selected_channel_values,
+      serialize_session, parse_session_toml,
     });
     // DJF (and its statically imported ml-* stack) is loaded eagerly here so the
     // unit tests can call window.PhaseFinder.djf.* synchronously.
