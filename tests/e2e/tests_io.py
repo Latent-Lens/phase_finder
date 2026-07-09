@@ -34,15 +34,30 @@ def _synthetic_extra_file(ctx: TestContext, seed, strain, timepoint):
 
 def test_libraries(ctx: TestContext):
     group = "Input/Output"
-    for lib, expected_type in [("d3", "object"), ("levenbergMarquardt", "function"), ("gsd", "function")]:
+    # The numeric libraries are vendored ESM bundles mapped via the page's import
+    # map and imported by the app modules (d3 eagerly through the plotting layer,
+    # the ml-* stack lazily with analysis/djf.js). There are no window.d3 /
+    # window.gsd globals anymore, so verify each resolves and exports what the app
+    # uses by importing it through the import map from page context.
+    for specifier, export_name in [("d3", "select"),
+                                   ("ml-levenberg-marquardt", "levenbergMarquardt"),
+                                   ("ml-gsd", "gsd")]:
         try:
-            ctx.page.wait_for_function(
-                f"() => typeof window.{lib} === '{expected_type}'", timeout=20000
+            ok = ctx.page.evaluate(
+                "async ([spec, name]) => { const m = await import(spec); return typeof m[name] === 'function'; }",
+                [specifier, export_name],
             )
-            ctx.check(group, f"Library loaded [{lib}]", True, screenshot=False)
-        except Exception:
-            ctx.check(group, f"Library loaded [{lib}]", False,
-                      ctx.page.evaluate(f"typeof window.{lib}"))
+            ctx.check(group, f"Library loaded [{specifier}]", bool(ok), screenshot=False)
+        except Exception as err:
+            ctx.check(group, f"Library loaded [{specifier}]", False, str(err), screenshot=False)
+
+    # The single debug/automation hook replaces the old per-namespace globals.
+    hook = ctx.page.evaluate(
+        "() => typeof window.PhaseFinder === 'object'"
+        " && typeof window.PhaseFinder.app?.get_file_table === 'function'"
+        " && typeof window.PhaseFinder.plot === 'object'"
+    )
+    ctx.check(group, "Debug hook [window.PhaseFinder]", bool(hook), screenshot=False)
 
 
 def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, additional_files):

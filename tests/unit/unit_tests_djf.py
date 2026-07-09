@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for window.PhaseFinderDJF (js/analysis/djf.js).
+"""Unit tests for window.PhaseFinder.djf (js/analysis/djf.js).
 
 Uses a synthetic bimodal histogram (two Gaussian peaks at ~64 000 and ~128 000)
 built by window.TestUtils.buildBimodalHistogram() and invokes fit/fractions/
@@ -18,7 +18,7 @@ GROUP = "Unit / DJF Model"
 # We keep the histogram in a JS variable across calls by using a single evaluate.
 
 _FULL_SUITE = """() => {
-  const DJF = window.PhaseFinderDJF;
+  const DJF = window.PhaseFinder.djf;
   const points = window.TestUtils.buildBimodalHistogram(256);
   const range = [20000, 200000];
   const results = [];
