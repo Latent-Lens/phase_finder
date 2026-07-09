@@ -43,16 +43,23 @@ pipeline in this repository.
 │   ├── responsive.css   # @media overrides (loaded last)
 │   └── help.css         # standalone stylesheet for help.html
 ├── js/
-│   ├── analysis/        # DJF model, plot/model orchestration, summary stats
+│   ├── vendor/          # vendored ESM bundles (d3, ml-levenberg-marquardt, ml-gsd)
+│   ├── state/           # app_state (file_map + frame accessors), file-selection queries
+│   ├── util/            # leaf string helpers (HTML escaping, filename transforms)
+│   ├── analysis/        # DJF model (lazy-loaded), plot/model orchestration, summary stats
 │   ├── data_structs/    # frame, table state, metadata columns, channel cache
-│   ├── fcs/             # FCS parser, metadata reader, channel cleanup, worker
-│   ├── io/              # FCS/metadata loading, table import/export, IO helpers
-│   ├── plotting/        # D3 histogram rendering, axis modal, modeling UI
-│   ├── session/         # TOML save/load, OPFS caching, reconnect flow
-│   ├── ui/              # metadata table, wizard, panels, status/channel controls
-│   └── main.js          # window.PhaseFinderApp — application bootstrap/API
+│   ├── fcs/             # FCS parser, metadata reader, channel cleanup, module worker
+│   ├── io/              # FCS/metadata loading, parameter map, table import/export
+│   ├── plotting/        # D3 histogram rendering, axis modal, modeling UI, DJF loader
+│   ├── session/         # TOML save/load, OPFS filesystem + file cache, reconnect flow
+│   ├── ui/              # DOM refs, metadata table, wizard, panels, status/channel controls
+│   └── main.js          # ES-module entry: init_*() bootstrap + window.PhaseFinder hook
+├── docs/
+│   ├── code-flow-diagrams.md                    # layered deps + event-flow mermaid diagrams
+│   └── function-call-and-user-decision-graphs.md
 ├── tests/
-│   └── e2e/             # Playwright driver (drive_flow.py) + results/
+│   ├── e2e/             # Playwright driver (drive_flow.py) + results/
+│   └── unit/            # module-level unit suites driven via test_harness.html
 └── misc/
     └── README.md
 ```
@@ -63,7 +70,10 @@ src="./js/main.js">`, and `js/main.js` imports every layer and runs an ordered
 `init_*()` bootstrap, so the dependency graph lives in the `import` statements
 rather than a hand-maintained list of script tags. `help.html` documents all of
 the features the app adds (the metadata wizard, summary statistics, session
-save/load, and layout controls); see it for an up-to-date feature tour.
+save/load, and layout controls); see it for an up-to-date feature tour. For the
+module dependency layers and the key event-flow / user-decision paths as mermaid
+diagrams, see [`docs/code-flow-diagrams.md`](docs/code-flow-diagrams.md) and
+[`docs/function-call-and-user-decision-graphs.md`](docs/function-call-and-user-decision-graphs.md).
 
 ## How The App Works
 
@@ -77,18 +87,25 @@ the app as a single ES module entry (`js/main.js`). The heavy DJF numeric stack
 `import()` on the first correction or modeling action, so it stays off the
 initial load path.
 
-The runtime order matters:
+Load order is no longer hand-maintained: it is the ES-module dependency graph
+plus one ordered bootstrap. `js/main.js` (the module entry) imports every layer,
+then calls the `init_*()` functions in dependency order — tooltips, the main event
+wiring + initial render, plot listeners, analysis listeners, stats, panel resize,
+and session — before assigning the single `window.PhaseFinder` debug hook. At
+runtime:
 
-1. `js/fcs/parser.js` creates `window.FCSParser`.
+1. `js/fcs/parser.js` exports the `FCSParser` API (imported by the FCS module
+   worker and by header/column reading).
 2. `js/fcs/metadata_processing.js` reads FCS HEADER/TEXT metadata for new files.
-3. `js/data_structs/*.js`, `js/io/metadata_io.js`, and `js/main.js` create the
-   file-loading/table UI state and expose `window.PhaseFinderApp`.
-4. `js/analysis/djf.js` exposes the DJF model, while `js/plotting/render.js`
-   defines the plot renderer (`initPlot`, `renderDensityPlot`) and redraws on
-   selection/control changes.
-5. `js/io/channel_loading.js` uses `window.PhaseFinderApp` and
-   `window.FCSParser` to load selected event data, then `js/analysis/start.js`
-   calls `initPlot` to draw the plot.
+3. `js/state/*`, `js/data_structs/*`, `js/io/metadata_io.js`, and `js/main.js`
+   own the file-loading/table state (accessed through imports, not a global).
+4. `js/plotting/render.js` defines the plot renderer (`render_density_plot`) and
+   redraws on selection/control changes; the Dean-Jett-Fox model in
+   `js/analysis/djf.js` is dynamically imported on demand via
+   `js/plotting/djf_loader.js`.
+5. `js/io/channel_loading.js` imports the file getters and `FCSParser` to load
+   selected event data (via the module worker), then `js/plotting/modeling.js`'s
+   `init_plot` draws the plot.
 
 The third-party libraries are loaded from:
 
@@ -130,8 +147,9 @@ scope (see the structure list above).
 
 ### `js/fcs/parser.js`
 
-The browser-side FCS parser. It has no external dependencies and exposes its API
-through `window.FCSParser`.
+The browser-side FCS parser. It has no external dependencies and exports its API
+as the `FCSParser` object, imported by both the main thread and the FCS module
+worker.
 
 It handles:
 
@@ -146,14 +164,17 @@ It handles:
 - Summarizing only the header/TEXT metadata with `parseFCSHeaderFromSegments`,
   which keeps initial file loading fast.
 
-### `js/main.js`, `js/data_structs/`, `js/io/`, and `js/ui/`
+### `js/main.js`, `js/state/`, `js/data_structs/`, `js/io/`, and `js/ui/`
 
-The main UI and metadata workflow. `main.js` owns the loaded file list and
-file-loading/drag-drop flow and exposes `window.PhaseFinderApp`; the metadata
-frame, table state, metadata-column helpers, and channel-data cache live in
-`js/data_structs/`. FCS file metadata loading and CSV/TSV table import/export
-live in `js/io/metadata_io.js`. Table rendering, status/channel controls, panel
-controls, resize behavior, and the filename metadata wizard live in `js/ui/`.
+The main UI and metadata workflow. `main.js` is the ES-module entry: it wires the
+top-level DOM events and runs the ordered `init_*()` bootstrap. The two shared
+per-file representations — the loaded-file map and the metadata frame — live in
+`js/state/app_state.js` behind accessors, with file-selection queries in
+`js/state/files.js`; the frame class, table state, metadata-column helpers, and
+channel-data cache live in `js/data_structs/`. FCS file metadata loading and
+CSV/TSV table import/export live in `js/io/metadata_io.js`. DOM references, table
+rendering, status/channel controls, panel controls, resize behavior, and the
+filename metadata wizard live in `js/ui/`.
 
 Important responsibilities:
 
@@ -174,8 +195,10 @@ Important responsibilities:
   channel is chosen.
 - Dispatches a `fcs-selection-change` event when the checked set changes so the
   plot can add/remove curves live without re-running analysis.
-- Exposes `window.PhaseFinderApp` (e.g. `getSelectedFiles`, `getParsedFiles`,
-  `getSelectedChannels`, plus progress/status helpers).
+- Internal code shares state through direct module imports (accessors); the only
+  global is the single debug/automation hook `window.PhaseFinder = { app, djf,
+  plot }` assigned at the end of the bootstrap (`app` covers the former
+  `PhaseFinderApp` getters + progress/status helpers).
 
 Metadata table columns: Filename (read-only), Strain, Replicate,
 Nocodazole Arrest, Timepoint (editable + filterable).
@@ -185,9 +208,13 @@ Nocodazole Arrest, Timepoint (editable + filterable).
 The plot renderer and cell-cycle display, drawn with D3 into `#plot_area`. Split
 across `data.js` (state, data-prep, and histogram binning), `modeling.js`
 (fit-results table and modeling-state controls), `render.js` (the main SVG
-render pass), and `axis_modal.js` (the axis-range modal, plot-control listeners,
-and `window.PhaseFinderPlot` inspection API). The Dean-Jett-Fox model itself is
-in `js/analysis/djf.js` as `window.PhaseFinderDJF`.
+render pass), `axis_modal.js` (the axis-range modal, plot-control listeners, and
+the `window.PhaseFinder.plot` inspection API), and `djf_loader.js` (the memoized
+dynamic-import loader for the DJF stack). The Dean-Jett-Fox model itself is in
+`js/analysis/djf.js`, imported statically from `djf.js` alongside the two `ml-*`
+libraries; because `djf.js` is only pulled in on demand (first correction or
+modeling action), the whole numeric stack stays off the initial load path and is
+surfaced on `window.PhaseFinder.djf` once loaded.
 
 Important responsibilities:
 
@@ -223,9 +250,11 @@ The selected-data loading and panel orchestration layer, loaded after
 `js/plotting/`. Split across `js/analysis/djf.js` (model math and preprocessing),
 `js/analysis/start.js` (plotting/modeling-mode orchestration), and
 `js/analysis/stats.js` (summary-statistics workflow). Selected FCS DATA loading
-is implemented in `js/io/channel_loading.js`, using `js/io/cache.js` for
+is implemented in `js/io/channel_loading.js`, using `js/io/parameter_map.js` for
 parameter-index resolution and `js/data_structs/channel_cache.js` for reusable
-loaded arrays. These modules use the public `window.PhaseFinderApp` methods.
+loaded arrays. These modules import the file/state accessors directly
+(`js/state/files.js`, `js/state/app_state.js`) rather than reaching through a
+global.
 
 Important responsibilities:
 
@@ -356,13 +385,12 @@ I/O, and button wiring). To make reloading a session "just work" without
 re-selecting files, loaded FCS files are cached into the browser's Origin
 Private File System (OPFS):
 
-- **On file load**, `js/main.js` hands the loaded files to
-  `window.PhaseFinderSessionFiles.register_loaded_files`, which builds a per-file
-  record (`id`, `original_name`, `relative_path`, `size`, `last_modified`,
-  `mime_type`, `opfs_path`, `status`) and copies each file into OPFS in the
-  background via a Web Worker (`js/session/copy_worker.js`), showing
-  "Caching file x of y" in the status bar. OPFS helpers live in
-  `js/session/store.js` (`window.PhaseFinderOPFS`).
+- **On file load**, `js/io/metadata_io.js` calls `register_loaded_files`
+  (imported from `js/session/file_cache.js`), which builds a per-file record
+  (`id`, `original_name`, `relative_path`, `size`, `last_modified`, `mime_type`,
+  `opfs_path`, `status`) and copies each file into OPFS in the background via a
+  module worker (`js/session/copy_worker.js`), showing "Caching file x of y" in
+  the status bar. Low-level OPFS helpers live in `js/session/opfs_fs.js`.
 - **On save**, those records are written to the session TOML as
   `[[files.records]]` (alongside the legacy `[files].names`). No absolute OS
   paths are ever stored — only app-private OPFS paths and file metadata.
@@ -377,8 +405,10 @@ Private File System (OPFS):
 
 New JS files for this feature:
 
-- `js/session/store.js` — `window.PhaseFinderOPFS`; OPFS feature detection plus
-  read/delete helpers and storage-persistence requests (writes are delegated to
-  the worker).
-- `js/session/copy_worker.js` — Web Worker that writes a loaded `File` into OPFS
-  off the main thread so caching large files never blocks the UI.
+- `js/session/opfs_fs.js` — the low-level OPFS filesystem wrapper: feature
+  detection plus read/delete helpers and storage-persistence requests (writes are
+  delegated to the worker).
+- `js/session/file_cache.js` — the higher-level file registry, background copy
+  queue, directory-handle persistence, and autoload fallbacks.
+- `js/session/copy_worker.js` — module worker that writes a loaded `File` into
+  OPFS off the main thread so caching large files never blocks the UI.
