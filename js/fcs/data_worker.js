@@ -1,4 +1,4 @@
-// Worker-side selected-column FCS data reader. This file runs in a Web Worker
+// Worker-side selected-column FCS data reader. This module runs in a Web Worker
 // scope and imports the shared FCS parser without depending on any browser UI
 // globals. It receives a File, parsed FCS summary, and selected 1-based
 // parameter indexes from the main thread. It slices the DATA segment, parses

@@ -1,10 +1,12 @@
 // File-selection queries over the shared app state. These small accessors read
 // the loaded-file map and the metadata frame (from app_state) together with the
 // table selection (from table_state) so plotting, IO, analysis, and stats code
-// can get the file entries it needs without reaching through a global. They are
-// the internal, direct-import replacements for the old window.PhaseFinderApp
-// file getters (which are still surfaced on the window.PhaseFinder.app debug hook
-// by main.js).
+// can get the file entries it needs without reaching through a global. get_selected_files
+// also syncs annotations back onto the entries first, so the plot legend and fit
+// tables always see current metadata. They are the internal, direct-import
+// replacements for the old window.PhaseFinderApp file getters, which are still
+// surfaced on the window.PhaseFinder.app debug hook by main.js. Keeping them in a
+// dedicated module lets both the app and that debug hook share one implementation.
 
 import { get_file_map, get_file_table } from "./app_state.js";
 import { selected_file_ids, sync_file_annotations } from "../data_structs/table_state.js";
