@@ -1,4 +1,4 @@
-// PhaseFinder session TOML serializer and parser. This file converts the
+// PhaseFinder session TOML serializer and parser. This module converts the
 // in-memory session object into a human-readable TOML document and parses that
 // document back into plain JavaScript data. It handles the section structure
 // used for files, metadata columns, metadata rows, table filters, plot settings,

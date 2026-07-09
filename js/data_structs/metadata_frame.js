@@ -1,4 +1,4 @@
-// Metadata frame primitives and frame-building helpers. This file defines the
+// Metadata frame primitives and frame-building helpers. This module defines the
 // PhaseFinderFrame column store used by metadata, stats, import/export, and
 // session restore code. It provides helpers to build frames from row objects and
 // concatenate frames while preserving column order and filling missing values.
@@ -148,6 +148,23 @@ export function concat_frames(frame1, frame2) {
   return new PhaseFinderFrame(col_data, all_cols);
 }
 
+/*
+
+Purpose:
+	Builds a metadata frame from imported/session records, linking each record to
+	a loaded FCS row when their normalized filenames match (first match wins) and
+	leaving unmatched or duplicate records as unlinked rows with generated ids.
+
+Input:
+	records [Array<Object>]:     metadata rows (each carries a name/Filename plus column values)
+	columns [Array<Object>]:     raw metadata column definitions to normalize
+	loaded_rows [Array<Object>]: currently loaded rows to match against (default [])
+	options [Object]:            { source } tag applied to normalized columns
+
+Output:
+	result [Object]: { frame, columns, matched, unmatched, duplicates, empty_filenames }
+
+*/
 export function build_metadata_frame_from_records(records, columns, loaded_rows = [], options = {}) {
   const normalized_columns = normalize_metadata_columns(columns, { default_source: options.source || "metadata" });
   const loaded_by_key = loaded_file_by_metadata_key(loaded_rows);

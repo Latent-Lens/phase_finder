@@ -1,4 +1,4 @@
-// Per-row, per-channel loaded-data cache helpers. This file owns the small data
+// Per-row, per-channel loaded-data cache helpers. This module owns the small data
 // cache that lets parsed FCS event arrays be reused when users redraw a plot,
 // switch channels, or load additional files. It creates stable cache keys from
 // the selected channel object and stores each channel's cleaned arrays on the
