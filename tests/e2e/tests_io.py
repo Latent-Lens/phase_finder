@@ -34,22 +34,16 @@ def _synthetic_extra_file(ctx: TestContext, seed, strain, timepoint):
 
 def test_libraries(ctx: TestContext):
     group = "Input/Output"
-    # The numeric libraries are vendored ESM bundles mapped via the page's import
-    # map and imported by the app modules (d3 eagerly through the plotting layer,
-    # the ml-* stack lazily with analysis/djf.js). There are no window.d3 /
-    # window.gsd globals anymore, so verify each resolves and exports what the app
-    # uses by importing it through the import map from page context.
-    for specifier, export_name in [("d3", "select"),
-                                   ("ml-levenberg-marquardt", "levenbergMarquardt"),
-                                   ("ml-gsd", "gsd")]:
-        try:
-            ok = ctx.page.evaluate(
-                "async ([spec, name]) => { const m = await import(spec); return typeof m[name] === 'function'; }",
-                [specifier, export_name],
-            )
-            ctx.check(group, f"Library loaded [{specifier}]", bool(ok), screenshot=False)
-        except Exception as err:
-            ctx.check(group, f"Library loaded [{specifier}]", False, str(err), screenshot=False)
+    # The staged pipeline owns its peak finding and LM solver.  D3 is now the
+    # only vendored library/import-map dependency, used by plotting and the
+    # Stage 2 scatter diagnostics.
+    try:
+        ok = ctx.page.evaluate(
+            "async () => { const m = await import('d3'); return typeof m.select === 'function'; }"
+        )
+        ctx.check(group, "Library loaded [d3]", bool(ok), screenshot=False)
+    except Exception as err:
+        ctx.check(group, "Library loaded [d3]", False, str(err), screenshot=False)
 
     # The single debug/automation hook replaces the old per-namespace globals.
     hook = ctx.page.evaluate(
