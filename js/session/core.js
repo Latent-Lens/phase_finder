@@ -120,9 +120,6 @@ function collect_session() {
   const color_by   = document.getElementById('plot_color_by');
   const display_el = document.getElementById('plot_display_mode');
   const bins_el    = document.getElementById('plot_bins');
-  const debris_el  = document.getElementById('plot_debris_correction');
-  const doublet_el = document.getElementById('plot_doublet_correction');
-  const thresh_el  = document.getElementById('plot_threshold_toggle');
 
   return {
     session: { created: new Date().toISOString() },
@@ -149,9 +146,11 @@ function collect_session() {
       color_by:            color_by?.value || 'file',
       display_mode:        display_el?.value || 'curve',
       bins:                parseInt(bins_el?.value || '512', 10),
-      remove_debris:       debris_el?.checked || false,
-      remove_doublets:     doublet_el?.checked || false,
-      show_peak_threshold: thresh_el?.checked || false,
+      // Retained as false for backward-compatible session schemas; staged DJF
+      // controls now own cleaning and peak inspection.
+      remove_debris:       false,
+      remove_doublets:     false,
+      show_peak_threshold: false,
     },
     ui: {
       sidebar_collapsed:        Boolean(app_shell?.classList.contains('sidebar_collapsed')),
@@ -173,18 +172,12 @@ function apply_plot_settings(plot) {
   const color_by   = document.getElementById('plot_color_by');
   const display_el = document.getElementById('plot_display_mode');
   const bins_el    = document.getElementById('plot_bins');
-  const debris_el  = document.getElementById('plot_debris_correction');
-  const doublet_el = document.getElementById('plot_doublet_correction');
-  const thresh_el  = document.getElementById('plot_threshold_toggle');
   const ch_sel     = document.getElementById('channel_select');
   const col_ch_sel = document.getElementById('collapsed_channel_select');
 
   if (color_by && plot.color_by)     color_by.value   = plot.color_by;
   if (display_el && plot.display_mode) display_el.value = plot.display_mode;
   if (bins_el && plot.bins > 0)      bins_el.value    = plot.bins;
-  if (debris_el)  debris_el.checked  = Boolean(plot.remove_debris);
-  if (doublet_el) doublet_el.checked = Boolean(plot.remove_doublets);
-  if (thresh_el)  thresh_el.checked  = Boolean(plot.show_peak_threshold);
   if (ch_sel && plot.channel) {
     const opt = [...ch_sel.options].find((o) => o.value === plot.channel);
     if (opt) {

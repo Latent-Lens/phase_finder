@@ -55,6 +55,16 @@ export const metadata_preview = document.querySelector("#metadata_preview");
 export const start_analysis_button = document.querySelector("#start_analysis_button");
 export const collapsed_plot_button = document.querySelector("#collapsed_plot_button");
 
+// ── Manual DJF pipeline controls + Stage 2 diagnostics modal ───────────────
+export const djf_stage_buttons = Array.from({ length: 9 }, (_, stage) =>
+  document.querySelector(`#djf_stage${stage}`)
+);
+export const djf_run_all_button = document.querySelector("#djf_run_all");
+export const djf_scatter_modal = document.querySelector("#djf_scatter_modal");
+export const djf_scatter_modal_close = document.querySelector("#djf_scatter_modal_close");
+export const djf_scatter_plot = document.querySelector("#djf_scatter_plot");
+export const djf_scatter_caption = document.querySelector("#djf_scatter_caption");
+
 // ── App shell / sidebar ──────────────────────────────────────────────────────
 export const app_shell = document.querySelector(".app");
 export const sidebar = document.querySelector("#sidebar");

@@ -1,11 +1,10 @@
 // Selected-channel FCS DATA loading and worker orchestration. This module creates
 // the shared FCS data worker (a module worker), falls back to main-thread parsing
 // when appropriate, and loads only the requested parameter columns for each file.
-// It resolves the selected DNA-area channel plus optional height/width companions,
-// then cleans the loaded arrays through js/fcs/channel_cleaning.js. It stores
-// cleaned arrays, event masks, counts, and parameter indexes through the channel
-// cache. It also handles batch progress, plot refresh after new files arrive, and
-// background preload for files added after plotting has started.
+// It resolves the selected DNA-area channel plus height/width, scatter, and Time
+// companions, then stores raw original-index arrays, acquisition metadata, empty
+// pipeline masks, and parameter indexes through the channel cache. It also handles
+// batch progress, plot refresh after new files arrive, and background preload.
 
 import { FCSParser } from "../fcs/parser.js";
 import {

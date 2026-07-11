@@ -1,8 +1,8 @@
 // Shared plot state, DOM references, layout constants, and histogram helpers.
 // This module is the data-preparation layer between loaded channel arrays and the
 // D3 rendering modules. It tracks active channels, cached series, histogram
-// summaries, axis overrides, threshold state, model visibility, and plot-control
-// values such as color grouping, bin count, and display mode. It provides the
+// summaries, axis overrides, and plot-control values such as color grouping,
+// bin count, and display mode. It provides the
 // helpers that choose plottable rows, assign colors, compute shared x ranges,
 // build histogram bins, and format model-table values. State that other plotting
 // modules reassign is exposed through setters so their imported bindings stay
@@ -17,9 +17,6 @@ export const plot_color_by_select = document.querySelector("#plot_color_by");
 export const plot_display_mode_select = document.querySelector("#plot_display_mode");
 export const plot_x_scale_select = document.querySelector("#plot_x_scale");
 export const plot_bins_input = document.querySelector("#plot_bins");
-export const plot_debris_correction_toggle = document.querySelector("#plot_debris_correction");
-export const plot_doublet_correction_toggle = document.querySelector("#plot_doublet_correction");
-export const plot_threshold_toggle = document.querySelector("#plot_threshold_toggle");
 export const djf_readout = document.querySelector("#djf_readout");
 
 export const axis_range_modal = document.querySelector("#axis_range_modal");
@@ -41,6 +38,8 @@ export const DJF_G1_COLOR = css_color("--djf_g1", "#95c1dc");
 export const DJF_S_COLOR = css_color("--djf_s", "#d5eec8");
 export const DJF_G2_COLOR = css_color("--djf_g2", "#ef8b8d");
 export const DJF_TOTAL_COLOR = css_color("--djf_total", "#111827");
+export const DJF_DEBRIS_COLOR = css_color("--djf_debris", "#a78bfa");
+export const DJF_AGG_COLOR = css_color("--djf_agg", "#f59e0b");
 // Fill opacity for the DJF component areas (0 = transparent, 1 = solid).
 export const DJF_FILL_OPACITY = 0.8;
 export const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
@@ -77,17 +76,6 @@ export const LEGEND_LINE_WIDTH = 2;
 export const LEGEND_FONT_SIZE = 11;
 export const LEGEND_SWATCH_Y = 6; // swatch line vertical position within a row
 export const LEGEND_TEXT_Y = 9; // label baseline within a row
-export const LEGEND_CHECKBOX_SIZE = 11; // fit-toggle checkbox on sample legend rows
-
-export const THRESHOLD_COLOR = css_color("--threshold", "#9ca3af");
-export const THRESHOLD_LINE_WIDTH = 1.5;
-export const THRESHOLD_FILL_OPACITY = 0.12;
-export const THRESHOLD_HANDLE_WIDTH = 14; // invisible drag target thickness
-export const THRESHOLD_LABEL_FONT_SIZE = 10;
-export const THRESHOLD_LABEL_COLOR = css_color("--threshold_label", "#6b7280");
-export const THRESHOLD_LABEL_X_OFFSET = 6; // label inset from the left edge
-export const THRESHOLD_LABEL_Y_OFFSET = 5; // label sits this far above the line
-export const THRESHOLD_LABEL_TOP_PAD = 10; // keep the label this far below the plot top
 
 // ── Shared plot state ────────────────────────────────────────────────────────
 // Bindings reassigned by other plotting modules (render/modeling/axis_modal) are
@@ -118,15 +106,6 @@ export let last_auto_x_range = [0, 1];
 export function set_last_auto_x_range(range) { last_auto_x_range = range; }
 export let last_auto_y_max = 1;
 export function set_last_auto_y_max(value) { last_auto_y_max = value; }
-// Global event-count cutoff for peak detection, set by dragging the threshold
-// line on the plot; applies to every sample's fit.
-export let peak_threshold = null;
-export function set_peak_threshold(value) { peak_threshold = value; }
-// DJF modeling state: whether the user has started modeling, and the set of
-// sample names whose fit is shown (toggled via the legend checkboxes).
-export let modeling_started = false;
-export function set_modeling_started(value) { modeling_started = value; }
-export const shown_fits = new Set();
 
 /*
 
@@ -220,26 +199,6 @@ Output:
 export function plot_display_mode() {
   const mode = plot_display_mode_select ? plot_display_mode_select.value : "curve";
   return ["curve", "curve_bins", "bins"].includes(mode) ? mode : "curve";
-}
-
-/*
-
-Purpose:
-	Reads the correction toggles that control event preprocessing before plotting
-	and DJF fitting.
-
-Input:
-	(none)
-
-Output:
-	state [Object]: { remove_debris, remove_doublets }
-
-*/
-export function correction_state() {
-  return {
-    remove_debris: Boolean(plot_debris_correction_toggle && plot_debris_correction_toggle.checked),
-    remove_doublets: Boolean(plot_doublet_correction_toggle && plot_doublet_correction_toggle.checked),
-  };
 }
 
 /*

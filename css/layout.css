@@ -565,16 +565,6 @@
   background: var(--success_strong);
 }
 
-/* Once analysis has run the button becomes "Start Modeling (DJF)" in blue. */
-.start_analysis_button.modeling {
-  border-color: var(--accent_strong);
-  background: var(--accent);
-}
-
-.start_analysis_button.modeling:hover:not(:disabled) {
-  background: var(--accent_strong);
-}
-
 .start_analysis_button:focus-visible {
   outline: 3px solid var(--focus_success);
   outline-offset: 2px;
