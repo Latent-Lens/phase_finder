@@ -48,6 +48,7 @@ from helpers import (
 from tests_io import test_file_loading, test_libraries
 from tests_filtering import test_table_filtering_sorting
 from tests_plotting import test_plotting
+from tests_pipeline import test_pipeline
 from tests_modeling import test_modeling
 from tests_sidebar import test_sidebar_icons
 from tests_stats import test_summary_statistics
@@ -118,6 +119,7 @@ def run(args):
         test_file_loading(e2e_ctx, drag_drop_files, file_browser_files, additional_files)
         test_table_filtering_sorting(e2e_ctx)
         test_plotting(e2e_ctx, args.channel)
+        test_pipeline(e2e_ctx)
         test_modeling(e2e_ctx)
         test_sidebar_icons(e2e_ctx)
         test_summary_statistics(e2e_ctx)
@@ -140,10 +142,8 @@ def run(args):
             e2e_ctx.check("Input/Output", "No uncaught page errors", True, screenshot=False)
 
         # ----------------------------------------------------------------
-        # Unit test phase — new tab in the SAME context so CDN cache is shared
-        # (levenbergMarquardt / gsd from esm.sh are already cached from the
-        # e2e page; a new context would have to re-fetch them cold and often
-        # hits rate-limits or timeout on slow connections)
+        # Unit test phase — use a new tab in the same context so browser state
+        # stays consistent while the module-level harness remains isolated.
         # ----------------------------------------------------------------
         unit_page = e2e_context.new_page()
         unit_ctx = TestContext(

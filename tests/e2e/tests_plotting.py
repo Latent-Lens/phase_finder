@@ -102,20 +102,6 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     select_all_visible_rows(page)
     wait_briefly(0.2)
 
-    # Button text should be "Start Modeling (DJF)" now that we already plotted once
-    button_text = page.eval_on_selector("#start_analysis_button", "e => e.textContent.trim()")
-    if button_text == "Start Modeling (DJF)":
-        # Change channel to force "Plot Channel Events" mode again, then change back
-        other = another_channel(page, channel)
-        if other:
-            select_channel(page, other)
-            page.wait_for_function(
-                "() => document.querySelector('#start_analysis_button').textContent.trim() === 'Plot Channel Events'",
-                timeout=30000,
-            )
-            select_channel(page, channel)
-            wait_briefly(0.5)
-
     click_plot_events(page)
     wait_for_curves(page, total_rows)
     title = plot_title(page)
@@ -130,7 +116,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
                   "els => els.some(t => t.textContent === 'Number of Events')"
               ),
               title)
-    ctx.check(group, "Cell Cycle Modeling button becomes enabled after plotting",
+    ctx.check(group, "Run DJF Pipeline button becomes enabled after plotting",
               not page.eval_on_selector("#cell_cycle_modeling_button", "e => e.disabled"))
 
     # --- turn rows off, verify curves decrease ---
@@ -209,7 +195,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
             )
         except Exception:
             pass
-        # Re-plot on original channel so the button is in "Start Modeling (DJF)" state
+        # Re-plot the original channel so downstream pipeline tests start clean.
         click_plot_events(page)
         wait_for_curves(page, total_rows)
     else:

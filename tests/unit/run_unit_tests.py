@@ -2,7 +2,7 @@
 """Unit test orchestrator.
 
 Called from drive_flow.py after the e2e phase. Navigates a separate Playwright
-page to the test harness, waits for CDN libraries, then runs all unit test
+page to the test harness, waits for the ES modules, then runs all unit test
 modules and records results into the provided TestContext.
 """
 
@@ -19,12 +19,26 @@ for _p in (_E2E, _UNIT):
 from helpers import TestContext
 
 HARNESS_PATH = "/tests/unit/test_harness.html"
-LIBS_READY_TIMEOUT = 60000  # ms to wait for CDN libraries
+LIBS_READY_TIMEOUT = 60000  # ms to wait for harness ES modules
 
 
 def run_unit_tests(ctx: TestContext, app_url: str):
     """Navigate ctx.page to the test harness and run all unit test suites."""
     page = ctx.page
+    load_diagnostics = []
+
+    page.on("pageerror", lambda error: load_diagnostics.append(
+        f"page error: {error}"
+    ))
+    page.on("console", lambda message: load_diagnostics.append(
+        f"console {message.type}: {message.text}"
+    ) if message.type == "error" else None)
+    page.on("requestfailed", lambda request: load_diagnostics.append(
+        f"request failed: {request.url}: {request.failure}"
+    ))
+    page.on("response", lambda response: load_diagnostics.append(
+        f"HTTP {response.status}: {response.url}"
+    ) if response.status >= 400 else None)
 
     # Derive harness URL from the app URL (same host:port, different path)
     from urllib.parse import urlparse, urlunparse
@@ -34,17 +48,18 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     page.goto(harness_url)
     page.wait_for_load_state("domcontentloaded")
 
-    # The harness module imports the app's ES modules (parser, metadata frame,
-    # DJF, etc.) and its vendored ml-* stack, then exposes them on window. Waiting
-    # for that assignment covers every unit suite, including DJF.
+    # The harness imports the app's ES modules and exposes them on window.
+    # Waiting for that assignment covers every suite, including all DJF stages.
     try:
         page.wait_for_function(
             "() => !!(window.FCSParser && window.PhaseFinderFrame "
-            "   && window.PhaseFinder && window.PhaseFinder.djf)",
-            timeout=15000,
+            "   && window.PhaseFinder && window.PhaseFinder.pipeline "
+            "   && window.PhaseFinder.pipeline.stage8)",
+            timeout=LIBS_READY_TIMEOUT,
         )
     except Exception as err:
-        ctx.warn("Unit / Setup", "Core JS modules did not load", str(err), screenshot=False)
+        detail = " | ".join([str(err), *load_diagnostics])
+        ctx.warn("Unit / Setup", "Core JS modules did not load", detail, screenshot=False)
         return
 
     from unit_tests_parser import run_parser_tests
@@ -59,5 +74,5 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     from unit_tests_session import run_session_tests
     run_session_tests(ctx)
 
-    from unit_tests_djf import run_djf_tests
-    run_djf_tests(ctx)
+    from unit_tests_djf_pipeline import run_djf_pipeline_tests
+    run_djf_pipeline_tests(ctx)

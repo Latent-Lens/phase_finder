@@ -4,18 +4,17 @@
   <meta charset="utf-8" />
   <title>PhaseFinder Unit Test Harness</title>
   <!--
-    Minimal page that imports the app's ES modules (with the same vendored-library
-    import map as index.html) and re-exposes the functions the Python unit test
-    modules call via page.evaluate(). Assigning them to window makes them available
-    as bare globals too, so the existing test snippets keep working. No app UI is
-    rendered; the modules' top-level querySelector captures simply resolve to null.
+    Minimal page that imports the app's ES modules and re-exposes the functions
+    the Python unit tests call via page.evaluate(). No app UI is rendered; module
+    querySelector captures simply resolve to null. The staged DJF implementation
+    is self-contained, so the retired ml-* import-map entries are deliberately
+    absent from this harness. D3 remains because plotting/data dependencies in
+    the application module graph still resolve it as a bare specifier.
   -->
   <script type="importmap">
     {
       "imports": {
-        "d3": "/js/vendor/d3.min.js",
-        "ml-levenberg-marquardt": "/js/vendor/ml-levenberg-marquardt.js",
-        "ml-gsd": "/js/vendor/ml-gsd.js"
+        "d3": "/js/vendor/d3.min.js"
       }
     }
   </script>
@@ -28,9 +27,14 @@
     import { display_name, metadata_filename_key } from "/js/util/names.js";
     import { parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key } from "/js/io/metadata_io.js";
     import { parameter_map, find_param_index, unique_indexes } from "/js/io/parameter_map.js";
-    import { find_auxiliary_indexes_for_file, filter_selected_channel_values } from "/js/fcs/channel_cleaning.js";
+    import {
+      build_raw_analysis_channels,
+      find_auxiliary_indexes_for_file,
+      find_pipeline_channel_indexes,
+    } from "/js/fcs/channel_cleaning.js";
     import { serialize_session, parse_session_toml } from "/js/session/toml_io.js";
-    import * as DJF from "/js/analysis/djf.js";
+    import * as DJFPipeline from "/js/analysis/djf/index.js";
+    import * as DJFPipelineState from "/js/analysis/djf/pipeline_state.js";
 
     Object.assign(window, {
       FCSParser, PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records,
@@ -40,12 +44,15 @@
       display_name, metadata_filename_key,
       parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key,
       parameter_map, find_param_index, unique_indexes,
-      find_auxiliary_indexes_for_file, filter_selected_channel_values,
+      build_raw_analysis_channels,
+      find_auxiliary_indexes_for_file, find_pipeline_channel_indexes,
       serialize_session, parse_session_toml,
     });
-    // DJF (and its statically imported ml-* stack) is loaded eagerly here so the
-    // unit tests can call window.PhaseFinder.djf.* synchronously.
-    window.PhaseFinder = { djf: DJF };
+    // Expose both the public orchestrator and lower-level state helpers. The
+    // orchestrator itself exposes stage0 ... stage8 as module namespaces.
+    window.PhaseFinder = { pipeline: DJFPipeline };
+    window.PhaseFinderPipeline = DJFPipeline;
+    window.DJFPipelineState = DJFPipelineState;
     window.__libsReady = true;
   </script>
 
@@ -203,6 +210,111 @@
           points.push({ x: x, y: g1 + g2 + s });
         }
         return points;
+      },
+
+      /** Return the bimodal points in the x/y-array shape used by Stages 5-8. */
+      buildDJFHistogram: function(bins) {
+        const points = this.buildBimodalHistogram(bins || 256);
+        const x = points.map((point) => point.x);
+        const y = points.map((point) => point.y);
+        const binWidth = x[1] - x[0];
+        return {
+          x,
+          y,
+          min: x[0] - binWidth / 2,
+          max: x[x.length - 1] + binWidth / 2,
+          binWidth,
+        };
+      },
+
+      /**
+       * Deterministic, well-separated FSC/SSC clouds. The first 300 events are
+       * the tight high-FSC biological cloud; the remaining 100 are a broad,
+       * low-FSC contaminant cloud. Trigonometric sampling avoids test RNG.
+       */
+      buildScatterDataset: function() {
+        const mainCount = 300;
+        const contaminantCount = 100;
+        const eventCount = mainCount + contaminantCount;
+        const fsc = new Float64Array(eventCount);
+        const ssc = new Float64Array(eventCount);
+
+        for (let i = 0; i < mainCount; i += 1) {
+          const angle = 2 * Math.PI * ((i * 37) % mainCount) / mainCount;
+          const radius = 0.35 + 0.65 * ((i % 19) / 18);
+          fsc[i] = 100 + 5 * radius * Math.cos(angle);
+          ssc[i] = 80 + 3 * radius * Math.sin(angle) + 0.8 * radius * Math.cos(angle);
+        }
+        for (let i = 0; i < contaminantCount; i += 1) {
+          const index = mainCount + i;
+          const angle = 2 * Math.PI * ((i * 17) % contaminantCount) / contaminantCount;
+          const radius = 0.3 + 0.7 * ((i % 13) / 12);
+          fsc[index] = 30 + 11 * radius * Math.cos(angle);
+          ssc[index] = 25 + 8 * radius * Math.sin(angle);
+        }
+
+        return {
+          eventCount,
+          mainCount,
+          contaminantCount,
+          channels: { FSC_A: fsc, SSC_A: ssc },
+        };
+      },
+
+      /**
+       * Deterministic A/H (or A/W) ridge with 240 singlets followed by 20
+       * off-ridge doublets. The returned indexes make mask assertions explicit.
+       */
+      buildPulseGeometryDataset: function(useWidth) {
+        const singletCount = 240;
+        const doubletCount = 20;
+        const eventCount = singletCount + doubletCount;
+        const area = new Float64Array(eventCount);
+        const secondary = new Float64Array(eventCount);
+
+        for (let i = 0; i < singletCount; i += 1) {
+          area[i] = 50000 + i * 280;
+          const jitter = (((i * 37) % 23) - 11) * 18;
+          secondary[i] = (useWidth ? 0.035 : 0.52) * area[i] + jitter;
+        }
+        for (let i = 0; i < doubletCount; i += 1) {
+          const index = singletCount + i;
+          area[index] = 52000 + i * 2900;
+          secondary[index] = (useWidth ? 0.075 : 0.88) * area[index] + 2500;
+        }
+
+        return {
+          eventCount,
+          singletCount,
+          doubletCount,
+          channels: {
+            DNA_A: area,
+            DNA_H: useWidth ? null : secondary,
+            DNA_W: useWidth ? secondary : null,
+          },
+        };
+      },
+
+      /** Nine equal acquisition bins; the final bin has a DNA-median spike. */
+      buildTimeQCDataset: function() {
+        const binCount = 9;
+        const eventsPerBin = 20;
+        const eventCount = binCount * eventsPerBin;
+        const time = new Float64Array(eventCount);
+        const dna = new Float64Array(eventCount);
+        const centers = [100, 101, 99, 102, 98, 100, 101, 99, 1000];
+
+        for (let i = 0; i < eventCount; i += 1) {
+          const bin = Math.floor(i / eventsPerBin);
+          time[i] = i * 0.05;
+          dna[i] = centers[bin] + ((i % eventsPerBin) - 9.5) * 0.02;
+        }
+        return {
+          eventCount,
+          eventsPerBin,
+          channels: { DNA_A: dna, Time: time },
+          pnr: { Time: 1000 },
+        };
       },
     };
   </script>

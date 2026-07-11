@@ -235,9 +235,38 @@ def write_synthetic_fcs(path, seed, strain, timepoint, events=6000, replicate=No
         secondary_area = max(1000, area * rng.uniform(0.55, 0.85) + rng.gauss(0, 3500))
         secondary_height = max(500, secondary_area / rng.uniform(1.8, 2.2))
         secondary_width = max(100, rng.gauss(2.0, 0.12))
-        rows.append((area, height, width, secondary_area, secondary_height, secondary_width))
+        # Keep the main biological population well separated from a smaller
+        # low-scatter population.  The deterministic mixture gives Stage 2 a
+        # real (non-skip) two-component FSC-A/SSC-A gate without making the
+        # fixture large or numerically fragile.
+        if index % 20 < 3:
+            scatter_latent = rng.gauss(0, 1)
+            fsc_area = 23000 + 3500 * scatter_latent + rng.gauss(0, 1200)
+            ssc_area = 14000 + 2200 * scatter_latent + rng.gauss(0, 900)
+        else:
+            scatter_latent = rng.gauss(0, 1)
+            fsc_area = 95000 + 10500 * scatter_latent + rng.gauss(0, 2600)
+            ssc_area = 56000 + 6800 * scatter_latent + rng.gauss(0, 2100)
+        fsc_area = max(500, fsc_area)
+        ssc_area = max(500, ssc_area)
 
-    data = b"".join(struct.pack("<ffffff", *row) for row in rows)
+        # A steady acquisition clock yields twelve ~500-event bins at the
+        # default fixture size.  That is enough for Stage 1's robust metrics
+        # while keeping the entire E2E run quick and repeatable.
+        event_time = index * 0.01
+        rows.append((
+            area,
+            height,
+            width,
+            secondary_area,
+            secondary_height,
+            secondary_width,
+            fsc_area,
+            ssc_area,
+            event_time,
+        ))
+
+    data = b"".join(struct.pack("<fffffffff", *row) for row in rows)
     text_begin = 58
     data_begin = 0
     data_end = 0
@@ -245,13 +274,16 @@ def write_synthetic_fcs(path, seed, strain, timepoint, events=6000, replicate=No
     pairs = [
         "$BEGINANALYSIS", "0", "$ENDANALYSIS", "0",
         "$BYTEORD", "1,2,3,4", "$DATATYPE", "F", "$MODE", "L", "$NEXTDATA", "0",
-        "$PAR", "6", "$TOT", str(events),
+        "$PAR", "9", "$TOT", str(events), "$TIMESTEP", "0.01",
         "$P1B", "32", "$P1E", "0,0", "$P1N", "GFP/FITC-A", "$P1R", "262144", "$P1S", "GFP/FITC-A",
         "$P2B", "32", "$P2E", "0,0", "$P2N", "GFP/FITC-H", "$P2R", "262144", "$P2S", "GFP/FITC-H",
         "$P3B", "32", "$P3E", "0,0", "$P3N", "GFP/FITC-W", "$P3R", "262144", "$P3S", "GFP/FITC-W",
         "$P4B", "32", "$P4E", "0,0", "$P4N", "mCherry/PE-A", "$P4R", "262144", "$P4S", "mCherry/PE-A",
         "$P5B", "32", "$P5E", "0,0", "$P5N", "mCherry/PE-H", "$P5R", "262144", "$P5S", "mCherry/PE-H",
         "$P6B", "32", "$P6E", "0,0", "$P6N", "mCherry/PE-W", "$P6R", "262144", "$P6S", "mCherry/PE-W",
+        "$P7B", "32", "$P7E", "0,0", "$P7N", "FSC-A", "$P7R", "262144", "$P7S", "Forward Scatter Area",
+        "$P8B", "32", "$P8E", "0,0", "$P8N", "SSC-A", "$P8R", "262144", "$P8S", "Side Scatter Area",
+        "$P9B", "32", "$P9E", "0,0", "$P9N", "Time", "$P9R", "65536", "$P9S", "HDR-T",
     ]
 
     while True:
@@ -520,6 +552,64 @@ def select_all_visible_rows(page):
     if not page.eval_on_selector("#select_all_files", "e => e.checked && !e.indeterminate"):
         page.click("#select_all_files")
         wait_briefly(0.3)
+
+
+def isolate_first_plotted_sample(page):
+    """Select exactly one linked table row and return its plot name + prior IDs.
+
+    The staged fit is deliberately expensive enough that multiplying it by all
+    loaded fixtures makes E2E timing noisy.  Pipeline tests use this helper to
+    exercise the real UI on one sample, then restore the user's prior table
+    selection with ``restore_row_selection``.
+    """
+    selection = page.evaluate(
+        """() => {
+          const boxes = [...document.querySelectorAll('.file_table tbody .row_select:not(:disabled)')];
+          if (!boxes.length) throw new Error('No selectable FCS rows are available.');
+          const previousIds = boxes.filter((box) => box.checked).map((box) => box.dataset.fileId);
+          const firstId = boxes[0].dataset.fileId;
+          for (const box of boxes) {
+            const shouldBeChecked = box.dataset.fileId === firstId;
+            if (box.checked === shouldBeChecked) continue;
+            box.checked = shouldBeChecked;
+            box.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          return { firstId, previousIds };
+        }"""
+    )
+    page.wait_for_function(
+        """(fileId) => {
+          const series = window.PhaseFinder?.plot?.series;
+          return Array.isArray(series) && series.length === 1 && series[0].row?.id === fileId;
+        }""",
+        arg=selection["firstId"],
+        timeout=30000,
+    )
+    sample_name = page.evaluate("() => window.PhaseFinder.plot.series[0].name")
+    return sample_name, selection["previousIds"]
+
+
+def restore_row_selection(page, selected_ids):
+    """Restore a selection snapshot returned by isolate_first_plotted_sample."""
+    expected = page.evaluate(
+        """(ids) => {
+          const selected = new Set(ids);
+          const boxes = [...document.querySelectorAll('.file_table tbody .row_select:not(:disabled)')];
+          for (const box of boxes) {
+            const shouldBeChecked = selected.has(box.dataset.fileId);
+            if (box.checked === shouldBeChecked) continue;
+            box.checked = shouldBeChecked;
+            box.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          return boxes.filter((box) => selected.has(box.dataset.fileId)).length;
+        }""",
+        selected_ids,
+    )
+    page.wait_for_function(
+        "(count) => window.PhaseFinder?.plot?.series?.length === count",
+        arg=expected,
+        timeout=30000,
+    )
 
 
 def ensure_channel_option(page, preferred="GFP/FITC-A"):
