@@ -333,6 +333,10 @@
 
 /* Reconnect session files modal */
 
+.reconnect_modal .stats_modal_card {
+  width: min(720px, 100%);
+}
+
 .reconnect_intro {
   margin: 0;
   color: var(--muted);
@@ -406,6 +410,71 @@
 .reconnect_actions {
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.reconnect_actions .secondary_button:disabled {
+  border-color: #cbd5e1;
+  background: #e5e7eb;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.reconnect_actions .secondary_button:disabled:hover {
+  background: #e5e7eb;
+  filter: none;
+}
+
+/* Slides open below the file list when "Choose folder" starts a scan,
+   expanding the modal in place rather than covering it. max-height (not
+   height) is what's animated since the content's natural height isn't known
+   up front; height:auto can't be transitioned. */
+.reconnect_scan_panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 240ms ease;
+}
+
+.reconnect_scan_panel.is_open {
+  max-height: 220px;
+}
+
+.reconnect_scan_panel_inner {
+  margin-top: 10px;
+  border: 1px solid var(--progress_card_border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 14px 16px;
+}
+
+.reconnect_scan_heading {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.reconnect_scan_dirname {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--logo_blue);
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconnect_scan_status {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.reconnect_scan_tally {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .metadata_wizard_card {

@@ -103,6 +103,24 @@ export function pick_dir_fallback(names) {
   });
 }
 
+// Same picker, but returns every file in the folder (unfiltered) plus the
+// folder's own name — used by the reconnect modal's scan-progress UI, which
+// needs the full listing to report "N of the folder's FCS files scanned".
+export function pick_dir_fallback_all() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.addEventListener('cancel', () => resolve(null), { once: true });
+    input.onchange = () => {
+      const files = [...input.files];
+      const dir_name = files[0]?.webkitRelativePath?.split('/')[0] || '';
+      resolve({ dir_name, files });
+    };
+    input.click();
+  });
+}
+
 // Fetch FCS files directly from an HTTP base URL — no picker required.
 export async function fetch_files_from_url(base_url, names) {
   const base = base_url.replace(/\/$/, '');

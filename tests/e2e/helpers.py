@@ -153,7 +153,7 @@ def prepare_results_dir(results_dir: Path):
 
 @contextmanager
 def suspended_local_autoload_config(repo_root: Path):
-    """Temporarily move phasefinder_local.json out of the way for a test run.
+    """Temporarily move sessions/phasefinder_local.json out of the way for a test run.
 
     phasefinder_local.json is a personal, uncommitted dev-convenience file
     (see phasefinder_local.example.json) that can point js/session/core.js startup
@@ -163,8 +163,8 @@ def suspended_local_autoload_config(repo_root: Path):
     loading extra files that desync every row-count assertion in this suite.
     Move it aside before the run and restore it (unmodified) afterward.
     """
-    config_path = repo_root / "phasefinder_local.json"
-    backup_path = repo_root / "phasefinder_local.json.e2e_suspended"
+    config_path = repo_root / "sessions" / "phasefinder_local.json"
+    backup_path = repo_root / "sessions" / "phasefinder_local.json.e2e_suspended"
     moved = False
     if config_path.exists():
         config_path.rename(backup_path)

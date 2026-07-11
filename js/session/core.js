@@ -32,7 +32,7 @@ import { load_files } from "../io/metadata_io.js";
 import { set_status_bar } from "../ui/status_channels.js";
 import { save_filename_metadata_template } from "../ui/metadata_wizard.js";
 import { get_stats_plan, restore_stats_plan } from "../analysis/stats.js";
-import { get_file_table } from "../state/app_state.js";
+import { get_file_table, get_file_map } from "../state/app_state.js";
 import { get_parsed_files } from "../state/files.js";
 import { get_session_table_state, apply_session_state } from "./table_session.js";
 
@@ -194,14 +194,23 @@ function apply_plot_settings(plot) {
   }
 }
 
-function apply_table_session(session) {
+// True once every metadata-table row has a real loaded-file id (no
+// placeholder "metadata-unlinked-*" rows left waiting on a reconnect).
+function all_rows_linked() {
+  const frame = get_file_table();
+  if (!frame || !frame.length) return false;
+  const file_map = get_file_map();
+  return [...frame.col("id")].every((id) => file_map.has(id));
+}
+
+function apply_table_session(session, { restore_selection = true } = {}) {
   apply_session_state({
     template:       session.metadata_template || null,
     columns:        session.metadata?.columns || [],
     annotations:    session.metadata?.rows || [],
     sort:           { field: session.table?.sort_field || null, direction: session.table?.sort_direction || 'asc' },
     filters:        session.table?.filters || {},
-    selected_names: session.table?.selected_files || [],
+    ...(restore_selection ? { selected_names: session.table?.selected_files || [] } : {}),
   });
 }
 
@@ -334,20 +343,21 @@ function finish_reconnect() {
     remaining ? `Continuing without ${remaining} missing file${remaining === 1 ? '' : 's'}.` : 'All session files reconnected.');
 }
 
-// ── Startup auto-load (phasefinder_local.json) ───────────────────────────────
-// If a phasefinder_local.json file exists in the app root, the app fetches it
+// ── Startup auto-load (sessions/phasefinder_local.json) ──────────────────────
+// If a phasefinder_local.json file exists in sessions/, the app fetches it
 // on startup and auto-loads the specified session file plus any stored FCS
 // directory handle.  The JSON file is never committed — it is personal/local.
 //
 // Minimal example:
 //   { "autoload_session": "sessions/my_experiment.toml" }
 //
-// The session path is relative to the app root (where index.html lives).
+// The session path (like every other path in the config) is relative to the
+// app root (where index.html lives), not to sessions/ itself.
 
 async function try_autoload() {
   let config;
   try {
-    const resp = await fetch('./phasefinder_local.json', { cache: 'no-store' });
+    const resp = await fetch('./sessions/phasefinder_local.json', { cache: 'no-store' });
     if (!resp.ok) return; // file absent — normal, nothing to do
     config = await resp.json();
   } catch (_) {
@@ -398,10 +408,21 @@ export function init_session() {
   document.getElementById('reset_session_button')?.addEventListener('click', handle_reset);
 
   // Apply saved annotations whenever new files are loaded (covers both the
-  // auto-load path and the manual drag-and-drop path).
+  // auto-load path and the manual drag-and-drop path). Selection is excluded
+  // here: load_files() already auto-checks each newly loaded/reconnected row
+  // (when no plot has started yet), and replaying the session's originally
+  // saved checkbox state on top of that would silently undo it — e.g. a
+  // session saved with nothing checked would leave every reconnected file
+  // unplottable even after picking a channel.
+  //
+  // pending_session is retired the moment every row is linked to a loaded
+  // file: once reconnect is finished, the app should behave exactly like a
+  // freshly-built session, with Save just serializing live state (collect_session)
+  // and no further TOML replay on later, unrelated file loads.
   document.addEventListener('pf-files-loaded', () => {
     if (!pending_session) return;
-    apply_table_session(pending_session);
+    apply_table_session(pending_session, { restore_selection: false });
+    if (all_rows_linked()) pending_session = null;
   });
 
   document.getElementById('reconnect_choose_folder')?.addEventListener('click', () => {

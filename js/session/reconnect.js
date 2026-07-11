@@ -14,10 +14,10 @@ import {
   is_test_mode,
   idb_get,
   idb_put,
-  pick_dir_fallback,
+  pick_dir_fallback_all,
   copy_file_to_opfs,
 } from "./file_cache.js";
-import { set_status_bar } from "../ui/status_channels.js";
+import { set_status_bar, next_frame } from "../ui/status_channels.js";
 import { load_files } from "../io/metadata_io.js";
 
 // ── OPFS restore + reconnect matching ────────────────────────────────────────
@@ -75,6 +75,89 @@ function is_acceptable_match(record, file) {
     || Boolean(record.relative_path && record.relative_path.endsWith(file.name));
 }
 
+// ── Folder scan progress panel ───────────────────────────────────────────────
+// Slides open below the file list while "Choose folder" walks the selected
+// directory, expanding the modal in place. Browsers never expose a folder's
+// full OS path to a page (Chromium's showDirectoryPicker and the
+// webkitdirectory fallback both withhold it), so only the folder's own name
+// is shown here.
+
+function open_scan_panel(dir_name, total, missing_total) {
+  const panel      = document.getElementById('reconnect_scan_panel');
+  const dirname_el = document.getElementById('reconnect_scan_dirname');
+  if (dirname_el) dirname_el.textContent = dir_name || '(selected folder)';
+  update_scan_progress(0, total, 0, missing_total);
+  if (panel) panel.classList.add('is_open');
+  set_picker_buttons_disabled(true);
+}
+
+function update_scan_progress(checked, total, found_count, missing_total) {
+  const status_el = document.getElementById('reconnect_scan_status');
+  const fill_el    = document.getElementById('reconnect_scan_fill');
+  const tally_el   = document.getElementById('reconnect_scan_tally');
+  if (status_el) {
+    status_el.textContent =
+      `Scanning the selected folder containing ${total} FCS file${total === 1 ? '' : 's'} ` +
+      `for the ${missing_total} missing file${missing_total === 1 ? '' : 's'}`;
+  }
+  if (fill_el) fill_el.style.width = `${total ? (checked / total) * 100 : 0}%`;
+  if (tally_el) tally_el.textContent = `Found ${found_count} of ${missing_total} missing file${missing_total === 1 ? '' : 's'}`;
+}
+
+function close_scan_panel() {
+  const panel = document.getElementById('reconnect_scan_panel');
+  if (panel) panel.classList.remove('is_open');
+  set_picker_buttons_disabled(false);
+}
+
+// Disabled for the duration of a scan so "Choose folder" / "Select files"
+// can't be double-triggered while one is already walking a directory.
+function set_picker_buttons_disabled(disabled) {
+  const choose_btn = document.getElementById('reconnect_choose_folder');
+  const select_btn = document.getElementById('reconnect_select_files');
+  if (choose_btn) choose_btn.disabled = disabled;
+  if (select_btn) select_btn.disabled = disabled;
+}
+
+// Drives the scan-progress panel over a folder's file listing and returns
+// the File objects that match a still-missing record. `entries` is an array
+// of { name, getFile() } — getFile() may be sync or async — so the same loop
+// serves both the Chromium FileSystemDirectoryHandle path and the
+// webkitdirectory fallback's already-resolved FileList.
+async function scan_entries_for_missing(entries, missing_records, dir_name) {
+  const fcs_entries    = entries.filter((e) => /\.fcs$/i.test(e.name));
+  const missing_by_name = new Map(missing_records.map((r) => [r.original_name, r]));
+  const missing_total  = missing_records.length;
+
+  open_scan_panel(dir_name, fcs_entries.length, missing_total);
+
+  const found = [];
+  try {
+    let checked = 0;
+    for (const entry of fcs_entries) {
+      checked += 1;
+      const record = missing_by_name.get(entry.name);
+      if (record) {
+        try {
+          const file = await entry.getFile();
+          if (is_acceptable_match(record, file)) {
+            found.push(file);
+            missing_by_name.delete(entry.name);
+          }
+        } catch (_) { /* unreadable — leave it missing */ }
+      }
+      update_scan_progress(checked, fcs_entries.length, found.length, missing_total);
+      await next_frame();
+      // Every missing file is accounted for — no need to keep walking the
+      // rest of a potentially much larger folder.
+      if (missing_by_name.size === 0) break;
+    }
+  } finally {
+    close_scan_panel();
+  }
+  return found;
+}
+
 // ── Reconnect modal ──────────────────────────────────────────────────────────
 
 let reconnect_ctx = null;
@@ -107,6 +190,13 @@ function render_reconnect_list() {
       ? `This session needs ${outstanding} file${outstanding === 1 ? '' : 's'}. Choose the folder that contains them, or select the missing files manually.`
       : 'All session files are reconnected.';
   }
+
+  const continue_btn = document.getElementById('reconnect_continue');
+  if (continue_btn) {
+    continue_btn.textContent = outstanding
+      ? `Continue: skipping ${outstanding} missing file${outstanding === 1 ? '' : 's'}`
+      : 'Continue: all files found';
+  }
 }
 
 export function open_reconnect_modal(records) {
@@ -126,15 +216,28 @@ export function close_reconnect_modal() {
 export async function apply_reconnected_files(files) {
   if (!reconnect_ctx) return;
   const indexes = index_selected_files(Array.from(files || []));
-  const to_load = [];
+  const matches = [];
   for (const record of reconnect_ctx.records) {
     if (is_resolved(record)) continue;
     const file = match_record_to_selected_file(record, indexes);
-    if (!file) continue;
-    try { await copy_file_to_opfs(file, record.opfs_path); record.status = 'available'; }
-    catch (_) { record.status = 'uncached'; } // usable now, just not cached
-    to_load.push(file);
+    if (file) matches.push({ record, file });
   }
+
+  // Copies run sequentially, not in parallel: concurrent createWritable()
+  // streams into the same freshly-created OPFS directory were observed to
+  // fail (every file coming back "uncached" instead of "available") in
+  // real-browser testing, and it wasn't reproducible enough to safely chase
+  // down and fix here, so this stays on the proven-correct path.
+  for (const { record, file } of matches) {
+    try { await copy_file_to_opfs(file, record.opfs_path); record.status = 'available'; }
+    catch (err) { record.status = 'uncached'; console.warn('OPFS copy failed for', record.opfs_path, err); }
+  }
+
+  // Rows can flip to "available" as soon as the copies land, rather than
+  // waiting on the separate (and slower) metadata-loading pass below too.
+  render_reconnect_list();
+
+  const to_load = matches.map((m) => m.file);
   if (to_load.length) await load_files(to_load);
   render_reconnect_list();
   const remaining = reconnect_ctx.records.filter((r) => !is_resolved(r)).length;
@@ -166,18 +269,18 @@ export async function reconnect_from_directory() {
       catch (err) { if (err.name === 'AbortError') return; throw err; }
       await idb_put(dir_handle);
     }
-    const found = [];
-    for (const record of missing) {
-      let file = null;
-      try { file = await (await dir_handle.getFileHandle(record.original_name)).getFile(); }
-      catch (_) { file = null; }
-      if (file && is_acceptable_match(record, file)) found.push(file);
+    const entries = [];
+    for await (const handle of dir_handle.values()) {
+      if (handle.kind === 'file') entries.push({ name: handle.name, getFile: () => handle.getFile() });
     }
+    const found = await scan_entries_for_missing(entries, missing, dir_handle.name);
     await apply_reconnected_files(found);
   } else {
-    const files = await pick_dir_fallback(reconnect_ctx.records.map((r) => r.original_name));
-    if (files === null) return; // cancelled
-    await apply_reconnected_files(files);
+    const picked = await pick_dir_fallback_all();
+    if (picked === null) return; // cancelled
+    const entries = picked.files.map((f) => ({ name: f.name, getFile: () => f }));
+    const found = await scan_entries_for_missing(entries, missing, picked.dir_name);
+    await apply_reconnected_files(found);
   }
 }
 
