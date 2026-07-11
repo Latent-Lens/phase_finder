@@ -127,13 +127,23 @@ async function compute_stats_for_new_files(new_names) {
 // ── Column statistics ────────────────────────────────────────────────────────
 
 export function compute_column_stats(typed_array, selected_stats) {
-  const n = typed_array.length;
+  // Analysis channels now retain the original FCS event order, including
+  // invalid acquisition values. Summary statistics must therefore select the
+  // structurally usable scalar values instead of allowing one NaN/Infinity to
+  // poison every result. Zero is intentionally valid; negative values are not.
+  const values = [];
+  for (let index = 0; index < typed_array.length; index += 1) {
+    const value = Number(typed_array[index]);
+    if (Number.isFinite(value) && value >= 0) values.push(value);
+  }
+
+  const n = values.length;
   if (!n) return null;
 
   const results = { n };
-  let sum = 0, min = typed_array[0], max = typed_array[0];
+  let sum = 0, min = values[0], max = values[0];
   for (let i = 0; i < n; i++) {
-    const v = typed_array[i];
+    const v = values[i];
     sum += v;
     if (v < min) min = v;
     if (v > max) max = v;
@@ -146,12 +156,12 @@ export function compute_column_stats(typed_array, selected_stats) {
 
   if (selected_stats.includes("stddev")) {
     let variance = 0;
-    for (let i = 0; i < n; i++) { const d = typed_array[i] - mean; variance += d * d; }
+    for (let i = 0; i < n; i++) { const d = values[i] - mean; variance += d * d; }
     results.stddev = Math.sqrt(variance / n);
   }
 
   if (selected_stats.includes("median")) {
-    const sorted = Float64Array.from(typed_array).sort((a, b) => a - b);
+    const sorted = values.sort((a, b) => a - b);
     const mid = Math.floor(n / 2);
     results.median = n % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
   }
