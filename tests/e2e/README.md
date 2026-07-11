@@ -97,10 +97,10 @@ tests/
     └── unit_tests_djf.py    ← DJF model unit tests (window.PhaseFinderDJF)
 ```
 
-`drive_flow.py` also temporarily moves aside a `phasefinder_local.json` in the
-repo root, if present, for the duration of the run (restoring it unmodified
+`drive_flow.py` also temporarily moves aside a `sessions/phasefinder_local.json`,
+if present, for the duration of the run (restoring it unmodified
 afterward). That file is a personal, uncommitted dev-convenience config (see
-`phasefinder_local.example.json`) that can auto-load an arbitrary session and
+`sessions/phasefinder_local.example.json`) that can auto-load an arbitrary session and
 FCS folder on every page load; left in place, the local test server would
 serve it to the app under test exactly like a real browsing session, silently
 loading extra files that desync every row-count assertion in this suite.

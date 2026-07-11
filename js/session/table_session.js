@@ -142,15 +142,21 @@ export function apply_session_state({ template, columns, annotations, sort, filt
     }
   }
 
-  selected_file_ids.clear();
-  const frame = get_file_table();
-  if (selected_names?.length && frame) {
-    const ids       = [...frame.col("id")];
-    const names_arr = [...frame.col("name")];
-    const name_to_id = new Map(names_arr.map((n, i) => [n, ids[i]]));
-    for (const name of selected_names) {
-      const id = name_to_id.get(name);
-      if (id) selected_file_ids.add(id);
+  // selected_names is only omitted (not just empty) when a caller wants to
+  // leave the live selection alone — see apply_table_session's restore_selection
+  // option, used to stop the post-reconnect pf-files-loaded replay from
+  // clobbering rows load_files() already auto-checked.
+  if (selected_names !== undefined) {
+    selected_file_ids.clear();
+    const frame = get_file_table();
+    if (selected_names.length && frame) {
+      const ids       = [...frame.col("id")];
+      const names_arr = [...frame.col("name")];
+      const name_to_id = new Map(names_arr.map((n, i) => [n, ids[i]]));
+      for (const name of selected_names) {
+        const id = name_to_id.get(name);
+        if (id) selected_file_ids.add(id);
+      }
     }
   }
 
