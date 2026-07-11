@@ -91,10 +91,10 @@ tests/
 │   └── results/
 └── unit/
     ├── run_unit_tests.py    ← unit test orchestrator
-    ├── test_harness.html    ← minimal page loading CDN libs + app JS helpers
+    ├── test_harness.html    ← minimal page loading app ES modules + test helpers
     ├── unit_tests_parser.py ← FCSParser unit tests (window.FCSParser)
     ├── unit_tests_table.py  ← table/data_structs/metadata-wizard unit tests
-    └── unit_tests_djf.py    ← DJF model unit tests (window.PhaseFinderDJF)
+    └── unit_tests_djf_pipeline.py ← Stage 0–8 pipeline unit tests
 ```
 
 `drive_flow.py` also temporarily moves aside a `sessions/phasefinder_local.json`,
@@ -108,7 +108,7 @@ loading extra files that desync every row-count assertion in this suite.
 ## What it checks
 
 ### E2E — Input/Output
-- D3 / Levenberg–Marquardt / ml-gsd CDN libraries load
+- The locally vendored D3 module loads
 - File loading via drag-and-drop (expanded sidebar)
 - The filename metadata wizard auto-opens once, after the very first file
   load, and is configured here (Strain/Replicate/Nocodazole Arrest/Timepoint
@@ -134,19 +134,18 @@ loading extra files that desync every row-count assertion in this suite.
 - Progress overlay during Plot Channel Events
 - Plot a strict subset of rows, verify curve count
 - Plot all rows, verify count, title, and y-axis label
-- Button transitions Plot Channel Events → Start Modeling (DJF)
+- Run DJF Pipeline becomes enabled after plotting
 - Turning rows off removes lines; turning them back on restores them
 - Data cache retained for unchecked rows
 - Channel change clears curves, resets button, reloads data, replots
 
-### E2E — Modeling
-- Start Modeling (DJF) produces one visible fit
-- G1 + S + G2 fractions sum to ~100 %
-- DJF fit table appears with title and phase rows
-- Status bar updates after modeling completes
-- Debris correction updates readout
-- Doublet correction updates readout
-- Peak threshold line appears
+### E2E — DJF pipeline
+- Manual Stage 0&ndash;8 controls store each checkpoint in original event order
+- Time QC, FSC/SSC gating, and pulse-geometry gating exercise non-skip paths
+- Stage 2 opens a populated scatter/gate diagnostic modal
+- Histogram and fitted component overlays render at the appropriate stages
+- Biological 1C + S + 2C fractions sum to ~100 %
+- Run all retains every checkpoint product and updates the report/status UI
 
 ### E2E — Sidebar/Icons
 - Collapsed sidebar shows upload / channel / histogram icons

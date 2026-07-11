@@ -1,92 +1,129 @@
 #!/usr/bin/env python3
-"""Modeling tests: DJF curve fitting, fractions, corrections, and threshold display."""
-
-import re
+"""Modeling tests for the staged DJF pipeline's Run-all convenience action."""
 
 from helpers import (
     TestContext,
-    density_curve_count,
     fit_curve_count,
+    isolate_first_plotted_sample,
+    restore_row_selection,
     status_bar_text,
-    wait_briefly,
-    wait_for_curves,
+    wait_for_overlay_hidden,
 )
 
 
 def test_modeling(ctx: TestContext):
     page = ctx.page
     group = "Modeling"
+    previous_selection = []
 
-    # Ensure the Cell Cycle Modeling button is enabled (data has been plotted)
-    modeling_btn_disabled = page.eval_on_selector("#cell_cycle_modeling_button", "e => e.disabled")
-    if modeling_btn_disabled:
-        try:
-            page.click("#start_analysis_button")
-            page.wait_for_selector("#plot_area svg", timeout=120000)
-            page.wait_for_function(
-                "() => !document.querySelector('#cell_cycle_modeling_button').disabled",
-                timeout=60000,
-            )
-        except Exception as err:
-            ctx.check(group, "Start Modeling (DJF) creates one visible fit", False,
-                      f"Could not enter modeling state: {err}")
+    try:
+        sample_name, previous_selection = isolate_first_plotted_sample(page)
+
+        # Start from an empty per-sample result so this check proves that the
+        # UI action executes all nine stages, rather than merely redisplaying
+        # state left by the preceding manual-button test.
+        page.evaluate(
+            """(sampleName) => {
+              window.PhaseFinder.pipeline?.clear_state?.(sampleName);
+              document.querySelector('#djf_run_all')?.classList.remove('djf_stage_complete');
+            }""",
+            sample_name,
+        )
+
+        run_all_enabled = page.locator("#djf_run_all").is_enabled()
+        ctx.check(
+            group,
+            "Run-all pipeline control is enabled after plotting a DNA channel",
+            run_all_enabled,
+        )
+        if not run_all_enabled:
             return
 
-    bar_before = status_bar_text(page)
+        status_before = status_bar_text(page)
+        page.click("#djf_run_all")
+        page.wait_for_function(
+            """(sampleName) => {
+              const button = document.querySelector('#djf_run_all');
+              const state = window.PhaseFinder?.pipeline?.get_state?.(sampleName);
+              return state?.lastStageRun === 8
+                && button?.classList.contains('djf_stage_complete')
+                && !button.disabled
+                && !button.classList.contains('djf_stage_running');
+            }""",
+            arg=sample_name,
+            timeout=300000,
+        )
+        wait_for_overlay_hidden(page, timeout_ms=15000)
 
-    # Lazy DJF: the numeric stack (analysis/djf.js + the ml-* libraries) is kept
-    # off the initial load path and only fetched on the first modeling/correction
-    # action, so window.PhaseFinder.djf is still null before this first click.
-    djf_before = page.evaluate("() => window.PhaseFinder.djf")
-    ctx.check(group, "DJF numeric stack is lazy-loaded (null before first modeling)",
-              djf_before is None, f"djf={djf_before!r}")
+        summary = page.evaluate(
+            """(sampleName) => {
+              const state = window.PhaseFinder.pipeline.get_state(sampleName);
+              const fractions = state.report?.fractions?.biologicalSinglets;
+              return {
+                lastStageRun: state.lastStageRun,
+                structural: Boolean(state.structuralMask),
+                timeQC: Boolean(state.timeQC) && !state.timeQC.skipped,
+                scatter: Boolean(state.scatterGate) && !state.scatterGate.skipped,
+                singlet: Boolean(state.singletResult) && !state.singletResult.skipped,
+                histogram: Boolean(state.histogram),
+                peaks: Boolean(state.peaks),
+                baseFit: Boolean(state.baseFit),
+                extendedFit: Boolean(state.extendedFit),
+                report: Boolean(state.report),
+                fractionSum: fractions
+                  ? fractions.oneC + fractions.sPhase + fractions.twoC
+                  : null,
+                stagesComplete: [...document.querySelectorAll('[id^="djf_stage"]')]
+                  .filter((button) => /^djf_stage[0-8]$/.test(button.id))
+                  .filter((button) => button.classList.contains('djf_stage_complete'))
+                  .length,
+              };
+            }""",
+            sample_name,
+        )
+        all_products = all(summary[key] for key in (
+            "structural",
+            "timeQC",
+            "scatter",
+            "singlet",
+            "histogram",
+            "peaks",
+            "baseFit",
+            "extendedFit",
+            "report",
+        ))
+        ctx.check(
+            group,
+            "Run all executes Stage 0→8 and retains every checkpoint product",
+            summary["lastStageRun"] == 8
+            and summary["stagesComplete"] == 9
+            and all_products,
+            str(summary),
+        )
 
-    page.click("#cell_cycle_modeling_button")
-    page.wait_for_function(
-        "() => /G1/.test(document.querySelector('#djf_readout').textContent)",
-        timeout=30000,
-    )
-    wait_briefly(0.4)
-
-    # After the first modeling action the module is loaded and exposed on the hook.
-    djf_after = page.evaluate(
-        "() => window.PhaseFinder.djf !== null && typeof window.PhaseFinder.djf.fit === 'function'")
-    ctx.check(group, "DJF loads on first modeling action and is exposed on window.PhaseFinder.djf",
-              djf_after is True, f"loaded={djf_after}")
-
-    text = page.eval_on_selector("#djf_readout", "e => e.textContent")
-    nums = [float(x) for x in re.findall(r"([\d.]+)%", text)]
-
-    ctx.check(group, "Start Modeling (DJF) creates one visible fit",
-              fit_curve_count(page) == 1, f"fits={fit_curve_count(page)}")
-    ctx.check(group, "DJF fractions sum to approximately 100%",
-              len(nums) == 3 and abs(sum(nums) - 100) < 0.5, str(nums))
-    ctx.check(group, "DJF fit table appears with phase rows",
-              page.eval_on_selector_all("#djf_fit_table .djf_fit_title_row", "rows => rows.length") >= 1
-              and page.eval_on_selector_all("#djf_fit_table .djf_fit_phase_row", "rows => rows.length") >= 3)
-
-    bar_after = status_bar_text(page)
-    ctx.check(group, "Status bar updates after DJF modeling",
-              bar_after != bar_before or bar_after != "",
-              f"before={bar_before!r}, after={bar_after!r}")
-
-    # Debris correction
-    page.check("#plot_debris_correction")
-    wait_briefly(0.4)
-    corrected = page.eval_on_selector("#djf_readout", "e => e.textContent")
-    ctx.check(group, "Debris correction updates DJF readout",
-              "debris/background" in corrected, corrected)
-
-    # Doublet correction
-    page.check("#plot_doublet_correction")
-    wait_briefly(0.4)
-    corrected2 = page.eval_on_selector("#djf_readout", "e => e.textContent")
-    ctx.check(group, "Doublet correction updates DJF readout",
-              "aggregates/doublets" in corrected2 or "aggregate/doublet channels unavailable" in corrected2,
-              corrected2)
-
-    # Peak threshold
-    page.check("#plot_threshold_toggle")
-    wait_briefly(0.3)
-    ctx.check(group, "Peak threshold line appears when enabled",
-              page.query_selector("#plot_area svg .threshold_line, #plot_area svg .threshold_fill") is not None)
+        readout = page.eval_on_selector("#djf_readout", "element => element.textContent.trim()")
+        status_after = status_bar_text(page)
+        phase_rows = page.locator("#djf_fit_table .djf_fit_phase_row").count()
+        ctx.check(
+            group,
+            "Run-all result is rendered as a fit overlay, report table, and fraction readout",
+            fit_curve_count(page) == 1
+            and phase_rows >= 5
+            and all(token in readout for token in ("Stage 8", "1C", "S", "2C", "%"))
+            and abs(summary["fractionSum"] - 1) < 1e-6,
+            f"fits={fit_curve_count(page)}, rows={phase_rows}, readout={readout}",
+        )
+        ctx.check(
+            group,
+            "Run all reports completion in the status bar",
+            "all nine" in status_after.lower()
+            and status_after != status_before,
+            f"before={status_before!r}, after={status_after!r}",
+        )
+    except Exception as error:
+        ctx.check(group, "Run-all Stage 0→8 pipeline flow", False, str(error))
+    finally:
+        if page.locator("#djf_scatter_modal").is_visible():
+            page.click("#djf_scatter_modal_close")
+        if previous_selection:
+            restore_row_selection(page, previous_selection)
