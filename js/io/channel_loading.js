@@ -8,7 +8,11 @@
 // background preload for files added after plotting has started.
 
 import { FCSParser } from "../fcs/parser.js";
-import { find_auxiliary_indexes_for_file, filter_selected_channel_values } from "../fcs/channel_cleaning.js";
+import {
+  build_raw_analysis_channels,
+  find_auxiliary_indexes_for_file,
+  find_pipeline_channel_indexes,
+} from "../fcs/channel_cleaning.js";
 import { parameter_map, find_param_index, unique_indexes } from "./parameter_map.js";
 import {
   analysis_data_key,
@@ -180,10 +184,11 @@ Output:
 	indexes [Object]: { dna_a } parameter index for the file
 
 */
-function selected_indexes_for_file(summary, selected) {
+export function selected_indexes_for_file(summary, selected) {
   const params = parameter_map(summary);
   const dna_a = find_param_index(params, selected.dna_area);
   const aux = find_auxiliary_indexes_for_file(params, selected.dna_area);
+  const pipeline = find_pipeline_channel_indexes(params);
 
   return {
     dna_a,
@@ -191,6 +196,9 @@ function selected_indexes_for_file(summary, selected) {
     dna_w: aux.dna_w || null,
     dna_height_label: aux.dna_height_label || "",
     dna_width_label: aux.dna_width_label || "",
+    fsc_a: pipeline.fsc_a,
+    ssc_a: pipeline.ssc_a,
+    time: pipeline.time,
   };
 }
 
@@ -242,18 +250,40 @@ export async function load_analysis_row(row, selected, options = {}) {
 
   const promise = (async () => {
     const indexes = selected_indexes_for_file(row.summary, selected);
-    const columns = await load_selected_fcs_columns(row.file, row.summary, unique_indexes([indexes.dna_a, indexes.dna_h, indexes.dna_w]), options);
-    const filtered = filter_selected_channel_values(columns, indexes);
+    const requested_indexes = unique_indexes([
+      indexes.dna_a,
+      indexes.dna_h,
+      indexes.dna_w,
+      indexes.fsc_a,
+      indexes.ssc_a,
+      indexes.time,
+    ]);
+    const columns = await load_selected_fcs_columns(row.file, row.summary, requested_indexes, options);
+    const raw = build_raw_analysis_channels(
+      columns,
+      indexes,
+      row.summary.metadata,
+      row.summary.event_count,
+    );
     const data = {
       channel_key: key,
       channel: selected.dna_area,
-      dna_a: filtered.dna_a,
-      dna_h: filtered.dna_h,
-      dna_w: filtered.dna_w,
-      keep_mask: filtered.keep_mask,
+      eventCount: row.summary.event_count,
+      channels: raw.channels,
+      pnr: raw.pnr,
+      parameterMetadata: raw.parameterMetadata,
+      masks: {
+        structural: null,
+        timeQC: null,
+        scatter: null,
+        singlet: null,
+        final: null,
+      },
       indexes,
-      removed_invalid_count: filtered.removed_count,
-      total_count: filtered.total_count,
+      // Compatibility aliases remain until the legacy DJF path is retired.
+      dna_a: raw.channels.DNA_A,
+      dna_h: raw.channels.DNA_H,
+      dna_w: raw.channels.DNA_W,
     };
     return store_analysis_data(row, selected, data, activate);
   })();

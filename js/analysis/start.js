@@ -33,6 +33,7 @@ import {
 import { is_analysis_data_loaded, activate_analysis_data } from "../data_structs/channel_cache.js";
 import { plot_channels } from "../plotting/data.js";
 import { reset_modeling_state, init_plot, start_modeling } from "../plotting/modeling.js";
+import { render_density_plot } from "../plotting/render.js";
 import {
   ANALYSIS_FILE_CONCURRENCY,
   load_analysis_data,
@@ -127,10 +128,10 @@ async function prepare_selected_channel_for_plotting() {
   const missing_rows = rows.filter((row) => !is_analysis_data_loaded(row, selected));
   if (!missing_rows.length) {
     // Data for this channel is already cached (e.g. switching back to a
-    // previously-plotted channel) — activate it as row.data and switch the
-    // visible plot over now.
+    // previously-plotted channel). Activate it, but leave plotting explicit:
+    // the action button remains "Plot Channel Events" until the user clicks it.
     rows.forEach((row) => activate_analysis_data(row, selected));
-    init_plot(selected);
+    render_density_plot();
     set_status_bar(`Channel ${selected.dna_area} data ready.`);
     return;
   }
@@ -158,10 +159,11 @@ async function prepare_selected_channel_for_plotting() {
     if (request_id === channel_change_load_id) {
       // Now that the new channel's data has actually finished loading,
       // activate it for every row (it was loaded with activate: false to
-      // avoid disturbing the still-visible old plot mid-load) and switch
-      // the visible plot over to it.
+      // avoid disturbing the old plot mid-load). Redraw against the prior
+      // plot-channel key so the curves clear while axes remain; clicking
+      // "Plot Channel Events" explicitly switches to the new channel.
       rows.forEach((row) => activate_analysis_data(row, selected));
-      init_plot(selected);
+      render_density_plot();
       set_status_bar(`Channel ${selected.dna_area} data ready — pre-loaded ${missing_rows.length} file(s).`);
       update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`);
     }
