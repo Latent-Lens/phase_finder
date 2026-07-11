@@ -339,6 +339,19 @@
         <div class="stats_modal_body">
           <p id="reconnect_intro" class="reconnect_intro"></p>
           <ul id="reconnect_file_list" class="reconnect_file_list"></ul>
+          <div id="reconnect_scan_panel" class="reconnect_scan_panel" aria-live="polite">
+            <div class="reconnect_scan_panel_inner">
+              <p class="reconnect_scan_heading">
+                Scanning for missing FCS files in selected folder:
+                <strong id="reconnect_scan_dirname" class="reconnect_scan_dirname"></strong>
+              </p>
+              <p id="reconnect_scan_status" class="reconnect_scan_status"></p>
+              <div class="progress_track" aria-hidden="true">
+                <div id="reconnect_scan_fill" class="progress_fill"></div>
+              </div>
+              <p id="reconnect_scan_tally" class="reconnect_scan_tally"></p>
+            </div>
+          </div>
           <div class="stats_modal_actions reconnect_actions">
             <button id="reconnect_choose_folder" type="button" class="secondary_button">Choose folder</button>
             <button id="reconnect_select_files" type="button" class="secondary_button">Select files</button>

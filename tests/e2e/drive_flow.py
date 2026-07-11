@@ -229,9 +229,9 @@ def main():
         port, httpd = start_test_server(str(repo_root))
         args.url = f"http://127.0.0.1:{port}/index.html"
         print(f"Server successfully started at {args.url}", flush=True)
-        # A personal, uncommitted phasefinder_local.json in the repo root
-        # would otherwise get served to the app under test and silently
-        # auto-load unrelated files, desyncing every row-count assertion.
+        # A personal, uncommitted sessions/phasefinder_local.json would
+        # otherwise get served to the app under test and silently auto-load
+        # unrelated files, desyncing every row-count assertion.
         local_autoload_guard = suspended_local_autoload_config(repo_root)
 
     with local_autoload_guard:
