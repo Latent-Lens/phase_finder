@@ -32,7 +32,7 @@ import {
 } from "../ui/status_channels.js";
 import { is_analysis_data_loaded, activate_analysis_data } from "../data_structs/channel_cache.js";
 import { plot_channels } from "../plotting/data.js";
-import { reset_modeling_state, init_plot, start_modeling } from "../plotting/modeling.js";
+import { init_plot } from "../plotting/modeling.js";
 import { render_density_plot } from "../plotting/render.js";
 import {
   ANALYSIS_FILE_CONCURRENCY,
@@ -41,8 +41,6 @@ import {
   refresh_analysis_after_metadata_change,
 } from "../io/channel_loading.js";
 
-// Whether analysis has run; once true the button drives DJF modeling instead.
-let modeling_mode = false;
 let channel_change_load_id = 0;
 
 /*
@@ -69,8 +67,8 @@ function set_plot_action_controls_disabled(is_disabled) {
 /*
 
 Purpose:
-	Restores the Plot Channel Events button state after the selected channel
-	changes, replacing Start Modeling (DJF) until the new channel is plotted.
+	Disables pipeline actions after the selected channel changes until the new
+	channel is explicitly plotted.
 
 Input:
 	(none)
@@ -80,9 +78,9 @@ Output:
 
 */
 function enter_plotting_mode() {
-  modeling_mode = false;
-  if (analysis_start_button) analysis_start_button.classList.remove("modeling");
-  reset_modeling_state();
+  document.querySelectorAll(".djf_pipeline_buttons .djf_stage_complete").forEach((button) => {
+    button.classList.remove("djf_stage_complete");
+  });
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (!btn) return;
     btn.disabled = true;
@@ -178,8 +176,8 @@ async function prepare_selected_channel_for_plotting() {
 /*
 
 Purpose:
-	Turns the Plot Channel Events button into the blue "Start Modeling (DJF)" button
-	after analysis has run, so clicking it next starts cell-cycle modeling.
+	Enables the convenience action that runs the manual DJF pipeline after a
+	channel has been plotted.
 
 Input:
 	(none)
@@ -188,9 +186,7 @@ Output:
 	(none) [void]: updates the button text/style and the modeling flag
 
 */
-function enter_modeling_mode() {
-  modeling_mode = true;
-  if (analysis_start_button) analysis_start_button.classList.add("modeling");
+function enable_pipeline_action() {
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (!btn) return;
     btn.disabled = false;
@@ -202,9 +198,8 @@ function enter_modeling_mode() {
 /*
 
 Purpose:
-	Click handler for plot controls. Before analysis it loads the selected
-	data and reveals the plot (then flips the button to modeling mode); after
-	that it starts DJF modeling (js/plotting/modeling.js start_modeling).
+	Click handler for plot controls. Loads the selected data and reveals the plot;
+	manual DJF stages remain separate controls.
 
 Input:
 	(none)
@@ -221,7 +216,7 @@ async function start_analysis() {
 
   try {
     await load_analysis_data();
-    enter_modeling_mode();
+    enable_pipeline_action();
     document.dispatchEvent(new CustomEvent("pf-plot-complete", {
       detail: { channel: get_selected_channels().dna_area },
     }));
@@ -271,13 +266,11 @@ export function init_analysis_listeners() {
     });
   });
 
-  // Cell Cycle Modeling buttons — call start_modeling directly (defined in
-  // js/plotting/modeling.js). It lazy-loads the DJF stack, so it can reject.
+  // The sidebar modeling shortcuts trigger the same explicit Run all action as
+  // the manual pipeline control group.
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (btn) btn.addEventListener("click", () => {
-      start_modeling().catch((error) => {
-        set_status_bar(`Cell-cycle modeling failed to load: ${error.message}`, true);
-      });
+      document.querySelector("#djf_run_all")?.click();
     });
   });
 }

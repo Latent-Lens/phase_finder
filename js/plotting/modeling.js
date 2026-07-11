@@ -1,27 +1,14 @@
-// DJF modeling UI state and fit-summary presentation. This module updates the
-// plot title, manages whether modeling has started, chooses which sample fits
-// are visible, and renders the fit-results overlay table. It resets modeling
-// state when the plotted channel changes so stale fits are not shown for a new
-// channel. Starting modeling first lazy-loads the DJF numeric stack, then selects
-// an initial sample fit and asks the renderer to redraw with model overlays. Raw
-// histogram drawing and model math live in other plotting/analysis files.
+// Plot title, staged-DJF fit-summary presentation, and plot initialization.
 
 import {
   plot_title,
   plot_area,
-  djf_readout,
-  plot_channels,
   set_plot_channels,
-  set_modeling_started,
-  shown_fits,
-  set_peak_threshold,
-  plottable_rows,
   strip_fcs,
   plot_escape_html,
   format_fit_number,
 } from "./data.js";
 import { render_density_plot } from "./render.js";
-import { load_djf } from "./djf_loader.js";
 
 // The fit-results overlay element; recreated each render. Owned here because
 // only this module reads or replaces it.
@@ -97,6 +84,33 @@ export function render_fit_results_table(fits, placement = {}) {
           <td class="numeric_cell">${format_fit_number(phase.stdev, 2)}</td>
         </tr>`)
       .join("");
+    const report = fit.pipelineState?.report;
+    let report_rows = "";
+    if (report) {
+      const contamination = report.fractions.contamination;
+      const goodness = report.goodnessOfFit;
+      const warnings = report.warnings || [];
+      const warningText = warnings.length
+        ? warnings.map((warning) => plot_escape_html(warning.message)).join("<br>")
+        : "No fit warnings.";
+      report_rows = `
+        <tr class="djf_fit_phase_row djf_fit_contamination_row">
+          <td>Aggregate</td>
+          <td class="numeric_cell">${format_fit_number(100 * contamination.aggregate, 1)}%</td>
+          <td colspan="2">modeled contamination</td>
+        </tr>
+        <tr class="djf_fit_phase_row djf_fit_contamination_row">
+          <td>Debris</td>
+          <td class="numeric_cell">${format_fit_number(100 * contamination.debris, 1)}%</td>
+          <td colspan="2">modeled contamination</td>
+        </tr>
+        <tr class="djf_fit_diagnostics_row">
+          <td colspan="4">R² ${format_fit_number(goodness.rSquared, 3)} · RMSE ${format_fit_number(goodness.rmse, 2)} · reduced χ² ${format_fit_number(goodness.reducedPearsonChiSquare, 2)} · ${warnings.length} warning(s)</td>
+        </tr>
+        <tr class="djf_fit_warnings_row">
+          <td colspan="4">${warningText}</td>
+        </tr>`;
+    }
 
     fit_groups.push(`
       <tbody class="djf_fit_group">
@@ -113,6 +127,7 @@ export function render_fit_results_table(fits, placement = {}) {
           <th class="numeric_cell">Std Dev</th>
         </tr>
         ${phase_rows}
+        ${report_rows}
       </tbody>`);
   });
 
@@ -124,28 +139,6 @@ export function render_fit_results_table(fits, placement = {}) {
   plot_area.appendChild(djf_fit_table);
 }
 
-
-/*
-
-Purpose:
-	Clears DJF modeling state so a newly selected channel starts as a plain
-	event plot until the user starts modeling again.
-
-Input:
-	(none)
-
-Output:
-	(none) [void]: resets modeling flags and fit selections
-
-*/
-export function reset_modeling_state() {
-  set_modeling_started(false);
-  shown_fits.clear();
-  set_peak_threshold(null);
-  if (djf_readout) {
-    djf_readout.textContent = "";
-  }
-}
 
 /*
 
@@ -163,51 +156,5 @@ Output:
 */
 export function init_plot(channels) {
   set_plot_channels(channels);
-  render_density_plot();
-}
-
-/*
-
-Purpose:
-	Begins DJF modeling (triggered by the "Start Modeling (DJF)" button). Lazily
-	loads the DJF numeric stack on first use, then shows only the first plotted
-	sample's fit; the rest are toggled on via their legend checkboxes.
-
-Input:
-	(none)
-
-Output:
-	(none) [Promise<void>]: loads DJF if needed, enables modeling, and re-renders
-
-*/
-export async function start_modeling() {
-  if (!plot_channels) return;
-  await load_djf();
-  set_modeling_started(true);
-  const rows = plottable_rows();
-  shown_fits.clear();
-  if (rows.length) shown_fits.add(rows[0].name);
-  render_density_plot();
-}
-
-/*
-
-Purpose:
-	Toggles whether a sample's DJF fit is shown, from its legend checkbox. The
-	sample's data curve is unaffected (it follows the table selection).
-
-Input:
-	name [string]: the sample's full row.name
-
-Output:
-	(none) [void]: updates shown_fits and re-renders
-
-*/
-export function toggle_fit(name) {
-  if (shown_fits.has(name)) {
-    shown_fits.delete(name);
-  } else {
-    shown_fits.add(name);
-  }
   render_density_plot();
 }

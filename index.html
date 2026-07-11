@@ -6,18 +6,14 @@
     <meta name="description" content="PhaseFinder: A browser-based tool for inspecting and plotting flow cytometry FCS files with Dean-Jett-Fox cell-cycle modeling." />
     <title>PhaseFinder</title>
     <!--
-      Native ES modules, no build step. d3 and the two ml-* numeric libraries are
-      locally vendored ESM bundles (js/vendor/) mapped to their bare specifiers
-      here, so app modules can `import * as d3 from "d3"` etc. with no runtime CDN
-      dependency. The app must be served over HTTP — ES modules cannot load over
-      file://.
+      Native ES modules, no build step. d3 is a locally vendored ESM bundle
+      mapped to its bare specifier, so the app has no runtime CDN dependency.
+      The app must be served over HTTP — ES modules cannot load over file://.
     -->
     <script type="importmap">
       {
         "imports": {
-          "d3": "./js/vendor/d3.min.js",
-          "ml-levenberg-marquardt": "./js/vendor/ml-levenberg-marquardt.js",
-          "ml-gsd": "./js/vendor/ml-gsd.js"
+          "d3": "./js/vendor/d3.min.js"
         }
       }
     </script>
@@ -118,7 +114,7 @@
               data-tooltip-key="cellCycleModelingDisabled"
               disabled
             >
-              Cell Cycle Modeling
+              Run DJF Pipeline
             </button>
             <button
               id="calculate_stats_button"
@@ -143,7 +139,7 @@
           <button id="collapsed_plot_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="plotChannelEvents" aria-label="Plot channel events" disabled>
             <img class="sidebar_collapsed_histogram_icon" src="./assets/img/histogram.svg" alt="" aria-hidden="true" />
           </button>
-          <button id="collapsed_cell_cycle_modeling_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="cellCycleModelingDisabled" aria-label="Cell cycle modeling (disabled until channel is plotted)" disabled>
+          <button id="collapsed_cell_cycle_modeling_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="cellCycleModelingDisabled" aria-label="DJF pipeline (disabled until channel is plotted)" disabled>
             <img class="sidebar_collapsed_function_icon" src="./assets/img/function_icon.svg" alt="" aria-hidden="true" />
           </button>
           <button id="collapsed_calculate_stats_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="calculateStats" aria-label="Calculate statistics" disabled>
@@ -184,45 +180,21 @@
                   <option value="bins">Bins</option>
                 </select>
               </label>
-              <label class="plot_control plot_control_check">
-                <span class="plot_check_row">
-                  <input type="checkbox" id="plot_debris_correction" />
-                  Remove debris/background
-                  <span
-                    class="info_icon"
-                    tabindex="0"
-                    role="img"
-                    aria-label="Debris and background correction help"
-                    data-tooltip-key="debrisHelp"
-                  >?</span>
-                </span>
-              </label>
-              <label class="plot_control plot_control_check">
-                <span class="plot_check_row">
-                  <input type="checkbox" id="plot_doublet_correction" />
-                  Remove aggregates/doublets
-                  <span
-                    class="info_icon"
-                    tabindex="0"
-                    role="img"
-                    aria-label="Aggregate and doublet correction help"
-                    data-tooltip-key="doubletHelp"
-                  >?</span>
-                </span>
-              </label>
-              <label class="plot_control plot_control_check">
-                <span class="plot_check_row">
-                  <input type="checkbox" id="plot_threshold_toggle" />
-                  Peak threshold
-                  <span
-                    class="info_icon"
-                    tabindex="0"
-                    role="img"
-                    aria-label="Peak threshold help"
-                    data-tooltip-key="peakThresholdHelp"
-                  >?</span>
-                </span>
-              </label>
+              <div class="djf_pipeline_controls" role="group" aria-label="Manual Dean-Jett-Fox pipeline stages">
+                <span class="djf_pipeline_label">DJF Pipeline (manual)</span>
+                <div class="djf_pipeline_buttons">
+                  <button id="djf_stage0" type="button">Stage 0: Structural QC</button>
+                  <button id="djf_stage1" type="button">Stage 1 (opt): Time QC</button>
+                  <button id="djf_stage2" type="button">Stage 2 (opt): Cell Gate</button>
+                  <button id="djf_stage3" type="button">Stage 3 (opt): Singlet Gate</button>
+                  <button id="djf_stage4" type="button">Stage 4: Histogram</button>
+                  <button id="djf_stage5" type="button">Stage 5: Peaks</button>
+                  <button id="djf_stage6" type="button">Stage 6: Fit DJF</button>
+                  <button id="djf_stage7" type="button">Stage 7 (opt): Debris/Aggregate</button>
+                  <button id="djf_stage8" type="button">Stage 8: Report</button>
+                  <button id="djf_run_all" class="djf_run_all" type="button">Run all</button>
+                </div>
+              </div>
               <span id="djf_readout" class="djf_readout"></span>
             </div>
             <div id="plot_area" class="table_wrap"></div>
@@ -404,6 +376,20 @@
             <button id="axis_range_cancel" type="button" class="secondary_button">Cancel</button>
             <button id="axis_range_apply" type="button">Apply</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="djf_scatter_modal" class="stats_modal djf_scatter_modal" hidden role="dialog" aria-modal="true" aria-labelledby="djf_scatter_modal_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card djf_scatter_card">
+        <div class="stats_modal_header">
+          <h3 id="djf_scatter_modal_title" class="stats_modal_title">Stage 2 FSC-A × SSC-A Cell Gate</h3>
+          <button id="djf_scatter_modal_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="stats_modal_body djf_scatter_body">
+          <div id="djf_scatter_plot" class="djf_scatter_plot" aria-label="FSC-A by SSC-A scatter plot with gate ellipse"></div>
+          <p id="djf_scatter_caption" class="djf_scatter_caption"></p>
         </div>
       </div>
     </div>
