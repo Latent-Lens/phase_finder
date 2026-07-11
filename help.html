@@ -35,13 +35,13 @@
             <li>
               <a href="#plotting">5. Plotting Events</a>
               <ol>
-                <li><a href="#plot-controls">Color by, bins, corrections</a></li>
+                <li><a href="#plot-controls">Color by, display, and bins</a></li>
               </ol>
             </li>
             <li>
-              <a href="#djf-modeling">6. Cell Cycle Modeling (DJF)</a>
+              <a href="#djf-modeling">6. Staged Cell Cycle Modeling (DJF)</a>
               <ol>
-                <li><a href="#peak-threshold">Peak threshold</a></li>
+                <li><a href="#pipeline-stages">Pipeline stages</a></li>
                 <li><a href="#fit-results">Fit results table</a></li>
               </ol>
             </li>
@@ -67,7 +67,7 @@
           <h2>1. Overview</h2>
           <p>PhaseFinder's screen is organized into these areas:</p>
           <ul>
-            <li><strong>Sidebar</strong> (left) &mdash; drop zone for FCS files, the DNA-content channel selector, and the main action buttons (<span class="ui_label">Plot Channel Events</span>, <span class="ui_label">Cell Cycle Modeling</span>, <span class="ui_label">Calculate Statistics</span>).</li>
+            <li><strong>Sidebar</strong> (left) &mdash; drop zone for FCS files, the DNA-content channel selector, and the main action buttons (<span class="ui_label">Plot Channel Events</span>, <span class="ui_label">Run DJF Pipeline</span>, <span class="ui_label">Calculate Statistics</span>).</li>
             <li><strong>Plot panel</strong> (top of the workspace) &mdash; appears once you plot a channel; shows the overlaid event histogram, its controls, and (once modeling starts) the DJF fit overlay and results table.</li>
             <li><strong>Metadata table panel</strong> (bottom of the workspace) &mdash; one row per loaded FCS file with editable annotations, sorting, filtering, and optional summary-statistics columns.</li>
             <li><strong>Header</strong> (top) &mdash; the PhaseFinder logo plus <span class="ui_label">Help</span>, <span class="ui_label">Load session</span>, and <span class="ui_label">Save session</span>.</li>
@@ -209,7 +209,7 @@
           <p>The <span class="ui_label">Select channel</span> dropdown lists every FCS parameter label seen across all loaded files. In an FCS file, each parameter can have several pieces of metadata. PhaseFinder uses <code>$PnS</code> first because it is usually the user-facing stain or signal label, falls back to <code>$PnN</code> when <code>$PnS</code> is missing, and finally generates a generic <code>P&lt;n&gt;</code> label if neither value is available.</p>
           <p>PhaseFinder guesses a likely DNA-content area channel automatically (looking for names containing patterns like <code>DAPI_A</code>, <code>DNA_A</code>, or ending in <code>_A</code>/<code>AREA</code>) and pre-selects it when possible &mdash; check that the suggestion is right before plotting.</p>
           <p><span class="ui_label">Plot Channel Events</span> stays disabled until at least one file is loaded and a channel is chosen.</p>
-          <p>If you change the channel after already plotting, PhaseFinder loads the newly selected channel's data in the background (showing progress in the status bar) and automatically switches the visible plot over to it once loading finishes &mdash; no need to click <span class="ui_label">Plot Channel Events</span> again.</p>
+          <p>If you change the channel after already plotting, PhaseFinder preloads the newly selected channel's data in the background and clears the old curves. Click <span class="ui_label">Plot Channel Events</span> when you are ready to switch the visible plot explicitly.</p>
         </section>
 
         <section id="plotting" class="help_section">
@@ -223,36 +223,40 @@
           <p>Click <span class="ui_label">Plot Channel Events</span> to load the selected channel's data for every <em>checked</em> row in the metadata table and draw an overlaid event histogram (x-axis: the chosen channel; y-axis: number of events). The plot panel title reports the number of plotted samples and total included channel events.</p>
           <p>The plot stays live afterward: checking or unchecking a row in the metadata table immediately adds or removes its curve &mdash; unchecking a row does not discard its already-loaded data, so re-checking it is instant. After the first plot, the button turns blue as a reminder that a channel is already plotted; click it again any time to refresh.</p>
 
-          <h3 id="plot-controls">Color by, bins, corrections</h3>
+          <h3 id="plot-controls">Color by, display, and bins</h3>
           <ul>
             <li><strong>Color by</strong> &mdash; <em>File</em> gives every sample its own color; <em>Strain</em> groups samples sharing the same Strain annotation under one color.</li>
+            <li><strong>Display</strong> &mdash; choose smoothed curves, histogram bins, or both.</li>
             <li><strong>Bins</strong> &mdash; the histogram bin count (16&ndash;1024, default 512). Increasing the bin count makes narrower bars and can reveal finer structure, but also makes curves noisier when event counts are low. Decreasing the bin count smooths the curves and makes broad trends easier to compare, but can hide small peaks or shoulders.</li>
-            <li><strong>Remove debris/background</strong> &mdash; before plotting (and fitting), builds a 256-bin histogram over the 0.2&ndash;99.8 percentile range, detects the G1/G2 peaks, estimates each peak's width, and keeps only events between roughly <code>G1 &minus; 4&sigma;</code> and <code>G2 + 4&sigma;</code> (clamped to sane multiples of G1).</li>
-            <li><strong>Remove aggregates/doublets</strong> &mdash; when matching height and/or width channels can be linked to the selected area channel, removes events whose height/width ratio is far from the robust median (median &plusmn; 4 MAD-based sigma). If no matching height/width channel exists for a sample, that sample is left alone and PhaseFinder reports that below the plot controls and in the status bar.</li>
           </ul>
-          <p>Both correction toggles apply to plotting <em>and</em> to cell-cycle modeling. The message below the plot controls and the status bar report how many events were removed, or that the required channels were not available.</p>
+          <p>Event-quality masks and contamination terms are controlled by the explicit DJF stages below, so every correction has a visible checkpoint and diagnostic readout.</p>
         </section>
 
         <section id="djf-modeling" class="help_section">
-          <h2>6. Cell Cycle Modeling (Dean&ndash;Jett&ndash;Fox)</h2>
+          <h2>6. Staged Cell Cycle Modeling (Dean&ndash;Jett&ndash;Fox)</h2>
           <figure class="help_figure">
             <div class="screenshot_frame">
               <img src="./assets/img/help/cell-cycle-modeling.png" alt="Cell cycle modeling view with DJF component fills, fitted curve, sample fit readout, and fit results table." />
             </div>
             <figcaption>After modeling starts, PhaseFinder overlays the fitted DJF curve/components and adds fit percentages and phase parameters beside the plot.</figcaption>
           </figure>
-          <p>Once a channel is plotted, the <span class="ui_label">Cell Cycle Modeling</span> button becomes enabled. Clicking it fits a Dean&ndash;Jett&ndash;Fox model (a G1 Gaussian, a G2 Gaussian pinned at roughly twice the G1 mean, and an S-phase bridge between them) to the <em>first</em> currently plotted sample and overlays the fitted total plus filled G1/S/G2 components.</p>
-          <p>Each sample's legend entry gains a small checkbox once modeling has started &mdash; check additional samples to fit and overlay them too (each gets an independent fit); uncheck to remove a fit without discarding the underlying data. A shared readout beneath the plot controls lists each shown fit's <strong>%G1 &middot; %S &middot; %G2</strong>.</p>
-          <p>Peak detection first looks for a matching G1/G2 peak pair around a 2&times; DNA-content ratio; when multiple samples are being modeled, PhaseFinder also estimates one shared "run G1" position so every sample's fit is anchored consistently.</p>
+          <p>Once a channel is plotted, <span class="ui_label">Run DJF Pipeline</span> and the nine stage buttons become available. Each stage runs for every currently plotted sample and stores its own masks, diagnostics, histogram, fit, or report. Use the individual buttons while inspecting a dataset, or <span class="ui_label">Run all</span> for the complete Stage 0&ndash;8 sequence.</p>
+          <p>The fit uses a G1 Gaussian, a G2 Gaussian constrained near twice the G1 mean, and an S-phase bridge. PhaseFinder overlays the fitted total plus filled G1/S/G2 components; selected debris or aggregate terms are shown separately. The readout beneath the controls lists normalized <strong>%1C &middot; %S &middot; %2C</strong> fractions and warning counts.</p>
 
-          <h3 id="peak-threshold">Peak threshold</h3>
-          <p>Tick <strong>Peak threshold</strong> to reveal a draggable grey line marking the minimum event count a histogram peak must reach to be considered during peak detection (default: 5% of the tallest shown bin). Drag it up to ignore small/noisy peaks, or down to include more candidate peaks; releasing the line re-detects peaks and refits every shown sample.</p>
+          <h3 id="pipeline-stages">Pipeline stages</h3>
+          <ol>
+            <li><strong>Stage 0: Structural QC</strong> rejects non-finite, negative, and saturated measurements while preserving original event indexes.</li>
+            <li><strong>Stages 1&ndash;3 (optional)</strong> perform Time acquisition QC, FSC/SSC cell-cloud gating, and DNA pulse-geometry singlet gating when the required channels exist.</li>
+            <li><strong>Stages 4&ndash;6</strong> build the masked histogram, detect the 1C/2C peaks, and fit the constrained base DJF model.</li>
+            <li><strong>Stage 7 (optional)</strong> tests conservative debris and aggregate extensions.</li>
+            <li><strong>Stage 8</strong> reports biological-singlet fractions, contamination accounting, goodness-of-fit diagnostics, and warnings.</li>
+          </ol>
 
           <h3 id="fit-results">Fit results table</h3>
-          <p>Every visible fit adds a group to the results table beside the plot: a title row with the sample name and its Strain/Replicate/Nocodazole Arrest/Timepoint annotations, followed by one row per phase (G1, S, G2) giving that phase's percent of events, fitted mean, and fitted standard deviation.</p>
-          <div class="callout warn">
-            <p class="callout_title">Requires a network connection</p>
-            <p>Curve fitting and peak detection depend on two small libraries loaded from a CDN when the page opens. If they fail to load, plotting and the rest of the app still work, but <span class="ui_label">Cell Cycle Modeling</span> reports that the corrected DJF module is unavailable.</p>
+          <p>Every Stage 8 report adds a group to the results table beside the plot: a title row with sample annotations, biological phase rows, separate contamination rows when applicable, goodness-of-fit values, and diagnostic warnings.</p>
+          <div class="callout">
+            <p class="callout_title">Works offline</p>
+            <p>Peak detection and nonlinear fitting are implemented in PhaseFinder's own ES modules, and D3 is vendored locally. The complete pipeline requires no runtime CDN connection.</p>
           </div>
         </section>
 
@@ -288,7 +292,7 @@
             <li>The list of loaded filenames and per-file reconnect metadata such as size, modified time, and app-private cache paths.</li>
             <li>Every metadata column and its values, plus the active filename-splitting template.</li>
             <li>Table state: which rows are checked, the active sort, and active column filters.</li>
-            <li>Plot settings: channel, color-by, bin count, both correction toggles, and the peak-threshold visibility.</li>
+            <li>Plot settings: channel, color-by, display mode, and bin count. Retired correction keys remain readable only for older-session compatibility.</li>
             <li>Any summary statistics you've computed (so they're recomputed automatically on load).</li>
             <li>Layout: sidebar/panel collapsed states, sidebar width, and panel heights.</li>
           </ul>
@@ -333,8 +337,8 @@
             <li>Review and hand-edit any annotations the wizard couldn't infer, using the table's sort and filter controls to spot-check groups of samples.</li>
             <li>Confirm (or change) the DNA-content channel in the sidebar.</li>
             <li>Check the rows you want in the plot &mdash; unchecking removes a sample without losing its already-loaded data.</li>
-            <li>Click <span class="ui_label">Plot Channel Events</span>. Adjust <strong>Color by</strong> and <strong>Bins</strong>, and toggle the debris/doublet corrections if your data needs them.</li>
-            <li>Click <span class="ui_label">Cell Cycle Modeling</span> to fit the first plotted sample, then use each sample's legend checkbox to fit additional samples as needed. Tick <strong>Peak threshold</strong> if automatic peak detection needs a nudge.</li>
+            <li>Click <span class="ui_label">Plot Channel Events</span>. Adjust <strong>Color by</strong>, <strong>Display</strong>, and <strong>Bins</strong>.</li>
+            <li>Run individual Stage 0&ndash;8 controls to inspect checkpoints, or click <span class="ui_label">Run DJF Pipeline</span> / <span class="ui_label">Run all</span> for the complete analysis. Review the overlay, normalized fractions, contamination accounting, and diagnostics.</li>
             <li>Optionally, use <span class="ui_label">Calculate Statistics</span> to compute per-file summary statistics for any channel, and export the table to TSV for use elsewhere.</li>
             <li>Click <span class="ui_label">Save session</span> before closing the tab so you (or a collaborator) can resume this same analysis later.</li>
           </ol>
@@ -351,7 +355,7 @@
               <tr><td>Parameter labels</td><td>Channels shown in PhaseFinder are extracted from each parameter's <code>$PnS</code> label when present, falling back to <code>$PnN</code>, and ultimately to a generated <code>P&lt;n&gt;</code> label when needed.</td></tr>
               <tr><td>No backend</td><td>Files are read entirely by browser APIs; nothing is uploaded anywhere.</td></tr>
               <tr><td>State lives in memory</td><td>Reloading the page clears everything that isn't saved to a session file first.</td></tr>
-              <tr><td>Network dependency</td><td>The plotting library (D3) and both DJF curve-fitting libraries load from a CDN when the page opens; without network access, cell-cycle modeling is unavailable but everything else still works.</td></tr>
+              <tr><td>Network dependency</td><td>None at runtime: D3 is vendored locally, and the DJF numeric implementation is repository-native.</td></tr>
               <tr><td>Folder re-linking on session load</td><td>Chromium browsers remember the FCS folder between sessions; Firefox and Safari will ask you to pick it again each time.</td></tr>
             </tbody>
           </table>

@@ -1,9 +1,8 @@
 // Plot axis-range modal, plot-control listeners, and plot inspection API. This
 // module opens and applies the manual x/y range modal, including reset behavior
 // and draggable modal positioning. init_plot_listeners() (called once by the
-// entry bootstrap) wires color grouping, display mode, bin count, correction
-// toggles, threshold toggles, table selection changes, and resize observers to
-// plot redraws. It keeps axis override state in the shared plotting data module
+// entry bootstrap) wires color grouping, display mode, bin count, table selection
+// changes, and resize observers to plot redraws. It keeps axis override state
 // and calls the renderer when controls change. It also exports plot_api, which
 // main.js surfaces on window.PhaseFinder.plot so other modules or tests can
 // inspect current and cached series or histogram summaries.
@@ -20,12 +19,8 @@ import {
   plot_color_by_select,
   plot_display_mode_select,
   plot_bins_input,
-  plot_threshold_toggle,
-  plot_debris_correction_toggle,
-  plot_doublet_correction_toggle,
   plot_channels,
   plot_area,
-  set_peak_threshold,
   last_series,
   series_by_name,
   histograms_by_name,
@@ -119,9 +114,9 @@ export function apply_axis_range_modal() {
 /*
 
 Purpose:
-	Wires the plot-control change listeners, correction toggles, selection-change
-	redraw, axis-range modal buttons and drag-to-move, and window/ResizeObserver
-	redraws. Called once by the entry bootstrap.
+	Wires the plot-control change listeners, selection-change redraw,
+	axis-range modal buttons and drag-to-move, and window/ResizeObserver redraws.
+	Called once by the entry bootstrap.
 
 Input:
 	(none)
@@ -131,17 +126,8 @@ Output:
 
 */
 export function init_plot_listeners() {
-  [plot_color_by_select, plot_display_mode_select, plot_bins_input, plot_threshold_toggle].forEach((el) => {
+  [plot_color_by_select, plot_display_mode_select, plot_bins_input].forEach((el) => {
     if (el) el.addEventListener("change", render_density_plot);
-  });
-
-  [plot_debris_correction_toggle, plot_doublet_correction_toggle].forEach((el) => {
-    if (el) {
-      el.addEventListener("change", () => {
-        set_peak_threshold(null);
-        render_density_plot();
-      });
-    }
   });
 
   // Live-update when the table checkbox selection changes (uncheck removes a

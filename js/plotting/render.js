@@ -1,11 +1,9 @@
 // Main D3 render pass for the plot panel. This module gathers checked rows with
-// loaded channel data, applies optional DJF preprocessing, builds histogram
+// loaded channel data, reads staged DJF masks/fits, builds histogram
 // points, computes axis domains, and draws the SVG. It supports curve-only,
 // curve-plus-bins, and bins-only sample histogram display modes. When modeling
-// is active (or a debris/doublet correction is enabled) it uses the lazily loaded
-// DJF numeric stack; the histogram always draws immediately and DJF is fetched in
-// the background, triggering a redraw once ready. It also draws legends, threshold
-// controls, axis hit areas, plot titles, readouts, and fit-result tables.
+// pipeline state. It also draws legends, axis hit areas, plot titles, readouts,
+// and fit-result tables.
 
 import * as d3 from "d3";
 import {
@@ -15,7 +13,6 @@ import {
   plot_color_by_select,
   plot_bin_count,
   plot_display_mode,
-  correction_state,
   shared_range_for_values,
   axis_opts,
   build_color_assigner,
@@ -27,14 +24,9 @@ import {
   series_by_name,
   histograms_by_name,
   axis_range_override,
-  modeling_started,
-  shown_fits,
-  peak_threshold,
-  set_peak_threshold,
   set_last_auto_x_range,
   set_last_auto_y_max,
   strip_fcs,
-  plot_threshold_toggle,
   PLOT_MARGIN,
   PLOT_FALLBACK_WIDTH,
   PLOT_FALLBACK_HEIGHT,
@@ -55,6 +47,8 @@ import {
   DJF_S_COLOR,
   DJF_G2_COLOR,
   DJF_TOTAL_COLOR,
+  DJF_DEBRIS_COLOR,
+  DJF_AGG_COLOR,
   DJF_FILL_OPACITY,
   DJF_COMPONENT_LINE_WIDTH,
   DJF_TOTAL_LINE_WIDTH,
@@ -66,37 +60,131 @@ import {
   LEGEND_FONT_SIZE,
   LEGEND_SWATCH_Y,
   LEGEND_TEXT_Y,
-  LEGEND_CHECKBOX_SIZE,
-  THRESHOLD_COLOR,
-  THRESHOLD_LINE_WIDTH,
-  THRESHOLD_FILL_OPACITY,
-  THRESHOLD_HANDLE_WIDTH,
-  THRESHOLD_LABEL_FONT_SIZE,
-  THRESHOLD_LABEL_COLOR,
-  THRESHOLD_LABEL_X_OFFSET,
-  THRESHOLD_LABEL_Y_OFFSET,
-  THRESHOLD_LABEL_TOP_PAD,
 } from "./data.js";
 import { get_parsed_files } from "../state/files.js";
-import { load_djf, get_djf } from "./djf_loader.js";
-import { update_plot_title, toggle_fit, render_fit_results_table } from "./modeling.js";
+import { update_plot_title, render_fit_results_table } from "./modeling.js";
 import { open_axis_range_modal } from "./axis_modal.js";
+import { get_state as get_pipeline_state } from "../analysis/djf/pipeline_state.js";
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected. Only this render pass reads or writes them.
 let last_range = null;
 let last_y_max = null;
 
+function active_pipeline_state(row) {
+  const state = get_pipeline_state(row.name);
+  return state && state.channelKey === row.data?.channel_key ? state : null;
+}
+
+function compact_final_values(row) {
+  const values = row.data.channels?.DNA_A || row.data.dna_a || [];
+  const mask = row.data.masks?.final;
+  if (!mask || mask.length !== values.length) return values;
+  const retained = [];
+  for (let index = 0; index < values.length; index += 1) {
+    if (mask[index] && Number.isFinite(values[index])) retained.push(values[index]);
+  }
+  return retained;
+}
+
+function stage_histogram_summary(histogram) {
+  const binEdges = new Array(histogram.binCount + 1);
+  for (let index = 0; index <= histogram.binCount; index += 1) {
+    binEdges[index] = histogram.min + index * histogram.binWidth;
+  }
+  return {
+    binEdges,
+    binCenters: [...histogram.x],
+    counts: [...histogram.y],
+    binWidth: histogram.binWidth,
+    min: histogram.min,
+    max: histogram.max,
+  };
+}
+
+function component_moments(x, values) {
+  if (!values || values.length !== x.length) return { total: 0, mean: NaN, stdev: NaN };
+  const total = values.reduce((sum, value) => sum + Math.max(0, value), 0);
+  if (!(total > 0)) return { total: 0, mean: NaN, stdev: NaN };
+  let mean = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    mean += x[index] * Math.max(0, values[index]);
+  }
+  mean /= total;
+  let variance = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    variance += Math.max(0, values[index]) * (x[index] - mean) ** 2;
+  }
+  return { total, mean, stdev: Math.sqrt(variance / total) };
+}
+
+function pipeline_fit_for_series(series_entry) {
+  const state = active_pipeline_state(series_entry.row);
+  const fit = state && (state.extendedFit || state.baseFit);
+  if (!fit?.curves?.x || !fit.curves.fitted) return null;
+
+  const x = fit.curves.x;
+  const point_series = (values) => x.map((position, index) => ({
+    x: position,
+    y: Number(values?.[index]) || 0,
+  }));
+  const moments = {
+    g1: component_moments(x, fit.curves.g1),
+    s: component_moments(x, fit.curves.s),
+    g2: component_moments(x, fit.curves.g2),
+  };
+  const biologicalTotal = moments.g1.total + moments.s.total + moments.g2.total;
+  const reportedFractions = state.report?.fractions?.biologicalSinglets;
+  const reportFractionByKey = {
+    g1: reportedFractions?.oneC,
+    s: reportedFractions?.sPhase,
+    g2: reportedFractions?.twoC,
+  };
+  const phase = (key, label) => ({
+    phase: label,
+    percent: Number.isFinite(reportFractionByKey[key])
+      ? 100 * reportFractionByKey[key]
+      : biologicalTotal > 0 ? (100 * moments[key].total) / biologicalTotal : 0,
+    mean: moments[key].mean,
+    stdev: moments[key].stdev,
+  });
+  const phase_stats = {
+    g1: phase("g1", "G1 / 1C"),
+    s: phase("s", "S"),
+    g2: phase("g2", "G2/M / 2C"),
+  };
+
+  return {
+    row: series_entry.row,
+    name: series_entry.name,
+    total: point_series(fit.curves.fitted),
+    g1: point_series(fit.curves.g1),
+    s: point_series(fit.curves.s),
+    g2: point_series(fit.curves.g2),
+    debris: fit.selectedModel?.includes("debris") && fit.curves.debris
+      ? point_series(fit.curves.debris)
+      : null,
+    aggregate: fit.selectedModel?.includes("aggregate") && fit.curves.aggregate
+      ? point_series(fit.curves.aggregate)
+      : null,
+    fractions: {
+      g1: phase_stats.g1.percent,
+      s: phase_stats.s.percent,
+      g2: phase_stats.g2.percent,
+    },
+    phase_stats,
+    pipelineState: state,
+  };
+}
+
 /*
 
 Purpose:
 	The main render. Draws the overlaid event histograms for the currently
 	checked samples with D3, applying the controls (color-by, axis scale, bins).
-	When a sample is chosen under Model (DJF) it overlays the fitted curve and
-	filled G1/S/G2 components, a draggable peak-threshold line, and a fraction
-	readout. Also draws the legend and updates the title. DJF is loaded lazily;
-	the histogram draws immediately and the fit/correction pass redraws once the
-	numeric stack has loaded.
+	When staged DJF state exists it overlays the stored fitted curve and filled
+	G1/S/G2/contamination components. It also draws the legend, report table, and
+	updates the title; numeric work itself is run only by the manual stage UI.
 
 Input:
 	(none)
@@ -111,7 +199,8 @@ export function render_density_plot() {
   const rows = plottable_rows();
 
   plot_area.innerHTML = "";
-  if (djf_readout) djf_readout.textContent = "";
+  const has_pipeline_state = rows.some((row) => active_pipeline_state(row)?.lastStageRun != null);
+  if (djf_readout && !has_pipeline_state) djf_readout.textContent = "";
 
   const is_log = false;
   const color_by = plot_color_by_select ? plot_color_by_select.value : "file";
@@ -119,29 +208,39 @@ export function render_density_plot() {
   const display_mode = typeof plot_display_mode === "function" ? plot_display_mode() : "curve";
   const show_bins = display_mode === "bins" || display_mode === "curve_bins";
   const show_curves = display_mode !== "bins";
-  const corrections = correction_state();
 
-  // The DJF numeric stack is only needed for corrections and fitting. Load it on
-  // demand the first time either is requested; draw raw meanwhile and redraw when
-  // the module resolves.
-  const djf = get_djf();
-  const needs_djf = modeling_started || corrections.remove_debris || corrections.remove_doublets;
-  if (needs_djf && !djf) {
-    load_djf().then(() => render_density_plot()).catch(() => {
-      if (djf_readout) djf_readout.textContent = "Cell-cycle modeling failed to load.";
-    });
-  }
-
-  const prepared_rows = rows.map((row) => ({
-    row,
-    prepared: djf ? djf.prepare_row(row, corrections) : { values: row.data.dna_a, stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length } },
-  }));
+  const prepare_row = (row) => {
+    const pipelineState = active_pipeline_state(row);
+    if (pipelineState?.histogram) {
+      const values = compact_final_values(row);
+      return {
+        values,
+        stats: { raw: row.data.dna_a.length, plotted: values.length },
+        pipelineState,
+        stageHistogram: pipelineState.histogram,
+      };
+    }
+    const prepared = {
+      values: row.data.dna_a,
+      stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length },
+    };
+    return { ...prepared, pipelineState, stageHistogram: null };
+  };
+  const prepared_rows = rows.map((row) => ({ row, prepared: prepare_row(row) }));
 
   // With samples, compute the range from the plotted events and remember it;
   // with none, keep the axes by reusing the last range.
   let range;
   if (prepared_rows.length) {
-    range = shared_range_for_values(prepared_rows.map((entry) => entry.prepared.values), is_log);
+    const staged_histograms = prepared_rows
+      .map((entry) => entry.prepared.stageHistogram)
+      .filter(Boolean);
+    range = staged_histograms.length
+      ? [
+          d3.min(staged_histograms, (histogram) => histogram.min),
+          d3.max(staged_histograms, (histogram) => histogram.max),
+        ]
+      : shared_range_for_values(prepared_rows.map((entry) => entry.prepared.values), is_log);
     last_range = range;
   } else if (last_range && (!is_log || last_range[0] > 0)) {
     range = is_log ? last_range : [0, Math.max(last_range[1], 1)];
@@ -153,8 +252,13 @@ export function render_density_plot() {
   const assign = build_color_assigner(rows, color_by);
   const series = prepared_rows.map(({ row, prepared }, index) => {
     const { color, group } = assign(row, index);
-    const points = histogram_curve(prepared.values, opts);
-    return { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points, histogram: build_histogram_summary(points, opts) };
+    const points = prepared.stageHistogram
+      ? prepared.stageHistogram.x.map((x, bin) => ({ x, y: prepared.stageHistogram.y[bin] }))
+      : histogram_curve(prepared.values, opts);
+    const histogram = prepared.stageHistogram
+      ? stage_histogram_summary(prepared.stageHistogram)
+      : build_histogram_summary(points, opts);
+    return { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points, histogram, pipelineState: prepared.pipelineState };
   });
   set_last_series(series);
   series.forEach((entry) => {
@@ -163,67 +267,29 @@ export function render_density_plot() {
   });
 
   // Also compute histograms for loaded-but-unchecked files (not drawn, so no
-  // color/group), using the same bins/range/corrections as the current plot,
+  // color/group), using the same bins/range as the current plot,
   // so window.PhaseFinder.plot.get_histogram() works for every loaded sample
   // regardless of its table checkbox state.
   const plotted_names = new Set(series.map((entry) => entry.name));
   loaded_rows_for_active_channel(get_parsed_files())
     .filter((row) => !plotted_names.has(row.name))
     .forEach((row) => {
-      const prepared = djf ? djf.prepare_row(row, corrections) : { values: row.data.dna_a, stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length } };
-      const points = histogram_curve(prepared.values, opts);
-      const entry = { row, name: row.name, color: null, group: null, values: prepared.values, stats: prepared.stats, points, histogram: build_histogram_summary(points, opts) };
+      const prepared = prepare_row(row);
+      const points = prepared.stageHistogram
+        ? prepared.stageHistogram.x.map((x, bin) => ({ x, y: prepared.stageHistogram.y[bin] }))
+        : histogram_curve(prepared.values, opts);
+      const histogram = prepared.stageHistogram
+        ? stage_histogram_summary(prepared.stageHistogram)
+        : build_histogram_summary(points, opts);
+      const entry = { row, name: row.name, color: null, group: null, values: prepared.values, stats: prepared.stats, points, histogram, pipelineState: prepared.pipelineState };
       series_by_name.set(entry.name, entry);
       histograms_by_name.set(entry.name, entry.histogram);
     });
 
   update_plot_title(rows, series.reduce((sum, item) => sum + item.values.length, 0));
 
-  // Dean-Jett-Fox: one independent fit per shown sample (linear axis only). The
-  // peak-detection threshold is a single draggable line shared by all fits;
-  // default 5% of the tallest shown bin.
-  const fits = [];
-  let threshold_value = null;
-  const correction_text = djf ? djf.correction_summary(prepared_rows, corrections) : "";
-  if (modeling_started && rows.length) {
-    if (is_log) {
-      if (djf_readout) djf_readout.textContent = "DJF requires a linear X-axis.";
-    } else if (!djf) {
-      if (djf_readout) djf_readout.textContent = "Loading cell-cycle modeling…";
-    } else {
-      const shown_series = series.filter((s) => shown_fits.has(s.name));
-      if (shown_series.length) {
-        const shown_max = d3.max(shown_series, (s) => d3.max(s.points, (pt) => pt.y)) || 1;
-        if (peak_threshold == null) set_peak_threshold(0.05 * shown_max);
-        threshold_value = peak_threshold;
-        const run_g1 = djf.estimate_run_g1(series, threshold_value);
-        for (const s of shown_series) {
-          const params = djf.fit(s.points, range, threshold_value, run_g1);
-          if (!params) continue;
-          const comps = s.points.map((pt) => ({ x: pt.x, c: djf.components(pt.x, params) }));
-          const phase_stats = djf.phase_stats(s.points, params);
-          fits.push({
-            row: s.row,
-            name: s.name,
-            total: comps.map((o) => ({ x: o.x, y: o.c.g1 + o.c.s + o.c.g2 })),
-            g1: comps.map((o) => ({ x: o.x, y: o.c.g1 })),
-            s: comps.map((o) => ({ x: o.x, y: o.c.s })),
-            g2: comps.map((o) => ({ x: o.x, y: o.c.g2 })),
-            fractions: { g1: phase_stats.g1.percent, s: phase_stats.s.percent, g2: phase_stats.g2.percent },
-            phase_stats,
-          });
-        }
-      }
-      if (djf_readout) {
-        const fit_text = fits
-          .map((fit) => `${strip_fcs(fit.name)}: G1 ${fit.fractions.g1.toFixed(1)}% · S ${fit.fractions.s.toFixed(1)}% · G2 ${fit.fractions.g2.toFixed(1)}%`)
-          .join("\n");
-        djf_readout.textContent = [fit_text, correction_text].filter(Boolean).join("\n");
-      }
-    }
-  } else if (djf_readout && correction_text) {
-    djf_readout.textContent = correction_text;
-  }
+  // Dean-Jett-Fox: draw whichever staged fit currently exists per sample.
+  const fits = series.map(pipeline_fit_for_series).filter(Boolean);
 
   const width = plot_area.clientWidth || PLOT_FALLBACK_WIDTH;
   const height = plot_area.clientHeight || PLOT_FALLBACK_HEIGHT;
@@ -398,58 +464,13 @@ export function render_density_plot() {
     component(fit.g1, DJF_G1_COLOR);
     component(fit.s, DJF_S_COLOR);
     component(fit.g2, DJF_G2_COLOR);
+    if (fit.debris) component(fit.debris, DJF_DEBRIS_COLOR);
+    if (fit.aggregate) component(fit.aggregate, DJF_AGG_COLOR);
     overlay.append("path").attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", DJF_TOTAL_LINE_WIDTH).attr("d", line(fit.total));
   });
 
-  // Draggable peak-detection threshold (only when the "Peak threshold" box is
-  // checked): a grey line with a light fill down to 0. Drag to set the
-  // event-count cutoff; on release, peaks + DJF recompute.
-  const show_threshold = threshold_value != null && plot_threshold_toggle && plot_threshold_toggle.checked;
-  if (show_threshold) {
-    const x0 = margin.left;
-    const x1 = width - margin.right;
-    const base_y = height - margin.bottom;
-    const group = svg.append("g");
-
-    const position_at = (y_pix) => {
-      group.select(".threshold_fill").attr("y", y_pix).attr("height", Math.max(0, base_y - y_pix));
-      group.selectAll(".threshold_line").attr("y1", y_pix).attr("y2", y_pix);
-      group.select(".threshold_label").attr("y", Math.max(margin.top + THRESHOLD_LABEL_TOP_PAD, y_pix - THRESHOLD_LABEL_Y_OFFSET));
-    };
-
-    group.append("rect").attr("class", "threshold_fill")
-      .attr("x", x0).attr("width", x1 - x0)
-      .attr("fill", THRESHOLD_COLOR).attr("opacity", THRESHOLD_FILL_OPACITY).attr("pointer-events", "none");
-    group.append("line").attr("class", "threshold_line")
-      .attr("x1", x0).attr("x2", x1)
-      .attr("stroke", THRESHOLD_COLOR).attr("stroke-width", THRESHOLD_LINE_WIDTH).attr("pointer-events", "none");
-    group.append("text").attr("class", "threshold_label")
-      .attr("x", x0 + THRESHOLD_LABEL_X_OFFSET).attr("font-size", THRESHOLD_LABEL_FONT_SIZE).attr("fill", THRESHOLD_LABEL_COLOR)
-      .text(`peak threshold: ${Math.round(threshold_value).toLocaleString()} events`);
-    const handle = group.append("line").attr("class", "threshold_line")
-      .attr("x1", x0).attr("x2", x1)
-      .attr("stroke", "transparent").attr("stroke-width", THRESHOLD_HANDLE_WIDTH).attr("cursor", "ns-resize");
-
-    position_at(y_scale(Math.min(threshold_value, y_max)));
-
-    const clamp_value = (y_pix) => Math.max(0, Math.min(y_max, y_scale.invert(y_pix)));
-    handle.call(
-      d3.drag()
-        .on("drag", (event) => {
-          const value = clamp_value(event.y);
-          position_at(y_scale(value));
-          group.select(".threshold_label").text(`peak threshold: ${Math.round(value).toLocaleString()} events`);
-        })
-        .on("end", (event) => {
-          set_peak_threshold(clamp_value(event.y));
-          render_density_plot();
-        }),
-    );
-  }
-
-  // Legend: one row per sample (each gets a fit checkbox once modeling has
-  // started), then the fitted-component rows for every shown fit. With more than
-  // one fit shown, component labels are prefixed with the sample name.
+  // Legend: one row per sample, then the fitted-component rows for every staged
+  // fit. With more than one fit shown, component labels include the sample name.
   const legend_items = series.map((s) => ({ type: "sample", name: s.name, color: s.color }));
   const multiple_fits = fits.length > 1;
   fits.forEach((fit) => {
@@ -460,23 +481,17 @@ export function render_density_plot() {
       { type: "component", label: `${prefix}S`, color: DJF_S_COLOR },
       { type: "component", label: `${prefix}G2`, color: DJF_G2_COLOR },
     );
+    if (fit.debris) {
+      legend_items.push({ type: "component", label: `${prefix}Debris`, color: DJF_DEBRIS_COLOR });
+    }
+    if (fit.aggregate) {
+      legend_items.push({ type: "component", label: `${prefix}Aggregate`, color: DJF_AGG_COLOR });
+    }
   });
 
-  const checkbox_col = modeling_started ? LEGEND_CHECKBOX_SIZE + 6 : 0;
+  const checkbox_col = 0;
   const legend = svg.append("g").attr("transform", `translate(${width - margin.right + LEGEND_OFFSET_X},${margin.top})`);
   const items = legend.selectAll("g").data(legend_items).join("g").attr("transform", (d, i) => `translate(0,${i * LEGEND_ROW_HEIGHT})`);
-
-  if (modeling_started) {
-    // Clickable checkbox on each sample row to show/hide that sample's fit.
-    const sample_rows = items.filter((d) => d.type === "sample").attr("cursor", "pointer").on("click", (event, d) => toggle_fit(d.name));
-    sample_rows.append("rect")
-      .attr("x", 0).attr("y", LEGEND_SWATCH_Y - LEGEND_CHECKBOX_SIZE / 2)
-      .attr("width", LEGEND_CHECKBOX_SIZE).attr("height", LEGEND_CHECKBOX_SIZE).attr("rx", 2)
-      .attr("fill", "#fff").attr("stroke", THRESHOLD_COLOR);
-    sample_rows.filter((d) => shown_fits.has(d.name)).append("path")
-      .attr("d", `M2,${LEGEND_SWATCH_Y} l2.5,2.5 l5,-5`)
-      .attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", 1.6).attr("pointer-events", "none");
-  }
 
   items.append("line")
     .attr("x1", checkbox_col).attr("x2", checkbox_col + LEGEND_SWATCH_WIDTH)

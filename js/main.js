@@ -4,7 +4,7 @@
 // top-level DOM event wiring (file selection, drag/drop, channel changes, table
 // edits, metadata workflows, sidebar toggle, hard restart), the session table
 // bridge (get_session_table_state / apply_session_state), and the single
-// documented debug hook window.PhaseFinder = { app, djf, plot }. Shared file/frame
+// documented debug hook window.PhaseFinder = { app, pipeline, plot }. Shared file/frame
 // state lives in state/app_state.js; this module reads it through accessors.
 
 import {
@@ -74,8 +74,9 @@ import {
 } from "./io/metadata_io.js";
 import { get_session_table_state, apply_session_state } from "./session/table_session.js";
 import { init_plot_listeners, plot_api } from "./plotting/axis_modal.js";
-import { get_djf } from "./plotting/djf_loader.js";
 import { init_analysis_listeners } from "./analysis/start.js";
+import { init_pipeline_ui } from "./analysis/djf/pipeline_ui.js";
+import { get_pipeline } from "./analysis/djf/pipeline_loader.js";
 import { init_stats } from "./analysis/stats.js";
 import { init_panel_resize } from "./ui/panel_resize.js";
 import { init_session } from "./session/core.js";
@@ -258,15 +259,16 @@ init_tooltips();            // ui/hover_text.js tooltip runtime
 init_app_bootstrap();       // main.js event wiring + initial render
 init_plot_listeners();      // plotting/axis_modal.js listener block
 init_analysis_listeners();  // analysis/start.js listener block
+init_pipeline_ui();         // analysis/djf/pipeline_ui.js manual stage controls
 init_stats();               // analysis/stats.js modal + auto-compute
 init_panel_resize();        // ui/panel_resize.js drag handlers
 init_session();             // session/core.js wiring + deferred try_autoload
 
-// The single documented debug/automation/test hook. `djf` is a getter so it
-// reflects the lazily loaded DJF module: it is null until the first correction
-// or modeling action loads analysis/djf.js, then returns the numeric API.
+// The single documented debug/automation/test hook. The staged pipeline is
+// lazy-loaded by its manual controls; `djf` remains a compatibility alias.
 window.PhaseFinder = {
   app: app_api,
-  get djf() { return get_djf(); },
+  get djf() { return get_pipeline(); },
+  get pipeline() { return get_pipeline(); },
   plot: plot_api,
 };

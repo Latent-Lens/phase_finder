@@ -1,5 +1,4 @@
-/* Plot panel: panel layout overrides, the controls bar, the DJF fractions
-   readout, and the peak-threshold checkbox with its info icon. */
+/* Plot panel: panel layout overrides, controls, staged DJF readout and tables. */
 
 /* display:flex on .parsed_files_panel would otherwise defeat [hidden]. */
 .plot_panel[hidden] {
@@ -72,6 +71,96 @@
   line-height: 1.35;
   white-space: pre-line;
   color: var(--text);
+}
+
+.djf_pipeline_controls {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.djf_pipeline_label {
+  flex: 0 0 auto;
+  padding-top: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.djf_pipeline_buttons {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.djf_pipeline_buttons button {
+  width: auto;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-color: var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.djf_pipeline_buttons button:hover:not(:disabled) {
+  border-color: var(--logo_teal);
+  background: var(--bg);
+}
+
+.djf_pipeline_buttons button.djf_stage_running {
+  border-color: var(--logo_teal);
+  color: var(--logo_teal);
+}
+
+.djf_pipeline_buttons button.djf_stage_complete {
+  border-color: var(--logo_teal);
+  background: var(--bg);
+}
+
+.djf_pipeline_buttons .djf_run_all {
+  border-color: var(--logo_teal);
+  background: var(--logo_teal);
+  color: var(--panel);
+  font-weight: 700;
+}
+
+.djf_scatter_modal .stats_modal_card {
+  width: min(880px, 100%);
+}
+
+.djf_scatter_body {
+  min-height: 420px;
+}
+
+.djf_scatter_plot {
+  width: 100%;
+  min-height: 360px;
+}
+
+.djf_scatter_plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.djf_scatter_caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .djf_pipeline_controls {
+    flex-direction: column;
+    gap: 6px;
+  }
 }
 
 .plot_check_row {
@@ -229,6 +318,23 @@
 .djf_fit_table .numeric_cell {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.djf_fit_contamination_row td {
+  color: var(--muted);
+}
+
+.djf_fit_diagnostics_row td {
+  border-top: 1px solid var(--border);
+  font-weight: 650;
+  white-space: normal;
+}
+
+.djf_fit_warnings_row td {
+  max-width: 260px;
+  color: var(--muted);
+  line-height: 1.35;
+  white-space: normal;
 }
 
 /* Axis min/max modal (double-click an axis to open) */

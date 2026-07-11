@@ -43,14 +43,14 @@ pipeline in this repository.
 │   ├── responsive.css   # @media overrides (loaded last)
 │   └── help.css         # standalone stylesheet for help.html
 ├── js/
-│   ├── vendor/          # vendored ESM bundles (d3, ml-levenberg-marquardt, ml-gsd)
+│   ├── vendor/          # vendored D3 ESM bundle
 │   ├── state/           # app_state (file_map + frame accessors), file-selection queries
 │   ├── util/            # leaf string helpers (HTML escaping, filename transforms)
-│   ├── analysis/        # DJF model (lazy-loaded), plot/model orchestration, summary stats
+│   ├── analysis/        # staged DJF pipeline (lazy-loaded), orchestration, summary stats
 │   ├── data_structs/    # frame, table state, metadata columns, channel cache
 │   ├── fcs/             # FCS parser, metadata reader, channel cleanup, module worker
 │   ├── io/              # FCS/metadata loading, parameter map, table import/export
-│   ├── plotting/        # D3 histogram rendering, axis modal, modeling UI, DJF loader
+│   ├── plotting/        # D3 histogram rendering, axis modal, and DJF report UI
 │   ├── session/         # TOML save/load, OPFS filesystem + file cache, reconnect flow
 │   ├── ui/              # DOM refs, metadata table, wizard, panels, status/channel controls
 │   └── main.js          # ES-module entry: init_*() bootstrap + window.PhaseFinder hook
@@ -77,15 +77,13 @@ diagrams, see [`docs/code-flow-diagrams.md`](docs/code-flow-diagrams.md) and
 
 ## How The App Works
 
-`index.html` defines the full application shell. It declares an import map that
-points D3 and the DJF fit's `ml-levenberg-marquardt` and `ml-gsd` libraries at
-locally vendored ESM bundles in `js/vendor/` (no runtime CDN dependency), loads
-the split stylesheets, lays out the header, file drop zone, channel selector,
-metadata table, plot panel, progress overlay, and bottom status bar, then loads
-the app as a single ES module entry (`js/main.js`). The heavy DJF numeric stack
-(`analysis/djf.js` plus the two `ml-*` libraries) is lazy-loaded via dynamic
-`import()` on the first correction or modeling action, so it stays off the
-initial load path.
+`index.html` defines the full application shell. It maps D3 to the locally
+vendored ESM bundle in `js/vendor/` (no runtime CDN dependency), loads the split
+stylesheets, lays out the header, file drop zone, channel selector, metadata
+table, plot panel, staged DJF controls, progress overlay, and bottom status bar,
+then loads the app through the single ES-module entry (`js/main.js`). The native
+DJF numeric modules under `js/analysis/djf/` are lazy-loaded on the first pipeline
+action, so they stay off the initial load path.
 
 Load order is no longer hand-maintained: it is the ES-module dependency graph
 plus one ordered bootstrap. `js/main.js` (the module entry) imports every layer,
@@ -100,25 +98,23 @@ runtime:
 3. `js/state/*`, `js/data_structs/*`, `js/io/metadata_io.js`, and `js/main.js`
    own the file-loading/table state (accessed through imports, not a global).
 4. `js/plotting/render.js` defines the plot renderer (`render_density_plot`) and
-   redraws on selection/control changes; the Dean-Jett-Fox model in
-   `js/analysis/djf.js` is dynamically imported on demand via
-   `js/plotting/djf_loader.js`.
+   redraws on selection/control changes. It reads masks, histograms, fitted
+   curves, and reports from per-sample pipeline state.
 5. `js/io/channel_loading.js` imports the file getters and `FCSParser` to load
-   selected event data (via the module worker), then `js/plotting/modeling.js`'s
-   `init_plot` draws the plot.
+   index-aligned DNA A/H/W, FSC-A, SSC-A, and Time channels (via the module
+   worker), then `js/plotting/modeling.js`'s `init_plot` draws the plot.
+6. `js/analysis/djf/pipeline_loader.js` dynamically imports the Stage 0–8
+   orchestrator on the first stage or Run-all action.
 
-The third-party libraries are loaded from:
+The only runtime third-party library is:
 
 ```text
 https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js     # plotting
-https://esm.sh/ml-levenberg-marquardt@4              # DJF curve fitting
-https://esm.sh/ml-gsd@13                             # DJF peak detection
 ```
 
-The `ml-*` libraries are imported dynamically and attached to `window`
-(`window.levenbergMarquardt`, `window.gsd`); a load failure is logged and only
-disables DJF modeling, not the rest of the app. Plotting and modeling therefore
-require network access unless these libraries are vendored locally.
+D3 is vendored locally and resolved through the import map. Peak detection and
+Levenberg–Marquardt fitting are implemented by the repository's own ES modules,
+so the complete application works without network access.
 
 ## File Responsibilities
 
@@ -126,7 +122,7 @@ require network access unless these libraries are vendored locally.
 
 The HTML entry point. It contains:
 
-- A header with the PhaseFinder logo and the `Start Analysis` button.
+- A header with the PhaseFinder logo and application actions.
 - A sidebar with the FCS file drop zone and DNA-content channel selector.
 - A workspace with two panels:
   - `plotPanel`, hidden until analysis starts, containing the plot controls bar
@@ -134,7 +130,7 @@ The HTML entry point. It contains:
   - `metadataPanel`, the loaded-sample table (can collapse).
 - A progress overlay used during metadata and selected-data loading.
 - A fixed status bar for long-running operation feedback.
-- An import map mapping `d3`/`ml-*` to the vendored ESM bundles, and a single
+- An import map mapping `d3` to its vendored ESM bundle, and a single
   `<script type="module" src="./js/main.js">` entry.
 
 ### `css/*` (split stylesheets)
@@ -191,14 +187,14 @@ Important responsibilities:
 - Provides per-column multi-select filters and sortable headers.
 - Populates the DNA-content channel selector from all loaded FCS parameter
   labels.
-- Enables `Start Analysis` only when at least one row is selected and a DNA area
-  channel is chosen.
+- Enables channel plotting only when at least one row is selected and a DNA area
+  channel is chosen; enables the pipeline shortcut after a channel is plotted.
 - Dispatches a `fcs-selection-change` event when the checked set changes so the
   plot can add/remove curves live without re-running analysis.
 - Internal code shares state through direct module imports (accessors); the only
-  global is the single debug/automation hook `window.PhaseFinder = { app, djf,
-  plot }` assigned at the end of the bootstrap (`app` covers the former
-  `PhaseFinderApp` getters + progress/status helpers).
+  global is the debug/automation hook `window.PhaseFinder = { app, pipeline,
+  plot }` assigned at the end of the bootstrap. `pipeline` is a lazy getter (and
+  `djf` remains as a compatibility alias once loaded).
 
 Metadata table columns: Filename (read-only), Strain, Replicate,
 Nocodazole Arrest, Timepoint (editable + filterable).
@@ -206,39 +202,28 @@ Nocodazole Arrest, Timepoint (editable + filterable).
 ### `js/plotting/`
 
 The plot renderer and cell-cycle display, drawn with D3 into `#plot_area`. Split
-across `data.js` (state, data-prep, and histogram binning), `modeling.js`
-(fit-results table and modeling-state controls), `render.js` (the main SVG
-render pass), `axis_modal.js` (the axis-range modal, plot-control listeners, and
-the `window.PhaseFinder.plot` inspection API), and `djf_loader.js` (the memoized
-dynamic-import loader for the DJF stack). The Dean-Jett-Fox model itself is in
-`js/analysis/djf.js`, imported statically from `djf.js` alongside the two `ml-*`
-libraries; because `djf.js` is only pulled in on demand (first correction or
-modeling action), the whole numeric stack stays off the initial load path and is
-surfaced on `window.PhaseFinder.djf` once loaded.
+across `data.js` (state, data preparation, and histogram binning), `modeling.js`
+(fit/report table), `render.js` (the main SVG render pass), and `axis_modal.js`
+(axis-range modal, plot-control listeners, and the `window.PhaseFinder.plot`
+inspection API). Rendering reads the latest available checkpoint from the
+per-sample state owned by `js/analysis/djf/pipeline_state.js`.
 
 Important responsibilities:
 
 - Builds per-sample **event histograms** (per-bin event counts) drawn as smooth
   curves, bins, or curve-plus-bins; the y-axis is "Number of Events".
-- Honors the plot controls bar: **Color by** (file / strain), **Display**,
-  **Bins**, correction toggles, threshold toggle, and the **Model (DJF)** sample
-  picker. The x-axis is always linear and starts at 0.
+- Honors the plot controls bar: **Color by** (file / strain), **Display**, and
+  **Bins**. The x-axis is linear.
 - Keeps the plot in sync with the table: it renders the currently checked +
   loaded samples and redraws on `fcs-selection-change` (unchecking a row removes
   its curve without discarding its loaded data; re-checking restores it).
 - Maintains a dynamic plot title: `Histogram of Events: n Samples, m Events`.
-- **Dean–Jett–Fox modeling** (Full Fox broadening): seeds the fit by detecting
-  histogram peaks with `ml-gsd`, identifies the G1/G2 peak pair at the ~2× DNA
-  ratio, estimates a run-wide G1 (2N) position shared across samples, fits with
-  `ml-levenberg-marquardt` (M1 pinned near the run G1, G2 mean fixed at 2×M1),
-  and overlays the fitted total plus filled G1/S/G2 components with a
-  `%G1 · %S · %G2` readout. Visible fits also populate a grouped results table:
-  each sample has a metadata title row, followed by G1/S/G2 rows with phase
-  percentages, fitted means, and fitted standard deviations. DJF is linear-axis
-  only.
-- A **draggable peak-detection threshold** (a grey line with a fill below it),
-  shown only when the "Peak threshold" checkbox is ticked; dragging it re-detects
-  peaks and refits on release.
+- **Dean–Jett–Fox modeling** is a manual nine-stage pipeline: structural QC,
+  optional Time/scatter/singlet gates, masked histogram construction, peak
+  detection, constrained base fit, optional debris/aggregate extension, and a
+  normalized report. Stage 6/7 overlays the fitted total and filled G1/S/G2
+  components (plus selected contamination terms); Stage 8 populates the grouped
+  report table and diagnostic warnings.
 - Plot styling is centralized in named constants at the top of the file —
   component colors (`DJF_G1_COLOR`, `DJF_S_COLOR`, `DJF_G2_COLOR`), fill opacity,
   line widths, margins, axis tick/title sizes, legend metrics, and threshold
@@ -247,21 +232,20 @@ Important responsibilities:
 ### `js/analysis/`
 
 The selected-data loading and panel orchestration layer, loaded after
-`js/plotting/`. Split across `js/analysis/djf.js` (model math and preprocessing),
-`js/analysis/start.js` (plotting/modeling-mode orchestration), and
-`js/analysis/stats.js` (summary-statistics workflow). Selected FCS DATA loading
-is implemented in `js/io/channel_loading.js`, using `js/io/parameter_map.js` for
-parameter-index resolution and `js/data_structs/channel_cache.js` for reusable
-loaded arrays. These modules import the file/state accessors directly
-(`js/state/files.js`, `js/state/app_state.js`) rather than reaching through a
-global.
+`js/plotting/`. The `js/analysis/djf/` directory contains the Stage 0–8 model,
+numeric helpers, per-sample state, lazy loader, and UI orchestration;
+`js/analysis/start.js` coordinates plotting/pipeline actions, and
+`js/analysis/stats.js` owns summary statistics. Selected FCS DATA loading is in
+`js/io/channel_loading.js`, using `js/io/parameter_map.js` for parameter-index
+resolution and `js/data_structs/channel_cache.js` for reusable loaded arrays.
 
 Important responsibilities:
 
 - Tracks the collapsible metadata panel.
 - Resolves the selected DNA-content channel to each file's FCS parameter index.
-- Loads only the selected DNA-content column from each selected FCS file, in
-  small batches controlled by `ANALYSIS_FILE_CONCURRENCY`.
+- Loads the selected DNA-area channel and matching H/W, FSC-A, SSC-A, and Time
+  columns without compacting event indexes, in small batches controlled by
+  `ANALYSIS_FILE_CONCURRENCY`.
 - Reveals the plot panel and calls `initPlot()` once the data is loaded; the
   sample/event counts are shown in the plot title rather than the sidebar.
 
@@ -342,9 +326,9 @@ Or, with live-reload (auto-refreshes the browser on file changes):
 ~/.local/bin/livereload -p 8080
 ```
 
-D3, `ml-levenberg-marquardt`, and `ml-gsd` are vendored locally as ESM bundles in
-`js/vendor/` and mapped via the import map in `index.html`, so plotting and DJF
-modeling work fully offline — no network access or CDN is needed at runtime.
+D3 is vendored locally and mapped via the import map in `index.html`; the DJF
+numeric stack is repository-native. Plotting and modeling therefore work fully
+offline — no network access or CDN is needed at runtime.
 
 ## Typical Workflow
 
@@ -355,12 +339,13 @@ modeling work fully offline — no network access or CDN is needed at runtime.
 5. Use table filters or sorting if needed (filtering a row out also unchecks it).
 6. Confirm the DNA-content area channel selection.
 7. Check the rows that should be included in the plot.
-8. Click `Start Analysis`.
+8. Click **Plot Channel Events**.
 9. Review the overlaid event histogram; adjust Color by / Bins.
-10. Optionally choose a sample under **Model (DJF)** to fit and read its cell-cycle
-    fractions plus per-phase mean/std-dev in the fit results table; tick
-    **Peak threshold** to fine-tune peak detection.
-11. Check or uncheck rows to add or remove plotted samples live.
+10. Run individual Stage 0–8 buttons for checkpoint diagnostics, or click
+    **Run all** / **Run DJF Pipeline** to execute the full analysis.
+11. Review the fitted components, normalized phase fractions, contamination
+    accounting, diagnostics, and warnings in the plot and report table.
+12. Check or uncheck rows to add or remove plotted samples live.
 
 ## Development Notes
 
