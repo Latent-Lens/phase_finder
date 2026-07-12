@@ -383,6 +383,7 @@ function fitCandidateModel(x, y, initialParameters, options, flags) {
     parameterCount: fitted.parameterCount,
     iterations: fitted.iterations,
     converged: fitted.converged,
+    maxIterationsReached: fitted.maxIterationsReached,
     finalLambda: fitted.finalLambda,
   };
 }
@@ -599,6 +600,7 @@ function extendCellCycleFit(xInput, yInput, previousFit, userOptions = {}) {
     inspection,
     diagnostics: {
       converged: selected.converged,
+      maxIterationsReached: selected.maxIterationsReached,
       iterations: selected.iterations,
       sse: selected.sse,
       bic: selected.bic,
@@ -606,6 +608,7 @@ function extendCellCycleFit(xInput, yInput, previousFit, userOptions = {}) {
       candidateFits: candidates.map((candidate) => ({
         name: candidate.name,
         converged: candidate.converged,
+        maxIterationsReached: candidate.maxIterationsReached,
         iterations: candidate.iterations,
         parameterCount: candidate.parameterCount,
         sse: candidate.sse,

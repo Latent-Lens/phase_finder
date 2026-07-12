@@ -64,7 +64,7 @@ import {
 import { get_parsed_files } from "../state/files.js";
 import { update_plot_title, render_fit_results_table } from "./modeling.js";
 import { open_axis_range_modal } from "./axis_modal.js";
-import { get_state as get_pipeline_state } from "../analysis/djf/pipeline_state.js";
+import { get_state as get_pipeline_state, state_matches_row } from "../analysis/djf/pipeline_state.js";
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected. Only this render pass reads or writes them.
@@ -73,7 +73,7 @@ let last_y_max = null;
 
 function active_pipeline_state(row) {
   const state = get_pipeline_state(row.name);
-  return state && state.channelKey === row.data?.channel_key ? state : null;
+  return state_matches_row(state, row) ? state : null;
 }
 
 function compact_final_values(row) {
@@ -211,6 +211,11 @@ export function render_density_plot() {
 
   const prepare_row = (row) => {
     const pipelineState = active_pipeline_state(row);
+    // A sample with a stored Stage 4 histogram renders from that frozen snapshot
+    // (its own bin count/range), so its overlaid fit stays valid. Samples without
+    // stage state re-bin live at the current control value — so after a bin-count
+    // change a mixed selection (e.g. a newly-checked or Stage-4-skipped sample
+    // alongside fitted ones) can show two bin widths until Stage 4 is re-run.
     if (pipelineState?.histogram) {
       const values = compact_final_values(row);
       return {
@@ -502,7 +507,13 @@ export function render_density_plot() {
     .attr("font-size", LEGEND_FONT_SIZE).attr("fill", AXIS_LABEL_COLOR)
     .text((d) => (d.type === "sample" ? strip_fcs(d.name) : d.label));
 
-  render_fit_results_table(fits, {
+  // Numeric stats are only shown once a sample has completed the full pipeline
+  // (the Stage 8 report). Before that, the fitted curve overlay is drawn but no
+  // numbers are reported, so the user never sees phase fractions change as later
+  // stages run (the pre-report values also use a coarser integration than the
+  // report). The fit curve for Stages 6-7 still renders above.
+  const report_fits = fits.filter((fit) => fit.pipelineState?.report);
+  render_fit_results_table(report_fits, {
     top: margin.top + legend_items.length * LEGEND_ROW_HEIGHT + 12,
     right: 8,
     max_width: Math.max(190, margin.right - 18),

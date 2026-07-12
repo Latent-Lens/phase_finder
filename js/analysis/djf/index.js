@@ -21,6 +21,7 @@ import {
   set_stage_mask,
   invalidate_after,
   recompute_final_mask,
+  build_filtered_view,
 } from "./pipeline_state.js";
 
 export { stage0, stage1, stage2, stage3, stage4, stage5, stage6, stage7, stage8 };
@@ -103,8 +104,11 @@ export function run_stage3(row, options = {}) {
 export function run_stage4(row, options = {}) {
   const data = require_row_data(row);
   const state = get_or_create_state(row);
-  const finalMask = recompute_final_mask(row);
-  const result = stage4.generateHistogram(data.channels.DNA_A, finalMask, options);
+  recompute_final_mask(row);
+  // Bin the gated view directly: prior filters have already deleted their events
+  // from it, so no mask is applied here (identical to masking the originals).
+  const filtered = build_filtered_view(row);
+  const result = stage4.generateHistogram(filtered.channels.DNA_A, null, options);
   state.histogram = result;
   invalidate_after(row, state, 4);
   return stage_result(4, row, result, state);
@@ -264,4 +268,59 @@ export function run_all(row, options_by_stage = {}) {
   return STAGE_RUNNERS.map((runner, stage_number) =>
     runner(row, options_by_stage[stage_number] || {})
   );
+}
+
+const FILTER_STAGES = [
+  { key: "structural", label: "Structural" },
+  { key: "timeQC", label: "Time QC" },
+  { key: "scatter", label: "Scatter" },
+  { key: "singlet", label: "Singlet" },
+];
+
+/**
+ * Per-sample metadata-table summary: how many events each mask filter removed
+ * (relative to the events that entered that stage) plus the G1/S/G2-M percents.
+ *
+ * The funnel is derived from the composed masks rather than each stage's own
+ * counts, so it stays correct regardless of per-stage mask semantics and reports
+ * a null-mask (skipped/optional) stage as removing nothing. Returns null until
+ * the sample has a Stage 8 report, so the table only shows completed samples.
+ */
+export function pipeline_table_stats(row) {
+  const state = get_state(row?.name);
+  if (!state || !state.report || !row?.data) return null;
+
+  const eventCount = row.data.eventCount ?? 0;
+  const masks = row.data.masks || {};
+  const alive = new Uint8Array(eventCount).fill(1);
+  let entered = eventCount;
+  const filters = [];
+
+  for (const { key, label } of FILTER_STAGES) {
+    const mask = masks[key];
+    if (!mask) {
+      filters.push({ key, label, entered, lost: 0, skipped: true });
+      continue;
+    }
+    let keptAfter = 0;
+    for (let index = 0; index < eventCount; index += 1) {
+      if (alive[index] && !mask[index]) alive[index] = 0;
+      if (alive[index]) keptAfter += 1;
+    }
+    filters.push({ key, label, entered, lost: entered - keptAfter, skipped: false });
+    entered = keptAfter;
+  }
+
+  const bio = state.report.fractions?.biologicalSinglets || {};
+  const percent = (fraction) => (Number.isFinite(fraction) ? 100 * fraction : NaN);
+  return {
+    name: row.name,
+    eventCount,
+    filters,
+    fractions: {
+      g1: percent(bio.oneC),
+      s: percent(bio.sPhase),
+      g2: percent(bio.twoC),
+    },
+  };
 }
