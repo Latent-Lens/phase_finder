@@ -1,146 +1,153 @@
 # PhaseFinder Code Flow Diagrams
 
-These diagrams document the browser app (everything under `js/`) after the
-conversion to native ES modules. Rather than one giant map, the structure is
-split into several focused diagrams so each stays readable: the module
-dependency layers, the ordered startup bootstrap, the cross-module contracts
-(the single debug hook + custom events), and the three main runtime flows (file
-load, plotting/modeling, and session save/load).
+These diagrams document the current ES-module browser application on the
+`djf-pipeline` branch. They separate module topology, state ownership, FCS data
+loading, the staged Dean–Jett–Fox pipeline, rendering, and session restore so
+each diagram remains useful at a readable scale.
 
-Key facts that shape every diagram:
+Key architectural facts:
 
-- The app loads as a **single ES-module entry** (`index.html` →
-  `<script type="module" src="./js/main.js">`). There is no hand-maintained
-  script order; the dependency graph is the `import` statements.
-- Internal wiring is 100% ES imports. The **only** global is the deliberate debug
-  hook `window.PhaseFinder = { app, djf, plot }`.
-- The **DJF numeric stack** (`analysis/djf.js` + `ml-levenberg-marquardt` +
-  `ml-gsd`) is **lazy-loaded** via `plotting/djf_loader.js` on the first
-  correction/modeling action, so it stays off the initial load path.
-- d3 and the ml-\* libraries are **vendored ESM** (`js/vendor/`) mapped via the
-  import map. Two **module workers** (`fcs/data_worker.js`,
-  `session/copy_worker.js`) import local files directly.
+- `index.html` loads one module entry, `js/main.js`; imports define runtime
+  ordering after the explicit `init_*()` bootstrap.
+- D3 is the only vendored third-party module. Peak detection and nonlinear
+  fitting are repository-native modules under `js/analysis/djf/`.
+- `pipeline_loader.js` lazy-loads `djf/index.js` on the first stage action.
+  Pipeline UI, state-aware rendering, and the Stage 2 scatter viewer are part of
+  the eager application shell.
+- Loaded event channels remain full-length and aligned to original FCS event
+  indexes. Stage 0–3 masks are composed without compacting those arrays.
+- Pipeline state is per sample and guarded by row id, channel key, and event
+  count. Re-running an upstream stage invalidates every downstream product.
+- `render_density_plot()` reads stored pipeline outputs; it never fits a model.
 
-## 1. Module dependency layers
+## 1. Runtime module topology
 
-Imports point from outer layers to inner ones only (an importer → what it
-imports). The dashed edge is the lazy `import()` of the DJF stack; the dotted
-edges are the two module workers.
-
-```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 80, "curve": "basis"}, "themeVariables": {"fontSize": "15px"}}}%%
-flowchart TD
-  subgraph entry["entry"]
-    MAIN["main.js<br/>init_*() bootstrap + window.PhaseFinder hook"]
-  end
-
-  subgraph ui["ui / plotting / analysis / session-orchestration (DOM + side effects)"]
-    direction LR
-    UISTATUS["ui/status_channels"]
-    UITABLE["ui/table_render<br/>ui/table_support"]
-    UIWIZ["ui/metadata_wizard"]
-    UIPANELS["ui/panels · ui/panel_resize · ui/hover_text"]
-    PRENDER["plotting/render"]
-    PMODEL["plotting/modeling"]
-    PAXIS["plotting/axis_modal"]
-    ASTART["analysis/start"]
-    ASTATS["analysis/stats"]
-    SCORE["session/core"]
-    STABLE["session/table_session"]
-  end
-
-  subgraph io["io / adapters (browser APIs, workers)"]
-    direction LR
-    FMETA["fcs/metadata_processing"]
-    IOMETA["io/metadata_io"]
-    IOCHAN["io/channel_loading"]
-    SOPFS["session/opfs_fs"]
-    SCACHE["session/file_cache"]
-    SRECON["session/reconnect"]
-    PLOADER["plotting/djf_loader"]
-    FWORKER["fcs/data_worker (module worker)"]
-    CWORKER["session/copy_worker (module worker)"]
-  end
-
-  subgraph state["state (owned mutable state + queries + DOM refs)"]
-    direction LR
-    APPSTATE["state/app_state"]
-    FILES["state/files"]
-    TSTATE["data_structs/table_state"]
-    CCACHE["data_structs/channel_cache"]
-    PDATA["plotting/data"]
-    DOM["ui/dom"]
-  end
-
-  subgraph core["core / domain (pure, no DOM)"]
-    direction LR
-    PARSER["fcs/parser"]
-    CLEAN["fcs/channel_cleaning"]
-    PMAP["io/parameter_map"]
-    MFRAME["data_structs/metadata_frame"]
-    MCOLS["data_structs/metadata_columns"]
-    TOML["session/toml_io"]
-    DJF["analysis/djf (lazy)"]
-    UHTML["util/html"]
-    UNAMES["util/names"]
-  end
-
-  subgraph vendor["vendor (ESM via import map)"]
-    D3["d3"]
-    MLLM["ml-levenberg-marquardt"]
-    MLGSD["ml-gsd"]
-  end
-
-  MAIN --> ui
-  ui --> io
-  io --> state
-  state --> core
-  PRENDER --> D3
-  PAXIS --> D3
-  PLOADER -. "dynamic import()" .-> DJF
-  DJF --> MLLM
-  DJF --> MLGSD
-  IOCHAN -. "new Worker(type:module)" .-> FWORKER
-  SCACHE -. "new Worker(type:module)" .-> CWORKER
-  FWORKER --> PARSER
-```
-
-## 2. Startup bootstrap (replaces the old script order)
-
-`main.js` imports the whole graph, then runs the `init_*()` functions in
-dependency order and finally assigns the debug hook. `init_session()` defers
-`try_autoload()` to a macrotask so the rest of the bootstrap finishes first.
-
-```mermaid
-flowchart TD
-  ENTRY["index.html: &lt;script type=module src=./js/main.js&gt;<br/>(deferred: runs after DOM parse)"]
-  ENTRY --> B0["module graph evaluates<br/>ui/dom + plotting/data capture DOM refs (querySelector)"]
-  B0 --> B1["init_tooltips()<br/>install shared tooltip element + listeners"]
-  B1 --> B2["init_app_bootstrap()<br/>Tooltips.apply_static() · wire file/drag/channel/table/wizard events<br/>clear_channel_controls() · render_file_table() · set_status()"]
-  B2 --> B3["init_plot_listeners()<br/>plot controls · corrections · fcs-selection-change · axis modal · resize"]
-  B3 --> B4["init_analysis_listeners()<br/>plot buttons · panel toggles · fcs-channel-change · modeling buttons"]
-  B4 --> B5["init_stats()<br/>stats modal · pf-files-loaded auto-compute"]
-  B5 --> B6["init_panel_resize()<br/>sidebar + workspace drag handlers"]
-  B6 --> B7["init_session()<br/>save/load/reset + reconnect wiring · setTimeout(try_autoload, 0)"]
-  B7 --> HOOK["window.PhaseFinder = { app, get djf(), plot }"]
-  B7 -. "macrotask" .-> AUTO["try_autoload(): fetch phasefinder_local.json → apply_session → restore_session_files"]
-```
-
-## 3. Cross-module contract: the single hook + custom events
-
-The former per-namespace globals collapse into one hook (`window.PhaseFinder`);
-`djf` is a getter over the lazily loaded module (null until first modeling).
-Modules coordinate at runtime through a handful of `document` custom events.
+Solid arrows are ordinary ES imports. Dashed arrows identify a dynamic import
+or a module worker boundary. The diagram shows responsibility regions rather
+than claiming a strictly acyclic import graph—plot rendering and initialization
+contain a few intentional ES-module cycles.
 
 ```mermaid
 flowchart LR
-  subgraph hook["window.PhaseFinder (debug/automation seam)"]
-    APP["app<br/>get_file_by_id · get_parsed_files · get_selected_files<br/>get_file_table · get_selected_channels · status/progress helpers<br/>get_session_table_state · apply_session_state · metadata_table_tsv · get_table_columns"]
-    HDJF["djf (getter)<br/>null → analysis/djf.js module after first modeling/correction"]
-    HPLOT["plot<br/>series · get_series · series_names · get_histogram · histogram_names"]
+  subgraph entry["Entry"]
+    HTML["index.html<br/>import map: d3"] --> MAIN["js/main.js<br/>ordered bootstrap"]
   end
 
-  subgraph events["document custom events"]
+  subgraph shell["Eager application shell"]
+    UI["ui/*<br/>table · wizard · status · panels"]
+    START["analysis/start.js<br/>channel + plot orchestration"]
+    STATS["analysis/stats.js"]
+    PLOT["plotting/*<br/>data · render · modeling · axis"]
+    PUI["analysis/djf/pipeline_ui.js<br/>stage controls"]
+    PLOAD["analysis/djf/pipeline_loader.js"]
+    PST["analysis/djf/pipeline_state.js"]
+    SCATTER["analysis/djf/scatter_modal.js<br/>Stage 2 inspection"]
+    SESSION["session/core.js<br/>save · load · restore"]
+  end
+
+  subgraph stateio["State and IO"]
+    APPSTATE["state/* + data_structs/*<br/>files · frame · selection · caches"]
+    METAIO["io/metadata_io.js"]
+    CHANNELIO["io/channel_loading.js"]
+    FCSMETA["fcs/metadata_processing.js"]
+    CLEAN["fcs/channel_cleaning.js<br/>channel discovery + aligned arrays"]
+    PARSER["fcs/parser.js"]
+    FILECACHE["session/file_cache.js + reconnect.js"]
+  end
+
+  subgraph lazy["Lazy DJF orchestrator and stages"]
+    PIPE["analysis/djf/index.js<br/>stage orchestrator"]
+    STAGES["stage0 … stage8<br/>+ background stub"]
+  end
+
+  subgraph sharedmath["Shared DJF numeric modules"]
+    MATH["math/* + djf_components.js"]
+  end
+
+  subgraph adapters["Browser adapters"]
+    FWORKER["fcs/data_worker.js"]
+    CWORKER["session/copy_worker.js"]
+    OPFS["session/opfs_fs.js"]
+    D3["vendor/d3.min.js"]
+  end
+
+  MAIN --> UI
+  MAIN --> START
+  MAIN --> STATS
+  MAIN --> PLOT
+  MAIN --> PUI
+  MAIN --> PLOAD
+  MAIN --> SESSION
+  UI --> APPSTATE
+  START --> CHANNELIO
+  START --> PLOT
+  STATS --> CHANNELIO
+  PLOT --> APPSTATE
+  PLOT --> PST
+  PLOT --> D3
+  PUI --> PLOAD
+  PUI --> PLOT
+  PUI --> SCATTER
+  SCATTER --> D3
+  SCATTER --> MATH
+  PLOAD -. "import() once" .-> PIPE
+  PIPE --> STAGES
+  PIPE --> PST
+  PIPE --> PLOT
+  STAGES --> MATH
+  METAIO --> FCSMETA
+  METAIO --> APPSTATE
+  METAIO --> FILECACHE
+  FCSMETA --> PARSER
+  CHANNELIO --> CLEAN
+  CHANNELIO --> APPSTATE
+  CHANNELIO -. "module worker" .-> FWORKER
+  FWORKER --> PARSER
+  FILECACHE --> OPFS
+  FILECACHE -. "module worker" .-> CWORKER
+```
+
+## 2. Ordered startup bootstrap
+
+Module evaluation resolves imports first. The explicit bootstrap then installs
+listeners in a deliberate order and finally publishes the debug/automation
+hook. Both `pipeline` and the compatibility alias `djf` are null until the
+pipeline core has actually loaded.
+
+```mermaid
+flowchart LR
+  H["index.html<br/>script type=module"] --> M["evaluate main.js imports"]
+  M --> I1["init_tooltips()"]
+  I1 --> I2["init_app_bootstrap()"]
+  I2 --> I3["init_plot_listeners()"]
+  I3 --> I4["init_analysis_listeners()"]
+  I4 --> I5["init_pipeline_ui()"]
+  I5 --> I6["init_stats()"]
+  I6 --> I7["init_panel_resize()"]
+  I7 --> I8["init_session()"]
+  I8 --> HOOK["window.PhaseFinder<br/>{ app, get pipeline(), get djf(), plot }"]
+  I8 -. "setTimeout(..., 0)" .-> AUTO["session/core.try_autoload()"]
+  I5 -. "first Stage / Run all click" .-> LAZY["pipeline_loader.load_pipeline()<br/>dynamic import djf/index.js"]
+```
+
+## 3. State ownership and runtime contracts
+
+Direct imports handle most communication. Custom events are used where one user
+action has multiple downstream consumers. Pipeline masks/results are runtime
+state and are intentionally not part of session serialization.
+
+```mermaid
+flowchart TB
+  subgraph owners["State owners"]
+    A["state/app_state.js<br/>file_map + metadata frame"]
+    T["data_structs/table_state.js<br/>selection · filters · sort"]
+    C["data_structs/channel_cache.js<br/>per-row/per-channel Map<br/>active row.data"]
+    P["plotting/data.js<br/>active channel · series · histograms · axes"]
+    D["djf/pipeline_state.js<br/>Map keyed by filename<br/>row.data.masks"]
+    F["session/file_cache.js<br/>OPFS file records"]
+  end
+
+  subgraph events["Document events"]
     E1["pf-files-loaded"]
     E2["fcs-selection-change"]
     E3["fcs-channel-change"]
@@ -148,127 +155,202 @@ flowchart LR
     E5["pf-stats-complete"]
   end
 
-  IO["io/metadata_io: load_files()"] -->|dispatch| E1
-  E1 --> ASTATS["analysis/stats: auto-compute stats"]
-  E1 --> SCORE["session/core: apply pending session annotations"]
-  E1 --> SCACHE["session/file_cache: register_loaded_files (OPFS cache)"]
-
-  TABLE["ui/table_render: row/select changes"] -->|dispatch| E2
-  E2 --> ASTART["analysis/start: refresh_analysis_after_metadata_change"]
-  E2 --> PAXIS["plotting/axis_modal: render_density_plot"]
-
-  MAINCH["main.js: channel change"] -->|dispatch| E3
-  E3 --> ASTART2["analysis/start: prepare_selected_channel_for_plotting"]
-
-  ASTATS2["analysis/stats: calculate"] -->|dispatch| E5
-  E5 --> ASTATS
+  META["metadata_io.load_files()"] --> A
+  META --> E1
+  META --> F
+  E1 --> STAUTO["stats: compute saved metrics for new files"]
+  E1 --> SESS["session: replay pending table state"]
+  TABLE["table_support.notify_selection_changed()"] --> T
+  TABLE --> E2
+  E2 --> REFRESH["analysis/start: load added rows"]
+  E2 --> REDRAW["axis_modal: redraw checked rows"]
+  CHANNEL["main.notify_channel_changed()"] --> E3
+  E3 --> PRELOAD["analysis/start: preload/activate channel<br/>plot switch stays explicit"]
+  START["analysis/start.start_analysis()"] --> E4
+  STATS["analysis/stats"] --> E5
+  E5 --> STATS
+  PRELOAD --> C
+  START --> C
+  REDRAW --> P
+  PIPE["djf/index.js run_stageN()"] --> D
+  D --> REDRAW
+  HOOK["window.PhaseFinder"] -. "read-only debug access" .-> A
+  HOOK -.-> P
+  HOOK -. "after lazy load" .-> D
 ```
 
-## 4. Flow A — FCS file load → metadata table
+## 4. Two-phase FCS loading
+
+Initial file load reads only HEADER/TEXT metadata. Event DATA is loaded later,
+in batches, when a DNA-area channel is plotted. All pipeline companion channels
+are loaded together and retained as original-index `Float64Array` values.
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant U as User
-  participant MAIN as main.js (event wiring)
-  participant IO as io/metadata_io.load_files
-  participant FMP as fcs/metadata_processing
-  participant PARSER as fcs/parser (FCSParser)
-  participant STATE as state/app_state (file_map + frame)
-  participant WIZ as ui/metadata_wizard
-  participant REND as ui/table_render
-  participant FC as session/file_cache
-  participant CW as copy_worker (OPFS)
+  actor U as User
+  participant MAIN as main.js
+  participant META as io/metadata_io
+  participant MH as fcs/metadata_processing
+  participant PARSER as fcs/parser
+  participant STATE as app_state + metadata frame
+  participant CACHE as session/file_cache
+  participant COPY as copy_worker / OPFS
 
-  U->>MAIN: drop / pick FCS files
-  MAIN->>IO: load_files(files)
-  loop each file
-    IO->>FMP: read_fcs_header(file)
-    FMP->>PARSER: parse_header + parse_fcs_header_from_segments
-    PARSER-->>FMP: summary (no DATA read)
-    FMP-->>IO: { id, name, file, summary }
-    IO->>STATE: file_map.set(id, entry)
+  U->>MAIN: drop or choose FCS files
+  MAIN->>META: load_files(files)
+  loop each new file
+    META->>MH: read_fcs_header(file)
+    MH->>PARSER: parse HEADER + TEXT only
+    PARSER-->>META: summary, columns, Pn metadata, DATA offsets
+    META->>STATE: file_map.set + make/concat frame
   end
-  IO->>STATE: set_file_table(concat_frames(frame, make_frame(new rows)))
-  IO->>WIZ: apply_current_filename_metadata_template() (if compatible)
-  IO->>MAIN: dispatch pf-files-loaded
-  IO->>FC: register_loaded_files(entries)
-  FC->>CW: copy_file_to_opfs (background, "Caching file x of y")
-  IO->>REND: sort_file_table() → update_views() → render_file_table()
-  IO->>IO: refresh_analysis / preload (only if a plot already exists)
+  META->>META: link imported rows + apply filename template
+  META-->>MAIN: dispatch pf-files-loaded
+  META->>CACHE: register_loaded_files(entries)
+  CACHE-->>COPY: cache copies in background
+  META->>STATE: sort/update/render table + channel controls
 ```
-
-## 5. Flow B — Plot channel events → lazy DJF → modeling
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant U as User
-  participant ST as analysis/start
-  participant CL as io/channel_loading
-  participant W as fcs/data_worker (module worker)
-  participant MOD as plotting/modeling
-  participant LOADER as plotting/djf_loader
-  participant DJF as analysis/djf (+ ml-*)
-  participant REND as plotting/render (d3)
+  actor U as User
+  participant START as analysis/start
+  participant IO as io/channel_loading
+  participant MAP as parameter_map + channel_cleaning
+  participant WORKER as fcs/data_worker
+  participant PARSER as FCSParser
+  participant CACHE as channel_cache
+  participant MODEL as plotting/modeling
+  participant RENDER as plotting/render
 
-  U->>ST: click "Plot Channel Events"
-  ST->>CL: load_analysis_data()
-  loop selected rows (batched)
-    CL->>W: postMessage(file, summary, selected_indexes)
-    W->>W: FCSParser.parse_selected_columns (DATA slice)
-    W-->>CL: Float64Array columns (transferred)
-    CL->>CL: filter_selected_channel_values → channel_cache
+  U->>START: click Plot Channel Events
+  START->>IO: load_analysis_data()
+  loop all loaded rows, batches of 4
+    IO->>MAP: resolve DNA-A/H/W, FSC-A, SSC-A, Time
+    IO->>WORKER: parse selected parameter columns
+    WORKER->>PARSER: parse_selected_columns(DATA slice)
+    PARSER-->>IO: requested raw columns
+    IO->>MAP: build_raw_analysis_channels()
+    Note over IO,MAP: Full-length aligned Float64Arrays<br/>PnR + parameter metadata + empty masks
+    IO->>CACHE: store per-channel data and activate row.data
   end
-  CL->>MOD: init_plot(selected) → render_density_plot()
-  REND-->>U: histograms drawn with d3 (no DJF yet)
-  U->>MOD: click "Start Modeling (DJF)"
-  MOD->>LOADER: await load_djf()
-  LOADER-->>DJF: dynamic import("../analysis/djf.js") (progress overlay, once)
-  MOD->>REND: set_modeling_started(true) → render_density_plot()
-  REND->>DJF: get_djf().fit / components / phase_stats (per shown sample)
-  REND-->>U: filled G1/S/G2 curves + fit-results table + %G1/%S/%G2 readout
+  IO->>MODEL: init_plot(selected channel)
+  MODEL->>RENDER: render_density_plot()
+  RENDER-->>U: checked samples drawn with D3
+  START-->>U: enable Run DJF Pipeline shortcut
 ```
 
-Note: enabling **debris/doublet corrections** takes the same lazy path — the
-render pass sees `needs_djf` and triggers `load_djf()`, drawing the raw
-histogram immediately and redrawing corrected once the module resolves.
+## 5. Staged DJF dataflow
 
-## 6. Session save / load / restore
+Stages 1–3 are optional. When their required channels are unavailable, their
+mask slot remains null and prior masks still apply. Stage 5 records peak-pair
+diagnostics, but Stage 6 initializes and fits independently from the Stage 4
+histogram; a `found:false` Stage 5 result does not stop Run all.
+
+```mermaid
+flowchart LR
+  RAW["Raw original-index channels<br/>DNA-A/H/W · FSC-A · SSC-A · Time"] --> S0["Stage 0<br/>Structural QC<br/>structural mask"]
+  S0 --> S1["Stage 1 optional<br/>Time QC<br/>time mask or null"]
+  S1 --> S2["Stage 2 optional<br/>FSC/SSC GMM<br/>scatter mask or null"]
+  S2 --> S3["Stage 3 optional<br/>pulse-geometry ridge<br/>singlet mask or null"]
+  S3 --> FINAL["Final mask<br/>AND all non-null masks"]
+  FINAL --> S4["Stage 4<br/>shared-range DNA histogram"]
+  S4 --> S5["Stage 5<br/>near-2:1 peak diagnostics"]
+  S4 --> S6["Stage 6<br/>constrained base DJF fit"]
+  S5 -. "diagnostic only" .-> REPORTING["state.peaks"]
+  S6 --> S7["Stage 7 optional<br/>debris/aggregate candidates<br/>conservative model selection"]
+  S6 --> CHOOSE["baseFit"]
+  S7 --> CHOOSE["extendedFit when selected"]
+  CHOOSE --> S8["Stage 8<br/>1C/S/2C fractions<br/>contamination + GoF<br/>residual diagnostics + warnings"]
+  S8 --> BG["General background<br/>explicitly unspecified stub"]
+```
+
+## 6. Manual-stage orchestration and invalidation
+
+The UI runs one selected stage across all currently plottable samples. Run all
+loops through the same UI path from Stage 0 to Stage 8. Every stage redraws, so
+rerunning upstream work immediately removes stale downstream visuals.
+
+```mermaid
+flowchart TD
+  USER["Stage N button<br/>or Run all"] --> ROWS{"Any plottable rows?"}
+  ROWS -- "no" --> ERR["readout + status error"]
+  ROWS -- "yes" --> LOCK["lock pipeline controls<br/>show progress"]
+  LOCK --> LOAD["load_pipeline()<br/>singleton dynamic import"]
+  LOAD --> OPT{"Stage 4?"}
+  OPT -- "yes" --> RANGE["shared_histogram_range(rows)"]
+  OPT -- "no" --> EACH
+  RANGE --> EACH["for each row: run_stage(N, row, options)"]
+  EACH --> GUARD["get_or_create_state()<br/>guard rowId/channelKey/eventCount"]
+  GUARD --> PURE["run pure Stage N function"]
+  PURE --> STORE["store product and mask/null"]
+  STORE --> MASK["recompute final mask"]
+  MASK --> INVALID["invalidate_after()<br/>clear all downstream products/masks"]
+  INVALID --> DRAW["render_density_plot()"]
+  DRAW --> MODAL{"Direct successful Stage 2?"}
+  MODAL -- "yes" --> SCATTER["open scatter/GMM modal"]
+  MODAL -- "no" --> DONE
+  SCATTER --> DONE["update readout/status<br/>unlock controls"]
+  RUNALL["Run all"] -. "repeat N = 0…8<br/>suppress Stage 2 modal" .-> EACH
+```
+
+## 7. State-aware render path
+
+The render pass chooses the newest valid stored checkpoint for each active row.
+It does not call any numerical stage function.
+
+```mermaid
+flowchart TD
+  R0["render_density_plot()"] --> R1["plottable_rows()<br/>checked + active channel"]
+  R1 --> R2{"Matching pipeline state?<br/>same channelKey"}
+  R2 -- "no" --> RAW["build raw display histogram"]
+  R2 -- "yes" --> H{"Stage 4 histogram exists?"}
+  H -- "no" --> RAW
+  H -- "yes" --> HIST["use stored histogram<br/>and final-mask values"]
+  RAW --> SERIES["sample series + plot caches"]
+  HIST --> SERIES
+  SERIES --> FIT{"baseFit or extendedFit?"}
+  FIT -- "yes" --> CURVES["convert stored G1/S/G2/total<br/>+ selected debris/aggregate curves"]
+  FIT -- "no" --> D3["D3 draw samples, axes, legend"]
+  CURVES --> D3
+  D3 --> REP{"Stage 8 report?"}
+  REP -- "yes" --> TABLE["render_fit_results_table()<br/>fractions · contamination<br/>GoF · warnings"]
+  REP -- "no" --> END["update title and inspection API"]
+  TABLE --> END
+```
+
+## 8. Session save, load, and reconnect
+
+Sessions serialize metadata, table state, channel/plot settings, statistics
+plans, file records, and layout. DJF masks, fits, and reports are runtime-only;
+legacy correction flags are written as false for compatibility.
 
 ```mermaid
 flowchart TD
   subgraph save["Save"]
-    SV0["#save_session_button → session/core.handle_save"]
-    SV1["collect_session()<br/>get_session_table_state (session/table_session) · get_stats_plan (analysis/stats)<br/>build_file_records_for (session/file_cache)"]
-    SV2["serialize_session() (session/toml_io)"]
-    SV3["write_session_file() — File System Access API or download fallback"]
-    SV0 --> SV1 --> SV2 --> SV3
+    SV0["#save_session_button<br/>handle_save()"] --> SV1["collect_session()<br/>table · metadata · stats plan<br/>file records · plot · layout"]
+    SV1 --> SV2["serialize_session()"]
+    SV2 --> SV3["write_session_file()<br/>picker or download fallback"]
+    SV1 -. "excluded" .-> RUNTIME["pipeline masks / fits / report"]
   end
 
   subgraph load["Load / autoload"]
-    LD0["#load_session_button → handle_load<br/>(or try_autoload from phasefinder_local.json)"]
-    LD1["read_session_file() → parse_session_toml() (session/toml_io)"]
-    LD2["apply_session()<br/>apply_plot_settings · apply_table_session → apply_session_state (session/table_session)<br/>restore_stats_plan (analysis/stats)"]
-    LD3["restore_session_files()"]
-    LD0 --> LD1 --> LD2 --> LD3
+    LD0["#load_session_button<br/>or try_autoload()"] --> LD1["read + parse_session_toml()"]
+    LD1 --> LD2["apply_session()<br/>plot · table · stats · layout"]
+    LD2 --> LD3["restore_session_files()"]
   end
 
-  subgraph restore["restore_session_files decision"]
-    R0{"OPFS copies present?"}
-    R1["try_load_from_opfs (session/reconnect)<br/>→ load_files(recovered)"]
-    R2{"dev data_directory set<br/>and files still missing?"}
-    R3["fetch_files_from_url → load_files"]
-    R4{"anything still missing?"}
-    R5["open_reconnect_modal (session/reconnect)<br/>folder picker / file picker → match by name+size+mtime<br/>→ copy_file_to_opfs → load_files"]
-    R6["Session restored"]
-    R0 -- yes --> R1 --> R2
-    R0 -- no --> R2
-    R2 -- yes --> R3 --> R4
-    R2 -- no --> R4
-    R4 -- yes --> R5 --> R6
-    R4 -- no --> R6
-  end
-
-  LD3 --> R0
+  LD3 --> OPFS{"Valid OPFS copies?"}
+  OPFS -- "yes" --> RECOVER["try_load_from_opfs()<br/>load_files(recovered)"]
+  OPFS -- "no" --> DEV{"Configured dev URL?"}
+  RECOVER --> DEV
+  DEV -- "yes" --> FETCH["fetch_files_from_url()"]
+  DEV -- "no" --> MISS{"Files still missing?"}
+  FETCH --> MISS
+  MISS -- "yes" --> MODAL["reconnect modal<br/>folder/files match by metadata"]
+  MODAL --> COPY["copy_file_to_opfs()<br/>load_files()"]
+  MISS -- "no" --> READY["session restored"]
+  COPY --> READY
 ```
