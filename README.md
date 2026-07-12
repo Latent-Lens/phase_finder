@@ -55,8 +55,9 @@ pipeline in this repository.
 │   ├── ui/              # DOM refs, metadata table, wizard, panels, status/channel controls
 │   └── main.js          # ES-module entry: init_*() bootstrap + window.PhaseFinder hook
 ├── docs/
-│   ├── code-flow-diagrams.md                    # layered deps + event-flow mermaid diagrams
-│   └── function-call-and-user-decision-graphs.md
+│   ├── code-flow-diagrams.html                  # interactive Mermaid architecture/runtime diagrams
+│   ├── function-call-and-user-decision-graphs.html # interactive call + decision diagrams
+│   └── *.md                                     # canonical Mermaid sources for those pages
 ├── tests/
 │   ├── e2e/             # Playwright driver (drive_flow.py) + results/
 │   └── unit/            # module-level unit suites driven via test_harness.html
@@ -72,8 +73,10 @@ rather than a hand-maintained list of script tags. `help.html` documents all of
 the features the app adds (the metadata wizard, summary statistics, session
 save/load, and layout controls); see it for an up-to-date feature tour. For the
 module dependency layers and the key event-flow / user-decision paths as mermaid
-diagrams, see [`docs/code-flow-diagrams.md`](docs/code-flow-diagrams.md) and
-[`docs/function-call-and-user-decision-graphs.md`](docs/function-call-and-user-decision-graphs.md).
+diagrams, open [`docs/code-flow-diagrams.html`](docs/code-flow-diagrams.html) and
+[`docs/function-call-and-user-decision-graphs.html`](docs/function-call-and-user-decision-graphs.html).
+Both pages provide fit-to-screen, zoom, drag-pan, keyboard, and full-screen
+controls; their canonical Mermaid sources remain beside them as `.md` files.
 
 ## How The App Works
 
