@@ -21,6 +21,29 @@ export {
 
 export const DEFAULT_SCATTER_THRESHOLD = 5.991;
 
+/** Minimum finite FSC-A/SSC-A events required to fit the 2-component GMM. */
+export const MINIMUM_SCATTER_EVENTS = 10;
+
+/** Shared skipped-gate result so both skip paths return an identical shape. */
+function skippedScatterResult(threshold, reason) {
+  return {
+    skipped: true,
+    status: "scatter gate skipped",
+    reason,
+    scatterMask: null,
+    mask: null,
+    mahalanobisDistanceSquared: null,
+    scatterPoints: [],
+    components: [],
+    mainComponent: null,
+    mainComponentIndex: null,
+    threshold,
+    converged: false,
+    iterations: 0,
+    logLikelihood: NaN,
+  };
+}
+
 /** Build finite FSC-A/SSC-A points while preserving original event indexes. */
 export function buildScatterPoints(dataset, structuralMask = null, timeQCMask = null) {
   const fsc = dataset?.channels?.FSC_A;
@@ -56,8 +79,12 @@ export function buildScatterPoints(dataset, structuralMask = null, timeQCMask = 
     scatterPoints.push({ eventIndex, point: [fscValue, sscValue] });
   }
 
-  if (scatterPoints.length < 10) {
-    throw new Error("Too few valid FSC-A/SSC-A events remain for GMM fitting.");
+  if (scatterPoints.length < MINIMUM_SCATTER_EVENTS) {
+    const error = new Error(
+      `Too few valid FSC-A/SSC-A events remain for GMM fitting (${scatterPoints.length} < ${MINIMUM_SCATTER_EVENTS}).`,
+    );
+    error.code = "TOO_FEW_SCATTER_EVENTS";
+    throw error;
   }
 
   return scatterPoints;
@@ -351,25 +378,21 @@ export function gateMainBiologicalCloud(
   const ssc = dataset?.channels?.SSC_A;
 
   if (!fsc || !ssc) {
-    return {
-      skipped: true,
-      status: "scatter gate skipped",
-      reason: "FSC_A/SSC_A unavailable",
-      scatterMask: null,
-      mask: null,
-      mahalanobisDistanceSquared: null,
-      scatterPoints: [],
-      components: [],
-      mainComponent: null,
-      mainComponentIndex: null,
-      threshold,
-      converged: false,
-      iterations: 0,
-      logLikelihood: NaN,
-    };
+    return skippedScatterResult(threshold, "FSC_A/SSC_A unavailable");
   }
 
-  const scatterPoints = buildScatterPoints(dataset, structuralMask, timeQCMask);
+  let scatterPoints;
+  try {
+    scatterPoints = buildScatterPoints(dataset, structuralMask, timeQCMask);
+  } catch (error) {
+    // Too few surviving events is a normal gating outcome, not a failure:
+    // skip the gate so the sample continues with its upstream mask intact.
+    // Structural errors (length mismatches) still propagate.
+    if (error.code === "TOO_FEW_SCATTER_EVENTS") {
+      return skippedScatterResult(threshold, error.message);
+    }
+    throw error;
+  }
   const points = scatterPoints.map(item => item.point);
   const gmmResult = fitGMM2D(points, { ...gmmOptions, componentCount: 2 });
   const selected = chooseMainBiologicalComponent(gmmResult.components, {

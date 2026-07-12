@@ -349,9 +349,20 @@ export function runLevenbergMarquardt({
     }
   }
 
-  const iterationsPerformed = Math.min(iterations, options.maxIterations);
+  // `iterations` holds the loop counter after its final post-increment (and is
+  // never entered as maxIterations + 1), so the number of iterations actually
+  // executed is one less. This equals the bodies run in every case: converged
+  // early, ran to the budget, or never entered the loop.
+  const iterationsPerformed = Math.max(0, iterations - 1);
   const evaluationObject =
     evaluation && !isArrayLike(evaluation) ? evaluation : null;
+  // The loop exits either on a tolerance hit (`converged`) or on exhausting the
+  // iteration budget. The latter with a finite SSE is a stable stop, distinct
+  // from a genuine early abort; callers report the two differently.
+  const maxIterationsReached =
+    !converged &&
+    options.maxIterations > 0 &&
+    iterationsPerformed >= options.maxIterations;
 
   return {
     parameters,
@@ -364,6 +375,7 @@ export function runLevenbergMarquardt({
     parameterCount: indices.length,
     iterations: iterationsPerformed,
     converged,
+    maxIterationsReached,
     finalLambda: lambda,
   };
 }

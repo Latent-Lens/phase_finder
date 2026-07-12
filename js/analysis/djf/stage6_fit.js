@@ -501,6 +501,7 @@ export function fitCellCycleHistogram(x, y, userOptions = {}) {
     },
     diagnostics: {
       converged: fit.converged,
+      maxIterationsReached: fit.maxIterationsReached,
       iterations: fit.iterations,
       sse: fit.sse,
       finalLambda: fit.finalLambda,
