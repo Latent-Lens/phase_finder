@@ -35,6 +35,12 @@
     import { serialize_session, parse_session_toml } from "/js/session/toml_io.js";
     import * as DJFPipeline from "/js/analysis/djf/index.js";
     import * as DJFPipelineState from "/js/analysis/djf/pipeline_state.js";
+    import * as DJFStats from "/js/analysis/djf/math/stats.js";
+    import * as DJFGaussian from "/js/analysis/djf/math/gaussian.js";
+    import * as DJFIntegrate from "/js/analysis/djf/math/integrate.js";
+    import * as DJFLinearAlgebra from "/js/analysis/djf/math/linalg2d.js";
+    import * as DJFLMSolver from "/js/analysis/djf/math/lm_solver.js";
+    import * as DJFComponents from "/js/analysis/djf/djf_components.js";
 
     Object.assign(window, {
       FCSParser, PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records,
@@ -53,6 +59,14 @@
     window.PhaseFinder = { pipeline: DJFPipeline };
     window.PhaseFinderPipeline = DJFPipeline;
     window.DJFPipelineState = DJFPipelineState;
+    window.DJFShared = {
+      stats: DJFStats,
+      gaussian: DJFGaussian,
+      integrate: DJFIntegrate,
+      linalg2d: DJFLinearAlgebra,
+      lm: DJFLMSolver,
+      components: DJFComponents,
+    };
     window.__libsReady = true;
   </script>
 

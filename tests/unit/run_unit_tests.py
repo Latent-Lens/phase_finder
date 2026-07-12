@@ -76,3 +76,9 @@ def run_unit_tests(ctx: TestContext, app_url: str):
 
     from unit_tests_djf_pipeline import run_djf_pipeline_tests
     run_djf_pipeline_tests(ctx)
+
+    from unit_tests_djf_shared import run_djf_shared_tests
+    run_djf_shared_tests(ctx)
+
+    from unit_tests_djf_edges import run_djf_edge_tests
+    run_djf_edge_tests(ctx)

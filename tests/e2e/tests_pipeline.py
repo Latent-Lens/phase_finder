@@ -256,6 +256,65 @@ def test_pipeline(ctx: TestContext):
             pipeline_after is True,
             f"loaded={pipeline_after}",
         )
+
+        # A user can rerun any earlier checkpoint after inspecting the final
+        # report.  Prove that both JS state and visual completion markers are
+        # invalidated together, so stale fit/report output cannot survive.
+        _run_stage(page, 2, sample_name)
+        invalidated = page.evaluate(
+            """(sampleName) => {
+              const state = window.PhaseFinder.pipeline.get_state(sampleName);
+              const row = window.PhaseFinder.app.get_parsed_files()
+                .find((candidate) => candidate.name === sampleName);
+              const finalCount = row.data.masks.final
+                ? Array.from(row.data.masks.final).reduce((sum, value) => sum + value, 0)
+                : null;
+              return {
+                lastStageRun: state.lastStageRun,
+                hasScatter: Boolean(state.scatterGate),
+                singletResult: state.singletResult,
+                histogram: state.histogram,
+                peaks: state.peaks,
+                baseFit: state.baseFit,
+                extendedFit: state.extendedFit,
+                report: state.report,
+                singletMask: row.data.masks.singlet,
+                finalCount,
+                filteredCount: row.data.filtered?.eventCount,
+                downstreamComplete: Array.from({ length: 6 }, (_, offset) => offset + 3)
+                  .filter((stage) => document.querySelector(`#djf_stage${stage}`)
+                    ?.classList.contains('djf_stage_complete')).length,
+                fitPaths: document.querySelectorAll('.djf-fit-overlay').length,
+              };
+            }""",
+            sample_name,
+        )
+        ctx.check(
+            group,
+            "Rerunning Stage 2 invalidates Stage 3→8 state, masks, and completion badges",
+            invalidated["lastStageRun"] == 2
+            and invalidated["hasScatter"]
+            and invalidated["singletResult"] is None
+            and invalidated["histogram"] is None
+            and invalidated["peaks"] is None
+            and invalidated["baseFit"] is None
+            and invalidated["extendedFit"] is None
+            and invalidated["report"] is None
+            and invalidated["singletMask"] is None
+            and invalidated["downstreamComplete"] == 0
+            and fit_curve_count(page) == 0,
+            str(invalidated),
+        )
+        ctx.check(
+            group,
+            "Rerunning an upstream gate rebuilds the compacted view from the new final mask",
+            invalidated["filteredCount"] == invalidated["finalCount"]
+            and invalidated["finalCount"] > 0,
+            str(invalidated),
+        )
+        if page.locator("#djf_scatter_modal").is_visible():
+            page.click("#djf_scatter_modal_close")
+            page.wait_for_selector("#djf_scatter_modal", state="hidden", timeout=10000)
     except Exception as error:
         ctx.check(group, "Manual Stage 0→8 pipeline flow", False, str(error))
     finally:

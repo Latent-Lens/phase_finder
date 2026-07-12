@@ -94,7 +94,9 @@ tests/
     ├── test_harness.html    ← minimal page loading app ES modules + test helpers
     ├── unit_tests_parser.py ← FCSParser unit tests (window.FCSParser)
     ├── unit_tests_table.py  ← table/data_structs/metadata-wizard unit tests
-    └── unit_tests_djf_pipeline.py ← Stage 0–8 pipeline unit tests
+    ├── unit_tests_djf_pipeline.py ← Stage 0–8 pipeline happy paths
+    ├── unit_tests_djf_shared.py   ← shared math, LM, components, and state
+    └── unit_tests_djf_edges.py    ← Stage 0–8 boundaries and validation
 ```
 
 `drive_flow.py` also temporarily moves aside a `sessions/phasefinder_local.json`,
@@ -146,6 +148,11 @@ loading extra files that desync every row-count assertion in this suite.
 - Histogram and fitted component overlays render at the appropriate stages
 - Biological 1C + S + 2C fractions sum to ~100 %
 - Run all retains every checkpoint product and updates the report/status UI
+- Rerunning an upstream gate clears downstream masks, fits, reports, overlays,
+  and completion badges
+- The compacted filtered view stays index-aligned with the recomputed final mask
+- Stage 8 publishes sequential filter losses and G1/S/G2-M percentages as
+  visible read-only table columns
 
 ### E2E — Sidebar/Icons
 - Collapsed sidebar shows upload / channel / histogram icons
@@ -199,6 +206,40 @@ loading extra files that desync every row-count assertion in this suite.
 - `prepareRow` / `correctionSummary`: correction stats, unavailable
   doublet-channel messaging, and actual doublet-outlier removal when
   height/width channels are available
+
+### Unit — staged DJF shared helpers (`window.DJFShared`)
+- Robust statistics: median, MAD, mean, population variance, interpolated
+  quantiles, residual-scale floors, nearest indexes, and safe fractions
+- Gaussian/log-domain helpers: peak symmetry, boundary-normalized smoothing,
+  stable logistic/log-sum-exp, and full-covariance 2D log density
+- Trapezoidal integration for arrays, typed arrays, nonuniform spacing, and
+  invalid input shapes
+- 2D covariance, regularization, inversion, eigendecomposition, Mahalanobis
+  distance, weighted moments, and signed ridge distances
+- Shared Levenberg-Marquardt primitives: pivoting solve, singular-system errors,
+  normal equations, finite-difference Jacobians, projection boundaries,
+  convergence, and exhausted iteration budgets
+- DJF Gaussian/S-bridge component invariants
+- Pipeline state identity, mask composition, compacted-view original indexes,
+  downstream invalidation, and metadata-table loss funnels
+
+### Unit — staged DJF boundaries and validation
+- Stage 0 PnR overrides, Time exemption, missing input, and length mismatches
+- Stage 1 invalid-time segmentation, balanced bins, zero-MAD scoring, dynamic
+  metric exclusion, interval merging, and composed masks
+- Stage 2 deterministic initialization, minimum-event skip, component-weight
+  selection, and inclusive ellipse boundaries
+- Stage 3 masked/nonfinite points, zero-MAD ridge behavior, k-MAD validation,
+  and insufficient-point skip behavior
+- Stage 4 constant ranges, clipping, exact-maximum binning, and invalid inputs
+- Stage 5 plateau maxima, prominence, and ratio validation
+- Stage 6 histogram validation, parameter projection, residual weighting, and
+  unlocked ratio bounds
+- Stage 7 correlation, BIC penalty, three-part model-selection criteria, and
+  previous-fit validation
+- Stage 8 parameter counting, residual diagnostics, pulse-geometry inference,
+  percentage formatting, and curve validation
+- Orchestrator stage-number errors and shared batch histogram ranges
 
 ### Unit — Table & Metadata (`js/ui/`)
 - `PhaseFinderFrame` / `make_frame` / `concat_frames`: column storage,

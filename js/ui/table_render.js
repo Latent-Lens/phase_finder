@@ -119,6 +119,15 @@ export function render_file_table() {
   }
   const stats_groups = Object.entries(channel_groups).map(([channel, metrics]) => ({ channel, metrics }));
   const has_stats = stats_groups.length > 0;
+  // Pipeline/report outputs are frame-backed, read-only derived columns. They
+  // intentionally have no `channel:metric` delimiter and are not editable
+  // metadata, so render them directly instead of silently dropping them.
+  const derived_columns = frame.columns.filter((column) =>
+    !BASE_COLS.has(column) && !column.includes(":"),
+  );
+  const derived_headers = derived_columns.map((column) =>
+    `<th class="derived_result_th"${has_stats ? ' rowspan="2"' : ""}>${escape_html(column)}</th>`,
+  ).join("");
   // NaN means "not computed for this file" — show a dash.
   const fmt = (v) => (v != null && !Number.isNaN(v) ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
 
@@ -141,6 +150,7 @@ export function render_file_table() {
         <tr>
           <th class="checkbox_col stats_checkbox_th" rowspan="2">${checkbox_th_inner}</th>
           ${label_ths}
+          ${derived_headers}
           ${group_headers}
         </tr>
         <tr>
@@ -153,11 +163,12 @@ export function render_file_table() {
         <tr>
           <th class="checkbox_col">${checkbox_th_inner}</th>
           ${regular_headers}
+          ${derived_headers}
         </tr>`;
   }
 
   const total_stat_cols = has_stats ? stats_groups.reduce((sum, g) => sum + g.metrics.length, 0) : 0;
-  const empty_colspan = TABLE_COLUMNS.length + 1 + total_stat_cols;
+  const empty_colspan = TABLE_COLUMNS.length + 1 + derived_columns.length + total_stat_cols;
   const body = visible_files.length
     ? visible_files.map((row) => {
         const is_linked = metadata_row_is_linked(row);
@@ -169,6 +180,9 @@ export function render_file_table() {
           }
           return cell(row, column.field);
         }).join("");
+        const derived_tds = derived_columns.map((column) =>
+          `<td class="derived_result_td">${escape_html(String(row[column] ?? "—"))}</td>`,
+        ).join("");
         const stats_tds = has_stats ? stats_groups.map((g) =>
           g.metrics.map((m, mi) => {
             const cls = mi === 0 ? " stats_col_start" : "";
@@ -179,6 +193,7 @@ export function render_file_table() {
         <tr class="${is_linked ? "" : "metadata_row_unlinked"}">
           <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) && is_linked ? " checked" : ""}${is_linked ? "" : " disabled"} /></td>
           ${metadata_tds}
+          ${derived_tds}
           ${stats_tds}
         </tr>`;
       }).join("")
