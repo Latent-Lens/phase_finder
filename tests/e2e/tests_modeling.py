@@ -120,6 +120,56 @@ def test_modeling(ctx: TestContext):
             and status_after != status_before,
             f"before={status_before!r}, after={status_after!r}",
         )
+
+        table_stats = page.evaluate(
+            """(sampleName) => {
+              const frame = window.PhaseFinder.app.get_file_table();
+              const columns = [
+                'Structural lost', 'Time QC lost', 'Scatter lost', 'Singlet lost',
+                'G1 %', 'S %', 'G2/M %',
+              ];
+              const rowIndex = [...frame.col('name')].indexOf(sampleName);
+              return {
+                rowIndex,
+                columnsPresent: columns.every((column) => frame.columns.includes(column)),
+                values: Object.fromEntries(columns.map((column) => [
+                  column,
+                  frame.columns.includes(column) && rowIndex >= 0
+                    ? frame.col(column)[rowIndex]
+                    : null,
+                ])),
+                visibleHeaders: [...document.querySelectorAll('#file_table thead th')]
+                  .map((cell) => cell.textContent.trim()),
+              };
+            }""",
+            sample_name,
+        )
+        losses = [table_stats["values"][name] for name in (
+            "Structural lost", "Time QC lost", "Scatter lost", "Singlet lost",
+        )]
+        fractions = [table_stats["values"][name] for name in ("G1 %", "S %", "G2/M %")]
+        formatted_losses = all(
+            value == "—" or (isinstance(value, str) and "(" in value and value.endswith("%)"))
+            for value in losses
+        )
+        formatted_fractions = all(
+            isinstance(value, str) and value.endswith("%") for value in fractions
+        )
+        fraction_total = sum(float(value.rstrip("%")) for value in fractions) if formatted_fractions else 0
+        ctx.check(
+            group,
+            "Stage 8 publishes sequential filter losses and G1/S/G2-M percentages to the metadata table",
+            table_stats["rowIndex"] >= 0
+            and table_stats["columnsPresent"]
+            and formatted_losses
+            and formatted_fractions
+            and abs(fraction_total - 100) <= 0.2
+            and all(name in table_stats["visibleHeaders"] for name in (
+                "Structural lost", "Time QC lost", "Scatter lost", "Singlet lost",
+                "G1 %", "S %", "G2/M %",
+            )),
+            str(table_stats),
+        )
     except Exception as error:
         ctx.check(group, "Run-all Stage 0→8 pipeline flow", False, str(error))
     finally:
