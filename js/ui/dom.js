@@ -32,6 +32,13 @@ export const progress_detail = document.querySelector("#progress_detail");
 export const channel_select = document.querySelector("#channel_select");
 export const collapsed_channel_select = document.querySelector("#collapsed_channel_select");
 
+// ── Companion (Height/Width/FSC/SSC) channel panel ───────────────────────────
+export const channel_aux_panel = document.querySelector("#channel_aux_panel");
+export const aux_height_select = document.querySelector("#aux_height_select");
+export const aux_width_select = document.querySelector("#aux_width_select");
+export const aux_fsc_select = document.querySelector("#aux_fsc_select");
+export const aux_ssc_select = document.querySelector("#aux_ssc_select");
+
 // ── Metadata table + toolbar ─────────────────────────────────────────────────
 export const file_table = document.querySelector("#file_table");
 export const metadata_add_column_button = document.querySelector("#metadata_add_column_button");
@@ -62,6 +69,9 @@ export const djf_stage_buttons = Array.from({ length: 9 }, (_, stage) =>
 export const djf_run_all_button = document.querySelector("#djf_run_all");
 export const djf_scatter_modal = document.querySelector("#djf_scatter_modal");
 export const djf_scatter_modal_close = document.querySelector("#djf_scatter_modal_close");
+export const djf_scatter_reset = document.querySelector("#djf_scatter_reset");
+export const djf_scatter_coverage = document.querySelector("#djf_scatter_coverage");
+export const djf_scatter_coverage_value = document.querySelector("#djf_scatter_coverage_value");
 export const djf_scatter_plot = document.querySelector("#djf_scatter_plot");
 export const djf_scatter_caption = document.querySelector("#djf_scatter_caption");
 

@@ -50,6 +50,50 @@ function stage_result(stage_number, row, result, state) {
   };
 }
 
+function clone_scatter_component(component) {
+  if (!component) return null;
+  return {
+    ...component,
+    mean: Array.from(component.mean ?? []),
+    covariance: Array.from(
+      component.covariance ?? [],
+      row => Array.from(row ?? []),
+    ),
+  };
+}
+
+function validate_scatter_gate_center(mean) {
+  if (
+    !mean ||
+    mean.length !== 2 ||
+    !Number.isFinite(mean[0]) ||
+    !Number.isFinite(mean[1])
+  ) {
+    throw new RangeError("The Stage 2 gate center must contain finite FSC-A and SSC-A values.");
+  }
+  return [Number(mean[0]), Number(mean[1])];
+}
+
+function validate_scatter_gate_coverage(coverage) {
+  const value = Number(coverage);
+  if (!Number.isFinite(value) || !(value > 0) || !(value < 1)) {
+    throw new RangeError("The Stage 2 gate coverage must be greater than 0 and less than 1.");
+  }
+  return value;
+}
+
+// For two dimensions, squared Mahalanobis distance follows chi-square(2),
+// whose inverse CDF has this closed form.
+function scatter_threshold_for_coverage(coverage) {
+  return -2 * Math.log1p(-validate_scatter_gate_coverage(coverage));
+}
+
+function count_retained(mask) {
+  let count = 0;
+  for (const retained of mask ?? []) count += retained ? 1 : 0;
+  return count;
+}
+
 export function run_stage0(row, options = {}) {
   const data = require_row_data(row);
   const state = get_or_create_state(row);
@@ -81,10 +125,97 @@ export function run_stage2(row, options = {}) {
     data.masks?.timeQC ?? null,
     options,
   );
+  if (!result.skipped && result.mainComponent) {
+    result.fittedMainComponent = clone_scatter_component(result.mainComponent);
+    result.fittedThreshold = result.threshold;
+    result.manualOverride = null;
+    result.gateSource = "fitted";
+  }
   state.scatterGate = result;
   set_stage_mask(row, 2, result.skipped ? null : result.scatterMask);
   invalidate_after(row, state, 2);
   return stage_result(2, row, result, state);
+}
+
+/**
+ * Translate or resize Stage 2's fitted ellipse and make it authoritative.
+ *
+ * Translation changes the FSC-A/SSC-A center. Coverage changes the squared
+ * Mahalanobis threshold while retaining the fitted covariance, so both axes
+ * scale together without changing their ratio or rotation. The raw-index mask
+ * is recomputed from the original scatter points, then Stage 3 and every
+ * downstream product are invalidated.
+ */
+export function update_stage2_gate(
+  row,
+  { mean = null, coverage = null, reset = false } = {},
+) {
+  const data = require_row_data(row);
+  const state = get_or_create_state(row);
+  const result = state.scatterGate;
+  if (!result || result.skipped || !result.mainComponent) {
+    throw new Error("Run DJF Stage 2 before editing its scatter gate.");
+  }
+
+  const fittedComponent = clone_scatter_component(
+    result.fittedMainComponent ?? result.mainComponent,
+  );
+  const currentComponent = clone_scatter_component(result.mainComponent);
+  const center = reset
+    ? validate_scatter_gate_center(fittedComponent.mean)
+    : mean == null
+      ? validate_scatter_gate_center(currentComponent.mean)
+      : validate_scatter_gate_center(mean);
+  const fittedThreshold = Number(result.fittedThreshold ?? result.threshold);
+  const threshold = reset
+    ? fittedThreshold
+    : coverage == null
+      ? Number(result.threshold)
+      : scatter_threshold_for_coverage(coverage);
+  const nextComponent = {
+    ...(reset ? fittedComponent : currentComponent),
+    mean: center,
+  };
+  const { mask, mahalanobisDistanceSquared } = stage2.createScatterGateMask(
+    data.eventCount,
+    result.scatterPoints,
+    nextComponent,
+    threshold,
+  );
+
+  const components = [...result.components];
+  if (
+    Number.isInteger(result.mainComponentIndex) &&
+    result.mainComponentIndex >= 0 &&
+    result.mainComponentIndex < components.length
+  ) {
+    components[result.mainComponentIndex] = nextComponent;
+  }
+  const updatedResult = {
+    ...result,
+    components,
+    mainComponent: nextComponent,
+    fittedMainComponent: fittedComponent,
+    fittedThreshold,
+    threshold,
+    scatterMask: mask,
+    mask,
+    mahalanobisDistanceSquared,
+    retainedEventCount: count_retained(mask),
+    manualOverride: reset
+      ? null
+      : {
+          mean: [...center],
+          threshold,
+          coverage: 1 - Math.exp(-threshold / 2),
+        },
+    gateSource: reset ? "fitted" : "manual",
+  };
+
+  state.scatterGate = updatedResult;
+  set_stage_mask(row, 2, mask);
+  invalidate_after(row, state, 2);
+  return stage_result(2, row, updatedResult, state);
 }
 
 export function run_stage3(row, options = {}) {
@@ -278,17 +409,16 @@ const FILTER_STAGES = [
 ];
 
 /**
- * Per-sample metadata-table summary: how many events each mask filter removed
- * (relative to the events that entered that stage) plus the G1/S/G2-M percents.
+ * Per-filter event funnel: how many events each mask removed relative to the
+ * events that entered that stage. Derived from the composed masks rather than
+ * each stage's own counts, so it stays correct regardless of per-stage mask
+ * semantics and reports a null-mask (skipped/optional) stage as removing nothing.
  *
- * The funnel is derived from the composed masks rather than each stage's own
- * counts, so it stays correct regardless of per-stage mask semantics and reports
- * a null-mask (skipped/optional) stage as removing nothing. Returns null until
- * the sample has a Stage 8 report, so the table only shows completed samples.
+ * Needs no report, so each filter's loss can be written to the table as soon as
+ * that stage runs. Returns null when the sample has no loaded data.
  */
-export function pipeline_table_stats(row) {
-  const state = get_state(row?.name);
-  if (!state || !state.report || !row?.data) return null;
+export function pipeline_filter_funnel(row) {
+  if (!row?.data) return null;
 
   const eventCount = row.data.eventCount ?? 0;
   const masks = row.data.masks || {};
@@ -311,12 +441,24 @@ export function pipeline_table_stats(row) {
     entered = keptAfter;
   }
 
+  return { name: row.name, eventCount, filters };
+}
+
+/**
+ * Full metadata-table summary: the per-filter funnel plus the G1/S/G2-M cell
+ * cycle percentages. Returns null until the sample has a Stage 8 report, so the
+ * cell-cycle columns only populate for samples that completed the pipeline.
+ */
+export function pipeline_table_stats(row) {
+  const state = get_state(row?.name);
+  if (!state || !state.report) return null;
+  const funnel = pipeline_filter_funnel(row);
+  if (!funnel) return null;
+
   const bio = state.report.fractions?.biologicalSinglets || {};
   const percent = (fraction) => (Number.isFinite(fraction) ? 100 * fraction : NaN);
   return {
-    name: row.name,
-    eventCount,
-    filters,
+    ...funnel,
     fractions: {
       g1: percent(bio.oneC),
       s: percent(bio.sPhase),
