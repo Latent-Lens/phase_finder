@@ -405,3 +405,59 @@ th {
   text-align: right;
   vertical-align: middle;
 }
+
+/* ---- Derived (pipeline/report) columns ---- */
+
+/*
+ * Grouped derived columns reuse the two-row header: the section title sits in
+ * row 1 (aligned with the metadata sort labels) and each column title sits in
+ * row 2 (aligned with the metadata filter dropdowns). A blue accent sets these
+ * sections apart from the teal channel-statistics groups.
+ */
+
+/* Row-1 section header: spans its columns, centered over them. */
+.file_table th.derived_group_th {
+  height: auto;
+  padding: 5px 10px;
+  text-align: center;
+  vertical-align: middle;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--logo_blue);
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Row-2 per-column titles: sticky just below the label row, like stats sub-heads. */
+.file_table th.derived_sub_th {
+  height: auto;
+  padding: 5px 10px 6px;
+  font-size: 0.94rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+  white-space: nowrap;
+  vertical-align: middle;
+  position: sticky;
+  top: var(--stats_label_row_height);
+  background: var(--th_bg);
+}
+
+/* Standalone derived header (no recognized group); spans both header rows. */
+.file_table th.derived_result_th {
+  height: auto;
+  padding: 5px 10px;
+  text-align: center;
+  vertical-align: middle;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Derived data cells: centered, matching the centered column titles. */
+.derived_result_td {
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}

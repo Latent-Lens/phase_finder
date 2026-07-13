@@ -183,22 +183,166 @@ Output:
 	indexes [Object]: { dna_a } parameter index for the file
 
 */
+/*
+
+Purpose:
+	Resolves one companion channel for a file. An override label chosen in the
+	sidebar panel wins over auto-detection; if that label is absent from this
+	particular file it degrades to "not found" rather than throwing (session files
+	may differ). `undefined` means no override — use the auto-detected result.
+
+Input:
+	params [Array]:          parameter_map entries for the file
+	override_label [string]: chosen label, "" for None, or undefined for auto
+	auto_index [number]:     auto-detected 1-based index (or null)
+	auto_label [string]:     auto-detected label
+
+Output:
+	result [Object]: { index, label }
+
+*/
+function resolve_companion(params, override_label, auto_index, auto_label) {
+  if (override_label === undefined) {
+    return { index: Number.isInteger(auto_index) ? auto_index : null, label: auto_label || "" };
+  }
+  if (!override_label) {
+    return { index: null, label: "" };
+  }
+  const hit = params.find((param) =>
+    param.label === override_label || param.name === override_label || param.desc === override_label,
+  );
+  return hit ? { index: hit.index, label: override_label } : { index: null, label: "" };
+}
+
 export function selected_indexes_for_file(summary, selected) {
   const params = parameter_map(summary);
   const dna_a = find_param_index(params, selected.dna_area);
   const aux = find_auxiliary_indexes_for_file(params, selected.dna_area);
   const pipeline = find_pipeline_channel_indexes(params);
+  const label_for = (index) =>
+    Number.isInteger(index) ? (params.find((param) => param.index === index)?.label ?? "") : "";
+
+  const height = resolve_companion(params, selected.dna_height_label, aux.dna_h, aux.dna_height_label);
+  const width = resolve_companion(params, selected.dna_width_label, aux.dna_w, aux.dna_width_label);
+  const fsc = resolve_companion(params, selected.fsc_label, pipeline.fsc_a, label_for(pipeline.fsc_a));
+  const ssc = resolve_companion(params, selected.ssc_label, pipeline.ssc_a, label_for(pipeline.ssc_a));
 
   return {
     dna_a,
-    dna_h: aux.dna_h || null,
-    dna_w: aux.dna_w || null,
-    dna_height_label: aux.dna_height_label || "",
-    dna_width_label: aux.dna_width_label || "",
-    fsc_a: pipeline.fsc_a,
-    ssc_a: pipeline.ssc_a,
+    dna_h: height.index,
+    dna_w: width.index,
+    dna_height_label: height.label,
+    dna_width_label: width.label,
+    fsc_a: fsc.index,
+    ssc_a: ssc.index,
     time: pipeline.time,
   };
+}
+
+// Shape the stored analysis-data object from a built channel bundle.
+function make_analysis_data(row, selected, raw, indexes, companions_pending) {
+  return {
+    // Bare DNA-area label: the active-channel identifier the plot layer and DJF
+    // pipeline match on. The companion-aware composite key is used only as the
+    // analysis-data cache map key (store/cached_analysis_data).
+    channel_key: selected.dna_area,
+    channel: selected.dna_area,
+    eventCount: row.summary.event_count,
+    channels: raw.channels,
+    pnr: raw.pnr,
+    parameterMetadata: raw.parameterMetadata,
+    masks: { structural: null, timeQC: null, scatter: null, singlet: null, final: null },
+    indexes,
+    // Compatibility aliases remain until the legacy DJF path is retired.
+    dna_a: raw.channels.DNA_A,
+    dna_h: raw.channels.DNA_H,
+    dna_w: raw.channels.DNA_W,
+    companionsPending: companions_pending,
+  };
+}
+
+/*
+
+Purpose:
+	Background phase-2 load: reads the companion columns (Height/Width/FSC-A/
+	SSC-A/Time) and merges them into an already-stored main-channel data object,
+	so the plot can render from DNA-A first while these stream in behind it.
+
+Input:
+	row [Object]:      loaded sample row
+	selected [Object]: selected channels
+	data [Object]:     the stored main-only data object (mutated in place)
+
+Output:
+	data [Object]: the same object, with companion channels filled in
+
+*/
+async function load_companion_channels(row, selected, data, options = {}) {
+  const { indexes } = data;
+  const companion_indexes = unique_indexes([
+    indexes.dna_h,
+    indexes.dna_w,
+    indexes.fsc_a,
+    indexes.ssc_a,
+    indexes.time,
+  ]);
+  if (companion_indexes.length === 0) {
+    data.companionsPending = false;
+    return data;
+  }
+
+  const columns = await load_selected_fcs_columns(
+    row.file,
+    row.summary,
+    companion_indexes,
+    { ...options, activate: false },
+  );
+  const companion_only = {
+    dna_a: null,
+    dna_h: indexes.dna_h,
+    dna_w: indexes.dna_w,
+    fsc_a: indexes.fsc_a,
+    ssc_a: indexes.ssc_a,
+    time: indexes.time,
+  };
+  const raw = build_raw_analysis_channels(
+    columns,
+    companion_only,
+    row.summary.metadata,
+    row.summary.event_count,
+  );
+  for (const name of ["DNA_H", "DNA_W", "FSC_A", "SSC_A", "Time"]) {
+    data.channels[name] = raw.channels[name];
+    data.pnr[name] = raw.pnr[name];
+    data.parameterMetadata[name] = raw.parameterMetadata[name];
+  }
+  data.dna_h = raw.channels.DNA_H;
+  data.dna_w = raw.channels.DNA_W;
+  data.companionsPending = false;
+  return data;
+}
+
+/*
+
+Purpose:
+	Awaits any in-flight background companion loads for the given rows. The DJF
+	pipeline calls this so its scatter/singlet/time stages always see the
+	Height/Width/FSC/SSC/Time channels even when the plot rendered from DNA-A
+	first. Rows loaded without deferral (no companions_promise) resolve at once.
+
+Input:
+	rows [Array<Object>]: loaded sample rows
+
+Output:
+	(none) [Promise<void>]
+
+*/
+export async function ensure_companions_loaded(rows) {
+  await Promise.all(
+    (rows || [])
+      .map((row) => row && row.companions_promise)
+      .filter(Boolean),
+  );
 }
 
 /*
@@ -249,6 +393,49 @@ export async function load_analysis_row(row, selected, options = {}) {
 
   const promise = (async () => {
     const indexes = selected_indexes_for_file(row.summary, selected);
+
+    if (options.defer_companions) {
+      // Phase 1: load only the main DNA channel so the plot can paint now.
+      const columns = await load_selected_fcs_columns(
+        row.file,
+        row.summary,
+        unique_indexes([indexes.dna_a]),
+        options,
+      );
+      const main_indexes = {
+        ...indexes,
+        dna_h: null,
+        dna_w: null,
+        fsc_a: null,
+        ssc_a: null,
+        time: null,
+      };
+      const raw = build_raw_analysis_channels(
+        columns,
+        main_indexes,
+        row.summary.metadata,
+        row.summary.event_count,
+      );
+      const stored = store_analysis_data(
+        row,
+        selected,
+        make_analysis_data(row, selected, raw, indexes, true),
+        activate,
+      );
+      // Phase 2: companions in the background. Keep the promise so the pipeline
+      // can await it; a failure leaves companions null (stages skip) rather than
+      // blocking.
+      row.companions_promise = load_companion_channels(row, selected, stored, options)
+        .catch((error) => {
+          stored.companionsPending = false;
+          set_status_bar(`Companion channels failed to load for ${row.name}: ${error.message}`, true);
+          return stored;
+        });
+      stored.companionsPromise = row.companions_promise;
+      return stored;
+    }
+
+    // Default: load the main channel and all companions in one request.
     const requested_indexes = unique_indexes([
       indexes.dna_a,
       indexes.dna_h,
@@ -264,27 +451,12 @@ export async function load_analysis_row(row, selected, options = {}) {
       row.summary.metadata,
       row.summary.event_count,
     );
-    const data = {
-      channel_key: key,
-      channel: selected.dna_area,
-      eventCount: row.summary.event_count,
-      channels: raw.channels,
-      pnr: raw.pnr,
-      parameterMetadata: raw.parameterMetadata,
-      masks: {
-        structural: null,
-        timeQC: null,
-        scatter: null,
-        singlet: null,
-        final: null,
-      },
-      indexes,
-      // Compatibility aliases remain until the legacy DJF path is retired.
-      dna_a: raw.channels.DNA_A,
-      dna_h: raw.channels.DNA_H,
-      dna_w: raw.channels.DNA_W,
-    };
-    return store_analysis_data(row, selected, data, activate);
+    return store_analysis_data(
+      row,
+      selected,
+      make_analysis_data(row, selected, raw, indexes, false),
+      activate,
+    );
   })();
 
   row.analysis_data_promises_by_channel.set(key, promise);
@@ -329,11 +501,12 @@ export async function load_analysis_batch(
     detail_prefix = "Loading selected data",
     allow_main_thread_fallback = true,
     activate = true,
+    defer_companions = false,
     display_total = total,
     display_suffix = "",
   } = options;
   const tasks = batch.map(({ row }) =>
-    load_analysis_row(row, selected, { allow_main_thread_fallback, activate }).then(async () => {
+    load_analysis_row(row, selected, { allow_main_thread_fallback, activate, defer_companions }).then(async () => {
       completed.count += 1;
       const percent = (completed.count / total) * 100;
       const detail = `${detail_prefix} for file ${completed.count} of ${display_total}${display_suffix}`;
@@ -387,6 +560,10 @@ export async function load_analysis_data() {
     }));
     await load_analysis_batch(batch, selected, completed, rows.length, "Loading FCS Data", {
       detail_prefix: "Loading data",
+      // Load only the DNA channel now so the plot paints fast; the companion
+      // channels (Height/Width/FSC/SSC/Time) stream in behind it and the DJF
+      // pipeline awaits them via ensure_companions_loaded().
+      defer_companions: true,
     });
   }
 

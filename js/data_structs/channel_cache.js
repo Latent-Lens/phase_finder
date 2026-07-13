@@ -19,7 +19,18 @@ Output:
 
 */
 export function analysis_data_key(selected) {
-  return selected && selected.dna_area ? selected.dna_area : "";
+  if (!selected || !selected.dna_area) return "";
+  // Companion-channel overrides are part of the identity: changing which channel
+  // is used for Height/Width/FSC/SSC must miss the cache and reload. `undefined`
+  // (auto-detect, e.g. from the stats modal) collapses to "" so it shares the
+  // plain auto-detected entry.
+  return [
+    selected.dna_area,
+    selected.dna_height_label || "",
+    selected.dna_width_label || "",
+    selected.fsc_label || "",
+    selected.ssc_label || "",
+  ].join("|");
 }
 
 /*

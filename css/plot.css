@@ -138,6 +138,45 @@
   min-height: 420px;
 }
 
+.djf_scatter_tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.djf_scatter_instructions {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.djf_scatter_tools button {
+  flex: 0 0 auto;
+}
+
+.djf_scatter_controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.djf_scatter_controls input[type="range"] {
+  width: 130px;
+}
+
+.djf_scatter_controls output {
+  min-width: 3.5rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .djf_scatter_plot {
   width: 100%;
   min-height: 360px;
@@ -147,6 +186,29 @@
   display: block;
   width: 100%;
   height: auto;
+}
+
+.djf_scatter_gate_handle,
+.djf_scatter_gate_center {
+  cursor: grab;
+  touch-action: none;
+}
+
+.djf_scatter_gate_handle:active,
+.djf_scatter_gate_center:active,
+.djf_scatter_gate_dragging {
+  cursor: grabbing;
+}
+
+.djf_scatter_gate_visible.djf_scatter_gate_focus {
+  stroke: var(--logo_blue);
+  stroke-width: 3.4;
+}
+
+.djf_scatter_gate_center {
+  fill: var(--panel);
+  stroke: var(--logo_teal);
+  stroke-width: 2;
 }
 
 .djf_scatter_caption {
@@ -160,6 +222,15 @@
   .djf_pipeline_controls {
     flex-direction: column;
     gap: 6px;
+  }
+
+  .djf_scatter_tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .djf_scatter_controls {
+    flex-wrap: wrap;
   }
 }
 

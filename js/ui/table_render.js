@@ -27,6 +27,7 @@ import {
   sync_file_annotations,
 } from "../data_structs/table_state.js";
 import { unique_metadata_label } from "../data_structs/metadata_columns.js";
+import { DERIVED_COLUMN_GROUPS, TOTAL_EVENTS_COLUMN, TOTAL_EVENTS_HEADER } from "../data_structs/derived_columns.js";
 import {
   displayed_files,
   annotation_input_size,
@@ -125,16 +126,71 @@ export function render_file_table() {
   const derived_columns = frame.columns.filter((column) =>
     !BASE_COLS.has(column) && !column.includes(":"),
   );
-  const derived_headers = derived_columns.map((column) =>
-    `<th class="derived_result_th"${has_stats ? ' rowspan="2"' : ""}>${escape_html(column)}</th>`,
-  ).join("");
+  // The leading total-events column renders on its own with a header split
+  // across the two rows ("Total number" / "of events"); it is never grouped.
+  const has_total_events = derived_columns.includes(TOTAL_EVENTS_COLUMN);
+  const groupable_derived = derived_columns.filter((column) => column !== TOTAL_EVENTS_COLUMN);
+  // Group the rest under section headers (Quality Control, Dean-Jett-Fox
+  // Modeling), keeping only members present in the frame so a group grows as its
+  // columns are added. Anything unrecognized renders standalone. The ordered
+  // list drives both the header and body cell order.
+  const present_derived = new Set(groupable_derived);
+  const used_derived = new Set();
+  const derived_groups = [];
+  for (const group of DERIVED_COLUMN_GROUPS) {
+    const columns = group.columns.filter((column) => present_derived.has(column));
+    if (columns.length) {
+      derived_groups.push({ label: group.label, columns });
+      columns.forEach((column) => used_derived.add(column));
+    }
+  }
+  const ungrouped_derived = groupable_derived.filter((column) => !used_derived.has(column));
+  const ordered_derived_columns = [
+    ...(has_total_events ? [TOTAL_EVENTS_COLUMN] : []),
+    ...derived_groups.flatMap((group) => group.columns),
+    ...ungrouped_derived,
+  ];
+  // The leading total column and the first column of each section carry the
+  // divider border.
+  const derived_col_start = new Set([
+    ...(has_total_events ? [TOTAL_EVENTS_COLUMN] : []),
+    ...derived_groups.map((group) => group.columns[0]),
+    ...ungrouped_derived,
+  ]);
+  // Any grouped section (or the split total header) forces the two-row header
+  // even without stats, so section titles align with the metadata labels and
+  // column titles align with the metadata filter dropdowns.
+  const two_row_header = has_stats || derived_groups.length > 0 || has_total_events;
+  const total_top_th = has_total_events
+    ? `<th class="derived_group_th stats_col_start">${escape_html(TOTAL_EVENTS_HEADER.top)}</th>`
+    : "";
+  const total_bottom_th = has_total_events
+    ? `<th class="derived_sub_th stats_col_start">${escape_html(TOTAL_EVENTS_HEADER.bottom)}</th>`
+    : "";
+  const derived_group_ths = [
+    total_top_th,
+    ...derived_groups.map((group) =>
+      `<th colspan="${group.columns.length}" class="derived_group_th stats_col_start">${escape_html(group.label)}</th>`,
+    ),
+    ...ungrouped_derived.map((column) =>
+      `<th class="derived_result_th stats_col_start"${two_row_header ? ' rowspan="2"' : ""}>${escape_html(column)}</th>`,
+    ),
+  ].join("");
+  const derived_sub_ths = [
+    total_bottom_th,
+    ...derived_groups.map((group) =>
+      group.columns.map((column, ci) =>
+        `<th class="derived_sub_th${ci === 0 ? " stats_col_start" : ""}">${escape_html(column)}</th>`,
+      ).join(""),
+    ),
+  ].join("");
   // NaN means "not computed for this file" — show a dash.
   const fmt = (v) => (v != null && !Number.isNaN(v) ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
 
   const checkbox_th_inner = `<input type="checkbox" id="select_all_files" title="${escape_html(Tooltips.text("selectAllDisplayedFiles"))}" />`;
 
   let head_html;
-  if (has_stats) {
+  if (two_row_header) {
     const label_ths = TABLE_COLUMNS.map((col) => header_label_cell(col)).join("");
     const filter_ths = TABLE_COLUMNS.map((col) => header_filter_cell(col)).join("");
     const group_headers = stats_groups.map((g) =>
@@ -150,11 +206,12 @@ export function render_file_table() {
         <tr>
           <th class="checkbox_col stats_checkbox_th" rowspan="2">${checkbox_th_inner}</th>
           ${label_ths}
-          ${derived_headers}
+          ${derived_group_ths}
           ${group_headers}
         </tr>
         <tr>
           ${filter_ths}
+          ${derived_sub_ths}
           ${sub_headers}
         </tr>`;
   } else {
@@ -163,7 +220,7 @@ export function render_file_table() {
         <tr>
           <th class="checkbox_col">${checkbox_th_inner}</th>
           ${regular_headers}
-          ${derived_headers}
+          ${derived_group_ths}
         </tr>`;
   }
 
@@ -180,9 +237,10 @@ export function render_file_table() {
           }
           return cell(row, column.field);
         }).join("");
-        const derived_tds = derived_columns.map((column) =>
-          `<td class="derived_result_td">${escape_html(String(row[column] ?? "—"))}</td>`,
-        ).join("");
+        const derived_tds = ordered_derived_columns.map((column) => {
+          const cls = derived_col_start.has(column) ? " stats_col_start" : "";
+          return `<td class="derived_result_td${cls}">${escape_html(String(row[column] ?? "—"))}</td>`;
+        }).join("");
         const stats_tds = has_stats ? stats_groups.map((g) =>
           g.metrics.map((m, mi) => {
             const cls = mi === 0 ? " stats_col_start" : "";
