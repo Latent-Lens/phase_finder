@@ -19,6 +19,8 @@ import { init_scatter_modal, open_scatter_modal } from "./scatter_modal.js";
 import { get_file_table } from "../../state/app_state.js";
 import { get_file_by_id } from "../../state/files.js";
 import { render_file_table } from "../../ui/table_render.js";
+import { ensure_companions_loaded } from "../../io/channel_loading.js";
+import { QC_LOST_COLUMNS, DJF_FRACTION_COLUMNS, TOTAL_EVENTS_COLUMN } from "../../data_structs/derived_columns.js";
 
 const IMPLEMENTED_STAGE_COUNT = 9;
 let initialized = false;
@@ -30,19 +32,6 @@ function set_pipeline_controls_disabled(disabled) {
   });
   if (djf_run_all_button) djf_run_all_button.disabled = disabled;
 }
-
-// Metadata-table columns written after a sample completes the full pipeline.
-const DJF_LOST_COLUMNS = [
-  ["structural", "Structural lost"],
-  ["timeQC", "Time QC lost"],
-  ["scatter", "Scatter lost"],
-  ["singlet", "Singlet lost"],
-];
-const DJF_FRACTION_COLUMNS = [
-  ["g1", "G1 %"],
-  ["s", "S %"],
-  ["g2", "G2/M %"],
-];
 
 // "1,905 (4.5%)" — count removed by the filter and its share of the events that
 // entered that stage. A skipped/optional filter (no mask) shows an em dash.
@@ -56,10 +45,69 @@ function format_percent(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)}%` : "—";
 }
 
-// Writes the per-filter loss and G1/S/G2-M percent columns into the file table
-// for every sample that has a completed report. Samples without one are left
-// untouched, so a partial run only fills rows that finished.
-function write_pipeline_table_stats(rows, pipeline) {
+// Sets one frame column from a per-id value function; `undefined` leaves a cell
+// as-is, so samples not in this run keep their prior value.
+function write_frame_column(frame, ids, col_name, value_for_id) {
+  const column = frame.columns.includes(col_name)
+    ? [...frame.col(col_name)]
+    : Array(ids.length).fill(null);
+  ids.forEach((id, index) => {
+    const value = value_for_id(id);
+    if (value !== undefined) column[index] = value;
+  });
+  frame.setCol(col_name, column);
+}
+
+// Writes one gating stage's loss column as soon as that stage finishes, then
+// blanks any downstream columns whose masks this run just invalidated so they
+// can't show stale numbers.
+function write_gating_loss_column(rows, pipeline, stage) {
+  const frame = get_file_table();
+  if (!frame) return;
+
+  const funnel_by_name = new Map();
+  for (const row of rows) {
+    const funnel = pipeline.pipeline_filter_funnel(row);
+    if (funnel) funnel_by_name.set(row.name, funnel);
+  }
+  if (!funnel_by_name.size) return;
+
+  const ids = [...frame.col("id")];
+  const name_for = (id) => get_file_by_id(id)?.name;
+  const processed = new Set(funnel_by_name.keys());
+  const { key, label } = QC_LOST_COLUMNS[stage];
+
+  // The first filter also seeds the leading raw event-count column, so it lands
+  // to the left of the loss columns.
+  if (stage === 0) {
+    write_frame_column(frame, ids, TOTAL_EVENTS_COLUMN, (id) => {
+      const funnel = funnel_by_name.get(name_for(id));
+      return funnel ? funnel.eventCount.toLocaleString() : undefined;
+    });
+  }
+
+  write_frame_column(frame, ids, label, (id) => {
+    const funnel = funnel_by_name.get(name_for(id));
+    if (!funnel) return undefined;
+    return format_lost(funnel.filters.find((filter) => filter.key === key));
+  });
+
+  const downstream = [
+    ...QC_LOST_COLUMNS.slice(stage + 1).map((column) => column.label),
+    ...DJF_FRACTION_COLUMNS.map((column) => column.label),
+  ];
+  for (const col_name of downstream) {
+    if (!frame.columns.includes(col_name)) continue;
+    write_frame_column(frame, ids, col_name, (id) =>
+      processed.has(name_for(id)) ? null : undefined,
+    );
+  }
+
+  render_file_table();
+}
+
+// Writes the G1/S/G2-M percentage columns once samples have a Stage 8 report.
+function write_fraction_columns(rows, pipeline) {
   const frame = get_file_table();
   if (!frame) return;
 
@@ -71,26 +119,12 @@ function write_pipeline_table_stats(rows, pipeline) {
   if (!stats_by_name.size) return;
 
   const ids = [...frame.col("id")];
-  const stats_for_id = (id) => stats_by_name.get(get_file_by_id(id)?.name);
-
-  const write_column = (col_name, value_for_stats) => {
-    const column = frame.columns.includes(col_name)
-      ? [...frame.col(col_name)]
-      : Array(ids.length).fill(null);
-    ids.forEach((id, index) => {
-      const stats = stats_for_id(id);
-      if (stats) column[index] = value_for_stats(stats);
+  const name_for = (id) => get_file_by_id(id)?.name;
+  for (const { key, label } of DJF_FRACTION_COLUMNS) {
+    write_frame_column(frame, ids, label, (id) => {
+      const stats = stats_by_name.get(name_for(id));
+      return stats ? format_percent(stats.fractions[key]) : undefined;
     });
-    frame.setCol(col_name, column);
-  };
-
-  for (const [key, col_name] of DJF_LOST_COLUMNS) {
-    write_column(col_name, (stats) =>
-      format_lost(stats.filters.find((filter) => filter.key === key)),
-    );
-  }
-  for (const [key, col_name] of DJF_FRACTION_COLUMNS) {
-    write_column(col_name, (stats) => format_percent(stats.fractions[key]));
   }
 
   render_file_table();
@@ -169,6 +203,12 @@ async function run_manual_stage(
 
   try {
     const pipeline = await load_pipeline();
+    // The plot loads only the DNA channel up front; the gating stages need the
+    // companion channels, so wait for their background load to finish first.
+    if (rows.some((row) => row.data && row.data.companionsPending)) {
+      set_status_bar("Loading companion channels for the DJF pipeline…");
+    }
+    await ensure_companions_loaded(rows);
     // Let the lazy-loader's hide timer settle before reusing the overlay for
     // per-sample progress.
     await new Promise((resolve) => window.setTimeout(resolve, 0));
@@ -211,7 +251,28 @@ async function run_manual_stage(
     render_density_plot();
     if (stage === 2 && openScatter) {
       const inspect = outputs.find((entry) => entry.result && !entry.result.skipped);
-      if (inspect) open_scatter_modal(rows.find((row) => row.name === inspect.name), inspect.result);
+      if (inspect) {
+        const inspect_row = rows.find((row) => row.name === inspect.name);
+        open_scatter_modal(inspect_row, inspect.result, {
+          onGateChange: (edit) => {
+            const updated = pipeline.update_stage2_gate(inspect_row, edit);
+            djf_stage_buttons.slice(3).forEach((stageButton) =>
+              stageButton?.classList.remove("djf_stage_complete")
+            );
+            djf_run_all_button?.classList.remove("djf_stage_complete");
+            render_density_plot();
+
+            const result = updated.result;
+            const action = result.manualOverride
+              ? "Manual Stage 2 gate applied"
+              : "Stage 2 gate reset";
+            const message = `${action} for ${inspect_row.name.replace(/\.fcs$/i, "")}: ${result.retainedEventCount.toLocaleString()} events retained. Re-run Stages 3–8.`;
+            if (djf_readout) djf_readout.textContent = message;
+            set_status_bar(message);
+            return updated;
+          },
+        });
+      }
     }
     if (djf_readout) {
       djf_readout.textContent = outputs.map((entry) => format_stage_result(stage, entry)).join("\n");
@@ -240,10 +301,13 @@ async function run_manual_stage(
       set_status_bar(`DJF Stage ${stage} complete for ${rows.length} sample(s)${skip_note}.`);
     }
 
-    // Stage 8 is the last stage; publish per-sample filter losses and cell-cycle
-    // percentages into the metadata table now that a report exists.
-    if (stage === 8) {
-      write_pipeline_table_stats(rows, pipeline);
+    // Publish table stats as they become available: each gating stage's event
+    // loss the moment that filter runs, and the cell-cycle percentages once the
+    // Stage 8 report exists.
+    if (stage >= 0 && stage <= 3) {
+      write_gating_loss_column(rows, pipeline, stage);
+    } else if (stage === 8) {
+      write_fraction_columns(rows, pipeline);
     }
     if (!keepOverlay) hide_progress(350);
     return outputs;

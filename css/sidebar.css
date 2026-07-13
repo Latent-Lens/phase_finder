@@ -338,3 +338,74 @@
 .status.error {
   color: var(--danger);
 }
+
+/* Action buttons pinned to the bottom of the sidebar. margin-top:auto pushes
+   this section down within the flex-column sidebar content; the two-class
+   selector out-specifies the .sidebar_section + .sidebar_section spacing rule. */
+.sidebar_section.sidebar_actions {
+  margin-top: auto;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Compact action buttons: Plot + Run DJF share the top row, Calculate
+   Statistics spans the full width below. */
+.sidebar_actions .sidebar_plot_button {
+  min-height: 34px;
+  min-width: 0;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  padding: 5px 8px;
+}
+
+.sidebar_actions .calculate_stats_button {
+  grid-column: 1 / -1;
+}
+
+/* Companion (Height/Width/FSC/SSC) channel panel — compact, shown in place of
+   the status text once a DNA channel is selected. */
+.channel_aux_panel {
+  margin-top: 4px;
+}
+
+.channel_aux_intro {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.channel_aux_grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+
+/* Label top, select bottom; space-between + the grid's equal row heights keep
+   both selects on a row aligned even when one label wraps to two lines. */
+.channel_aux_field {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2px;
+  min-width: 0;
+}
+
+.channel_aux_label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+/* min-width:0 lets the select shrink to its grid column instead of forcing the
+   column wider than half. */
+.channel_aux_select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.72rem;
+  padding: 2px 3px;
+}

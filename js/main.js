@@ -45,6 +45,7 @@ import {
   clear_channel_controls,
   update_drop_zone_text,
   update_start_button_state,
+  populate_companion_channel_controls,
 } from "./ui/status_channels.js";
 import { toggle_sidebar, annotation_input_size } from "./ui/table_support.js";
 import {
@@ -188,11 +189,13 @@ function init_app_bootstrap() {
   sidebar_toggle.addEventListener("click", toggle_sidebar);
   channel_select.addEventListener("change", () => {
     collapsed_channel_select.value = channel_select.value;
+    populate_companion_channel_controls();
     update_start_button_state();
     notify_channel_changed();
   });
   collapsed_channel_select.addEventListener("change", () => {
     channel_select.value = collapsed_channel_select.value;
+    populate_companion_channel_controls();
     update_start_button_state();
     notify_channel_changed();
   });

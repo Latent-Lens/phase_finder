@@ -98,6 +98,29 @@
               <select id="channel_select"></select>
             </div>
             <p id="status" class="status">No files loaded.</p>
+            <div id="channel_aux_panel" class="channel_aux_panel" hidden>
+              <p class="channel_aux_intro">Companion channels the pipeline will use — pick the right one for each if auto-detection is off:</p>
+              <div class="channel_aux_grid">
+                <label class="channel_aux_field">
+                  <span class="channel_aux_label">Height</span>
+                  <select id="aux_height_select" class="channel_aux_select"></select>
+                </label>
+                <label class="channel_aux_field">
+                  <span class="channel_aux_label">Width</span>
+                  <select id="aux_width_select" class="channel_aux_select"></select>
+                </label>
+                <label class="channel_aux_field">
+                  <span class="channel_aux_label">Forward Scatter Area (FSC)</span>
+                  <select id="aux_fsc_select" class="channel_aux_select"></select>
+                </label>
+                <label class="channel_aux_field">
+                  <span class="channel_aux_label">Side Scatter Area (SSC)</span>
+                  <select id="aux_ssc_select" class="channel_aux_select"></select>
+                </label>
+              </div>
+            </div>
+          </section>
+          <section class="sidebar_section sidebar_actions">
             <button
               id="start_analysis_button"
               class="start_analysis_button sidebar_plot_button quick_tooltip"
@@ -388,7 +411,18 @@
           <button id="djf_scatter_modal_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
         </div>
         <div class="stats_modal_body djf_scatter_body">
-          <div id="djf_scatter_plot" class="djf_scatter_plot" aria-label="FSC-A by SSC-A scatter plot with gate ellipse"></div>
+          <div class="djf_scatter_tools">
+            <p id="djf_scatter_instructions" class="djf_scatter_instructions">
+              Drag the teal ellipse or its center marker to move the cell gate. Change coverage to resize it. Edits apply to downstream stages.
+            </p>
+            <div class="djf_scatter_controls">
+              <label for="djf_scatter_coverage">Gate coverage</label>
+              <input id="djf_scatter_coverage" type="range" min="50" max="99.9" step="0.1" value="95" aria-describedby="djf_scatter_coverage_value">
+              <output id="djf_scatter_coverage_value" for="djf_scatter_coverage">95.0%</output>
+              <button id="djf_scatter_reset" type="button" class="secondary_button" disabled>Reset fitted gate</button>
+            </div>
+          </div>
+          <div id="djf_scatter_plot" class="djf_scatter_plot" aria-label="Interactive FSC-A by SSC-A scatter plot with draggable gate ellipse" aria-describedby="djf_scatter_instructions djf_scatter_caption"></div>
           <p id="djf_scatter_caption" class="djf_scatter_caption"></p>
         </div>
       </div>

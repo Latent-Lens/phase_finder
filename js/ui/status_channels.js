@@ -24,6 +24,11 @@ import {
   progress_detail,
   channel_select,
   collapsed_channel_select,
+  channel_aux_panel,
+  aux_height_select,
+  aux_width_select,
+  aux_fsc_select,
+  aux_ssc_select,
   start_analysis_button,
   collapsed_plot_button,
   metadata_add_column_button,
@@ -33,6 +38,11 @@ import {
 } from "./dom.js";
 import { escape_html } from "../util/html.js";
 import { get_file_map, get_file_table } from "../state/app_state.js";
+import { parameter_map } from "../io/parameter_map.js";
+import {
+  find_auxiliary_indexes_for_file,
+  find_pipeline_channel_indexes,
+} from "../fcs/channel_cleaning.js";
 import {
   selected_file_ids,
   column_filters,
@@ -75,9 +85,87 @@ Output:
 
 */
 export function get_selected_channels() {
+  const dna_area = channel_select.value;
+  // Companion labels come from the sidebar panel. When the panel is populated
+  // for the current channel its <select>s carry either a chosen label or "" for
+  // None; either way those choices drive the pipeline. When it hasn't been
+  // populated (no panel yet), fall back to per-file auto-detection downstream by
+  // leaving the labels undefined.
+  const panel_active = channel_aux_panel && !channel_aux_panel.hidden;
   return {
-    dna_area: channel_select.value,
+    dna_area,
+    dna_height_label: panel_active ? (aux_height_select?.value ?? "") : undefined,
+    dna_width_label: panel_active ? (aux_width_select?.value ?? "") : undefined,
+    fsc_label: panel_active ? (aux_fsc_select?.value ?? "") : undefined,
+    ssc_label: panel_active ? (aux_ssc_select?.value ?? "") : undefined,
   };
+}
+
+// Companion selects, in panel order, paired with the auto-detected label to
+// pre-select for each.
+const AUX_SELECTS = [
+  aux_height_select,
+  aux_width_select,
+  aux_fsc_select,
+  aux_ssc_select,
+];
+
+// Auto-detect Height/Width/FSC/SSC for the chosen DNA channel from a
+// representative loaded file, so the companion dropdowns open on the pipeline's
+// best guess. Returns labels ("" when none found).
+function auto_companion_labels(dna_area) {
+  const first = get_file_map().values().next().value;
+  const summary = first?.summary;
+  if (!summary) {
+    return { height: "", width: "", fsc: "", ssc: "" };
+  }
+  const params = parameter_map(summary);
+  const label_for = (index) =>
+    Number.isInteger(index) ? (params.find((p) => p.index === index)?.label ?? "") : "";
+  const aux = find_auxiliary_indexes_for_file(params, dna_area);
+  const pipeline = find_pipeline_channel_indexes(params);
+  return {
+    height: aux.dna_height_label || "",
+    width: aux.dna_width_label || "",
+    fsc: label_for(pipeline.fsc_a),
+    ssc: label_for(pipeline.ssc_a),
+  };
+}
+
+/*
+
+Purpose:
+	Shows the companion-channel panel in place of the sidebar status text once a
+	DNA channel is chosen, populating Height/Width/FSC/SSC dropdowns with every
+	available channel and pre-selecting the pipeline's auto-detected guess. Hides
+	the panel (restoring the status text) when no channel or no files are loaded.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: rebuilds and toggles the #channel_aux_panel
+
+*/
+export function populate_companion_channel_controls() {
+  if (!channel_aux_panel) return;
+
+  const dna_area = channel_select.value;
+  const columns = unique_columns();
+  if (!dna_area || columns.length === 0) {
+    channel_aux_panel.hidden = true;
+    if (status_el) status_el.hidden = false;
+    return;
+  }
+
+  const detected = auto_companion_labels(dna_area);
+  const detected_labels = [detected.height, detected.width, detected.fsc, detected.ssc];
+  AUX_SELECTS.forEach((select, index) => {
+    if (select) populate_single_select(select, columns, "None", detected_labels[index]);
+  });
+
+  if (status_el) status_el.hidden = true;
+  channel_aux_panel.hidden = false;
 }
 
 /*
@@ -411,6 +499,7 @@ export function populate_channel_controls() {
   [channel_select, collapsed_channel_select].forEach((select) => {
     populate_single_select(select, columns, "Choose DNA-content area channel", selected);
   });
+  populate_companion_channel_controls();
 }
 
 /*
