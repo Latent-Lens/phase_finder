@@ -63,16 +63,6 @@
   width: 88px;
 }
 
-.djf_readout {
-  align-self: center;
-  margin-left: auto;
-  font-size: 0.85rem;
-  font-weight: 650;
-  line-height: 1.35;
-  white-space: pre-line;
-  color: var(--text);
-}
-
 .djf_pipeline_controls {
   flex: 1 0 100%;
   display: flex;
