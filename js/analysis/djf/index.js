@@ -401,6 +401,22 @@ export function run_all(row, options_by_stage = {}) {
   );
 }
 
+/**
+ * Clear all four QC gate masks and the pipeline state for a sample, so the
+ * Pre-model QC checkboxes can re-apply only the currently checked gates from a
+ * clean slate. The gated view and final mask are recomputed to "all pass".
+ */
+export function reset_qc_gates(row) {
+  clear_state(row?.name);
+  if (row && row.data && row.data.masks) {
+    for (const name of ["structural", "timeQC", "scatter", "singlet"]) {
+      row.data.masks[name] = null;
+    }
+    recompute_final_mask(row);
+    build_filtered_view(row);
+  }
+}
+
 const FILTER_STAGES = [
   { key: "structural", label: "Structural" },
   { key: "timeQC", label: "Time QC" },

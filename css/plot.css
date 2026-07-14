@@ -63,6 +63,44 @@
   width: 88px;
 }
 
+/* Pre-model QC gate checkboxes: a compact dashed box to the right of Display,
+   mirroring the Session Control group. */
+.premodel_qc_group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 3px 10px 5px;
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
+}
+
+.premodel_qc_group legend {
+  padding: 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.qc_gate_option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.qc_gate_option input {
+  cursor: pointer;
+}
+
+.qc_gate_all_option {
+  font-weight: 700;
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+}
+
 .djf_pipeline_controls {
   flex: 1 0 100%;
   display: flex;

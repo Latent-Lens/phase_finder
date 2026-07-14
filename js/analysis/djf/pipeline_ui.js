@@ -4,6 +4,8 @@
 import {
   djf_stage_buttons,
   djf_run_all_button,
+  qc_gate_checkboxes,
+  qc_gate_all,
 } from "../../ui/dom.js";
 import { djf_readout, plottable_rows, plot_bin_count } from "../../plotting/data.js";
 import { render_density_plot } from "../../plotting/render.js";
@@ -359,10 +361,142 @@ async function run_manual_all() {
   }
 }
 
+// ── Pre-model QC gate checkboxes ─────────────────────────────────────────────
+// Each checkbox toggles one gating stage (0 Structural, 1 Time, 2 Scatter,
+// 3 Singlet). Toggling re-applies only the checked gates, in order, to every
+// plotted sample, updates the table loss columns, and re-plots the survivors.
+
+const QC_STAGE_INDICES = [0, 1, 2, 3];
+let qc_busy = false;
+
+function checked_qc_stages() {
+  return QC_STAGE_INDICES.filter((stage) => qc_gate_checkboxes[stage]?.checked);
+}
+
+function set_qc_controls_disabled(disabled) {
+  qc_gate_checkboxes.forEach((box) => { if (box) box.disabled = disabled; });
+  if (qc_gate_all) qc_gate_all.disabled = disabled;
+}
+
+function sync_qc_all_checkbox() {
+  if (!qc_gate_all) return;
+  const on = checked_qc_stages().length;
+  qc_gate_all.checked = on === QC_STAGE_INDICES.length;
+  qc_gate_all.indeterminate = on > 0 && on < QC_STAGE_INDICES.length;
+}
+
+// Write the checked stages' loss columns (plus the leading total-events column)
+// and drop any unchecked stage's column from the table.
+function update_qc_columns(rows, pipeline, checked) {
+  const frame = get_file_table();
+  if (!frame) return;
+  const checked_set = new Set(checked);
+  const funnel_by_name = new Map();
+  for (const row of rows) {
+    const funnel = pipeline.pipeline_filter_funnel(row);
+    if (funnel) funnel_by_name.set(row.name, funnel);
+  }
+  const ids = [...frame.col("id")];
+  const name_for = (id) => get_file_by_id(id)?.name;
+
+  if (checked.length) {
+    write_frame_column(frame, ids, TOTAL_EVENTS_COLUMN, (id) => {
+      const funnel = funnel_by_name.get(name_for(id));
+      return funnel ? funnel.eventCount.toLocaleString() : undefined;
+    });
+  } else if (frame.columns.includes(TOTAL_EVENTS_COLUMN)) {
+    frame.dropCol(TOTAL_EVENTS_COLUMN);
+  }
+
+  QC_LOST_COLUMNS.forEach(({ key, label }, stage) => {
+    if (checked_set.has(stage)) {
+      write_frame_column(frame, ids, label, (id) => {
+        const funnel = funnel_by_name.get(name_for(id));
+        if (!funnel) return undefined;
+        return format_lost(funnel.filters.find((filter) => filter.key === key));
+      });
+    } else if (frame.columns.includes(label)) {
+      frame.dropCol(label);
+    }
+  });
+  render_file_table();
+}
+
+async function apply_qc_selection() {
+  if (qc_busy) return;
+  const checked = checked_qc_stages();
+  const rows = plottable_rows();
+  if (!rows.length) {
+    set_status_bar("Plot at least one selected sample before applying QC gates.", true);
+    return;
+  }
+
+  qc_busy = true;
+  set_qc_controls_disabled(true);
+  try {
+    const pipeline = await load_pipeline();
+    // Stages 2 and 3 need the companion channels; wait if they are still loading.
+    if (checked.some((stage) => stage >= 2)) {
+      if (rows.some((row) => row.data && row.data.companionsPending)) {
+        set_status_bar("Loading companion channels for QC gating…");
+      }
+      await ensure_companions_loaded(rows);
+    }
+
+    show_progress("Applying pre-model QC");
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      update_progress((100 * index) / rows.length, "Applying pre-model QC", row.name);
+      await next_frame();
+      pipeline.reset_qc_gates(row);
+      for (const stage of checked) {
+        try {
+          pipeline.run_stage(stage, row, {});
+        } catch (_) {
+          // A gate can't run for this sample (e.g. too few events); leave its
+          // mask unset so it simply doesn't filter.
+        }
+      }
+    }
+
+    update_qc_columns(rows, pipeline, checked);
+    render_density_plot();
+    set_status_bar(checked.length
+      ? `Pre-model QC applied: ${checked.map((stage) => QC_LOST_COLUMNS[stage].label.replace(/ lost$/, "")).join(", ")}.`
+      : "Pre-model QC cleared.");
+    hide_progress(300);
+  } catch (error) {
+    set_status_bar(`Pre-model QC failed: ${error.message}`, true);
+    hide_progress(800);
+  } finally {
+    qc_busy = false;
+    set_qc_controls_disabled(false);
+  }
+}
+
+function init_premodel_qc() {
+  qc_gate_checkboxes.forEach((box) => {
+    if (!box) return;
+    box.addEventListener("change", () => {
+      sync_qc_all_checkbox();
+      apply_qc_selection();
+    });
+  });
+  if (qc_gate_all) {
+    qc_gate_all.addEventListener("change", () => {
+      const turn_on = qc_gate_all.checked;
+      qc_gate_checkboxes.forEach((box) => { if (box) box.checked = turn_on; });
+      qc_gate_all.indeterminate = false;
+      apply_qc_selection();
+    });
+  }
+}
+
 export function init_pipeline_ui() {
   if (initialized) return;
   initialized = true;
   init_scatter_modal();
+  init_premodel_qc();
 
   djf_stage_buttons.forEach((button, stage) => {
     if (!button) return;

@@ -225,9 +225,13 @@ export function render_density_plot() {
         stageHistogram: pipelineState.histogram,
       };
     }
+    // No stored histogram: bin live from the events surviving the active QC
+    // gates (compact_final_values returns every finite event when no mask is
+    // set, so this stays correct before any gating too).
+    const values = compact_final_values(row);
     const prepared = {
-      values: row.data.dna_a,
-      stats: { raw: row.data.dna_a.length, plotted: row.data.dna_a.length },
+      values,
+      stats: { raw: row.data.dna_a.length, plotted: values.length },
     };
     return { ...prepared, pipelineState, stageHistogram: null };
   };
