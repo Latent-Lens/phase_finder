@@ -4,8 +4,8 @@
 import {
   djf_stage_buttons,
   djf_run_all_button,
-  qc_gate_checkboxes,
-  qc_gate_all,
+  qc_gate_buttons,
+  qc_gate_run_all,
 } from "../../ui/dom.js";
 import { djf_readout, plottable_rows, plot_bin_count } from "../../plotting/data.js";
 import { render_density_plot } from "../../plotting/render.js";
@@ -25,6 +25,9 @@ import { ensure_companions_loaded } from "../../io/channel_loading.js";
 import { QC_LOST_COLUMNS, DJF_FRACTION_COLUMNS, TOTAL_EVENTS_COLUMN } from "../../data_structs/derived_columns.js";
 
 const IMPLEMENTED_STAGE_COUNT = 9;
+// The QC gating stages (0-3) are driven by the Pre-modeling QC buttons; the
+// manual "Run all" runs the modeling stages on whatever QC is currently applied.
+const MODEL_STAGES = [4, 5, 6, 7, 8];
 let initialized = false;
 let pipeline_busy = false;
 
@@ -338,19 +341,20 @@ async function run_manual_all() {
   const outputs = [];
 
   try {
-    for (let stage = 0; stage < IMPLEMENTED_STAGE_COUNT; stage += 1) {
+    for (let index = 0; index < MODEL_STAGES.length; index += 1) {
+      const stage = MODEL_STAGES[index];
       djf_run_all_button.textContent = `Running Stage ${stage}…`;
       const stageOutputs = await run_manual_stage(stage, djf_stage_buttons[stage], {
-        keepOverlay: stage < IMPLEMENTED_STAGE_COUNT - 1,
+        keepOverlay: index < MODEL_STAGES.length - 1,
         openScatter: false,
         managedByRunAll: true,
       });
       if (!stageOutputs.length) break;
       outputs.push(stageOutputs);
     }
-    if (outputs.length === IMPLEMENTED_STAGE_COUNT) {
+    if (outputs.length === MODEL_STAGES.length) {
       djf_run_all_button.classList.add("djf_stage_complete");
-      set_status_bar("All nine DJF pipeline stages completed.");
+      set_status_bar("DJF modeling stages completed.");
     }
     return outputs;
   } finally {
@@ -369,20 +373,22 @@ async function run_manual_all() {
 const QC_STAGE_INDICES = [0, 1, 2, 3];
 let qc_busy = false;
 
+const is_qc_active = (button) => button?.getAttribute("aria-pressed") === "true";
+const set_qc_active = (button, active) => button?.setAttribute("aria-pressed", active ? "true" : "false");
+
 function checked_qc_stages() {
-  return QC_STAGE_INDICES.filter((stage) => qc_gate_checkboxes[stage]?.checked);
+  return QC_STAGE_INDICES.filter((stage) => is_qc_active(qc_gate_buttons[stage]));
 }
 
 function set_qc_controls_disabled(disabled) {
-  qc_gate_checkboxes.forEach((box) => { if (box) box.disabled = disabled; });
-  if (qc_gate_all) qc_gate_all.disabled = disabled;
+  qc_gate_buttons.forEach((button) => { if (button) button.disabled = disabled; });
+  if (qc_gate_run_all) qc_gate_run_all.disabled = disabled;
 }
 
-function sync_qc_all_checkbox() {
-  if (!qc_gate_all) return;
-  const on = checked_qc_stages().length;
-  qc_gate_all.checked = on === QC_STAGE_INDICES.length;
-  qc_gate_all.indeterminate = on > 0 && on < QC_STAGE_INDICES.length;
+// "Run All" reads as active only when every filter is on.
+function sync_qc_run_all_state() {
+  if (!qc_gate_run_all) return;
+  set_qc_active(qc_gate_run_all, checked_qc_stages().length === QC_STAGE_INDICES.length);
 }
 
 // Write the checked stages' loss columns (plus the leading total-events column)
@@ -475,18 +481,20 @@ async function apply_qc_selection() {
 }
 
 function init_premodel_qc() {
-  qc_gate_checkboxes.forEach((box) => {
-    if (!box) return;
-    box.addEventListener("change", () => {
-      sync_qc_all_checkbox();
+  qc_gate_buttons.forEach((button) => {
+    if (!button) return;
+    button.addEventListener("click", () => {
+      set_qc_active(button, !is_qc_active(button));
+      sync_qc_run_all_state();
       apply_qc_selection();
     });
   });
-  if (qc_gate_all) {
-    qc_gate_all.addEventListener("change", () => {
-      const turn_on = qc_gate_all.checked;
-      qc_gate_checkboxes.forEach((box) => { if (box) box.checked = turn_on; });
-      qc_gate_all.indeterminate = false;
+  if (qc_gate_run_all) {
+    qc_gate_run_all.addEventListener("click", () => {
+      // Toggle every filter: turn all on, or clear them if already all on.
+      const turn_on = checked_qc_stages().length !== QC_STAGE_INDICES.length;
+      qc_gate_buttons.forEach((button) => set_qc_active(button, turn_on));
+      sync_qc_run_all_state();
       apply_qc_selection();
     });
   }
