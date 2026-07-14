@@ -82,23 +82,50 @@
   color: var(--muted);
 }
 
-.qc_gate_option {
-  display: inline-flex;
+/* Numbered 2x2 toggle buttons with "Run All" centered to their right. */
+.qc_gate_grid {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.82rem;
+  gap: 8px;
+}
+
+.qc_gate_buttons_2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.qc_gate_button {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
   white-space: nowrap;
   cursor: pointer;
 }
 
-.qc_gate_option input {
-  cursor: pointer;
+.qc_gate_button:hover {
+  border-color: var(--accent);
 }
 
-.qc_gate_all_option {
-  font-weight: 700;
-  border-left: 1px solid var(--border);
-  padding-left: 10px;
+/* Active (applied) filter. */
+.qc_gate_button[aria-pressed="true"] {
+  background: var(--accent_soft);
+  border-color: var(--accent);
+  color: var(--accent_strong);
+}
+
+.qc_gate_button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.qc_gate_run_all {
+  align-self: center;
+  padding: 8px 14px;
 }
 
 .djf_pipeline_controls {
