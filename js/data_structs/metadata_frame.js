@@ -98,6 +98,26 @@ export class PhaseFinderFrame {
     }
     this._data[name] = Array.isArray(values) ? values : [...values];
   }
+
+  /*
+
+  Purpose:
+	Removes a named column from the frame, if present.
+
+  Input:
+	name [string]: column name
+
+  Output:
+	(none) [void]: mutates the frame's column data
+
+  */
+  dropCol(name) {
+    const index = this._cols.indexOf(name);
+    if (index >= 0) {
+      this._cols.splice(index, 1);
+    }
+    delete this._data[name];
+  }
 }
 
 /*
