@@ -45,6 +45,11 @@ Method: on eligible events, compute log(A/H) for height and/or log(W) for width,
   peakThresholdHelp: `Shows a draggable grey line marking the minimum event count for a histogram peak to be counted when seeding the Dean-Jett-Fox fit.
 
 Drag it up to ignore small/noisy peaks or down to include more; release to re-detect peaks and refit.`,
+  qcStructural: `Structural QC — removes events with invalid readings (non-finite or negative) and off-scale values pinned at a channel's upper range limit, before any gating.`,
+  qcTime: `Time QC — bins events by acquisition time and drops those in unstable intervals, comparing each window's event rate against the run's robust baseline to catch clogs and fluidics disruptions.`,
+  qcCellGate: `Cell gate — fits the main cell population in Forward-Scatter-Area vs Side-Scatter-Area (2-D Gaussian) and removes debris and off-cloud events outside it.`,
+  qcSingletGate: `Singlet gate — compares DNA area against DNA height (or width) along a fitted ridge and keeps single cells, removing doublets and aggregates.`,
+  qcRunAll: `Apply all four QC filters (Structural, Time, Cell gate, Singlet gate). Click again to clear them.`,
 });
 
 export { HoverText };

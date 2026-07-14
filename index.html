@@ -204,20 +204,20 @@
                 </select>
               </label>
               <fieldset class="premodel_qc_group">
-                <legend>Pre-model QC</legend>
-                <label class="qc_gate_option"><input type="checkbox" id="qc_stage0" /> <span>Stage 0</span></label>
-                <label class="qc_gate_option"><input type="checkbox" id="qc_stage1" /> <span>Stage 1</span></label>
-                <label class="qc_gate_option"><input type="checkbox" id="qc_stage2" /> <span>Stage 2</span></label>
-                <label class="qc_gate_option"><input type="checkbox" id="qc_stage3" /> <span>Stage 3</span></label>
-                <label class="qc_gate_option qc_gate_all_option"><input type="checkbox" id="qc_stage_all" /> <span>All</span></label>
+                <legend>Pre-modeling QC Filtering</legend>
+                <div class="qc_gate_grid">
+                  <div class="qc_gate_buttons_2x2">
+                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage0" data-tooltip-key="qcStructural" aria-pressed="false">1. Structural</button>
+                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage1" data-tooltip-key="qcTime" aria-pressed="false">2. Time</button>
+                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage2" data-tooltip-key="qcCellGate" aria-pressed="false">3. Cell Gate</button>
+                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage3" data-tooltip-key="qcSingletGate" aria-pressed="false">4. Singlet Gate</button>
+                  </div>
+                  <button type="button" class="qc_gate_button qc_gate_run_all quick_tooltip" id="qc_stage_all" data-tooltip-key="qcRunAll" aria-pressed="false">Run All</button>
+                </div>
               </fieldset>
               <div class="djf_pipeline_controls" role="group" aria-label="Manual Dean-Jett-Fox pipeline stages">
                 <span class="djf_pipeline_label">DJF Pipeline (manual)</span>
                 <div class="djf_pipeline_buttons">
-                  <button id="djf_stage0" type="button">Stage 0: Structural QC</button>
-                  <button id="djf_stage1" type="button">Stage 1 (opt): Time QC</button>
-                  <button id="djf_stage2" type="button">Stage 2 (opt): Cell Gate</button>
-                  <button id="djf_stage3" type="button">Stage 3 (opt): Singlet Gate</button>
                   <button id="djf_stage4" type="button">Stage 4: Histogram</button>
                   <button id="djf_stage5" type="button">Stage 5: Peaks</button>
                   <button id="djf_stage6" type="button">Stage 6: Fit DJF</button>

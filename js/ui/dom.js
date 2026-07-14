@@ -32,14 +32,14 @@ export const progress_detail = document.querySelector("#progress_detail");
 export const channel_select = document.querySelector("#channel_select");
 export const collapsed_channel_select = document.querySelector("#collapsed_channel_select");
 
-// ── Pre-model QC gate checkboxes ─────────────────────────────────────────────
-export const qc_gate_checkboxes = [
+// ── Pre-modeling QC gate toggle buttons ──────────────────────────────────────
+export const qc_gate_buttons = [
   document.querySelector("#qc_stage0"),
   document.querySelector("#qc_stage1"),
   document.querySelector("#qc_stage2"),
   document.querySelector("#qc_stage3"),
 ];
-export const qc_gate_all = document.querySelector("#qc_stage_all");
+export const qc_gate_run_all = document.querySelector("#qc_stage_all");
 
 // ── Companion (Height/Width/FSC/SSC) channel panel ───────────────────────────
 export const channel_aux_panel = document.querySelector("#channel_aux_panel");
