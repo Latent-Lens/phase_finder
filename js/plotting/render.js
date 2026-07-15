@@ -2,8 +2,9 @@
 // loaded channel data, reads staged DJF masks/fits, builds histogram
 // points, computes axis domains, and draws the SVG. It supports curve-only,
 // curve-plus-bins, and bins-only sample histogram display modes. When modeling
-// pipeline state. It also draws legends, axis hit areas, plot titles, readouts,
-// and fit-result tables.
+// pipeline state. Curves are identified by hovering (see curve_tooltip.js) and
+// isolated by color/group via double-click, rather than a fixed legend. It
+// also draws axis hit areas, plot titles, readouts, and fit-result tables.
 
 import * as d3 from "d3";
 import {
@@ -26,7 +27,9 @@ import {
   axis_range_override,
   set_last_auto_x_range,
   set_last_auto_y_max,
-  strip_fcs,
+  get_isolated_color_group,
+  toggle_isolated_color_group,
+  set_row_colors,
   PLOT_MARGIN,
   PLOT_FALLBACK_WIDTH,
   PLOT_FALLBACK_HEIGHT,
@@ -43,6 +46,8 @@ import {
   SAMPLE_BIN_OPACITY_WITH_CURVE,
   SAMPLE_BIN_OPACITY_ONLY,
   SAMPLE_BIN_WIDTH_RATIO,
+  CURVE_HOVER_HIT_WIDTH,
+  ISOLATED_DIM_OPACITY,
   DJF_G1_COLOR,
   DJF_S_COLOR,
   DJF_G2_COLOR,
@@ -52,19 +57,12 @@ import {
   DJF_FILL_OPACITY,
   DJF_COMPONENT_LINE_WIDTH,
   DJF_TOTAL_LINE_WIDTH,
-  LEGEND_OFFSET_X,
-  LEGEND_ROW_HEIGHT,
-  LEGEND_SWATCH_WIDTH,
-  LEGEND_TEXT_OFFSET,
-  LEGEND_LINE_WIDTH,
-  LEGEND_FONT_SIZE,
-  LEGEND_SWATCH_Y,
-  LEGEND_TEXT_Y,
 } from "./data.js";
 import { get_parsed_files } from "../state/files.js";
 import { update_plot_title, render_fit_results_table } from "./modeling.js";
 import { open_axis_range_modal } from "./axis_modal.js";
 import { get_state as get_pipeline_state, state_matches_row } from "../analysis/djf/pipeline_state.js";
+import { show_curve_tooltip, hide_curve_tooltip } from "./curve_tooltip.js";
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected. Only this render pass reads or writes them.
@@ -100,6 +98,19 @@ function stage_histogram_summary(histogram) {
     min: histogram.min,
     max: histogram.max,
   };
+}
+
+// The histogram bin a data-space x falls in, for a series entry, as
+// { left, right, count } -- or null if x is outside the histogram range or the
+// entry has no bin data. Drives the hover tooltip's bin readout.
+function bin_at_data_x(entry, data_x) {
+  const summary = entry.histogram;
+  if (!summary || !summary.binEdges || !summary.counts || !summary.counts.length) return null;
+  const edges = summary.binEdges;
+  if (!(data_x >= edges[0] && data_x <= edges[edges.length - 1])) return null;
+  let index = d3.bisectRight(edges, data_x) - 1;
+  index = Math.max(0, Math.min(summary.counts.length - 1, index));
+  return { left: edges[index], right: edges[index + 1], count: summary.counts[index] };
 }
 
 function component_moments(x, values) {
@@ -183,8 +194,9 @@ Purpose:
 	The main render. Draws the overlaid event histograms for the currently
 	checked samples with D3, applying the controls (color-by, axis scale, bins).
 	When staged DJF state exists it overlays the stored fitted curve and filled
-	G1/S/G2/contamination components. It also draws the legend, report table, and
-	updates the title; numeric work itself is run only by the manual stage UI.
+	G1/S/G2/contamination components. It also draws the report table and updates
+	the title; numeric work itself is run only by the manual stage UI. Samples
+	are identified by hovering their curve (curve_tooltip.js), not a legend.
 
 Input:
 	(none)
@@ -270,6 +282,15 @@ export function render_density_plot() {
     return { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points, histogram, pipelineState: prepared.pipelineState };
   });
   set_last_series(series);
+  set_row_colors(series.map((entry) => ({ id: entry.row.id, color: entry.color, group: entry.group })));
+  // If the isolated group no longer matches anything currently plotted (its
+  // samples got unchecked, filtered out, etc.), drop the isolation instead of
+  // leaving every curve dimmed with nothing left highlighted.
+  let isolated_group = get_isolated_color_group();
+  if (isolated_group != null && !series.some((entry) => entry.group === isolated_group)) {
+    toggle_isolated_color_group(isolated_group); // same value in -> clears back to null
+    isolated_group = null;
+  }
   series.forEach((entry) => {
     series_by_name.set(entry.name, entry);
     histograms_by_name.set(entry.name, entry.histogram);
@@ -411,15 +432,32 @@ export function render_density_plot() {
     .y((d) => y_scale(d.y))
     .curve(d3.curveBasis);
 
+  // Shared interaction helpers, used by both the bin rects and the curve
+  // hit-paths so hovering a bar body or a curve behaves identically.
+  const isolate_on_dblclick = (event, group) => {
+    event.stopPropagation();
+    toggle_isolated_color_group(group);
+    hide_curve_tooltip();
+    render_density_plot();
+  };
+  // The { left, right, count } for a known bin index of a sample (used when the
+  // exact bin is already known, i.e. hovering a specific bar).
+  const bin_from_index = (sample, index) => {
+    const edges = sample.histogram && sample.histogram.binEdges;
+    if (!edges || edges[index] == null || edges[index + 1] == null) return null;
+    return { left: edges[index], right: edges[index + 1], count: sample.points[index]?.y };
+  };
+
   if (show_bins) {
     const bar_opacity = show_curves ? SAMPLE_BIN_OPACITY_WITH_CURVE : SAMPLE_BIN_OPACITY_ONLY;
     const bar_base_y = y_scale(Math.max(y_domain[0], 0));
     const bins_group = svg.append("g").attr("clip-path", `url(#${clip_id})`);
     series.forEach((sample) => {
       const edges = sample.histogram && sample.histogram.binEdges;
+      const in_isolated_group = !isolated_group || sample.group === isolated_group;
       bins_group.append("g")
         .attr("fill", sample.color)
-        .attr("fill-opacity", bar_opacity)
+        .attr("fill-opacity", in_isolated_group ? bar_opacity : bar_opacity * ISOLATED_DIM_OPACITY)
         .selectAll("rect")
         .data(sample.points.map((point, index) => ({ point, index })))
         .join("rect")
@@ -439,11 +477,23 @@ export function render_density_plot() {
           }
           return 2;
         })
-        .attr("height", ({ point }) => Math.abs(bar_base_y - y_scale(point.y)));
+        .attr("height", ({ point }) => Math.abs(bar_base_y - y_scale(point.y)))
+        // Each bar is itself hoverable so the tooltip fires anywhere over the
+        // bar body, not only near the top envelope where the curve hit-path
+        // sits (which matters most in bins-only mode). The exact bin is known
+        // from the bound datum, so no cursor-to-bin lookup is needed here.
+        .style("cursor", "pointer")
+        .on("pointerenter pointermove", (event, { index }) =>
+          show_curve_tooltip(event, sample, bin_from_index(sample, index)))
+        .on("pointerleave", hide_curve_tooltip)
+        .on("dblclick", (event) => isolate_on_dblclick(event, sample.group));
     });
   }
 
   if (show_curves) {
+    // Visible curves: dimmed when a different color group is isolated. The
+    // interactive hit-paths are drawn separately below (always, even in
+    // bins-only mode) so hover/isolate work regardless of display mode.
     svg.append("g")
       .attr("clip-path", `url(#${clip_id})`)
       .selectAll("path")
@@ -452,6 +502,7 @@ export function render_density_plot() {
       .attr("fill", "none")
       .attr("stroke", (d) => d.color)
       .attr("stroke-width", SAMPLE_LINE_WIDTH)
+      .attr("stroke-opacity", (d) => (!isolated_group || d.group === isolated_group) ? 1 : ISOLATED_DIM_OPACITY)
       .attr("d", (d) => line(d.points));
   }
 
@@ -478,38 +529,36 @@ export function render_density_plot() {
     overlay.append("path").attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", DJF_TOTAL_LINE_WIDTH).attr("d", line(fit.total));
   });
 
-  // Legend: one row per sample, then the fitted-component rows for every staged
-  // fit. With more than one fit shown, component labels include the sample name.
-  const legend_items = series.map((s) => ({ type: "sample", name: s.name, color: s.color }));
-  const multiple_fits = fits.length > 1;
-  fits.forEach((fit) => {
-    const prefix = multiple_fits ? `${strip_fcs(fit.name)} ` : "";
-    legend_items.push(
-      { type: "component", label: `${prefix}DJF fit`, color: DJF_TOTAL_COLOR },
-      { type: "component", label: `${prefix}G1`, color: DJF_G1_COLOR },
-      { type: "component", label: `${prefix}S`, color: DJF_S_COLOR },
-      { type: "component", label: `${prefix}G2`, color: DJF_G2_COLOR },
-    );
-    if (fit.debris) {
-      legend_items.push({ type: "component", label: `${prefix}Debris`, color: DJF_DEBRIS_COLOR });
-    }
-    if (fit.aggregate) {
-      legend_items.push({ type: "component", label: `${prefix}Aggregate`, color: DJF_AGG_COLOR });
-    }
-  });
+  // Invisible wide hit-targets following each sample's histogram shape, drawn
+  // last so they sit above the curves/bins/fits and reliably receive pointer
+  // events. Each is a fully transparent, much wider (CURVE_HOVER_HIT_WIDTH)
+  // stroke than the 1.5px visible line, so a thin curve is easy to hover or
+  // double-click. Drawn in every display mode (curve, curve+bins, bins-only),
+  // so hovering works even when only bars are shown. Hover shows the sample's
+  // tooltip with the histogram bin under the cursor's x; double-click isolates
+  // that color group (a dimmed curve stays interactive so it can still be
+  // identified or re-isolated).
+  svg.append("g")
+    .attr("clip-path", `url(#${clip_id})`)
+    .selectAll("path")
+    .data(series)
+    .join("path")
+    .attr("fill", "none")
+    .attr("stroke", "transparent")
+    .attr("stroke-width", CURVE_HOVER_HIT_WIDTH)
+    .style("pointer-events", "stroke")
+    .style("cursor", "pointer")
+    .attr("d", (d) => line(d.points))
+    .on("pointerenter pointermove", (event, d) => {
+      const data_x = x_scale.invert(d3.pointer(event, svg.node())[0]);
+      show_curve_tooltip(event, d, bin_at_data_x(d, data_x));
+    })
+    .on("pointerleave", hide_curve_tooltip)
+    .on("dblclick", (event, d) => isolate_on_dblclick(event, d.group));
 
-  const checkbox_col = 0;
-  const legend = svg.append("g").attr("transform", `translate(${width - margin.right + LEGEND_OFFSET_X},${margin.top})`);
-  const items = legend.selectAll("g").data(legend_items).join("g").attr("transform", (d, i) => `translate(0,${i * LEGEND_ROW_HEIGHT})`);
-
-  items.append("line")
-    .attr("x1", checkbox_col).attr("x2", checkbox_col + LEGEND_SWATCH_WIDTH)
-    .attr("y1", LEGEND_SWATCH_Y).attr("y2", LEGEND_SWATCH_Y)
-    .attr("stroke", (d) => d.color).attr("stroke-width", LEGEND_LINE_WIDTH);
-  items.append("text")
-    .attr("x", checkbox_col + LEGEND_TEXT_OFFSET).attr("y", LEGEND_TEXT_Y)
-    .attr("font-size", LEGEND_FONT_SIZE).attr("fill", AXIS_LABEL_COLOR)
-    .text((d) => (d.type === "sample" ? strip_fcs(d.name) : d.label));
+  // No legend: samples are identified by hovering their curve (curve_tooltip.js)
+  // and DJF fit components keep their fixed reference colors (G1/S/G2/etc.)
+  // without needing a label, since there's only ever this one small fixed set.
 
   // Numeric stats are only shown once a sample has completed the full pipeline
   // (the Stage 8 report). Before that, the fitted curve overlay is drawn but no
@@ -518,8 +567,15 @@ export function render_density_plot() {
   // report). The fit curve for Stages 6-7 still renders above.
   const report_fits = fits.filter((fit) => fit.pipelineState?.report);
   render_fit_results_table(report_fits, {
-    top: margin.top + legend_items.length * LEGEND_ROW_HEIGHT + 12,
+    top: margin.top,
     right: 8,
     max_width: Math.max(190, margin.right - 18),
   });
+
+  // Lets the metadata table keep its per-row color swatches in sync (see
+  // sync_filename_swatches in table_render.js) without this module reaching
+  // into the UI layer directly, and without the table doing a full rebuild
+  // on every redraw -- this fires on every one, including high-frequency
+  // ones like dragging the bin-count control.
+  document.dispatchEvent(new CustomEvent("pf-plot-rendered"));
 }

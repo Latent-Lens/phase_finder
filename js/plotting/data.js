@@ -10,6 +10,8 @@
 // and UI actions separate.
 
 import { get_selected_files } from "../state/files.js";
+import { TABLE_COLUMNS } from "../data_structs/table_state.js";
+import { escape_html } from "../util/html.js";
 
 export const plot_area = document.querySelector("#plot_area");
 export const plot_title = document.querySelector("#plot_title");
@@ -46,7 +48,9 @@ export const DJF_COMPONENT_LINE_WIDTH = 1.5; // G1/S/G2 outlines
 export const DJF_TOTAL_LINE_WIDTH = 2; // fitted total
 
 // ---- Plot layout & styling (tweak here) ----
-export const PLOT_MARGIN = { top: 14, right: 250, bottom: 48, left: 70 };
+// right just needs to fit the DJF fit-results table now that the per-sample
+// legend (which used to share this margin) is gone -- see curve_tooltip.js
+export const PLOT_MARGIN = { top: 14, right: 210, bottom: 48, left: 70 };
 export const PLOT_FALLBACK_WIDTH = 800;
 export const PLOT_FALLBACK_HEIGHT = 420;
 
@@ -68,14 +72,13 @@ export const SAMPLE_BIN_OPACITY_WITH_CURVE = 0.18;
 export const SAMPLE_BIN_OPACITY_ONLY = 0.42;
 export const SAMPLE_BIN_WIDTH_RATIO = 0.9;
 
-export const LEGEND_OFFSET_X = 14; // gap right of the plot area
-export const LEGEND_ROW_HEIGHT = 18;
-export const LEGEND_SWATCH_WIDTH = 18;
-export const LEGEND_TEXT_OFFSET = 24;
-export const LEGEND_LINE_WIDTH = 2;
-export const LEGEND_FONT_SIZE = 11;
-export const LEGEND_SWATCH_Y = 6; // swatch line vertical position within a row
-export const LEGEND_TEXT_Y = 9; // label baseline within a row
+// No visible legend anymore (see curve_tooltip.js for hover/isolate instead):
+// a much wider, fully transparent stroke drawn on top of each visible curve
+// is the actual hover/double-click hit target, so a thin 1.5px line is easy
+// to land on without needing a legend to click instead.
+export const CURVE_HOVER_HIT_WIDTH = 14;
+// Opacity applied to every curve/bin NOT in the isolated color group.
+export const ISOLATED_DIM_OPACITY = 0.12;
 
 // ── Shared plot state ────────────────────────────────────────────────────────
 // Bindings reassigned by other plotting modules (render/modeling/axis_modal) are
@@ -89,6 +92,29 @@ export function set_plot_channels(channels) { plot_channels = channels; }
 // render, exposed via window.PhaseFinder.plot for other modules to read.
 export let last_series = [];
 export function set_last_series(series) { last_series = series; }
+
+// The color-by "group" (see build_color_assigner) currently isolated by a
+// double-click on a curve or a metadata-table color swatch, or null when
+// nothing is isolated. Persists across re-renders (toggling a QC filter,
+// changing bins, etc.) until double-clicked again or a mismatched render
+// clears it -- see render_density_plot's isolation-safety check.
+let isolated_color_group = null;
+export function get_isolated_color_group() { return isolated_color_group; }
+export function set_isolated_color_group(group) { isolated_color_group = group; }
+export function toggle_isolated_color_group(group) {
+  isolated_color_group = isolated_color_group === group ? null : group;
+}
+
+// row.id -> { color, group } for every currently-plotted sample, rebuilt on
+// every render_density_plot() call. Lets the metadata table draw each row's
+// current plot color as a swatch without importing the plotting/render layer.
+let row_color_by_id = new Map();
+export function set_row_colors(entries) {
+  row_color_by_id = new Map(entries.map(({ id, color, group }) => [id, { color, group }]));
+}
+export function get_row_color(id) {
+  return row_color_by_id.get(id) || null;
+}
 
 // All series ever rendered, keyed by sample name (the metadata Filename column).
 // Entries persist across renders/deselection so a sample's histogram stays
@@ -261,27 +287,59 @@ export function sample_color(index, total) {
 
 Purpose:
 	Builds a function that assigns a color and a legend group to each sample.
-	When coloring by strain, all samples of a strain share one hue; otherwise
-	every file gets its own hue.
+	When coloring by a metadata column, all samples sharing a value for that
+	column share one hue; otherwise every file gets its own hue.
 
 Input:
 	rows [Array<Object>]: the samples to be plotted
-	color_by [string]:    "file" or "strain"
+	color_by [string]:    "file", or a metadata column's field name
 
 Output:
 	assign [Function]: (row, index) => { color [string], group [string] }
 
 */
 export function build_color_assigner(rows, color_by) {
-  if (color_by === "strain") {
-    const strain_of = (row) => (row.annotations.strain || "").trim() || "(none)";
-    const strains = [...new Set(rows.map(strain_of))].sort((a, b) =>
+  if (color_by && color_by !== "file") {
+    const value_of = (row) => String(row.annotations?.[color_by] ?? "").trim() || "(none)";
+    const values = [...new Set(rows.map(value_of))].sort((a, b) =>
       a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
     );
-    const colors = new Map(strains.map((s, i) => [s, sample_color(i, strains.length)]));
-    return (row) => ({ color: colors.get(strain_of(row)), group: strain_of(row) });
+    const colors = new Map(values.map((v, i) => [v, sample_color(i, values.length)]));
+    return (row) => ({ color: colors.get(value_of(row)), group: value_of(row) });
   }
   return (row, index) => ({ color: sample_color(index, rows.length), group: row.name });
+}
+
+/*
+
+Purpose:
+	Keeps the "Color by" dropdown's options in sync with the metadata table's
+	current columns: "File" plus one option per user metadata column (Filename
+	itself excluded, since "File" already covers per-file coloring). Preserves
+	the current selection when it still exists, otherwise falls back to "File"
+	(e.g. the selected column was just deleted).
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: rebuilds #plot_color_by's <option> list
+
+*/
+export function sync_color_by_options() {
+  if (!plot_color_by_select) return;
+  const previous = plot_color_by_select.value;
+  const metadata_columns = TABLE_COLUMNS.filter((column) => column.field !== "name");
+
+  plot_color_by_select.innerHTML = [
+    `<option value="file">File</option>`,
+    ...metadata_columns.map(
+      (column) => `<option value="${escape_html(column.field)}">${escape_html(column.label)}</option>`,
+    ),
+  ].join("");
+
+  const previous_still_exists = [...plot_color_by_select.options].some((option) => option.value === previous);
+  plot_color_by_select.value = previous_still_exists ? previous : "file";
 }
 
 /*
