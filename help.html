@@ -246,7 +246,7 @@
           <h3 id="pipeline-stages">Pipeline stages</h3>
           <ol>
             <li><strong>Stage 0: Structural QC</strong> rejects non-finite, negative, and saturated measurements while preserving original event indexes.</li>
-            <li><strong>Stages 1&ndash;3 (optional)</strong> perform Time acquisition QC, FSC/SSC cell-cloud gating, and DNA pulse-geometry singlet gating when the required channels exist.</li>
+            <li><strong>Stages 1&ndash;3 (optional)</strong> perform Time acquisition QC, FSC/SSC cell-cloud gating, and DNA pulse-geometry singlet gating when the required channels exist. After Stage 2, drag the teal ellipse or its center marker to reposition the cell gate, or change <span class="ui_label">Gate coverage</span> to resize it. Each edit immediately updates the scatter mask and invalidates Stages 3&ndash;8 so they can be rerun with the edited gate. <span class="ui_label">Reset fitted gate</span> restores the GMM-selected center and coverage.</li>
             <li><strong>Stages 4&ndash;6</strong> build the masked histogram, detect the 1C/2C peaks, and fit the constrained base DJF model.</li>
             <li><strong>Stage 7 (optional)</strong> tests conservative debris and aggregate extensions.</li>
             <li><strong>Stage 8</strong> reports biological-singlet fractions, contamination accounting, goodness-of-fit diagnostics, and warnings.</li>
