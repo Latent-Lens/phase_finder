@@ -625,6 +625,85 @@ _PIPELINE_HELPERS = r"""() => {
     return { pass: /Stage 4 before Stage 6/.test(message), detail: message };
   });
 
+  run('pipeline orchestrator: manual Stage 2 translation replaces the mask and reset restores it', () => {
+    const scatter = TestUtils.buildScatterDataset();
+    const row = {
+      id: 'unit-manual-scatter-id',
+      name: 'unit-manual-scatter',
+      data: {
+        ...scatter,
+        channel_key: 'DAPI-A',
+        channels: {
+          DNA_A: Float64Array.from({ length: scatter.eventCount }, () => 1),
+          DNA_H: null,
+          DNA_W: null,
+          FSC_A: scatter.channels.FSC_A,
+          SSC_A: scatter.channels.SSC_A,
+          Time: null,
+        },
+        pnr: { DNA_A: 10, DNA_H: null, DNA_W: null, FSC_A: null, SSC_A: null, Time: null },
+        masks: { structural: null, timeQC: null, scatter: null, singlet: null, final: null },
+      },
+    };
+    pipeline.clear_state(row.name);
+    pipeline.run_stage0(row);
+    const fitted = pipeline.run_stage2(row).result;
+    const fittedMean = [...fitted.mainComponent.mean];
+    const fittedMask = Array.from(fitted.scatterMask);
+    const state = pipeline.get_state(row.name);
+    Object.assign(state, {
+      singletResult: { stale: true }, histogram: { stale: true },
+      peaks: { stale: true }, baseFit: { stale: true },
+      extendedFit: { stale: true }, report: { stale: true },
+    });
+
+    const moved = pipeline.update_stage2_gate(row, {
+      mean: [fittedMean[0] + 8, fittedMean[1]],
+    }).result;
+    const changedEvents = fittedMask.reduce(
+      (count, value, index) => count + (value !== moved.scatterMask[index] ? 1 : 0),
+      0,
+    );
+    const movedFilteredCount = row.data.filtered.eventCount;
+    const resized = pipeline.update_stage2_gate(row, { coverage: 0.8 }).result;
+    const expectedThreshold = -2 * Math.log(1 - 0.8);
+    const resizedFilteredCount = row.data.filtered.eventCount;
+    const reset = pipeline.update_stage2_gate(row, { reset: true }).result;
+    const restored = fittedMask.every((value, index) => value === reset.scatterMask[index]);
+    return {
+      pass: moved.manualOverride != null
+        && moved.gateSource === 'manual'
+        && moved.mainComponent.mean[0] === fittedMean[0] + 8
+        && moved.fittedMainComponent.mean[0] === fittedMean[0]
+        && changedEvents > 0
+        && movedFilteredCount === moved.retainedEventCount
+        && resized.mainComponent.mean.join(',') === moved.mainComponent.mean.join(',')
+        && Math.abs(resized.threshold - expectedThreshold) < 1e-12
+        && Math.abs(resized.manualOverride?.coverage - 0.8) < 1e-12
+        && resized.retainedEventCount < moved.retainedEventCount
+        && resizedFilteredCount === resized.retainedEventCount
+        && state.singletResult === null && state.histogram === null
+        && state.baseFit === null && state.report === null
+        && row.data.masks.scatter === reset.scatterMask
+        && reset.manualOverride === null && reset.gateSource === 'fitted'
+        && reset.mainComponent.mean.join(',') === fittedMean.join(',')
+        && reset.threshold === fitted.threshold
+        && restored,
+      detail: JSON.stringify({
+        fittedMean,
+        movedMean: moved.manualOverride?.mean,
+        changedEvents,
+        movedFilteredCount,
+        movedRetained: moved.retainedEventCount,
+        resizedCoverage: resized.manualOverride?.coverage,
+        resizedThreshold: resized.threshold,
+        resizedRetained: resized.retainedEventCount,
+        resetMean: reset.mainComponent.mean,
+        restored,
+      }),
+    };
+  });
+
   run('pipeline state: clear_state removes a per-sample state entry', () => {
     const row = makeRow('unit-orchestrator-clear');
     pipeline.run_stage0(row);

@@ -144,7 +144,10 @@ loading extra files that desync every row-count assertion in this suite.
 ### E2E — DJF pipeline
 - Manual Stage 0&ndash;8 controls store each checkpoint in original event order
 - Time QC, FSC/SSC gating, and pulse-geometry gating exercise non-skip paths
-- Stage 2 opens a populated scatter/gate diagnostic modal
+- Stage 2 opens a populated scatter/gate editor; dragging changes the center,
+  the coverage control resizes the ellipse, both change the authoritative
+  raw-index mask, reset restores the fitted gate, and Stage 3 consumes the
+  manually edited retained-event set
 - Histogram and fitted component overlays render at the appropriate stages
 - Biological 1C + S + 2C fractions sum to ~100 %
 - Run all retains every checkpoint product and updates the report/status UI
