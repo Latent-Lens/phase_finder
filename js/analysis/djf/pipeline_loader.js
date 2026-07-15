@@ -29,3 +29,24 @@ export function load_pipeline() {
 export function get_pipeline() {
   return pipeline_module;
 }
+
+/**
+ * Loads the pipeline module like load_pipeline(), but without the visible
+ * "Loading DJF pipeline" progress overlay -- for background precompute
+ * triggered right after a channel plots, before the user has asked for
+ * anything DJF-related. Shares the same cached promise/module, so an
+ * in-flight or already-resolved load (from either loader) is reused.
+ */
+export function load_pipeline_silently() {
+  if (pipeline_promise) return pipeline_promise;
+  pipeline_promise = import("./index.js")
+    .then((module) => {
+      pipeline_module = module;
+      return module;
+    })
+    .catch((error) => {
+      pipeline_promise = null;
+      throw error;
+    });
+  return pipeline_promise;
+}

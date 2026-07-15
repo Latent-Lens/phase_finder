@@ -11,7 +11,7 @@ const HoverText = Object.freeze({
   help: "Open the PhaseFinder help and feature guide in a new tab",
   saveSession: "Save the current session (files, annotations, settings) to a TOML file",
   loadSession: "Load a previously saved session from a TOML file",
-  resetSession: "Delete the current session's cached files and refresh the page",
+  resetSession: "Deletes the current session. All loaded files will be unloaded, and any results, plots and metadata will be removed, enabling a clean start.",
   sidebarCollapse: "Collapse sidebar",
   sidebarExpand: "Expand sidebar",
   uploadFiles: "Drop FCS files here or click to choose files from disk",
@@ -23,6 +23,7 @@ const HoverText = Object.freeze({
   cellCycleModelingDisabled: "Plot a channel first to enable the DJF pipeline",
   calculateStats: "Calculate statistics for any channel across all loaded files",
   addMetadataColumn: "Add a blank editable metadata column to the table",
+  removeMetadataColumn: "Remove columns: click column headers to select, then confirm",
   importMetadataTable: "Import metadata from a CSV or TSV file and match it to loaded FCS files",
   configureMetadata: "Configure metadata columns by splitting FCS filenames",
   exportTable: "Export the visible metadata table as a TSV file",
@@ -45,11 +46,11 @@ Method: on eligible events, compute log(A/H) for height and/or log(W) for width,
   peakThresholdHelp: `Shows a draggable grey line marking the minimum event count for a histogram peak to be counted when seeding the Dean-Jett-Fox fit.
 
 Drag it up to ignore small/noisy peaks or down to include more; release to re-detect peaks and refit.`,
-  qcStructural: `Structural QC — removes events with invalid readings (non-finite or negative) and off-scale values pinned at a channel's upper range limit, before any gating.`,
-  qcTime: `Time QC — bins events by acquisition time and drops those in unstable intervals, comparing each window's event rate against the run's robust baseline to catch clogs and fluidics disruptions.`,
-  qcCellGate: `Cell gate — fits the main cell population in Forward-Scatter-Area vs Side-Scatter-Area (2-D Gaussian) and removes debris and off-cloud events outside it.`,
-  qcSingletGate: `Singlet gate — compares DNA area against DNA height (or width) along a fitted ridge and keeps single cells, removing doublets and aggregates.`,
-  qcRunAll: `Apply all four QC filters (Structural, Time, Cell gate, Singlet gate). Click again to clear them.`,
+  qcStructural: `1. Structural QC: Removes events with invalid readings (non-finite or negative) and off-scale values pinned at a channel's upper range limit, before any gating.`,
+  qcTime: `2. Time QC: Bins events by acquisition time and drops those in unstable intervals, comparing each window's event rate against the run's robust baseline to catch clogs and fluidics disruptions.`,
+  qcCellGate: `3. Cell gate: Fits the main cell population in Forward-Scatter-Area vs Side-Scatter-Area (2-D Gaussian) and removes debris and off-cloud events outside it.`,
+  qcSingletGate: `4. Singlet gate: Compares DNA area against DNA height (or width) along a fitted ridge and keeps single cells, removing doublets and aggregates.`,
+  qcRunAll: `Apply all four Pre-modeling QC filters (Structural, Time, Cell gate, Singlet gate). Click again to clear them.`,
 });
 
 export { HoverText };

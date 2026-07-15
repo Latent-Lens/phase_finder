@@ -35,6 +35,7 @@ import { get_stats_plan, restore_stats_plan } from "../analysis/stats.js";
 import { get_file_table, get_file_map } from "../state/app_state.js";
 import { get_parsed_files } from "../state/files.js";
 import { get_session_table_state, apply_session_state } from "./table_session.js";
+import { suppress_next_unload_warning } from "./unload_guard.js";
 
 // ── Session-file restore orchestration ───────────────────────────────────────
 
@@ -224,6 +225,12 @@ function apply_session(session) {
   const has_files = Boolean(get_file_table()?.length);
   if (has_files || session.metadata?.rows?.length) {
     apply_table_session(session);
+    // "Color by" only offers options for the table's current metadata
+    // columns, which apply_table_session (via render_file_table) just
+    // populated -- the first apply_plot_settings call above ran before they
+    // existed, so a saved custom color-by column would have silently missed
+    // and fallen back to "File". Re-apply now that the option exists.
+    apply_plot_settings(session.plot);
   } else if (session.metadata_template) {
     save_filename_metadata_template(session.metadata_template);
   }
@@ -325,6 +332,9 @@ async function handle_reset() {
     const sessions_dir = await ensure_directory(root, ['sessions'], false);
     await sessions_dir.removeEntry(runtime_session_id, { recursive: true });
   } catch (_) { /* nothing cached yet, or OPFS unavailable — non-fatal */ }
+  // The reload below is a real navigation, which would otherwise also trip
+  // the beforeunload guard right after the confirm() above already asked.
+  suppress_next_unload_warning();
   window.location.reload();
 }
 

@@ -91,22 +91,35 @@ function open_scan_panel(dir_name, total, missing_total) {
   set_picker_buttons_disabled(true);
 }
 
-function update_scan_progress(checked, total, found_count, missing_total) {
+function update_scan_progress(checked, total, found_count, missing_total, done = false) {
   const status_el = document.getElementById('reconnect_scan_status');
   const fill_el    = document.getElementById('reconnect_scan_fill');
   const tally_el   = document.getElementById('reconnect_scan_tally');
   if (status_el) {
-    status_el.textContent =
-      `Scanning the selected folder containing ${total} FCS file${total === 1 ? '' : 's'} ` +
-      `for the ${missing_total} missing file${missing_total === 1 ? '' : 's'}`;
+    status_el.textContent = done
+      ? `Scan complete — checked ${total} FCS file${total === 1 ? '' : 's'} in the selected folder.`
+      : `Scanning the selected folder containing ${total} FCS file${total === 1 ? '' : 's'} ` +
+        `for the ${missing_total} missing file${missing_total === 1 ? '' : 's'}`;
   }
   if (fill_el) fill_el.style.width = `${total ? (checked / total) * 100 : 0}%`;
-  if (tally_el) tally_el.textContent = `Found ${found_count} of ${missing_total} missing file${missing_total === 1 ? '' : 's'}`;
+  if (tally_el) {
+    tally_el.textContent = `Found ${found_count} of ${missing_total} missing file${missing_total === 1 ? '' : 's'}`;
+  }
 }
 
 function close_scan_panel() {
   const panel = document.getElementById('reconnect_scan_panel');
   if (panel) panel.classList.remove('is_open');
+  set_picker_buttons_disabled(false);
+}
+
+// Re-enables the picker buttons but leaves the panel itself open, showing its
+// final status/tally line, whether the scan found everything, some, or none
+// of the missing files. It only collapses away when the whole reconnect
+// modal closes (see close_reconnect_modal), so the user can actually read
+// the result instead of it vanishing the instant the scan finishes.
+function finish_scan_panel(checked_total, found_count, missing_total) {
+  update_scan_progress(checked_total, checked_total, found_count, missing_total, true);
   set_picker_buttons_disabled(false);
 }
 
@@ -153,7 +166,7 @@ async function scan_entries_for_missing(entries, missing_records, dir_name) {
       if (missing_by_name.size === 0) break;
     }
   } finally {
-    close_scan_panel();
+    finish_scan_panel(fcs_entries.length, found.length, missing_total);
   }
   return found;
 }
@@ -168,15 +181,31 @@ export function get_reconnect_records() {
   return reconnect_ctx ? reconnect_ctx.records : null;
 }
 
+// User-facing label for a record's status pill. "available" and "uncached"
+// both mean the file loaded successfully for this session -- "uncached" only
+// means its background OPFS copy failed, so it won't auto-restore next time
+// without going through reconnect again. That's not something the user needs
+// to parse from the pill itself (both are styled identically already); the
+// console.warn in apply_reconnected_files is where that detail actually
+// matters, for debugging a stubborn OPFS failure.
+const STATUS_LABELS = {
+  available: 'Found',
+  uncached: 'Found',
+  missing: 'Missing',
+  mismatch: 'Mismatch',
+  copying: 'Copying…',
+};
+
 function render_reconnect_list() {
   const list = document.getElementById('reconnect_file_list');
   if (!list || !reconnect_ctx) return;
   list.innerHTML = reconnect_ctx.records.map((r) => {
     const status = r.status || 'missing';
+    const label = STATUS_LABELS[status] || status;
     const when = r.last_modified ? new Date(r.last_modified).toLocaleDateString() : '';
     const meta = [human_size(r.size), when].filter(Boolean).join(' · ');
     return `<li class="reconnect_row reconnect_row__${esc(status)}">
-      <span class="reconnect_status_pill">${esc(status)}</span>
+      <span class="reconnect_status_pill">${esc(label)}</span>
       <span class="reconnect_row_main">
         <span class="reconnect_row_name">${esc(r.relative_path || r.original_name)}</span>
         <span class="reconnect_row_meta">${esc(meta)}</span>
@@ -186,9 +215,25 @@ function render_reconnect_list() {
   const outstanding = reconnect_ctx.records.filter((r) => !is_resolved(r)).length;
   const intro = document.getElementById('reconnect_intro');
   if (intro) {
-    intro.textContent = outstanding
-      ? `This session needs ${outstanding} file${outstanding === 1 ? '' : 's'}. Choose the folder that contains them, or select the missing files manually.`
-      : 'All session files are reconnected.';
+    if (outstanding) {
+      // Uses innerHTML so the emphasis and line break render (the only
+      // interpolated value is a count, so this is safe). Kept short and split
+      // across source lines for readability.
+      const plural = outstanding === 1 ? '' : 's';
+      const them = outstanding === 1 ? 'it' : 'them';
+      const are_not = outstanding === 1 ? 'is not' : 'are not';
+      intro.innerHTML =
+        `This session needs ${outstanding} file${plural} that ${are_not} loaded yet. ` +
+        `Choose the folder that contains ${them}, or pick the missing file${plural} manually.` +
+        `<br><br>` +
+        `<strong>Your files never leave your computer.</strong> ` +
+        `PhaseFinder does not upload anything, the browser only reads them locally ` +
+        `so it can work with them. It may still warn about "uploading" the folder; that is just ` +
+        `its standard wording for granting read access. Any files in the folder that are ` +
+        `not part of this session are ignored.`;
+    } else {
+      intro.textContent = 'All session files are reconnected.';
+    }
   }
 
   const continue_btn = document.getElementById('reconnect_continue');
@@ -210,6 +255,10 @@ export function close_reconnect_modal() {
   const modal = document.getElementById('reconnect_modal');
   if (modal) modal.hidden = true;
   reconnect_ctx = null;
+  // The scan panel itself stays open after a scan finishes (see
+  // finish_scan_panel) so its result is readable; reset it here so the next
+  // reconnect doesn't open with a stale panel already showing.
+  close_scan_panel();
 }
 
 // Matches provided files against still-missing records, caches + loads matches.

@@ -28,6 +28,7 @@ import {
 } from "../data_structs/table_state.js";
 import { unique_metadata_label } from "../data_structs/metadata_columns.js";
 import { DERIVED_COLUMN_GROUPS, TOTAL_EVENTS_COLUMN, TOTAL_EVENTS_HEADER } from "../data_structs/derived_columns.js";
+import { decorate_removable_headers, handle_remove_columns_click } from "./column_remove.js";
 import {
   displayed_files,
   annotation_input_size,
@@ -37,6 +38,8 @@ import {
   notify_selection_changed,
 } from "./table_support.js";
 import { update_start_button_state } from "./status_channels.js";
+import { sync_color_by_options, get_row_color, toggle_isolated_color_group } from "../plotting/data.js";
+import { render_density_plot } from "../plotting/render.js";
 
 export function link_existing_metadata_row_to_loaded_entry(entry) {
   const frame = get_file_table();
@@ -63,6 +66,40 @@ export function link_existing_metadata_row_to_loaded_entry(entry) {
 /*
 
 Purpose:
+	Updates every row's color swatch in place to match the plot's current
+	per-row colors, without a full table re-render. Called after every
+	render_density_plot() (see the pf-plot-rendered listener in main.js) --
+	using a full render_file_table() there instead would rebuild the entire
+	table on every plot redraw (including high-frequency ones like dragging
+	the bin-count control), which is unnecessary just to recolor some dots.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: updates each .filename_color_swatch element's color/title
+
+*/
+export function sync_filename_swatches() {
+  document.querySelectorAll("#file_table .filename_color_swatch[data-row-id]").forEach((el) => {
+    const color_info = get_row_color(el.dataset.rowId);
+    if (color_info) {
+      el.classList.remove("filename_color_swatch_empty");
+      el.style.background = color_info.color;
+      el.dataset.colorGroup = color_info.group;
+      el.title = `${color_info.group} — double-click to show only this color on the plot`;
+    } else {
+      el.classList.add("filename_color_swatch_empty");
+      el.style.background = "";
+      delete el.dataset.colorGroup;
+      el.title = "Not currently plotted";
+    }
+  });
+}
+
+/*
+
+Purpose:
 	Renders the metadata table from the loaded files: header cells with
 	sort/filter controls and one row per displayed file with a select checkbox
 	and editable annotation inputs. Also prunes any selection that is no longer
@@ -76,16 +113,18 @@ Output:
 
 */
 export function render_file_table() {
+  sync_color_by_options();
   const frame = get_file_table();
   if (!frame || frame.length === 0) {
     file_table.innerHTML = '<p class="empty_note">Load FCS files to initialize the table.</p>';
     return;
   }
 
-  // Annotation input for editable columns.
+  // Annotation input for editable columns. Carries the same data-column-key as
+  // its header so remove-columns mode can span the highlight down to this cell.
   const cell = (row, field) => {
     const value = String(row[field] ?? "");
-    return `<td><input data-file-id="${row.id}" data-field="${field}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
+    return `<td data-column-key="field:${escape_html(field)}"><input data-file-id="${row.id}" data-field="${field}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
   };
 
   const visible_files = displayed_files();
@@ -161,11 +200,14 @@ export function render_file_table() {
   // even without stats, so section titles align with the metadata labels and
   // column titles align with the metadata filter dropdowns.
   const two_row_header = has_stats || derived_groups.length > 0 || has_total_events;
+  // Removable derived/stats headers carry data-column-key="col:<frame column>".
+  const col_key = (column) =>
+    ` data-column-key="col:${escape_html(column)}" data-column-label="${escape_html(column)}"`;
   const total_top_th = has_total_events
-    ? `<th class="derived_group_th stats_col_start">${escape_html(TOTAL_EVENTS_HEADER.top)}</th>`
+    ? `<th class="derived_group_th stats_col_start"${col_key(TOTAL_EVENTS_COLUMN)}>${escape_html(TOTAL_EVENTS_HEADER.top)}</th>`
     : "";
   const total_bottom_th = has_total_events
-    ? `<th class="derived_sub_th stats_col_start">${escape_html(TOTAL_EVENTS_HEADER.bottom)}</th>`
+    ? `<th class="derived_sub_th stats_col_start"${col_key(TOTAL_EVENTS_COLUMN)}>${escape_html(TOTAL_EVENTS_HEADER.bottom)}</th>`
     : "";
   const derived_group_ths = [
     total_top_th,
@@ -173,14 +215,14 @@ export function render_file_table() {
       `<th colspan="${group.columns.length}" class="derived_group_th stats_col_start">${escape_html(group.label)}</th>`,
     ),
     ...ungrouped_derived.map((column) =>
-      `<th class="derived_result_th stats_col_start"${two_row_header ? ' rowspan="2"' : ""}>${escape_html(column)}</th>`,
+      `<th class="derived_result_th stats_col_start"${col_key(column)}${two_row_header ? ' rowspan="2"' : ""}>${escape_html(column)}</th>`,
     ),
   ].join("");
   const derived_sub_ths = [
     total_bottom_th,
     ...derived_groups.map((group) =>
       group.columns.map((column, ci) =>
-        `<th class="derived_sub_th${ci === 0 ? " stats_col_start" : ""}">${escape_html(column)}</th>`,
+        `<th class="derived_sub_th${ci === 0 ? " stats_col_start" : ""}"${col_key(column)}>${escape_html(column)}</th>`,
       ).join(""),
     ),
   ].join("");
@@ -199,7 +241,9 @@ export function render_file_table() {
     const sub_headers = stats_groups.map((g) =>
       g.metrics.map((m, mi) => {
         const cls = mi === 0 ? " stats_col_start" : "";
-        return `<th class="stats_sub_th${cls}">${STAT_LABELS[m] || m}</th>`;
+        const key = `col:${escape_html(`${g.channel}:${m}`)}`;
+        const label = escape_html(`${g.channel} ${STAT_LABELS[m] || m}`);
+        return `<th class="stats_sub_th${cls}" data-column-key="${key}" data-column-label="${label}">${STAT_LABELS[m] || m}</th>`;
       }).join("")
     ).join("");
     head_html = `
@@ -233,18 +277,24 @@ export function render_file_table() {
           if (column.field === "name") {
             const title = is_linked ? row.name : `${row.name || "(blank filename)"} — FCS file is not loaded`;
             const class_name = is_linked ? "filename_cell" : "filename_cell filename_cell_unlinked";
-            return `<td class="${class_name}" title="${escape_html(title)}">${escape_html(display_name(row.name || ""))}</td>`;
+            const color_info = get_row_color(row.id);
+            const swatch = color_info
+              ? `<span class="filename_color_swatch" data-row-id="${escape_html(row.id)}" data-color-group="${escape_html(color_info.group)}" style="background:${escape_html(color_info.color)}" title="${escape_html(color_info.group)} — double-click to show only this color on the plot"></span>`
+              : `<span class="filename_color_swatch filename_color_swatch_empty" data-row-id="${escape_html(row.id)}" title="Not currently plotted"></span>`;
+            return `<td class="${class_name}" title="${escape_html(title)}">${swatch}${escape_html(display_name(row.name || ""))}</td>`;
           }
           return cell(row, column.field);
         }).join("");
         const derived_tds = ordered_derived_columns.map((column) => {
           const cls = derived_col_start.has(column) ? " stats_col_start" : "";
-          return `<td class="derived_result_td${cls}">${escape_html(String(row[column] ?? "—"))}</td>`;
+          const key = `col:${escape_html(column)}`;
+          return `<td class="derived_result_td${cls}" data-column-key="${key}">${escape_html(String(row[column] ?? "—"))}</td>`;
         }).join("");
         const stats_tds = has_stats ? stats_groups.map((g) =>
           g.metrics.map((m, mi) => {
             const cls = mi === 0 ? " stats_col_start" : "";
-            return `<td class="stats_td${cls}">${fmt(row[`${g.channel}:${m}`])}</td>`;
+            const key = `col:${escape_html(`${g.channel}:${m}`)}`;
+            return `<td class="stats_td${cls}" data-column-key="${key}">${fmt(row[`${g.channel}:${m}`])}</td>`;
           }).join("")
         ).join("") : "";
         return `
@@ -267,6 +317,7 @@ export function render_file_table() {
   update_select_all_checkbox();
   update_start_button_state();
   sync_file_annotations();
+  decorate_removable_headers();
 
   if (pending_header_focus_field) {
     const field = pending_header_focus_field;
@@ -348,6 +399,49 @@ function finalize_metadata_header_by_field(field) {
 /*
 
 Purpose:
+	Delegated keydown handler for the table: pressing Enter while editing a new
+	column's header name confirms it, the same as clicking its "OK" button.
+
+Input:
+	event [Event]: a keydown event from the file table
+
+Output:
+	(none) [void]: finalizes the header on Enter
+
+*/
+export function handle_table_keydown(event) {
+  if (event.key !== "Enter") return;
+  const input = event.target.closest(".metadata_header_input");
+  if (!input) return;
+  event.preventDefault();
+  finalize_metadata_header_by_field(input.dataset.field);
+}
+
+/*
+
+Purpose:
+	Delegated double-click handler for the table: double-clicking a row's color
+	swatch isolates that color/group on the plot, same as double-clicking its
+	curve there -- a second double-click (on the same or any swatch of the same
+	color) clears the isolation back to showing every plotted curve.
+
+Input:
+	event [Event]: a dblclick event from the file table
+
+Output:
+	(none) [void]: toggles the isolated color group and redraws the plot
+
+*/
+export function handle_table_dblclick(event) {
+  const swatch = event.target.closest(".filename_color_swatch");
+  if (!swatch || !swatch.dataset.colorGroup) return;
+  toggle_isolated_color_group(swatch.dataset.colorGroup);
+  render_density_plot();
+}
+
+/*
+
+Purpose:
 	Delegated change handler for the table: applies filter-checkbox toggles, the
 	select-all checkbox, and per-row selection, re-rendering and notifying the
 	plot as needed.
@@ -423,6 +517,10 @@ Output:
 
 */
 export function handle_table_click(event) {
+  // In remove-columns mode, header clicks pick columns to delete instead of
+  // sorting/filtering.
+  if (handle_remove_columns_click(event.target)) return;
+
   const header_ok = event.target.closest(".metadata_header_ok");
   if (header_ok) {
     finalize_metadata_header_by_field(header_ok.dataset.field);

@@ -94,10 +94,8 @@ function count_retained(mask) {
   return count;
 }
 
-export function run_stage0(row, options = {}) {
-  const data = require_row_data(row);
+function commit_stage0(row, result) {
   const state = get_or_create_state(row);
-  const result = stage0.runStructuralQC(data, options.pnr);
   state.structuralQC = result;
   state.structuralMask = result.structuralMask;
   set_stage_mask(row, 0, result.structuralMask);
@@ -105,15 +103,102 @@ export function run_stage0(row, options = {}) {
   return stage_result(0, row, result, state);
 }
 
-export function run_stage1(row, options = {}) {
-  const data = require_row_data(row);
+function commit_stage1(row, result) {
   const state = get_or_create_state(row);
-  const structuralMask = data.masks?.structural ?? null;
-  const result = stage1.runTimeQC(data, structuralMask, options);
   state.timeQC = result;
   set_stage_mask(row, 1, result.skipped ? null : result.timeQCMask);
   invalidate_after(row, state, 1);
   return stage_result(1, row, result, state);
+}
+
+export function run_stage0(row, options = {}) {
+  const data = require_row_data(row);
+  const result = stage0.runStructuralQC(data, options.pnr);
+  return commit_stage0(row, result);
+}
+
+export function run_stage1(row, options = {}) {
+  const data = require_row_data(row);
+  const structuralMask = data.masks?.structural ?? null;
+  const result = stage1.runTimeQC(data, structuralMask, options);
+  return commit_stage1(row, result);
+}
+
+// ── Eager Stage 0 / Stage 1 precompute cache ────────────────────────────────
+// Stage 0 has no dependency, so it has exactly one correct result per row.
+// Stage 1 depends on one thing -- whether Stage 0 is active -- so it has two
+// possible correct results per row (scored with or without the structural
+// mask). Both are cheap and common enough to compute eagerly, in the
+// background, as soon as a channel is plotted, rather than only ever on
+// demand when the user checks a Pre-model QC box. Keyed by row name like
+// pipeline_states, and invalidated the same way (channel/event-count change).
+// Stages 2-3 are not cached here: their dependency space grows combinatorially
+// (up to 4 and 8 variants), so they stay computed on demand.
+const qc_precompute_cache = new Map();
+
+function get_precompute_entry(row, data) {
+  const existing = qc_precompute_cache.get(row.name);
+  if (existing && existing.channelKey === data.channel_key && existing.eventCount === data.eventCount) {
+    return existing;
+  }
+  const fresh = { channelKey: data.channel_key, eventCount: data.eventCount, stage0: null, stage1: new Map() };
+  qc_precompute_cache.set(row.name, fresh);
+  return fresh;
+}
+
+/**
+ * Eagerly fills the Stage 0 / Stage 1 cache for every row, without touching
+ * row.data.masks or pipeline state -- pure precompute, safe to run in the
+ * background before the user has checked any QC box. Call after a channel
+ * finishes plotting.
+ */
+export function precompute_qc_stage01(rows) {
+  for (const row of rows) {
+    let data;
+    try {
+      data = require_row_data(row);
+    } catch (_) {
+      continue; // this row's channel data isn't loaded yet
+    }
+    const entry = get_precompute_entry(row, data);
+
+    if (!entry.stage0) {
+      try {
+        entry.stage0 = stage0.runStructuralQC(data);
+      } catch (error) {
+        entry.stage0 = { error };
+      }
+    }
+    const structuralMask = entry.stage0 && !entry.stage0.error ? entry.stage0.structuralMask : null;
+
+    for (const withStructural of [false, true]) {
+      if (withStructural && !structuralMask) continue; // no valid Stage 0 mask to condition on
+      if (entry.stage1.has(withStructural)) continue;
+      try {
+        entry.stage1.set(withStructural, stage1.runTimeQC(data, withStructural ? structuralMask : null));
+      } catch (error) {
+        entry.stage1.set(withStructural, { error });
+      }
+    }
+  }
+}
+
+/** Stage 0, reusing the eager precompute's result when it's still valid. */
+export function run_stage0_fast(row) {
+  const data = require_row_data(row);
+  const entry = get_precompute_entry(row, data);
+  if (!entry.stage0 || entry.stage0.error) return run_stage0(row);
+  return commit_stage0(row, entry.stage0);
+}
+
+/** Stage 1, reusing the eager precompute's result when it's still valid. */
+export function run_stage1_fast(row) {
+  const data = require_row_data(row);
+  const structuralActive = Boolean(data.masks?.structural);
+  const entry = get_precompute_entry(row, data);
+  const cached = entry.stage1.get(structuralActive);
+  if (!cached || cached.error) return run_stage1(row);
+  return commit_stage1(row, cached);
 }
 
 export function run_stage2(row, options = {}) {
