@@ -31,7 +31,7 @@ import {
 } from "./ui/dom.js";
 import { get_file_table, set_file_table } from "./state/app_state.js";
 import { get_file_by_id, get_parsed_files, get_selected_files } from "./state/files.js";
-import { TABLE_COLUMNS, sync_file_annotations } from "./data_structs/table_state.js";
+import { TABLE_COLUMNS, sync_file_annotations, loaded_file_count } from "./data_structs/table_state.js";
 import { add_manual_metadata_column } from "./data_structs/metadata_columns.js";
 import { init_tooltips, Tooltips } from "./ui/hover_text.js";
 import {
@@ -53,7 +53,10 @@ import {
   handle_metadata_header_input,
   handle_table_change,
   handle_table_click,
+  handle_table_keydown,
+  handle_table_dblclick,
   handle_document_click,
+  sync_filename_swatches,
 } from "./ui/table_render.js";
 import {
   open_metadata_wizard,
@@ -80,7 +83,9 @@ import { init_pipeline_ui } from "./analysis/djf/pipeline_ui.js";
 import { get_pipeline } from "./analysis/djf/pipeline_loader.js";
 import { init_stats } from "./analysis/stats.js";
 import { init_panel_resize } from "./ui/panel_resize.js";
+import { init_remove_columns } from "./ui/column_remove.js";
 import { init_session } from "./session/core.js";
+import { init_unload_guard, suppress_next_unload_warning } from "./session/unload_guard.js";
 
 /*
 
@@ -134,8 +139,19 @@ function set_upload_target_dragging(target, is_dragging) {
   target.classList.toggle("dragging", is_dragging);
 }
 
-// The logo reloads the page for a clean start.
+// The logo reloads the page for a clean start. Unlike a real back/forward/
+// refresh navigation, this is our own JS-triggered action, so we can show our
+// own wording instead of the browser's generic "leave site?" text -- and
+// since window.location.reload() is itself a real navigation, it would
+// trigger the beforeunload guard (see unload_guard.js) a second time right
+// after the user already answered this one, so we suppress that.
 function hard_restart() {
+  if (loaded_file_count() > 0 && !window.confirm(
+    "Reload PhaseFinder? Any unsaved session changes will be lost.",
+  )) {
+    return;
+  }
+  suppress_next_unload_warning();
   window.location.reload();
 }
 
@@ -226,6 +242,8 @@ function init_app_bootstrap() {
   file_table.addEventListener("input", update_annotation);
   file_table.addEventListener("change", handle_table_change);
   file_table.addEventListener("click", handle_table_click);
+  file_table.addEventListener("dblclick", handle_table_dblclick);
+  file_table.addEventListener("keydown", handle_table_keydown);
   metadata_parse_button?.addEventListener("click", open_metadata_wizard);
   metadata_add_column_button?.addEventListener("click", add_manual_metadata_column);
   metadata_import_button?.addEventListener("click", open_metadata_import_picker);
@@ -248,6 +266,9 @@ function init_app_bootstrap() {
       close_metadata_wizard();
     }
   });
+  // Keeps the metadata table's per-row color swatches in sync with the plot
+  // (see plotting/render.js) after every redraw.
+  document.addEventListener("pf-plot-rendered", sync_filename_swatches);
 
   clear_channel_controls();
   render_file_table();
@@ -265,7 +286,9 @@ init_analysis_listeners();  // analysis/start.js listener block
 init_pipeline_ui();         // analysis/djf/pipeline_ui.js manual stage controls
 init_stats();               // analysis/stats.js modal + auto-compute
 init_panel_resize();        // ui/panel_resize.js drag handlers
+init_remove_columns();      // ui/column_remove.js remove-columns mode
 init_session();             // session/core.js wiring + deferred try_autoload
+init_unload_guard();        // session/unload_guard.js beforeunload wiring
 
 // The single documented debug/automation/test hook. The staged pipeline is
 // lazy-loaded by its manual controls; `djf` remains a compatibility alias.

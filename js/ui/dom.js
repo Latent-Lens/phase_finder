@@ -51,6 +51,14 @@ export const aux_ssc_select = document.querySelector("#aux_ssc_select");
 // ── Metadata table + toolbar ─────────────────────────────────────────────────
 export const file_table = document.querySelector("#file_table");
 export const metadata_add_column_button = document.querySelector("#metadata_add_column_button");
+export const metadata_remove_column_button = document.querySelector("#metadata_remove_column_button");
+
+// ── Remove-columns floating panel ────────────────────────────────────────────
+export const remove_columns_panel = document.querySelector("#remove_columns_panel");
+export const remove_columns_header = document.querySelector("#remove_columns_header");
+export const remove_columns_list = document.querySelector("#remove_columns_list");
+export const remove_columns_confirm = document.querySelector("#remove_columns_confirm");
+export const remove_columns_cancel = document.querySelector("#remove_columns_cancel");
 export const metadata_import_button = document.querySelector("#metadata_import_button");
 export const metadata_import_input = document.querySelector("#metadata_import_input");
 export const metadata_parse_button = document.querySelector("#metadata_parse_button");

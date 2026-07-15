@@ -240,7 +240,7 @@ export function header_cell(column) {
   const filter = column.filterable ? filter_control(column) : "";
 
   return `
-        <th>
+        <th${column_key_attrs(column)}>
           <div class="th_inner">
             ${header_label_control(column)}
             ${filter}
@@ -261,8 +261,15 @@ Output:
 	html [string]: the stats-mode label header cell markup
 
 */
+// data-column-key marks a header as removable in remove-columns mode. The
+// Filename column is the row key and is never removable.
+export function column_key_attrs(column) {
+  if (!column || column.field === "name") return "";
+  return ` data-column-key="field:${escape_html(column.field)}" data-column-label="${escape_html(column.label)}"`;
+}
+
 export function header_label_cell(column) {
-  return `<th class="stats_label_th">${header_label_control(column)}</th>`;
+  return `<th class="stats_label_th"${column_key_attrs(column)}>${header_label_control(column)}</th>`;
 }
 
 /*
@@ -280,7 +287,7 @@ Output:
 */
 export function header_filter_cell(column) {
   const filter = column.filterable ? filter_control(column) : "";
-  return `<th class="stats_filter_th">${filter}</th>`;
+  return `<th class="stats_filter_th"${column_key_attrs(column)}>${filter}</th>`;
 }
 
 /*
