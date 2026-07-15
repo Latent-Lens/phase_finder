@@ -1,0 +1,6 @@
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+web_search = "disabled"
+
+[sandbox_workspace_write]
+network_access = false
