@@ -190,7 +190,6 @@
               <label class="plot_control">Color by
                 <select id="plot_color_by">
                   <option value="file">File</option>
-                  <option value="strain">Strain</option>
                 </select>
               </label>
               <label class="plot_control">Bins
@@ -218,7 +217,6 @@
               <div class="djf_pipeline_controls" role="group" aria-label="Manual Dean-Jett-Fox pipeline stages">
                 <span class="djf_pipeline_label">DJF Pipeline (manual)</span>
                 <div class="djf_pipeline_buttons">
-                  <button id="djf_stage4" type="button">Stage 4: Histogram</button>
                   <button id="djf_stage5" type="button">Stage 5: Peaks</button>
                   <button id="djf_stage6" type="button">Stage 6: Fit DJF</button>
                   <button id="djf_stage7" type="button">Stage 7 (opt): Debris/Aggregate</button>
@@ -239,18 +237,27 @@
             <div class="metadata_title_row">
               <span class="metadata_title_text">Table of Loaded FCS Samples</span>
               <div class="metadata_title_actions">
-                <button id="metadata_parse_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="configureMetadata" aria-label="Configure filename metadata columns" disabled>
-                  <img class="panel_toggle_icon" src="./assets/img/text_to_col.svg" alt="" aria-hidden="true" />
-                </button>
-                <button id="metadata_add_column_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="addMetadataColumn" aria-label="Add a metadata column" disabled>
-                  <img class="panel_toggle_icon" src="./assets/img/manual_add_column.svg" alt="" aria-hidden="true" />
-                </button>
-                <button id="metadata_import_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="importMetadataTable" aria-label="Import metadata table" disabled>
-                  <img class="panel_toggle_icon" src="./assets/img/table_import.svg" alt="" aria-hidden="true" />
-                </button>
-                <button id="metadata_export_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="exportTable" aria-label="Export table as TSV" disabled>
-                  <img class="panel_toggle_icon" src="./assets/img/table_export.svg" alt="" aria-hidden="true" />
-                </button>
+                <div class="metadata_ops_group metadata_ops_group_3" role="group" aria-label="Column Operations">
+                  <span class="metadata_ops_label">Column Operations</span>
+                  <button id="metadata_parse_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="configureMetadata" aria-label="Configure filename metadata columns" disabled>
+                    <img class="panel_toggle_icon" src="./assets/img/text_to_col.svg" alt="" aria-hidden="true" />
+                  </button>
+                  <button id="metadata_add_column_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="addMetadataColumn" aria-label="Add a metadata column" disabled>
+                    <img class="panel_toggle_icon" src="./assets/img/manual_add_column.svg" alt="" aria-hidden="true" />
+                  </button>
+                  <button id="metadata_remove_column_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="removeMetadataColumn" aria-label="Remove columns" aria-pressed="false" disabled>
+                    <img class="panel_toggle_icon" src="./assets/img/manual_remove_column.svg" alt="" aria-hidden="true" />
+                  </button>
+                </div>
+                <div class="metadata_ops_group metadata_ops_group_2" role="group" aria-label="Table I/O">
+                  <span class="metadata_ops_label">Table I/O</span>
+                  <button id="metadata_import_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="importMetadataTable" aria-label="Import metadata table" disabled>
+                    <img class="panel_toggle_icon" src="./assets/img/table_import.svg" alt="" aria-hidden="true" />
+                  </button>
+                  <button id="metadata_export_button" class="panel_icon_toggle quick_tooltip" type="button" data-tooltip-key="exportTable" aria-label="Export table as TSV" disabled>
+                    <img class="panel_toggle_icon" src="./assets/img/table_export.svg" alt="" aria-hidden="true" />
+                  </button>
+                </div>
                 <button id="metadata_panel_toggle" class="panel_icon_toggle quick_tooltip" type="button" aria-expanded="true" aria-controls="metadata_panel_body" data-tooltip-key="tableCollapse" aria-label="Collapse table">
                   <img id="metadata_panel_toggle_icon" class="panel_toggle_icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
                 </button>
@@ -265,6 +272,25 @@
         </section>
       </section>
     </main>
+
+    <!-- Non-blocking floating panel for the remove-columns mode. Pinned to the
+         bottom-right so it never covers the table's column headers, and it does
+         not disable the table underneath (users click headers to pick columns). -->
+    <div id="remove_columns_panel" class="remove_columns_panel" hidden role="dialog" aria-label="Remove columns">
+      <div id="remove_columns_header" class="remove_columns_header">
+        <span class="remove_columns_title">Column Removal</span>
+        <span class="panel_title_rule remove_columns_title_rule"></span>
+      </div>
+      <p class="remove_columns_prompt">Select the column(s) you want to delete by clicking their headers in the table.</p>
+      <div class="remove_columns_selection">
+        <span class="remove_columns_heading">Columns to remove:</span>
+        <div id="remove_columns_list" class="remove_columns_list">(None)</div>
+      </div>
+      <div class="remove_columns_actions">
+        <button id="remove_columns_confirm" class="remove_columns_confirm" type="button" disabled>Remove 0 selected columns</button>
+        <button id="remove_columns_cancel" class="remove_columns_cancel" type="button">Cancel</button>
+      </div>
+    </div>
 
     <div id="metadata_wizard_modal" class="stats_modal metadata_wizard_modal" hidden role="dialog" aria-modal="true" aria-labelledby="metadata_wizard_title">
       <div class="stats_modal_backdrop"></div>
@@ -451,7 +477,7 @@
     <footer id="status_bar" class="status_bar">
       <span id="status_bar_message" class="status_bar_message">Ready.</span>
       <span class="status_bar_help">
-        <a href="help.html">Get Help</a>
+        <a href="help.html" target="_blank" rel="noopener">Get Help</a>
       </span>
       <span class="status_bar_copyright">
         © 2026 <a href="https://latentlens.org">LatentLens</a>. All rights reserved
