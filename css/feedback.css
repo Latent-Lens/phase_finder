@@ -396,7 +396,8 @@
   background: color-mix(in srgb, var(--muted) 14%, transparent);
 }
 
-.reconnect_row__available .reconnect_status_pill {
+.reconnect_row__available .reconnect_status_pill,
+.reconnect_row__uncached .reconnect_status_pill {
   color: var(--success_strong);
   background: color-mix(in srgb, var(--success) 16%, transparent);
 }

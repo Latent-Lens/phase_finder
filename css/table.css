@@ -261,6 +261,26 @@ th {
   font-weight: 700;
 }
 
+/* Small dot showing a row's current plot color, to the left of its filename
+   -- doubles as a click target (see handle_table_dblclick) so isolating a
+   color group works the same from the table as from double-clicking its
+   curve on the plot. */
+.filename_color_swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 7px;
+  border-radius: 50%;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.filename_color_swatch_empty {
+  background: none;
+  border: 1.5px dashed var(--muted);
+  cursor: default;
+}
+
 .metadata_row_unlinked {
   background: rgba(220, 38, 38, 0.035);
 }
@@ -460,4 +480,228 @@ th {
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
+}
+
+/* ── Remove-columns mode ─────────────────────────────────────────────────── */
+
+/* Toolbar toggle active state while remove mode is on. */
+#metadata_remove_column_button[aria-pressed="true"] {
+  background: var(--focus_restart);
+  border-color: var(--restart);
+}
+
+/* Positioning context for the overlay layer (see below). */
+#file_table {
+  position: relative;
+}
+
+/* Removable headers and body cells are clickable anywhere in remove mode. */
+.file_table th.col_removable,
+.file_table td.col_removable {
+  cursor: pointer;
+}
+.file_table th.col_removable:hover,
+.file_table td.col_removable:hover {
+  background: var(--restart_soft, rgba(220, 38, 38, 0.08));
+}
+
+/* While remove mode is active, clicking anywhere in a column (including an
+   editable annotation cell) selects it instead of focusing/editing the input
+   underneath. */
+#file_table.remove_columns_active input {
+  pointer-events: none;
+}
+
+/* Overlay layer: a zero-size positioning root (absolute, at file_table's own
+   origin) holding one box per selected column/run of adjacent columns. Using a
+   measured overlay instead of per-cell borders lets a run of adjacent selected
+   columns share a single box, and lets the box span header-to-last-row instead
+   of just the header cell. */
+.col_remove_overlay_layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.col_remove_overlay_box {
+  position: absolute;
+  pointer-events: none;
+  background-color: rgba(220, 38, 38, 0.06);
+  background-image:
+    repeating-linear-gradient(90deg, var(--restart_strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(90deg, var(--restart_strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(0deg, var(--restart_strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(0deg, var(--restart_strong) 0 6px, transparent 6px 12px);
+  background-size: 100% 2px, 100% 2px, 2px 100%, 2px 100%;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: no-repeat;
+  animation: col_remove_ants 0.6s linear infinite;
+}
+@keyframes col_remove_ants {
+  to {
+    background-position: 12px 0, -12px 100%, 0 -12px, 100% 12px;
+  }
+}
+
+/* Non-blocking floating panel. Spawns pinned bottom-right, clear of both the
+   headers and the footer status bar; the title bar (below) lets it be dragged
+   anywhere on screen from there. Sized to hug its content — mainly the
+   two-line confirm button and the prompt text — rather than a wide fixed box. */
+.remove_columns_panel {
+  position: fixed;
+  right: 24px;
+  bottom: 48px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  width: 352px; /* left/right padding (10+10) + confirm (241) + gap (10) + cancel's natural width (~81) */
+  max-width: calc(100vw - 48px);
+  padding: 14px 10px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+}
+.remove_columns_panel[hidden] {
+  display: none;
+}
+
+/* Title bar: drag handle for repositioning the panel. Bleeds out to the
+   panel's own edges (negative margin) so the rule spans full width, matching
+   the metadata table / sidebar panel headers but at a smaller scale. */
+.remove_columns_header {
+  margin: -14px -10px 12px;
+  padding: 10px 10px 0;
+  cursor: grab;
+  user-select: none;
+}
+.remove_columns_header:active {
+  cursor: grabbing;
+}
+
+.remove_columns_title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.remove_columns_title_rule {
+  margin-bottom: 0;
+}
+
+.remove_columns_prompt {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* One blank line between the prompt and the "Columns to remove:" block, which
+   grows with the selection and pushes the buttons down. */
+.remove_columns_selection {
+  margin-top: 1.2em;
+}
+
+.remove_columns_heading {
+  font-weight: 700;
+  text-decoration: underline;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+/* "(None)" placeholder text, indented to the right of the heading above. */
+.remove_columns_list {
+  margin: 4px 0 0 2.5em;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--restart_strong);
+  word-break: break-word;
+}
+
+/* Real selection list: a 2-column grid (not a <table> — no chrome to strip,
+   and plain grid items sidestep list-marker/grid layout conflicts), filled
+   row-major so item 1/2 share row 1, item 3/4 share row 2, etc. Each row is a
+   fixed height so 5 rows' worth is an exact max-height: up to 5 rows the grid
+   just grows (pushing the modal and its buttons down); beyond that it scrolls
+   instead of growing further, so the panel's height stops there. */
+.remove_columns_grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* Text line-height alone is ~20.4px; a row this short left almost no room
+     for a cell's own horizontal scrollbar (see .remove_columns_item below),
+     so it sat right on top of the text instead of below it. */
+  grid-auto-rows: 34px;
+  column-gap: 14px;
+  row-gap: 4px;
+  max-height: calc(5 * 34px + 4 * 4px); /* 5 rows + the 4 gaps between them */
+  overflow-y: auto;
+  /* No padding-left here: the parent .remove_columns_list margin already
+     indents this block to sit right of "Columns to remove:" above. */
+}
+
+/* A very long column name scrolls horizontally within its own grid cell
+   instead of being truncated with an ellipsis. Vertically centered so the
+   text sits clear of a scrollbar sitting along the cell's bottom edge. */
+.remove_columns_item {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+.remove_columns_item::before {
+  content: "•";
+  margin-right: 6px;
+}
+
+.remove_columns_actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 1.2em;
+}
+
+.remove_columns_confirm,
+.remove_columns_cancel {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+.remove_columns_cancel {
+  width: auto; /* override the global button{width:100%} reset */
+  white-space: nowrap;
+  padding: 8px 14px;
+}
+
+.remove_columns_confirm {
+  width: 241px; /* 225px content + 8px horizontal padding on each side */
+  padding: 6px 8px;
+  white-space: nowrap;
+  text-align: center;
+  background: var(--restart);
+}
+.remove_columns_confirm:hover:not(:disabled) {
+  background: var(--restart_strong);
+}
+.remove_columns_confirm:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.remove_columns_cancel {
+  background: var(--logo_teal);
+}
+.remove_columns_cancel:hover {
+  filter: brightness(0.95);
 }
