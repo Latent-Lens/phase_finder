@@ -277,7 +277,7 @@
 }
 
 .panel {
-  --panel_title_row_height: 44px;
+  --panel_title_row_height: 48px;
   --panel_title_font_size: 22px;
   --panel_title_gap: 10px;
   --panel_title_action_gap: 40px;
@@ -360,6 +360,14 @@
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
+}
+
+/* The 10px padding-bottom above is real box-model padding, not content, so
+   the 1fr->0fr grid trick above can't shrink it away — it's a fixed floor
+   under the collapsed panel no matter how small the row gets. Drop it while
+   collapsed so the panel actually shrinks down to just its title bar. */
+#metadata_panel.is_collapsed #metadata_panel_body > .table_wrap {
+  padding-bottom: 0;
 }
 
 #plot_panel_body {
@@ -453,12 +461,97 @@
   gap: var(--panel_title_action_gap);
 }
 
+/* Tinted-chip grouping for related icon buttons in the metadata title row
+   (e.g. "Column Ops.", "Table I/O"): a soft background tint instead of a
+   dashed border, with the label on its own line below the icon row (wraps
+   via flex-wrap + the label's flex-basis:100%, rather than
+   flex-direction:column, which would also stack the icon buttons
+   vertically). --panel_title_row_height (shared with .sidebar_title_row) was
+   bumped to 48px to give this two-line chip room without breaking that
+   alignment. */
+.metadata_ops_group {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  /* row-gap: 1px of air between the icon row and the label below it.
+     column-gap stays 0 -- icon-to-icon spacing already comes from each
+     button's own left/right margin, so a column-gap here would stack on
+     top of that instead of replacing it. */
+  row-gap: 1px;
+  column-gap: 0;
+  height: auto;
+  /* 1px top/bottom so the icons don't touch the blue box's own edges (was
+     especially visible on the 3-icon Column Operations box); no horizontal
+     padding since each button's own 6px margin (below) supplies the edge
+     spacing and the locked width below assumes 0 here. No border: even a
+     transparent one would eat into that locked width via box-sizing:
+     border-box and force the row to wrap. */
+  padding: 1px 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent_soft);
+}
+
+/* Locked to exactly what N buttons need at 30px each with a 6px margin on
+   both sides of every button (N * (6+30+6)), so the box's width tracks the
+   icon row only -- never the label below, however long its text gets. */
+.metadata_ops_group_3 {
+  width: 126px;
+}
+.metadata_ops_group_2 {
+  width: 84px;
+}
+
+/* Scoped-down buttons/icons just for this grouping so the tinted box hugs
+   the icon row tightly, without changing .panel_icon_toggle everywhere else
+   in the header. */
+.metadata_ops_group .panel_icon_toggle {
+  flex-basis: 30px;
+  width: 30px;
+  min-height: 30px;
+  height: 30px;
+  margin-left: 6px;
+  margin-right: 6px;
+}
+
+.metadata_ops_group .panel_toggle_icon {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+}
+
+.metadata_ops_label {
+  position: static;
+  flex-basis: 100%;
+  order: 1; /* sits below the icon row rather than above it */
+  padding: 0;
+  background: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+  white-space: nowrap;
+  text-align: center;
+}
+
 .panel_toggle_icon {
   display: inline-block;
   width: var(--panel_title_icon_size);
   height: var(--panel_title_icon_size);
   flex: 0 0 var(--panel_title_icon_size);
   object-fit: contain;
+}
+
+/* Plot/table collapse-expand icons: sized to match .sidebar_toggle_icon (42px,
+   filling its 42px button with no padding) rather than the smaller 32px used
+   by the other panel_icon_toggle icons. */
+#plot_panel_toggle_icon,
+#metadata_panel_toggle_icon {
+  width: 42px;
+  height: 42px;
+  flex-basis: 42px;
 }
 
 .panel_title_rule {
@@ -526,6 +619,68 @@
 #pf_tooltip[data-placement="right"]::before {
   left: -4px;
   top: calc(var(--pf-arrow-offset, 50%) - 4.5px);
+}
+
+/* ── Density-plot curve hover tooltip ─────────────────────────────────────
+   Follows the cursor rather than a fixed anchor (see curve_tooltip.js), so
+   unlike #pf_tooltip it has no arrow -- just a small offset from the pointer. */
+
+#plot_curve_tooltip {
+  position: fixed;
+  z-index: 1200;
+  max-width: min(280px, 80vw);
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--text);
+  box-shadow: 0 8px 20px var(--shadow_medium);
+  color: var(--panel);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  text-align: left;
+  word-break: break-word;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 70ms ease, visibility 70ms ease;
+}
+
+#plot_curve_tooltip.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.plot_curve_tooltip_title {
+  margin-bottom: 3px;
+  font-weight: 700;
+}
+
+/* The hovered sample's current plot color, shown left of its name in the
+   tooltip title (matches the metadata-table row swatch). */
+.plot_curve_tooltip_swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.plot_curve_tooltip_row {
+  font-weight: 400;
+}
+
+.plot_curve_tooltip_label {
+  color: var(--panel);
+  opacity: 0.72;
+  font-weight: 600;
+}
+
+/* Divider between the metadata block and the per-bin readout below it. */
+.plot_curve_tooltip_sep {
+  height: 1px;
+  margin: 5px 0;
+  background: color-mix(in srgb, var(--panel) 30%, transparent);
 }
 
 
