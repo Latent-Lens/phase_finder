@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="Audit of selected PhaseFinder CSS color tokens, their selector targets, UI elements, and intended uses."
+  />
+  <title>PhaseFinder color-use audit</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page-bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #647086;
+      --border: #d9dee8;
+      --heading: #072c67;
+      --link: #1d4ed8;
+      --note-bg: #eef4ff;
+      --note-border: #9db8ee;
+      --literal-bg: #fff5e8;
+      --literal-border: #e0a44c;
+      --code-bg: #eef1f6;
+      --shadow: 0 18px 48px rgba(15, 23, 42, 0.11);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--page-bg);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--link);
+      text-underline-offset: 0.15em;
+    }
+
+    code {
+      border-radius: 4px;
+      background: var(--code-bg);
+      padding: 0.08em 0.35em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9em;
+      overflow-wrap: anywhere;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 58px;
+      padding: 10px max(20px, calc((100vw - 1540px) / 2 + 24px));
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+    }
+
+    .topbar strong {
+      color: var(--heading);
+      letter-spacing: -0.01em;
+    }
+
+    .topbar a {
+      font-size: 0.84rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    main {
+      width: min(1540px, calc(100% - 32px));
+      margin: 30px auto 70px;
+      padding: clamp(24px, 4vw, 54px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .kicker {
+      margin: 0 0 7px;
+      color: #2563eb;
+      font-size: 0.76rem;
+      font-weight: 850;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2 {
+      color: var(--heading);
+      line-height: 1.2;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.9rem, 4vw, 3rem);
+      letter-spacing: -0.035em;
+    }
+
+    h2 {
+      margin: 2em 0 0.75em;
+      font-size: 1.35rem;
+    }
+
+    .lede {
+      max-width: 920px;
+      margin: 14px 0 24px;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+
+    .method {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 24px 0 28px;
+    }
+
+    .method > div {
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fafbfd;
+    }
+
+    .method strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--heading);
+      font-size: 0.84rem;
+    }
+
+    .method span {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .table-wrap {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 1180px;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.88rem;
+      line-height: 1.46;
+    }
+
+    caption {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    th,
+    td {
+      padding: 12px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th:last-child,
+    td:last-child {
+      border-right: 0;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #eaf1f8;
+      color: var(--heading);
+      font-size: 0.78rem;
+      font-weight: 850;
+      letter-spacing: 0.035em;
+      text-transform: uppercase;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #fafbfd;
+    }
+
+    tbody tr:hover {
+      background: #f2f6fd;
+    }
+
+    .variable {
+      width: 165px;
+      white-space: nowrap;
+    }
+
+    .color-value {
+      width: 190px;
+    }
+
+    .count {
+      width: 115px;
+      text-align: center;
+    }
+
+    .elements {
+      width: 560px;
+    }
+
+    .summary {
+      min-width: 260px;
+    }
+
+    .token {
+      color: var(--heading);
+      font-weight: 800;
+    }
+
+    .swatch-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+    }
+
+    .swatch {
+      flex: 0 0 auto;
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(15, 23, 42, 0.2);
+      border-radius: 7px;
+      background-color: var(--swatch);
+      background-image:
+        linear-gradient(var(--swatch), var(--swatch)),
+        linear-gradient(45deg, #d7dce5 25%, transparent 25%),
+        linear-gradient(-45deg, #d7dce5 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d7dce5 75%),
+        linear-gradient(-45deg, transparent 75%, #d7dce5 75%);
+      background-position: 0 0, 0 0, 0 5px, 5px -5px, -5px 0;
+      background-size: auto, 10px 10px, 10px 10px, 10px 10px, 10px 10px;
+    }
+
+    .value-lines code {
+      display: inline-block;
+      margin-bottom: 4px;
+    }
+
+    .hex-equivalent {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .count-number {
+      display: block;
+      color: var(--heading);
+      font-size: 1.15rem;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+
+    .count-label {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.25;
+    }
+
+    .targets {
+      margin: 0;
+      padding-left: 1.25em;
+    }
+
+    .targets li + li {
+      margin-top: 6px;
+    }
+
+    .badge {
+      display: inline-block;
+      margin: 3px 3px 0 0;
+      padding: 2px 6px;
+      border: 1px solid var(--note-border);
+      border-radius: 999px;
+      background: var(--note-bg);
+      color: #234d99;
+      font-size: 0.69rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .badge.literal {
+      border-color: var(--literal-border);
+      background: var(--literal-bg);
+      color: #7b4800;
+    }
+
+    .notes {
+      margin: 0;
+      padding-left: 1.35em;
+    }
+
+    .notes li + li {
+      margin-top: 8px;
+    }
+
+    .source-note {
+      margin-top: 22px;
+      padding: 13px 16px;
+      border-left: 4px solid #2563eb;
+      border-radius: 0 9px 9px 0;
+      background: var(--note-bg);
+      color: #33445f;
+    }
+
+    @media (max-width: 860px) {
+      .topbar {
+        position: static;
+      }
+
+      main {
+        width: calc(100% - 20px);
+        margin: 10px auto 36px;
+        padding: 20px 14px 30px;
+        border-radius: 12px;
+      }
+
+      .method {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .topbar {
+        display: none;
+      }
+
+      main {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        box-shadow: none;
+      }
+
+      .table-wrap {
+        overflow: visible;
+      }
+
+      table {
+        min-width: 0;
+        font-size: 7.7pt;
+      }
+
+      thead th {
+        position: static;
+      }
+
+      tr {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <strong>PhaseFinder documentation</strong>
+    <a href="#audit-table">Jump to the table</a>
+  </header>
+
+  <main>
+    <p class="kicker">CSS inventory</p>
+    <h1>Color-use audit</h1>
+    <p class="lede">
+      This report maps the requested PhaseFinder color variables to the UI
+      elements that consume them. It records the authored CSS value, an
+      equivalent eight-digit hex value for translucent colors, the number of
+      separate selector targets, the target element types and names, and a
+      concise description of each color's role.
+    </p>
+
+    <div class="method" aria-label="Audit method">
+      <div>
+        <strong>Scope</strong>
+        <span>The production app styles loaded by <code>index.html</code>, plus the standalone <code>help.html</code> stylesheet.</span>
+      </div>
+      <div>
+        <strong>Counting unit</strong>
+        <span>Each distinct selector, state, or pseudo-element branch counts once; repeated runtime instances do not.</span>
+      </div>
+      <div>
+        <strong>Excluded</strong>
+        <span>Generated documents and test pages that independently redefine similarly named tokens with unrelated palettes.</span>
+      </div>
+    </div>
+
+    <div class="table-wrap" id="audit-table" tabindex="0" aria-label="Scrollable color-use audit table">
+      <table>
+        <caption>PhaseFinder color variables and the elements that use them</caption>
+        <thead>
+          <tr>
+            <th class="variable" scope="col">Variable</th>
+            <th class="color-value" scope="col">CSS value / hex</th>
+            <th class="count" scope="col">Selector targets</th>
+            <th class="elements" scope="col">Element types, names, and selectors</th>
+            <th class="summary" scope="col">Use summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="variable"><code class="token">--accent</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #2563eb" aria-label="Blue color swatch"></span>
+                <span class="value-lines"><code>#2563eb</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">18</span><span class="count-label">selector branches</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>button</code> — global default-primary buttons.</li>
+                <li><code>.sidebar_resizer:hover::after</code>, <code>.sidebar_resizer.is_dragging::after</code> — sidebar drag-handle states.</li>
+                <li><code>.workspace_resizer.draggable:hover::after</code>, <code>.workspace_resizer.is_dragging::after</code> — plot/table split drag-handle states.</li>
+                <li><code>.panel_icon_toggle:hover</code> — plot and metadata toolbar icon buttons.</li>
+                <li><code>.cell_cycle_modeling_button</code> — Run DJF Pipeline button.</li>
+                <li><code>.sidebar_toggle:hover</code> — sidebar collapse/expand button.</li>
+                <li><code>.sidebar_collapsed_upload_target:hover</code>, <code>.sidebar_collapsed_upload_target.dragging</code> — compact upload button states.</li>
+                <li><code>.drop_zone.dragging</code> — main FCS drop zone.</li>
+                <li><code>.th_sort:hover</code> — runtime sortable table-header buttons.</li>
+                <li><code>.file_table .metadata_header_input:focus</code> — editable metadata-header inputs.</li>
+                <li><code>.sort_arrow:hover</code>, <code>.sort_arrow.active</code> — runtime sort arrows.</li>
+                <li><code>.qc_gate_button:hover</code>, <code>.qc_gate_button[aria-pressed="true"]</code> — five QC gate buttons.</li>
+                <li><code>.overview_marker</code> — five screenshot markers on the Help page.</li>
+              </ul>
+            </td>
+            <td class="summary">Primary action blue for buttons, interactive borders and text, drag feedback, table focus/sort state, and Help screenshot callouts.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--accent_strong</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #1d4ed8" aria-label="Dark blue color swatch"></span>
+                <span class="value-lines"><code>#1d4ed8</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">5</span><span class="count-label">selector branches</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.cell_cycle_modeling_button</code> — Run DJF Pipeline border.</li>
+                <li><code>.cell_cycle_modeling_button:hover:not(:disabled)</code> — Run DJF Pipeline hover fill.</li>
+                <li><code>.qc_gate_button[aria-pressed="true"]</code> — active QC button text.</li>
+                <li><code>a</code> — Help-page links.</li>
+                <li><code>.help_toc a:hover</code> — hovered Help table-of-contents links.</li>
+              </ul>
+            </td>
+            <td class="summary">Darker action blue for the DJF action, applied-QC labels, and Help-page links and hover states.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--accent_soft</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #e7efff" aria-label="Pale blue color swatch"></span>
+                <span class="value-lines"><code>#e7efff</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">8</span><span class="count-label">selector branches</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.metadata_ops_group</code> — Column Operations and Table I/O groups.</li>
+                <li><code>.sidebar_collapsed_upload_target:hover</code>, <code>.sidebar_collapsed_upload_target.dragging</code> — compact upload states.</li>
+                <li><code>.sidebar_collapsed_plot_button:hover:not(:disabled)</code> — compact Plot, Run DJF, and Statistics buttons.</li>
+                <li><code>.drop_zone.dragging</code> — main drop-zone drag state.</li>
+                <li><code>.qc_gate_button[aria-pressed="true"]</code> — selected QC buttons.</li>
+                <li><code>.djf_fit_title_row th</code> — runtime DJF fit sample/group header.</li>
+                <li><code>.help_intro</code> — Help-page introduction panel.</li>
+              </ul>
+            </td>
+            <td class="summary">Pale-blue surface tint for grouped metadata actions, hover/drag affordances, selected QC controls, fit-group headers, and the Help introduction.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--shadow_soft</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: rgba(15, 23, 42, 0.12)" aria-label="Translucent dark blue-gray swatch"></span>
+                <span class="value-lines">
+                  <code>rgba(15, 23, 42, 0.12)</code>
+                  <span class="hex-equivalent">8-digit hex: <code>#0f172a1f</code></span>
+                </span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">2</span><span class="count-label">selector targets</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.status_bar</code> — persistent application status <code>&lt;footer&gt;</code>.</li>
+                <li><code>.djf_fit_table_wrap</code> — floating, JS-created DJF fit-results <code>&lt;div&gt;</code>.</li>
+              </ul>
+            </td>
+            <td class="summary">Lightest elevation for persistent or floating informational surfaces.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--shadow_medium</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: rgba(15, 23, 42, 0.16)" aria-label="Translucent dark blue-gray swatch"></span>
+                <span class="value-lines">
+                  <code>rgba(15, 23, 42, 0.16)</code>
+                  <span class="hex-equivalent">8-digit hex: <code>#0f172a29</code></span>
+                </span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">3</span><span class="count-label">selector targets</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.info_icon::after</code> — info-icon tooltip pseudo-element. <span class="badge">Dormant</span></li>
+                <li><code>.multi_select_menu</code> — generated metadata-column filter dropdown <code>&lt;div&gt;</code>.</li>
+                <li><code>#pf_tooltip</code> — shared JS-created <code>&lt;div role="tooltip"&gt;</code>.</li>
+              </ul>
+            </td>
+            <td class="summary">Medium elevation for dropdown menus and tooltip overlays.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--shadow_strong</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: rgba(15, 23, 42, 0.2)" aria-label="Translucent dark blue-gray swatch"></span>
+                <span class="value-lines">
+                  <code>rgba(15, 23, 42, 0.2)</code>
+                  <span class="hex-equivalent">8-digit hex: <code>#0f172a33</code></span>
+                </span>
+              </div>
+            </td>
+            <td class="count">
+              <span class="count-number">2 + 1</span>
+              <span class="count-label">variable targets + exact literal</span>
+            </td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.progress_card</code> — global operation-progress <code>&lt;div role="status"&gt;</code>.</li>
+                <li><code>.stats_modal_card</code> — five modal cards: Filename to Metadata, Calculate Statistics, Reconnect Session Files, Set Axis Range Limits, and Stage 2 Cell Gate.</li>
+                <li><code>.remove_columns_panel</code> — Remove Columns panel uses the exact hard-coded <code>rgba(15, 23, 42, 0.2)</code>. <span class="badge literal">Exact literal</span></li>
+              </ul>
+            </td>
+            <td class="summary">Strongest elevation for progress and modal cards; the Remove Columns panel duplicates the same color as a literal.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--dropzone_border</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #8ea0bd" aria-label="Blue-gray color swatch"></span>
+                <span class="value-lines"><code>#8ea0bd</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">2</span><span class="count-label">selector targets</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.sidebar_collapsed_upload_target</code> — collapsed-sidebar upload <code>&lt;button&gt;</code>.</li>
+                <li><code>.drop_zone</code> — full FCS upload/drop-target <code>&lt;div&gt;</code>.</li>
+              </ul>
+            </td>
+            <td class="summary">Neutral dashed perimeter identifying both expanded and collapsed file-upload targets.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--th_bg</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #f2f5fa" aria-label="Very pale blue-gray swatch"></span>
+                <span class="value-lines"><code>#f2f5fa</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">8</span><span class="count-label">selector targets</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>th</code> — all table-header cells.</li>
+                <li><code>.help_link:hover</code> — intended Help-link hover surface. <span class="badge">Dormant</span></li>
+                <li><code>.file_table th.stats_filter_th</code> — metadata filter-row header.</li>
+                <li><code>.file_table th.stats_sub_th</code> — statistics metric subheader.</li>
+                <li><code>.file_table th.derived_sub_th</code> — derived-result subheader.</li>
+                <li><code>.metadata_split_panel_header</code> — Filename Split Steps panel header.</li>
+                <li><code>.metadata_preview_table th</code> — metadata-preview headers.</li>
+                <li><code>.djf_fit_column_row th</code> — DJF Phase/Percent/Mean/Std Dev headers.</li>
+              </ul>
+            </td>
+            <td class="summary">Pale secondary surface distinguishing table/header bands and an intended Help-link hover state.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--progress_track_bg</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #e5edf6" aria-label="Pale blue-gray swatch"></span>
+                <span class="value-lines"><code>#e5edf6</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">1</span><span class="count-label">selector target</span></td>
+            <td class="elements"><code>.progress_track</code> — reconnect-folder scan and global operation-progress <code>&lt;div&gt;</code> tracks.</td>
+            <td class="summary">Fills the uncompleted portion of both application progress tracks.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--progress_track_border</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #b8c5d6" aria-label="Blue-gray color swatch"></span>
+                <span class="value-lines"><code>#b8c5d6</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">1</span><span class="count-label">selector target</span></td>
+            <td class="elements"><code>.progress_track</code> — reconnect-folder scan and global operation-progress <code>&lt;div&gt;</code> tracks.</td>
+            <td class="summary">Outlines both progress tracks with a restrained neutral border.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--progress_card_border</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: rgba(1, 165, 175, 0.45)" aria-label="Translucent teal swatch"></span>
+                <span class="value-lines">
+                  <code>rgba(1, 165, 175, 0.45)</code>
+                  <span class="hex-equivalent">8-digit hex: <code>#01a5af73</code></span>
+                </span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">3</span><span class="count-label">selector targets</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.progress_card</code> — global operation-progress card.</li>
+                <li><code>.stats_modal_card</code> — the five app modal cards.</li>
+                <li><code>.reconnect_scan_panel_inner</code> — reconnect-folder scan subpanel.</li>
+              </ul>
+            </td>
+            <td class="summary">Translucent brand-teal outline for progress surfaces, modal cards, and the reconnect scan panel.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--focus_success</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: rgba(5, 150, 105, 0.28)" aria-label="Translucent green swatch"></span>
+                <span class="value-lines">
+                  <code>rgba(5, 150, 105, 0.28)</code>
+                  <span class="hex-equivalent">8-digit hex: <code>#05966947</code></span>
+                </span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">9</span><span class="count-label">selector branches</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.panel_icon_toggle:focus-visible</code> — seven plot/table/metadata icon buttons.</li>
+                <li><code>.start_analysis_button:focus-visible</code> — Plot Channel Events button.</li>
+                <li><code>.sidebar_toggle:focus-visible</code> — sidebar toggle.</li>
+                <li><code>.sidebar_collapsed_upload_target:focus-visible</code> — compact upload target.</li>
+                <li><code>.sidebar_collapsed_channel_select:focus-visible</code> — compact channel selector.</li>
+                <li><code>.sidebar_collapsed_plot_button:focus-visible</code> — three compact action buttons.</li>
+                <li><code>#collapsed_cell_cycle_modeling_button:focus-visible</code> and <code>#collapsed_calculate_stats_button:focus-visible</code> — redundant ID-specific branches for two of those actions.</li>
+                <li><code>.loaded_files_list:focus-visible</code> — loaded-files <code>&lt;textarea&gt;</code>.</li>
+              </ul>
+            </td>
+            <td class="summary">Translucent green keyboard-focus ring for navigation, analysis, compact-sidebar controls, toolbar actions, and the loaded-file list.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--focus_restart</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: rgba(220, 38, 38, 0.28)" aria-label="Translucent red swatch"></span>
+                <span class="value-lines">
+                  <code>rgba(220, 38, 38, 0.28)</code>
+                  <span class="hex-equivalent">8-digit hex: <code>#dc262647</code></span>
+                </span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">1</span><span class="count-label">selector target</span></td>
+            <td class="elements"><code>#metadata_remove_column_button[aria-pressed="true"]</code> — active Remove Columns toolbar button.</td>
+            <td class="summary">Translucent red fill indicating active destructive column-removal mode; despite its name, this is not used as a focus ring.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--danger</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #b42318" aria-label="Dark red swatch"></span>
+                <span class="value-lines"><code>#b42318</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">7</span><span class="count-label">selector branches</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.status_bar.error</code> — global status-footer error background.</li>
+                <li><code>.reconnect_row__missing .reconnect_status_pill</code>, <code>.reconnect_row__mismatch .reconnect_status_pill</code> — reconnect status pills.</li>
+                <li><code>.stats_progress__error .stats_progress_bar</code>, <code>.stats_progress__error .stats_progress_label</code> — failed statistics progress fill and text.</li>
+                <li><code>.status.error</code> — sidebar status error text.</li>
+                <li><code>.filename_cell_unlinked</code> — runtime unlinked-filename cells.</li>
+              </ul>
+            </td>
+            <td class="summary">Marks global/sidebar errors, reconnect failures, failed statistics progress, and filenames whose FCS data are not linked.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--success</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #059669" aria-label="Green swatch"></span>
+                <span class="value-lines"><code>#059669</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">5</span><span class="count-label">selector branches</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.reconnect_row__available .reconnect_status_pill</code>, <code>.reconnect_row__uncached .reconnect_status_pill</code> — recoverable-file pill backgrounds via <code>color-mix()</code>.</li>
+                <li><code>.file_table .metadata_header_ok</code> — runtime metadata-header confirmation buttons.</li>
+                <li><code>.start_analysis_button</code> — Plot Channel Events button.</li>
+                <li><code>.callout.tip .callout_title</code> — Help-page Tip headings.</li>
+              </ul>
+            </td>
+            <td class="summary">Green success tint/fill for recoverable files and affirmative actions, plus Help-page Tip headings.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--success_strong</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #047857" aria-label="Dark green swatch"></span>
+                <span class="value-lines"><code>#047857</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">6</span><span class="count-label">selector branches</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.reconnect_row__available .reconnect_status_pill</code>, <code>.reconnect_row__uncached .reconnect_status_pill</code> — recoverable-file pill text.</li>
+                <li><code>.file_table .metadata_header_ok</code> — metadata confirmation border.</li>
+                <li><code>.file_table .metadata_header_ok:hover</code> — metadata confirmation hover fill.</li>
+                <li><code>.start_analysis_button</code> — Plot Channel Events border.</li>
+                <li><code>.start_analysis_button:hover:not(:disabled)</code> — Plot Channel Events hover fill.</li>
+              </ul>
+            </td>
+            <td class="summary">Darker green for successful-status text and the borders and hover states of affirmative buttons.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--restart</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #dc2626" aria-label="Red swatch"></span>
+                <span class="value-lines"><code>#dc2626</code></span>
+              </div>
+            </td>
+            <td class="count"><span class="count-number">3</span><span class="count-label">selector targets</span></td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>#metadata_remove_column_button[aria-pressed="true"]</code> — active Remove Columns button border.</li>
+                <li><code>.remove_columns_confirm</code> — destructive confirmation button.</li>
+                <li><code>.callout.limit .callout_title</code> — intended Help-page Limit heading. <span class="badge">Dormant</span></li>
+              </ul>
+            </td>
+            <td class="summary">Red marks entry into and confirmation of destructive column removal, with an unused Help Limit-heading style.</td>
+          </tr>
+
+          <tr>
+            <td class="variable"><code class="token">--restart_strong</code></td>
+            <td class="color-value">
+              <div class="swatch-row">
+                <span class="swatch" style="--swatch: #b91c1c" aria-label="Dark red swatch"></span>
+                <span class="value-lines"><code>#b91c1c</code></span>
+              </div>
+            </td>
+            <td class="count">
+              <span class="count-number">3 + 1</span>
+              <span class="count-label">variable targets + exact literal</span>
+            </td>
+            <td class="elements">
+              <ul class="targets">
+                <li><code>.col_remove_overlay_box</code> — runtime marching-ant border around selected column runs.</li>
+                <li><code>.remove_columns_list</code> — selected-column name/placeholder text.</li>
+                <li><code>.remove_columns_confirm:hover:not(:disabled)</code> — destructive confirmation hover fill.</li>
+                <li><code>.reset_session_button</code> — Reset Session border and fill use the exact hard-coded <code>#b91c1c</code>. <span class="badge literal">Exact literal</span></li>
+              </ul>
+            </td>
+            <td class="summary">Dark red emphasizes selected columns and destructive confirmation; Reset Session duplicates the same color as a literal.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Interpretation notes</h2>
+    <ul class="notes">
+      <li>The count is a CSS-usage count, not a rendered-node count. For example, the global <code>button</code> selector is one target even though it can match many buttons, while hover and active selectors are counted separately.</li>
+      <li>Runtime counts vary for metadata filter menus, sortable headers and arrows, editable header inputs, DJF fit headings, and other data-dependent elements.</li>
+      <li>The specialized <code>--th_bg</code> header selectors overlap the global <code>th</code> rule; their eight targets therefore should not be added together to estimate unique table cells.</li>
+      <li><code>.stats_modal_card</code> represents five concrete modal cards, so <code>--shadow_strong</code> reaches six concrete cards through two variable selectors; <code>--progress_card_border</code> reaches seven concrete surfaces through three selectors.</li>
+      <li><code>.info_icon::after</code> and <code>.help_link:hover</code> currently have no matching markup or JavaScript-created element; <code>.callout.limit .callout_title</code> has no matching Help callout.</li>
+      <li>Two same-value literals are worth consolidating: <code>.remove_columns_panel</code> duplicates <code>--shadow_strong</code>, and <code>.reset_session_button</code> duplicates <code>--restart_strong</code>.</li>
+    </ul>
+
+    <p class="source-note">
+      Token definitions are in <a href="../css/base.css"><code>css/base.css</code></a>;
+      mirrored Help-page tokens and Help-only targets are in
+      <a href="../css/help.css"><code>css/help.css</code></a>.
+    </p>
+  </main>
+</body>
+</html>

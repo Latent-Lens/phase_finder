@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="Recommended user-editable controls, defaults, validation, and provenance requirements for all stages of the PhaseFinder Dean-Jett-Fox pipeline."
+  />
+  <title>DJF User-Controlled Variables | PhaseFinder</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #647086;
+      --border: #d8deea;
+      --accent: #126d8d;
+      --accent-strong: #064f6b;
+      --accent-soft: #e7f5f8;
+      --logo-blue: #072c67;
+      --warning: #8a4b08;
+      --warning-soft: #fff7e6;
+      --danger: #9c2f2f;
+      --danger-soft: #fff0f0;
+      --success: #176b48;
+      --success-soft: #eaf8f1;
+      --code-bg: #edf1f7;
+      --shadow: 0 16px 42px rgba(31, 45, 72, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.58;
+    }
+    a { color: var(--accent-strong); }
+    code {
+      border-radius: 4px;
+      background: var(--code-bg);
+      padding: 0.08em 0.36em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    h1, h2, h3 { color: var(--logo-blue); line-height: 1.25; }
+    h2, h3 { scroll-margin-top: 86px; }
+
+    .doc-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-height: 64px;
+      padding: 11px 22px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(12px);
+    }
+    .doc-header-title {
+      flex: 1;
+      color: var(--logo-blue);
+      font-size: 1.16rem;
+      font-weight: 800;
+    }
+    .doc-header-links { display: flex; flex-wrap: wrap; gap: 8px; }
+    .doc-header a {
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      padding: 7px 12px;
+      font-size: 0.82rem;
+      font-weight: 750;
+      text-decoration: none;
+    }
+
+    .doc-layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 34px;
+      width: min(1720px, 100%);
+      margin: 0 auto;
+      padding: 26px 24px 72px;
+      align-items: start;
+    }
+    .doc-toc {
+      position: sticky;
+      top: 86px;
+      max-height: calc(100vh - 110px);
+      overflow-y: auto;
+      padding-right: 8px;
+      font-size: 0.83rem;
+    }
+    .doc-toc-label {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .doc-toc ul {
+      margin: 0;
+      padding: 0 0 0 14px;
+      border-left: 2px solid var(--border);
+      list-style: none;
+    }
+    .doc-toc li { margin: 3px 0; }
+    .doc-toc a {
+      display: block;
+      color: var(--muted);
+      padding: 3px 0;
+      text-decoration: none;
+    }
+    .doc-toc a:hover { color: var(--accent-strong); }
+
+    .doc-content { min-width: 0; }
+    .doc-content > h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.65rem, 2.7vw, 2.25rem);
+    }
+    .lead {
+      margin: 0 0 18px;
+      border: 1px solid #c7e4ea;
+      border-radius: 12px;
+      background: var(--accent-soft);
+      padding: 17px 19px;
+      font-size: 1.02rem;
+    }
+    .doc-content h2 {
+      margin: 42px 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.28rem;
+    }
+    .doc-content h3 { margin: 26px 0 10px; font-size: 1.05rem; }
+    .doc-content p { margin: 0 0 13px; }
+    .doc-content ul, .doc-content ol { margin: 0 0 17px; padding-left: 24px; }
+    .doc-content li { margin-bottom: 6px; }
+
+    .callout {
+      margin: 16px 0;
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--accent);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 14px 17px;
+      box-shadow: 0 3px 12px rgba(31, 45, 72, 0.04);
+    }
+    .callout.warning {
+      border-color: #ead5aa;
+      border-left-color: var(--warning);
+      background: var(--warning-soft);
+    }
+    .callout.danger {
+      border-color: #efc6c6;
+      border-left-color: var(--danger);
+      background: var(--danger-soft);
+    }
+    .callout.success {
+      border-color: #bfe1d0;
+      border-left-color: var(--success);
+      background: var(--success-soft);
+    }
+    .callout > :last-child { margin-bottom: 0; }
+
+    .table-wrap {
+      margin: 15px 0 24px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: 0 3px 12px rgba(31, 45, 72, 0.04);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      min-width: 145px;
+      padding: 12px 13px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+    th:last-child, td:last-child { border-right: 0; }
+    tr:last-child td { border-bottom: 0; }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #eef3f8;
+      color: var(--logo-blue);
+      font-size: 0.78rem;
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+    }
+    tbody tr:nth-child(even) { background: #fafbfd; }
+    td:first-child { min-width: 168px; font-weight: 760; color: var(--logo-blue); }
+    td ul { margin: 0; padding-left: 18px; }
+    td li { margin-bottom: 4px; }
+
+    .badge {
+      display: inline-block;
+      margin: 0 4px 3px 0;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 1px 7px;
+      background: #f7f9fc;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.035em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .badge.mask { border-color: #b9d9e3; background: #eaf7fa; color: #075773; }
+    .badge.fit { border-color: #c7d2f2; background: #eef1ff; color: #354e9a; }
+    .badge.diagnostic { border-color: #e4d4ac; background: #fff8e7; color: #81540f; }
+    .badge.fixed { border-color: #d3d6dc; background: #f1f2f4; color: #59616e; }
+    .badge.new { border-color: #e7bfcc; background: #fff0f5; color: #923b5c; }
+
+    .stage-card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin: 16px 0 22px;
+    }
+    .stage-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      padding: 16px 18px;
+      box-shadow: 0 3px 12px rgba(31, 45, 72, 0.04);
+    }
+    .stage-card h3 { margin-top: 0; }
+    .stage-card > :last-child { margin-bottom: 0; }
+    .stage-card dl {
+      display: grid;
+      grid-template-columns: minmax(135px, 0.7fr) minmax(0, 1.3fr);
+      gap: 7px 12px;
+      margin: 0;
+      font-size: 0.88rem;
+    }
+    .stage-card dt { color: var(--muted); font-weight: 740; }
+    .stage-card dd { margin: 0; }
+
+    .source-list code { overflow-wrap: anywhere; }
+    .muted { color: var(--muted); }
+
+    @media (max-width: 980px) {
+      .doc-layout { grid-template-columns: 1fr; padding: 20px 16px 56px; }
+      .doc-toc { position: static; max-height: none; }
+      .stage-card-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .doc-header { align-items: flex-start; flex-direction: column; padding: 10px 14px; }
+      .doc-header-links { width: 100%; }
+      .doc-header a { flex: 1; text-align: center; }
+      .stage-card dl { grid-template-columns: 1fr; }
+      .stage-card dd { margin: -4px 0 6px; }
+    }
+    @media print {
+      .doc-header, .doc-toc { display: none; }
+      .doc-layout { display: block; width: 100%; padding: 0; }
+      .callout, .stage-card, .table-wrap { box-shadow: none; break-inside: avoid; }
+      .table-wrap { overflow: visible; }
+      table { font-size: 8.5pt; }
+    }
+  </style>
+</head>
+<body>
+  <header class="doc-header">
+    <div class="doc-header-title">PhaseFinder · DJF User-Controlled Variables</div>
+    <nav class="doc-header-links" aria-label="Related documentation">
+      <a href="../index.html">PhaseFinder</a>
+      <a href="djf_impl_plan.md">Implementation plan</a>
+      <a href="dean_jett_fox_implementation.md">DJF reference</a>
+    </nav>
+  </header>
+
+  <div class="doc-layout">
+    <nav class="doc-toc" aria-label="On this page">
+      <p class="doc-toc-label">On this page</p>
+      <ul>
+        <li><a href="#recommendation">Recommendation</a></li>
+        <li><a href="#control-table">Control matrix</a></li>
+        <li><a href="#global-controls">Global controls</a></li>
+        <li><a href="#stage-details">Stage-by-stage findings</a></li>
+        <li><a href="#expert-controls">Expert numeric controls</a></li>
+        <li><a href="#do-not-expose">Keep internal or read-only</a></li>
+        <li><a href="#cross-stage">Cross-stage guardrails</a></li>
+        <li><a href="#validation">Validation</a></li>
+        <li><a href="#presets">Presets and wording</a></li>
+        <li><a href="#provenance">Persistence and provenance</a></li>
+        <li><a href="#implementation-gaps">Implementation gaps</a></li>
+        <li><a href="#sources">Source files</a></li>
+      </ul>
+    </nav>
+
+    <main class="doc-content">
+      <h1 id="recommendation">User-controlled variables for the nine-stage DJF pipeline</h1>
+      <p class="lead">
+        The recommended UI exposes a small set of biologically meaningful controls by default and places
+        numerical solver settings behind an <strong>Expert/Developer</strong> disclosure. A flat list of every
+        constant would make it too easy to change convergence behavior without understanding whether the edit
+        affects event exclusion, the fitted model, or only a warning.
+      </p>
+
+      <div class="callout warning">
+        <p>
+          <strong>Current state:</strong> the manual pipeline UI passes only Stage 4's histogram
+          <code>binCount</code> and shared <code>range</code>. Stages 0–3 and 5–8 currently receive empty option
+          objects and therefore use their shipped defaults.
+        </p>
+      </div>
+
+      <p>
+        Stages 1, 2, 3, and 7 should have explicit enable/skip controls. Structural QC should remain mandatory.
+        Stages 4, 6, and 8 are required to produce a result. Stage 5 is useful inspection, but it is currently
+        decoupled from Stage 6 and should be labeled accordingly.
+      </p>
+
+      <h2 id="control-table">Recommended control matrix</h2>
+      <div class="table-wrap" role="region" aria-label="Recommended DJF controls by stage" tabindex="0">
+        <table>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Basic controls</th>
+              <th>Advanced controls</th>
+              <th>Expert / internal</th>
+              <th>Primary effect</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Global / preflight</td>
+              <td>
+                DNA-area channel; optional-stage switches; expected G2/G1 ratio <code>2.0</code>;
+                settings scope
+              </td>
+              <td>Override auto-mapped DNA-H/W, FSC-A, SSC-A, and Time channels</td>
+              <td>Raw parameter-index mapping</td>
+              <td><span class="badge mask">Masks</span><span class="badge fit">Fit</span>Multiple stages</td>
+            </tr>
+            <tr>
+              <td>0 · Structural QC</td>
+              <td>Always enabled; display detected PnR values as read-only</td>
+              <td>None in the normal UI</td>
+              <td>Per-channel PnR saturation overrides</td>
+              <td><span class="badge mask">Mask</span>Direct event inclusion</td>
+            </tr>
+            <tr>
+              <td>1 · Time QC</td>
+              <td>
+                Enable; Time-QC sensitivity <code>threshold=4</code>; events per bin
+                <code>targetBinSize=500</code>
+              </td>
+              <td>Timer range; wrap low/high fractions; metric inclusion</td>
+              <td>Backward tolerance and fixed robust-statistics constants</td>
+              <td><span class="badge mask">Mask</span>Excluded acquisition intervals</td>
+            </tr>
+            <tr>
+              <td>2 · FSC/SSC cell gate</td>
+              <td>Enable; gate coverage <code>95%</code>, mapped to Mahalanobis² <code>5.991</code></td>
+              <td>Minimum main-component weight; drag/reset the fitted ellipse center; inspect or manually choose the biological component</td>
+              <td>GMM convergence and covariance settings</td>
+              <td><span class="badge mask">Mask</span>Biological cloud retained</td>
+            </tr>
+            <tr>
+              <td>3 · Singlet gate</td>
+              <td>Enable; gate width <code>kMAD=5</code>; geometry Auto / Area–Height / Area–Width</td>
+              <td>Huber constant and minimum usable points</td>
+              <td>Ridge convergence and regularization settings</td>
+              <td><span class="badge mask">Mask</span>Singlets retained</td>
+            </tr>
+            <tr>
+              <td>4 · Histogram</td>
+              <td>Histogram bins <code>512</code>, constrained to <code>16–1024</code></td>
+              <td>Range mode: Auto shared / Manual shared min-max</td>
+              <td>Per-sample range only as an explicitly non-comparable diagnostic mode</td>
+              <td><span class="badge fit">Fit input</span>Histogram and all downstream fits</td>
+            </tr>
+            <tr>
+              <td>5 · Peak inspection</td>
+              <td>None required; label this stage “inspection only”</td>
+              <td>
+                Smoothing <code>2 bins</code>; relative prominence <code>2%</code>; ratio target
+                <code>2.0</code>; search range <code>1.8–2.1</code>
+              </td>
+              <td>Absolute prominence and ratio-scoring sigma <code>0.08</code></td>
+              <td><span class="badge diagnostic">Diagnostic</span>Does not currently alter Stage 6</td>
+            </tr>
+            <tr>
+              <td>6 · Base DJF fit</td>
+              <td>
+                Lock G2/G1 ratio; expected ratio <code>2.0</code>; CV bounds
+                <code>0.01–0.20</code>; count-weighted residuals
+              </td>
+              <td>Unlocked ratio bounds <code>1.70–2.30</code>; initialization smoothing <code>2 bins</code></td>
+              <td>Levenberg-Marquardt controls and fixed initializer heuristics</td>
+              <td><span class="badge fit">Fit</span>Model parameters and phase fractions</td>
+            </tr>
+            <tr>
+              <td>7 · Contamination extension</td>
+              <td>Contamination modeling Off / Auto</td>
+              <td>Allow aggregate and debris individually; detection and model-selection sensitivity</td>
+              <td>Contaminant bounds, LM controls, and fixed model-shape assumptions</td>
+              <td><span class="badge fit">Model selection</span>Contamination and phase fractions</td>
+            </tr>
+            <tr>
+              <td>8 · Report and QA</td>
+              <td>Display precision; warning summary or warning-sensitivity profile</td>
+              <td>Individual ratio, peak-visibility, boundary, and residual-warning thresholds</td>
+              <td>Derived channel names, pulse-geometry availability, and parameter count</td>
+              <td><span class="badge diagnostic">Warnings</span>No change to fitted curves</td>
+            </tr>
+            <tr>
+              <td>General background</td>
+              <td>Disabled with “Not implemented” status</td>
+              <td>None</td>
+              <td>No implemented model or options</td>
+              <td><span class="badge fixed">Unavailable</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="global-controls">Global and preflight controls</h2>
+      <ul>
+        <li>
+          <strong>Channel mapping:</strong> choose the required DNA-area channel and show automatically detected
+          DNA-height, DNA-width, FSC-area, SSC-area, and Time channels. Advanced users should be able to override
+          an incorrect automatic mapping.
+        </li>
+        <li>
+          <strong>Optional stages:</strong> explicit enable switches for Time QC, FSC/SSC cell gating,
+          pulse-geometry singlet gating, and contamination extension. “Run all” must respect these switches.
+        </li>
+        <li>
+          <strong>Expected DNA ratio:</strong> store one shared target, default <code>2.0</code>, and propagate it
+          to Stage 5 <code>targetRatio</code>, Stages 6–7 <code>ratioTarget</code>, and Stage 8
+          <code>expectedRatio</code>.
+        </li>
+        <li>
+          <strong>Scope:</strong> settings should default to all selected samples. A per-sample override must be
+          explicit, visibly badged, and display both its inherited and effective value.
+        </li>
+        <li>
+          <strong>Linear DNA scale:</strong> keep the fitting histogram linear. Do not offer a logarithmic DNA
+          axis as a fitting option.
+        </li>
+      </ul>
+
+      <h2 id="stage-details">Stage-by-stage implementation findings</h2>
+      <div class="stage-card-grid">
+        <section class="stage-card" aria-labelledby="stage-0-title">
+          <h3 id="stage-0-title">Stage 0 · Structural validity</h3>
+          <p><span class="badge mask">Mask</span><span class="badge fixed">Mandatory</span></p>
+          <dl>
+            <dt>Current option</dt>
+            <dd><code>pnr</code> override map; otherwise use dataset PnR metadata</dd>
+            <dt>Signal rule</dt>
+            <dd>Reject nonfinite, negative, and values greater than or equal to finite PnR; retain zero</dd>
+            <dt>Time rule</dt>
+            <dd>Reject nonfinite or negative Time; never apply a PnR upper bound</dd>
+            <dt>Recommended UI</dt>
+            <dd>Read-only detected PnR plus an Expert override</dd>
+          </dl>
+          <p class="muted">
+            Before exposing overrides, merge per-channel edits with metadata. The current supplied override can
+            replace the full map, so a partial edit may unintentionally remove other channel bounds.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-1-title">
+          <h3 id="stage-1-title">Stage 1 · Time-based acquisition QC</h3>
+          <p><span class="badge mask">Mask</span><span class="badge">Optional</span></p>
+          <dl>
+            <dt><code>threshold</code></dt>
+            <dd><code>4</code>; a lower value rejects more time bins</dd>
+            <dt><code>targetBinSize</code></dt>
+            <dd><code>500</code> events; bins are balanced within acquisition segments</dd>
+            <dt><code>timerRange</code></dt>
+            <dd>User override, then Time PnR, then fallback <code>32.6824</code></dd>
+            <dt>Wrap detection</dt>
+            <dd><code>wrapLowFraction=0.2</code>, <code>wrapHighFraction=0.8</code></dd>
+            <dt><code>backwardTolerance</code></dt>
+            <dd><code>1e-6</code></dd>
+          </dl>
+          <p>
+            The fixed metrics are median and IQR for DNA-A, FSC-A, and SSC-A, plus event rate. A bin is flagged
+            when any available metric has <code>|robust z| &gt; threshold</code>. Optional metric checkboxes would
+            require new code.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-2-title">
+          <h3 id="stage-2-title">Stage 2 · Main biological scatter cloud</h3>
+          <p><span class="badge mask">Mask</span><span class="badge">Optional</span></p>
+          <dl>
+            <dt><code>threshold</code></dt>
+            <dd><code>5.991</code>, the 95% chi-square contour for two dimensions</dd>
+            <dt>Coverage presets</dt>
+            <dd>90%: <code>4.605</code>; 97.5%: <code>7.378</code>; 99%: <code>9.210</code></dd>
+            <dt>Main weight</dt>
+            <dd><code>minimumMainComponentWeight=0.1</code></dd>
+            <dt>Minimum data</dt>
+            <dd>Fixed at 10 eligible FSC-A/SSC-A events</dd>
+            <dt>Components</dt>
+            <dd>Fixed at two; the gate forcibly overrides a supplied component count</dd>
+          </dl>
+          <p>
+            The automatic biological component is the eligible component with the highest mean FSC, with SSC as
+            a tie-breaker. The scatter modal supports translating the selected ellipse by dragging it or its center
+            marker and resizing it with a 50&ndash;99.9% coverage slider. Either edit makes the regenerated raw-index
+            mask authoritative downstream; Reset restores the fitted center and the original fitted coverage.
+            Selecting a different mixture component would still require additional state/API support.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-3-title">
+          <h3 id="stage-3-title">Stage 3 · Pulse-geometry singlet gate</h3>
+          <p><span class="badge mask">Mask</span><span class="badge">Optional</span></p>
+          <dl>
+            <dt><code>kMAD</code></dt>
+            <dd><code>5</code>; a lower value rejects more possible doublets</dd>
+            <dt><code>minimumPoints</code></dt>
+            <dd><code>20</code>; raising it can make the stage skip rather than tighten the gate</dd>
+            <dt>Geometry</dt>
+            <dd>Currently prefer DNA-A/Height, then fall back to DNA-A/Width</dd>
+            <dt>Robust ridge</dt>
+            <dd>Huber constant <code>1.345</code></dd>
+          </dl>
+          <p>
+            Offer Auto / Area–Height / Area–Width explicitly. That selector requires a small implementation change;
+            the current function does not accept a geometry preference.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-4-title">
+          <h3 id="stage-4-title">Stage 4 · Linear DNA histogram</h3>
+          <p><span class="badge fit">Fit input</span><span class="badge fixed">Required</span></p>
+          <dl>
+            <dt><code>binCount</code></dt>
+            <dd>Module default <code>512</code>; existing UI clamps to <code>16–1024</code></dd>
+            <dt>Range</dt>
+            <dd><code>range:[min,max]</code> or separate <code>min</code>/<code>max</code></dd>
+            <dt>Batch behavior</dt>
+            <dd>One shared range across selected samples by default</dd>
+            <dt>Boundary behavior</dt>
+            <dd>Exact maximum enters the last bin; values outside a manual range are omitted</dd>
+          </dl>
+          <p>
+            Manual ranges should warn when retained events would be clipped. A shared range preserves visual and
+            numerical comparability across samples.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-5-title">
+          <h3 id="stage-5-title">Stage 5 · Peak-pair inspection</h3>
+          <p><span class="badge diagnostic">Diagnostic</span></p>
+          <dl>
+            <dt><code>sigma</code></dt>
+            <dd><code>2</code> histogram bins</dd>
+            <dt>Prominence</dt>
+            <dd><code>minProminenceFraction=0.02</code>; absolute <code>minProminence=null</code></dd>
+            <dt>Ratio</dt>
+            <dd>Target <code>2.0</code>; accepted range <code>1.8–2.1</code></dd>
+            <dt><code>ratioSigma</code></dt>
+            <dd><code>0.08</code>, controlling the pair-score penalty</dd>
+            <dt>Derived inputs</dt>
+            <dd><code>histogramMin</code> and <code>binWidth</code> come from Stage 4</dd>
+          </dl>
+          <p class="muted">
+            Stage 5's selected peaks are not consumed by Stage 6. Do not present these as fit controls unless an
+            explicit “Use detected/manual peaks as fit anchors” path is added.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-6-title">
+          <h3 id="stage-6-title">Stage 6 · Constrained base DJF fit</h3>
+          <p><span class="badge fit">Fit</span><span class="badge fixed">Required</span></p>
+          <dl>
+            <dt>Ratio</dt>
+            <dd><code>ratioTarget=2</code>, locked by default with <code>unlockRatio=false</code></dd>
+            <dt>Unlocked bounds</dt>
+            <dd><code>ratioMin=1.70</code>, <code>ratioMax=2.30</code></dd>
+            <dt>CV bounds</dt>
+            <dd><code>cvMin=0.01</code>, <code>cvMax=0.20</code></dd>
+            <dt>Residual objective</dt>
+            <dd><code>weightedResiduals=false</code>; when true, divide by <code>sqrt(max(count,1))</code></dd>
+            <dt>Initialization</dt>
+            <dd><code>smoothSigmaBins=2</code>; this smooths peak finding, not the reported fitted curve</dd>
+          </dl>
+          <p>
+            These settings materially change model parameters and phase fractions. Show ratio bounds only when the
+            ratio is unlocked. Keep fitted means, widths, amplitudes, ratio, and S-bridge terms visible and
+            exportable but read-only.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-7-title">
+          <h3 id="stage-7-title">Stage 7 · Debris/aggregate extension</h3>
+          <p><span class="badge fit">Model selection</span><span class="badge">Optional</span></p>
+          <dl>
+            <dt>Detection</dt>
+            <dd><code>aggregateDetectionZ=2.5</code>, <code>debrisDetectionZ=2.5</code></dd>
+            <dt>Template match</dt>
+            <dd><code>minimumTemplateCorrelation=0.2</code></dd>
+            <dt>Selection</dt>
+            <dd>SSE improvement <code>0.02</code>, BIC improvement <code>6</code>, targeted improvement <code>0.2</code></dd>
+            <dt>Aggregate bound</dt>
+            <dd><code>aggregateMaxFraction=1.0</code></dd>
+            <dt>Debris decay bounds</dt>
+            <dd><code>0.02–0.75 × mu1</code></dd>
+          </dl>
+          <p>
+            The normal control should be Off / Auto, with Advanced switches to allow aggregate and debris
+            independently. Those individual switches need explicit code options; threshold hacks would be opaque.
+            Stage 7 must inherit Stage 6's ratio, CV, and residual-weighting configuration.
+          </p>
+        </section>
+
+        <section class="stage-card" aria-labelledby="stage-8-title">
+          <h3 id="stage-8-title">Stage 8 · Fractions, diagnostics, and warnings</h3>
+          <p><span class="badge diagnostic">Warnings only</span><span class="badge fixed">Required</span></p>
+          <dl>
+            <dt>Expected ratio</dt>
+            <dd><code>2.0</code>, with warning tolerance <code>0.15</code></dd>
+            <dt>Peak visibility</dt>
+            <dd>Minimum height fraction <code>0.05</code>; area fraction <code>0.01</code></dd>
+            <dt>Boundaries</dt>
+            <dd>Tolerance <code>0.02</code>; nonnegative-boundary tolerance <code>1e-4</code></dd>
+            <dt>Residual structure</dt>
+            <dd>Autocorrelation <code>0.35</code>; local Z <code>2.5</code>; window <code>11 bins</code></dd>
+            <dt>Display</dt>
+            <dd>Current summary formatting defaults to one decimal place</dd>
+          </dl>
+          <p>
+            These thresholds affect warnings and quality labels, not fitted curves or phase fractions. Derived
+            <code>channelNames</code>, <code>pulseGeometryAvailable</code>, and <code>parameterCount</code> should
+            remain internal.
+          </p>
+        </section>
+      </div>
+
+      <h2 id="expert-controls">Expert and developer numeric controls</h2>
+      <p>
+        Complete reproducibility may justify making the following options editable in a clearly separated Expert
+        panel. They should not appear in the ordinary scientific workflow.
+      </p>
+      <div class="table-wrap" role="region" aria-label="Expert numerical defaults" tabindex="0">
+        <table>
+          <thead>
+            <tr><th>Algorithm</th><th>Option</th><th>Default</th><th>Recommendation</th></tr>
+          </thead>
+          <tbody>
+            <tr><td rowspan="4">Stage 2 GMM</td><td><code>maxIterations</code></td><td><code>100</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>tolerance</code></td><td><code>1e-6</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>regularizationFraction</code></td><td><code>1e-6</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>minimumComponentFraction</code></td><td><code>1e-4</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td rowspan="4">Stage 3 ridge</td><td><code>maxIterations</code></td><td><code>50</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>convergenceTolerance</code></td><td><code>1e-7</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>huberConstant</code></td><td><code>1.345</code></td><td>Advanced at most</td></tr>
+            <tr><td><code>covarianceRegularization</code></td><td><code>1e-9</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td rowspan="5">Stages 6–7 LM</td><td><code>maxIterations</code></td><td><code>150</code></td><td>Show only after non-convergence or in Expert mode</td></tr>
+            <tr><td><code>tolerance</code></td><td><code>1e-7</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>stepTolerance</code></td><td><code>1e-6</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>initialLambda</code></td><td><code>1e-2</code></td><td>Developer/diagnostic only</td></tr>
+            <tr><td><code>finiteDifferenceStep</code></td><td><code>1e-4</code></td><td>Developer/diagnostic only</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Fixed Stage 6 initializer/model heuristics</h3>
+      <p>
+        Candidate peaks must reach 3% of the maximum. Initial candidate ratios are searched from 1.45 to 2.55,
+        with ratio-penalty coefficient 6 and a fallback G2 search around the expected position. FWHM conversion,
+        peak-area windows, nonnegative amplitudes, and the tapered quadratic Bernstein S-phase bridge are model
+        implementation details. Keep them fixed until there is validation data supporting user control.
+      </p>
+
+      <h2 id="do-not-expose">Keep internal, derived, or read-only</h2>
+      <ul>
+        <li>Structural, time-QC, scatter, singlet, combined, and final mask arrays.</li>
+        <li>Stage 1's input mask, MAD scale factor <code>1.4826</code>, numerical epsilons, and finite-value rules.</li>
+        <li>Stage 2 <code>componentCount</code>; the current biological gate deliberately forces two components.</li>
+        <li>Stage 4/5 derived <code>histogramMin</code> and <code>binWidth</code>.</li>
+        <li>
+          Fitted <code>mu1</code>, <code>mu2</code>, sigmas/CVs, amplitudes, S-bridge coefficients, aggregate
+          parameter, debris amplitude, and debris decay. Show and export them, but do not overwrite a fit result.
+        </li>
+        <li>Stage 8 <code>channelNames</code>, <code>pulseGeometryAvailable</code>, and <code>parameterCount</code>.</li>
+        <li>General background settings until a background model is specified and implemented.</li>
+      </ul>
+
+      <h2 id="cross-stage">Cross-stage behavior and guardrails</h2>
+      <div class="callout danger">
+        <p>
+          <strong>Do not create independent copies of shared scientific settings.</strong> If Stage 6 is configured
+          with custom ratio, CV, or weighting constraints and Stage 7 receives its own defaults, the extension will
+          silently refit the base parameters under different assumptions.
+        </p>
+      </div>
+      <ul>
+        <li>
+          Store one global expected ratio. Keep separate, clearly named values for Stage 5's peak-search window,
+          Stage 6's unlocked fit bounds, and Stage 8's warning tolerance because those have different meanings.
+        </li>
+        <li>Synchronize Stage 6 and Stage 7 ratio, CV, unlock, and residual-weighting settings.</li>
+        <li>
+          Either state that Stage 5 is diagnostic-only or add an explicit option that passes selected peaks to
+          Stage 6 as initialization anchors.
+        </li>
+        <li>Warn when both pulse-geometry singlet gating and aggregate modeling are disabled.</li>
+        <li>Warn when a manual histogram range clips retained events or chosen binning is sparse.</li>
+        <li>
+          Any setting edit invalidates that stage and all downstream state. The UI should show that invalidation
+          before rerunning, never leave stale downstream plots or reports visible.
+        </li>
+        <li>
+          Label every setting as affecting <strong>event masks</strong>, <strong>fit/model selection</strong>, or
+          <strong>diagnostics/warnings only</strong>.
+        </li>
+      </ul>
+
+      <h2 id="validation">Validation requirements</h2>
+      <ul>
+        <li><code>wrapLowFraction &lt; wrapHighFraction</code>, both within <code>[0,1]</code>.</li>
+        <li>Time-QC target bin size and all iteration/bin counts must be positive integers where applicable.</li>
+        <li><code>ratioMin ≤ ratioTarget ≤ ratioMax</code>, with ratio values greater than 1.</li>
+        <li><code>0 &lt; cvMin ≤ cvMax</code>.</li>
+        <li>Scatter confidence must map to a finite, nonnegative Mahalanobis-squared threshold.</li>
+        <li>Component weights, correlations, and fractions must remain within <code>[0,1]</code>.</li>
+        <li><code>0 &lt; debrisTauMinFraction ≤ debrisTauMaxFraction</code>.</li>
+        <li>Detection and improvement thresholds must be finite and nonnegative.</li>
+        <li>Absolute and fractional peak prominence should be mutually exclusive in the UI.</li>
+        <li>Manual histogram maximum must be greater than minimum, with clipping disclosed before execution.</li>
+      </ul>
+
+      <h2 id="presets">Presets, control wording, and live feedback</h2>
+      <h3>Recommended presets</h3>
+      <ul>
+        <li><strong>Recommended:</strong> exactly the shipped defaults.</li>
+        <li><strong>Preserve events:</strong> gentler gates, clearly labeled as retaining more possible contaminants.</li>
+        <li><strong>Stringent gating:</strong> tighter QC/gates, clearly labeled as rejecting more biological events.</li>
+        <li><strong>Saved lab/instrument profile:</strong> a named, versioned configuration.</li>
+      </ul>
+      <p>
+        Non-default numeric presets should be validated against known controls before shipping. “Last used” must not
+        silently replace the Recommended preset. Provide Reset Stage and Reset All actions.
+      </p>
+
+      <h3>Suggested tooltip language</h3>
+      <ul>
+        <li>
+          <strong>Time-QC sensitivity:</strong> “Exclude acquisition periods when any robust metric exceeds this
+          many MAD-based standard deviations. Lower values reject more events.”
+        </li>
+        <li>
+          <strong>Gate coverage:</strong> “Approximate fraction of the fitted FSC/SSC population inside the ellipse.
+          Higher values retain more events.”
+        </li>
+        <li>
+          <strong>Singlet gate width:</strong> “Allowed distance from the pulse-geometry ridge, measured in MADs.
+          Lower values reject more potential doublets.”
+        </li>
+        <li>
+          <strong>Count-weighted residuals:</strong> “Weight residuals approximately by counting noise. This changes
+          the fitting objective and fit-comparison values.”
+        </li>
+        <li>
+          <strong>Contamination Auto:</strong> “Test aggregate and debris candidates and retain them only when
+          residual structure and model-selection criteria support the added terms.”
+        </li>
+      </ul>
+      <p>
+        Live feedback should show retained event count and percentage after Stages 0–3, range clipping and counts per
+        bin after Stage 4, candidate and selected peaks after Stage 5, convergence and fitted ratio after Stage 6,
+        candidate comparisons after Stage 7, and warning changes after Stage 8.
+      </p>
+
+      <h2 id="provenance">Persistence, export, and provenance</h2>
+      <p>Every saved session or exported report should include:</p>
+      <ul>
+        <li>
+          Every effective setting and its source: <code>default</code>, <code>preset</code>,
+          <code>metadata-derived</code>, <code>inherited</code>, or <code>user override</code>.
+        </li>
+        <li>Application/git version, configuration-schema version, and preset version.</li>
+        <li>Sample checksum or stable identity, channel mappings, detected PnR, and PnR overrides.</li>
+        <li>Enabled/skipped stages, skip reasons, retained counts, and shared histogram range.</li>
+        <li>Solver convergence status and effective numerical settings.</li>
+        <li>Stage 7 candidate comparisons, selected model, Stage 8 warnings, and manual interventions.</li>
+      </ul>
+      <p>
+        Export a rerunnable machine-readable configuration, preferably JSON, plus a human-readable CSV/report. Pipeline
+        settings and results are currently runtime-oriented; editable settings should not ship without session
+        serialization and a versioned configuration schema.
+      </p>
+
+      <h2 id="implementation-gaps">Controls that require implementation work</h2>
+      <div class="table-wrap" role="region" aria-label="Recommended controls not yet supported" tabindex="0">
+        <table>
+          <thead><tr><th>Proposed control</th><th>Current behavior</th><th>Required change</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="badge new">New</span>Stage 1 metric inclusion</td>
+              <td>All available fixed metrics participate</td>
+              <td>Accept and validate a metric-selection option</td>
+            </tr>
+            <tr>
+              <td><span class="badge new">New</span>Stage 2 manual biological component</td>
+              <td>Highest eligible mean FSC is selected automatically</td>
+              <td>Persist a sample-specific component override and regenerate the mask</td>
+            </tr>
+            <tr>
+              <td><span class="badge new">New</span>Stage 3 geometry preference</td>
+              <td>Height is always preferred when present</td>
+              <td>Accept Auto / Height / Width and validate channel availability</td>
+            </tr>
+            <tr>
+              <td><span class="badge new">New</span>Stage 5 peaks as fit anchors</td>
+              <td>Stage 6 independently initializes its peaks</td>
+              <td>Add explicit, optional Stage 6 initialization hints</td>
+            </tr>
+            <tr>
+              <td><span class="badge new">New</span>Allow aggregate/debris separately</td>
+              <td>Stage 7 automatically tests detected candidates</td>
+              <td>Add explicit candidate-policy options rather than manipulating thresholds</td>
+            </tr>
+            <tr>
+              <td><span class="badge new">New</span>Optional-stage switches in Run All</td>
+              <td>Run All invokes all nine stage runners</td>
+              <td>Persist a configuration and have orchestration honor enabled/skipped stages</td>
+            </tr>
+            <tr>
+              <td><span class="badge new">New</span>Persistent pipeline settings</td>
+              <td>Most options are transient function arguments</td>
+              <td>Add schema, session serialization, effective-value tracking, and invalidation</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="sources">Current source-of-truth files</h2>
+      <ul class="source-list">
+        <li><code>js/analysis/djf/index.js</code> — stage orchestration and option routing.</li>
+        <li><code>js/analysis/djf/pipeline_ui.js</code> — current manual-stage UI behavior.</li>
+        <li><code>js/analysis/djf/stage0_structural.js</code> — structural/PnR rules.</li>
+        <li><code>js/analysis/djf/stage1_time_qc.js</code> — Time QC defaults and bin scoring.</li>
+        <li><code>js/analysis/djf/stage2_scatter_gate.js</code> — GMM and scatter gate defaults.</li>
+        <li><code>js/analysis/djf/stage3_singlet_gate.js</code> — robust ridge and singlet gate.</li>
+        <li><code>js/analysis/djf/stage4_histogram.js</code> — masked linear histogram.</li>
+        <li><code>js/analysis/djf/stage5_peaks.js</code> — diagnostic peak-pair detection.</li>
+        <li><code>js/analysis/djf/stage6_fit.js</code> — base DJF fit and constraints.</li>
+        <li><code>js/analysis/djf/stage7_extend.js</code> — debris/aggregate candidates and selection.</li>
+        <li><code>js/analysis/djf/stage8_report.js</code> — fractions, diagnostics, and warning thresholds.</li>
+        <li><code>docs/djf_impl_plan.md</code> and <code>docs/dean_jett_fox_implementation.md</code> — implementation rationale and source specification.</li>
+      </ul>
+    </main>
+  </div>
+</body>
+</html>
