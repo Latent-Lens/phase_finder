@@ -1,0 +1,1169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Audit of the legacy and staged PhaseFinder implementations against the published Dean–Jett and Dean–Jett–Fox mathematical models." />
+  <meta name="generator" content="pandoc" />
+  <title>Dean–Jett–Fox: legacy vs. staged implementation</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #637087;
+      --border: #d9e0eb;
+      --accent: #126d8d;
+      --accent-strong: #064f6b;
+      --accent-soft: #e8f5f8;
+      --code-bg: #f0f3f8;
+      --logo-blue: #072c67;
+      --warning: #9a5d00;
+      --shadow: 0 18px 48px rgba(31, 45, 72, 0.11);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.62;
+    }
+
+    a { color: var(--accent-strong); text-underline-offset: 0.15em; }
+    a:hover { color: var(--accent); }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-height: 64px;
+      padding: 11px max(20px, calc((100vw - 1720px) / 2 + 24px));
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(12px);
+    }
+    .topbar-title {
+      flex: 1;
+      color: var(--logo-blue);
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .topbar a {
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      padding: 7px 12px;
+      font-size: 0.82rem;
+      font-weight: 750;
+      text-decoration: none;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      gap: 34px;
+      width: min(1720px, 100%);
+      margin: 0 auto;
+      padding: 28px 24px 76px;
+      align-items: start;
+    }
+
+    #TOC {
+      position: sticky;
+      top: 88px;
+      max-height: calc(100vh - 112px);
+      overflow-y: auto;
+      padding: 2px 10px 18px 0;
+      font-size: 0.84rem;
+      scrollbar-width: thin;
+    }
+    #TOC::before {
+      display: block;
+      margin: 0 0 10px;
+      color: var(--muted);
+      content: "ON THIS PAGE";
+      font-size: 0.69rem;
+      font-weight: 850;
+      letter-spacing: 0.09em;
+    }
+    #TOC ul {
+      margin: 0;
+      padding: 0 0 0 15px;
+      border-left: 2px solid var(--border);
+      list-style: none;
+    }
+    #TOC ul ul {
+      margin-top: 4px;
+      border-left: 0;
+      font-size: 0.78rem;
+    }
+    #TOC li { margin: 3px 0; }
+    #TOC a {
+      display: block;
+      color: var(--muted);
+      padding: 3px 0;
+      line-height: 1.35;
+      text-decoration: none;
+    }
+    #TOC a:hover { color: var(--accent-strong); }
+
+    .content {
+      min-width: 0;
+      padding: clamp(24px, 4vw, 58px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow-x: auto;
+    }
+    .content > :first-child { margin-top: 0; }
+    .content > h1 {
+      margin-bottom: 18px;
+      color: var(--logo-blue);
+      font-size: clamp(1.8rem, 3vw, 2.65rem);
+      line-height: 1.14;
+      letter-spacing: -0.035em;
+    }
+    h2, h3, h4 { scroll-margin-top: 82px; }
+    h2 {
+      margin: 2.25em 0 0.7em;
+      padding-bottom: 0.32em;
+      border-bottom: 1px solid var(--border);
+      color: var(--logo-blue);
+      font-size: clamp(1.35rem, 2vw, 1.75rem);
+      line-height: 1.25;
+    }
+    h3 {
+      margin: 1.8em 0 0.6em;
+      color: var(--accent-strong);
+      font-size: 1.16rem;
+      line-height: 1.3;
+    }
+    p { margin: 0.75em 0; }
+    ul, ol { padding-left: 1.55em; }
+    li + li { margin-top: 0.28em; }
+
+    blockquote {
+      margin: 1.25em 0;
+      padding: 12px 18px;
+      border-left: 4px solid var(--accent);
+      border-radius: 0 10px 10px 0;
+      background: var(--accent-soft);
+      color: #344258;
+    }
+    blockquote p { margin: 0.35em 0; }
+
+    code {
+      border-radius: 4px;
+      background: var(--code-bg);
+      padding: 0.09em 0.35em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.91em;
+    }
+    pre {
+      max-width: 100%;
+      margin: 1em 0;
+      padding: 16px 18px;
+      border: 1px solid #d5dce8;
+      border-radius: 10px;
+      background: #f7f9fc;
+      overflow: auto;
+      line-height: 1.48;
+    }
+    pre code { background: transparent; padding: 0; font-size: 0.84rem; }
+    div.sourceCode { margin: 1em 0; }
+    div.sourceCode pre { margin: 0; }
+
+    table {
+      width: 100%;
+      margin: 1.2em 0 1.6em;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      line-height: 1.48;
+    }
+    th, td {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #eaf1f7;
+      color: var(--logo-blue);
+      font-weight: 800;
+    }
+    tbody tr:nth-child(even) { background: #fafbfd; }
+    td pre { margin: 0; }
+
+    math[display="block"] {
+      display: block;
+      max-width: 100%;
+      margin: 1.25em auto;
+      padding: 10px 4px;
+      overflow-x: auto;
+      font-size: 1.05rem;
+      text-align: center;
+    }
+
+    hr { border: 0; border-top: 1px solid var(--border); }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; gap: 18px; padding: 18px 14px 52px; }
+      #TOC {
+        position: static;
+        max-height: none;
+        padding: 16px 18px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--panel);
+      }
+      #TOC > ul { columns: 2; column-gap: 28px; }
+      .content { padding: clamp(20px, 5vw, 38px); border-radius: 14px; }
+    }
+
+    @media (max-width: 640px) {
+      .topbar { padding: 10px 14px; }
+      .topbar-title { font-size: 0.92rem; }
+      .topbar a { padding: 6px 9px; }
+      #TOC > ul { columns: 1; }
+      .content { padding: 19px 16px; }
+      table { font-size: 0.82rem; }
+      th, td { padding: 8px; }
+    }
+
+    @media print {
+      body { background: #fff; font-size: 10.5pt; }
+      .topbar, #TOC { display: none; }
+      .layout { display: block; width: auto; padding: 0; }
+      .content { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+      a { color: inherit; }
+      pre, blockquote, table { break-inside: avoid; }
+      h2, h3 { break-after: avoid; }
+    }
+  </style>
+    <style>
+  pre > code.sourceCode { white-space: pre; position: relative; }
+  pre > code.sourceCode > span { line-height: 1.25; }
+  pre > code.sourceCode > span:empty { height: 1.2em; }
+  .sourceCode { overflow: visible; }
+  code.sourceCode > span { color: inherit; text-decoration: inherit; }
+  div.sourceCode { margin: 1em 0; }
+  pre.sourceCode { margin: 0; }
+  @media screen {
+  div.sourceCode { overflow: auto; }
+  }
+  @media print {
+  pre > code.sourceCode { white-space: pre-wrap; }
+  pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+  }
+  pre.numberSource code
+    { counter-reset: source-line 0; }
+  pre.numberSource code > span
+    { position: relative; left: -4em; counter-increment: source-line; }
+  pre.numberSource code > span > a:first-child::before
+    { content: counter(source-line);
+      position: relative; left: -1em; text-align: right; vertical-align: baseline;
+      border: none; display: inline-block;
+      -webkit-touch-callout: none; -webkit-user-select: none;
+      -khtml-user-select: none; -moz-user-select: none;
+      -ms-user-select: none; user-select: none;
+      padding: 0 4px; width: 4em;
+      color: #aaaaaa;
+    }
+  pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+  div.sourceCode
+    {  background-color: #f8f8f8; }
+  @media screen {
+  pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+  }
+  code span.al { color: #ef2929; } /* Alert */
+  code span.an { color: #8f5902; font-weight: bold; font-style: italic; } /* Annotation */
+  code span.at { color: #204a87; } /* Attribute */
+  code span.bn { color: #0000cf; } /* BaseN */
+  code span.cf { color: #204a87; font-weight: bold; } /* ControlFlow */
+  code span.ch { color: #4e9a06; } /* Char */
+  code span.cn { color: #8f5902; } /* Constant */
+  code span.co { color: #8f5902; font-style: italic; } /* Comment */
+  code span.cv { color: #8f5902; font-weight: bold; font-style: italic; } /* CommentVar */
+  code span.do { color: #8f5902; font-weight: bold; font-style: italic; } /* Documentation */
+  code span.dt { color: #204a87; } /* DataType */
+  code span.dv { color: #0000cf; } /* DecVal */
+  code span.er { color: #a40000; font-weight: bold; } /* Error */
+  code span.ex { } /* Extension */
+  code span.fl { color: #0000cf; } /* Float */
+  code span.fu { color: #204a87; font-weight: bold; } /* Function */
+  code span.im { } /* Import */
+  code span.in { color: #8f5902; font-weight: bold; font-style: italic; } /* Information */
+  code span.kw { color: #204a87; font-weight: bold; } /* Keyword */
+  code span.op { color: #ce5c00; font-weight: bold; } /* Operator */
+  code span.ot { color: #8f5902; } /* Other */
+  code span.pp { color: #8f5902; font-style: italic; } /* Preprocessor */
+  code span.sc { color: #ce5c00; font-weight: bold; } /* SpecialChar */
+  code span.ss { color: #4e9a06; } /* SpecialString */
+  code span.st { color: #4e9a06; } /* String */
+  code span.va { color: #000000; } /* Variable */
+  code span.vs { color: #4e9a06; } /* VerbatimString */
+  code span.wa { color: #8f5902; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  </head>
+<body>
+  <header class="topbar">
+    <div class="topbar-title">PhaseFinder · DJF implementation audit</div>
+    <a href="djf_diffs.md">View Markdown</a>
+  </header>
+  <div class="layout">
+        <nav id="TOC" role="doc-toc">
+      <ul>
+      <li><a href="#deanjettfox-legacy-vs.-staged-implementation" id="toc-deanjettfox-legacy-vs.-staged-implementation">Dean–Jett–Fox: legacy vs. staged implementation</a>
+      <ul>
+      <li><a href="#bottom-line" id="toc-bottom-line">Bottom line</a></li>
+      <li><a href="#published-model-and-fidelity-test" id="toc-published-model-and-fidelity-test">Published model and fidelity test</a>
+      <ul>
+      <li><a href="#deanjett-1974" id="toc-deanjett-1974">Dean–Jett (1974)</a></li>
+      <li><a href="#fox-1980" id="toc-fox-1980">Fox (1980)</a></li>
+      <li><a href="#side-by-side-fidelity-matrix" id="toc-side-by-side-fidelity-matrix">Side-by-side fidelity matrix</a></li>
+      </ul></li>
+      <li><a href="#provenance" id="toc-provenance">Provenance</a></li>
+      <li><a href="#executive-comparison" id="toc-executive-comparison">Executive comparison</a></li>
+      <li><a href="#s-phase-model-and-peak-parameterization" id="toc-s-phase-model-and-peak-parameterization">1. S-phase model and peak parameterization</a></li>
+      <li><a href="#peak-centers-run-wide-anchoring-and-solver-constraints" id="toc-peak-centers-run-wide-anchoring-and-solver-constraints">2. Peak centers, run-wide anchoring, and solver constraints</a></li>
+      <li><a href="#stage-5-does-not-seed-or-constrain-stage-6" id="toc-stage-5-does-not-seed-or-constrain-stage-6">3. Stage 5 does not seed or constrain Stage 6</a></li>
+      <li><a href="#shared-histogram-range" id="toc-shared-histogram-range">4. Shared histogram range</a></li>
+      <li><a href="#singlet-gating" id="toc-singlet-gating">5. Singlet gating</a></li>
+      <li><a href="#debris-and-aggregate-semantics" id="toc-debris-and-aggregate-semantics">6. Debris and aggregate semantics</a></li>
+      <li><a href="#fractions-diagnostics-and-failure-behavior" id="toc-fractions-diagnostics-and-failure-behavior">7. Fractions, diagnostics, and failure behavior</a></li>
+      <li><a href="#reproduced-smoke-comparison" id="toc-reproduced-smoke-comparison">8. Reproduced smoke comparison</a>
+      <ul>
+      <li><a href="#repository-deterministic-histogram" id="toc-repository-deterministic-histogram">Repository deterministic histogram</a></li>
+      <li><a href="#required-model-mismatch-regression" id="toc-required-model-mismatch-regression">Required model-mismatch regression</a></li>
+      </ul></li>
+      <li><a href="#recommended-decisions-and-regression-coverage" id="toc-recommended-decisions-and-regression-coverage">9. Recommended decisions and regression coverage</a></li>
+      <li><a href="#interpretation" id="toc-interpretation">Interpretation</a></li>
+      <li><a href="#external-sources" id="toc-external-sources">External sources</a></li>
+      </ul></li>
+      </ul>
+    </nav>
+        <main class="content">
+      <h1 id="deanjettfox-legacy-vs.-staged-implementation">Dean–Jett–Fox: legacy vs. staged implementation</h1>
+      <blockquote>
+      <p>Audit date: 2026-07-14</p>
+      <p>Legacy baseline: <code>7b5bed9c7cd9f9dfef18424c6b5233dbda9811d5</code></p>
+      <p>Staged audit base: current working tree based on <code>70e52f4783572ba52617702ab067ba5ab4815f7a</code></p>
+      <p>Fox primary source: <a href="../assets/misc/fox_1980_djf_model.pdf#page=2"><code>fox_1980_djf_model.pdf</code>, equations on PDF page 2</a></p>
+      </blockquote>
+      <h2 id="bottom-line">Bottom line</h2>
+      <p><strong>Scientific-fidelity verdict:</strong> the primary Fox paper strengthens the original conclusion: the legacy implementation is substantially closer to both Dean–Jett and Fox. It approximates Fox equations (1)–(4)—Gaussian G1/G2 peaks plus a quadratic latent S distribution broadened with a position-dependent normal kernel—although its kernel-width rule becomes noncanonical when the fitted peak CVs differ. The staged implementation retains equivalent Gaussian peaks but replaces Fox equations (2) and (4) with a direct, compact-support tapered quartic.</p>
+      <p>Neither implementation is a complete synchronous Fox model. Neither contains the latent synchronous-S Gaussian defined by Fox equation (5) and subsequently broadened by equation (2). The most accurate labels are therefore:</p>
+      <ul>
+      <li>legacy: <strong>Dean–Jett/Fox-backbone</strong>, with noncanonical constraints and broadening-width rule, but missing Fox equation (5);</li>
+      <li>staged: <strong>DJF-inspired Gaussian/bridge model</strong>, not the published Dean–Jett S-phase equation; and</li>
+      <li>neither: a complete implementation of Fox’s synchronous-population model.</li>
+      </ul>
+      <p>The staged pipeline is <strong>not</strong> a mechanical decomposition of the legacy Dean–Jett–Fox (DJF) fitter. It deliberately replaces the old numerical model and changes several behaviors that can materially affect fitted phase fractions:</p>
+      <ul>
+      <li>the S-phase equation;</li>
+      <li>the G2/G1 center constraint and run-wide G1 anchor;</li>
+      <li>whether the visible peak-detection stage controls the fit;</li>
+      <li>the shared histogram range;</li>
+      <li>singlet, debris, and aggregate handling; and</li>
+      <li>the solver and reporting semantics.</li>
+      </ul>
+      <p>The staged implementation also adds substantial capabilities that the legacy path did not have: structural, time, scatter, and pulse-geometry QC; explicit mask provenance and downstream invalidation; per-stage diagnostics; optional contamination models; fit-quality statistics; residual warnings; and per-sample failure isolation.</p>
+      <p>The highest-priority parity question is the S-phase basis. The legacy model Gaussian-broadens a quadratic S-phase density at 64 integration nodes. The staged model instead evaluates a direct Bernstein bridge that is exactly zero outside the G1/G2 means. Those functions can fit very similar total curves while assigning different area to G1, S, and G2.</p>
+      <h2 id="published-model-and-fidelity-test">Published model and fidelity test</h2>
+      <h3 id="deanjett-1974">Dean–Jett (1974)</h3>
+      <p>The open primary paper describes the histogram as two normal peaks plus a second-degree S-phase polynomial. The unbroadened polynomial exists only between the G1 and G2 peak centers. Its elemental channels are then replaced by normal curves having the same coefficient of variation (CV) as G1. In modern notation, the construction is:</p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>H</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>A</mi><mn>1</mn></msub><mspace width="0.167em"></mspace><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo>;</mo><msub><mi>X</mi><mn>1</mn></msub><mo>,</mo><msub><mi>σ</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><msub><mi>A</mi><mn>2</mn></msub><mspace width="0.167em"></mspace><mi>ϕ</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo>;</mo><msub><mi>X</mi><mn>2</mn></msub><mo>,</mo><msub><mi>σ</mi><mn>2</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><msubsup><mo>∫</mo><msub><mi>X</mi><mn>1</mn></msub><msub><mi>X</mi><mn>2</mn></msub></msubsup><msub><mi>P</mi><mn>2</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>u</mi><mo stretchy="true" form="postfix">)</mo></mrow><mspace width="0.167em"></mspace><mi>ϕ</mi><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo>;</mo><mi>u</mi><mo>,</mo><mfrac><msub><mi>σ</mi><mn>1</mn></msub><msub><mi>X</mi><mn>1</mn></msub></mfrac><mi>u</mi><mo stretchy="true" form="postfix">)</mo></mrow><mspace width="0.167em"></mspace><mi>d</mi><mi>u</mi><mo>,</mo></mrow><annotation encoding="application/x-tex">
+      H(x) = A_1\,\phi(x;X_1,\sigma_1)
+           + A_2\,\phi(x;X_2,\sigma_2)
+           + \int_{X_1}^{X_2} P_2(u)\,
+             \phi\!\left(x;u,\frac{\sigma_1}{X_1}u\right)\,du,
+      </annotation></semantics></math></p>
+      <p>where <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>P</mi><mn>2</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>u</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>a</mi><mo>+</mo><mi>b</mi><mi>u</mi><mo>+</mo><mi>c</mi><msup><mi>u</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">P_2(u)=a+bu+cu^2</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>ϕ</mi><annotation encoding="application/x-tex">\phi</annotation></semantics></math> is a normalized Gaussian, and <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>σ</mi><mn>1</mn></msub><mi>/</mi><msub><mi>X</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\sigma_1/X_1</annotation></semantics></math> is the G1 CV. Dean and Jett say that in practice all nine parameters were allowed to vary. Their fitting criterion also uses count-statistics weighting, whereas both repository versions default to ordinary unweighted residuals.</p>
+      <p>This equation makes Gaussian convolution a model-defining feature, not merely an implementation detail. It produces S-component shoulders beyond the latent <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>X</mi><mn>1</mn></msub><mi>.</mi><mi>.</mi><msub><mi>X</mi><mn>2</mn></msub></mrow><annotation encoding="application/x-tex">X_1..X_2</annotation></semantics></math> interval even though the unbroadened S density itself is confined to that interval.</p>
+      <h3 id="fox-1980">Fox (1980)</h3>
+      <p>The attached primary paper gives the complete model on article page 72 (<a href="../assets/misc/fox_1980_djf_model.pdf#page=2">PDF page 2</a>). Fox retains the three-component total</p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>F</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>F</mi><mn>1</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><msub><mi>F</mi><mi>s</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><msub><mi>F</mi><mn>2</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mi>.</mi></mrow><annotation encoding="application/x-tex">
+      F(x)=F_1(x)+F_s(x)+F_2(x).
+      </annotation></semantics></math></p>
+      <p><strong>Equation (1), G1:</strong></p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>F</mi><mn>1</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mfrac><msub><mi>N</mi><mn>1</mn></msub><mrow><msqrt><mrow><mn>2</mn><mi>π</mi></mrow></msqrt><mspace width="0.167em"></mspace><msub><mi>σ</mi><mn>1</mn></msub></mrow></mfrac><mo>exp</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><mo>−</mo><mfrac><msup><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo>−</mo><msub><mi>x</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup><mrow><mn>2</mn><msubsup><mi>σ</mi><mn>1</mn><mn>2</mn></msubsup></mrow></mfrac><mo stretchy="true" form="postfix">]</mo></mrow><mi>.</mi></mrow><annotation encoding="application/x-tex">
+      F_1(x)=
+      \frac{N_1}{\sqrt{2\pi}\,\sigma_1}
+      \exp\!\left[-\frac{(x-x_1)^2}{2\sigma_1^2}\right].
+      </annotation></semantics></math></p>
+      <p><strong>Equation (2), broadened S phase:</strong></p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>F</mi><mi>s</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><msub><mi>x</mi><mn>1</mn></msub></mrow><msub><mi>x</mi><mn>2</mn></msub></munderover><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mfrac><mn>1</mn><mrow><msqrt><mrow><mn>2</mn><mi>π</mi></mrow></msqrt><mspace width="0.167em"></mspace><msub><mi>σ</mi><mn>1</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mi>/</mi><msub><mi>x</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac><mo>exp</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><mo>−</mo><mfrac><msup><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo>−</mo><msub><mi>x</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup><mrow><mn>2</mn><msup><mrow><mo stretchy="true" form="prefix">[</mo><msub><mi>σ</mi><mn>1</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mi>/</mi><msub><mi>x</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo stretchy="true" form="postfix">]</mo></mrow><mn>2</mn></msup></mrow></mfrac><mo stretchy="true" form="postfix">]</mo></mrow><mi>.</mi></mrow><annotation encoding="application/x-tex">
+      F_s(x)=
+      \sum_{j=x_1}^{x_2} f(x_j)
+      \frac{1}{\sqrt{2\pi}\,\sigma_1(x_j/x_1)}
+      \exp\!\left[
+        -\frac{(x-x_j)^2}
+        {2\left[\sigma_1(x_j/x_1)\right]^2}
+      \right].
+      </annotation></semantics></math></p>
+      <p><strong>Equation (3), G2 + M:</strong></p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>F</mi><mn>2</mn></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mfrac><msub><mi>N</mi><mn>2</mn></msub><mrow><msqrt><mrow><mn>2</mn><mi>π</mi></mrow></msqrt><mspace width="0.167em"></mspace><msub><mi>σ</mi><mn>2</mn></msub></mrow></mfrac><mo>exp</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><mo>−</mo><mfrac><msup><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo>−</mo><msub><mi>x</mi><mn>2</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup><mrow><mn>2</mn><msubsup><mi>σ</mi><mn>2</mn><mn>2</mn></msubsup></mrow></mfrac><mo stretchy="true" form="postfix">]</mo></mrow><mi>.</mi></mrow><annotation encoding="application/x-tex">
+      F_2(x)=
+      \frac{N_2}{\sqrt{2\pi}\,\sigma_2}
+      \exp\!\left[-\frac{(x-x_2)^2}{2\sigma_2^2}\right].
+      </annotation></semantics></math></p>
+      <p>For asynchronous populations, Fox uses the same latent quadratic as Dean–Jett:</p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>A</mi><mo>+</mo><mi>B</mi><msub><mi>x</mi><mi>j</mi></msub><mo>+</mo><mi>C</mi><msubsup><mi>x</mi><mi>j</mi><mn>2</mn></msubsup><mi>.</mi><mspace width="2.0em"></mspace><mtext mathvariant="normal">(Fox equation 4)</mtext></mrow><annotation encoding="application/x-tex">
+      f(x_j)=A+Bx_j+Cx_j^2.
+      \qquad\text{(Fox equation 4)}
+      </annotation></semantics></math></p>
+      <p>For a complex S distribution, such as most synchronous populations, Fox adds a floating normal curve to that <strong>latent S-compartment density</strong>:</p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mi>A</mi><mo>+</mo><mi>B</mi><msub><mi>x</mi><mi>j</mi></msub><mo>+</mo><mi>C</mi><msubsup><mi>x</mi><mi>j</mi><mn>2</mn></msubsup><mo>+</mo><mfrac><msub><mi>N</mi><mi>s</mi></msub><mrow><msqrt><mrow><mn>2</mn><mi>π</mi></mrow></msqrt><mspace width="0.167em"></mspace><msub><mi>σ</mi><mi>s</mi></msub></mrow></mfrac><mo>exp</mo><mspace width="-0.167em"></mspace><mrow><mo stretchy="true" form="prefix">[</mo><mo>−</mo><mfrac><msup><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mo>−</mo><msub><mi>x</mi><mi>s</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup><mrow><mn>2</mn><msubsup><mi>σ</mi><mi>s</mi><mn>2</mn></msubsup></mrow></mfrac><mo stretchy="true" form="postfix">]</mo></mrow><mi>.</mi><mspace width="2.0em"></mspace><mtext mathvariant="normal">(Fox equation 5)</mtext></mrow><annotation encoding="application/x-tex">
+      f(x_j)=A+Bx_j+Cx_j^2+
+      \frac{N_s}{\sqrt{2\pi}\,\sigma_s}
+      \exp\!\left[-\frac{(x_j-x_s)^2}{2\sigma_s^2}\right].
+      \qquad\text{(Fox equation 5)}
+      </annotation></semantics></math></p>
+      <p>The order of operations matters. Equation (5)’s Gaussian is not added directly to the final observed histogram. It is added to <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>x</mi><mi>j</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">f(x_j)</annotation></semantics></math>, after which the entire polynomial-plus-Gaussian is passed through equation (2)’s channel-specific broadening. The broadening width is <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>σ</mi><mn>1</mn></msub><msub><mi>x</mi><mi>j</mi></msub><mi>/</mi><msub><mi>x</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\sigma_1x_j/x_1</annotation></semantics></math>, which gives every S channel the G1 CV. By contrast, Fox states that the intrinsic Gaussian’s own CV, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>σ</mi><mi>s</mi></msub><mi>/</mi><msub><mi>x</mi><mi>s</mi></msub></mrow><annotation encoding="application/x-tex">\sigma_s/x_s</annotation></semantics></math>, has no relationship to the G1 CV.</p>
+      <p>The asynchronous form has nine fitted parameters. The synchronous form has 12: <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>N</mi><mn>1</mn></msub><mo>,</mo><msub><mi>σ</mi><mn>1</mn></msub><mo>,</mo><msub><mi>x</mi><mn>1</mn></msub><mo>,</mo><msub><mi>N</mi><mn>2</mn></msub><mo>,</mo><msub><mi>σ</mi><mn>2</mn></msub><mo>,</mo><msub><mi>x</mi><mn>2</mn></msub><mo>,</mo><mi>A</mi><mo>,</mo><mi>B</mi><mo>,</mo><mi>C</mi><mo>,</mo><msub><mi>N</mi><mi>s</mi></msub><mo>,</mo><msub><mi>σ</mi><mi>s</mi></msub><mo>,</mo><msub><mi>x</mi><mi>s</mi></msub></mrow><annotation encoding="application/x-tex">N_1,\sigma_1,x_1,N_2,\sigma_2,x_2,A,B,C,N_s,\sigma_s,x_s</annotation></semantics></math>. Fox normally fits the G2 center and width independently. When late S obscures G2, the paper allows both to be tied to G1, including equal CVs and a system-calibrated center ratio; Fox reports about 1.9 for his instrument rather than assuming exactly 2.0.</p>
+      <p>Therefore, a complete code-level implementation of Fox’s synchronous mode requires equation (5)’s three latent parameters <strong>and</strong> equation (2)’s subsequent G1-CV broadening. Aggregate or debris terms, and a bare Gaussian added after broadening, do not satisfy that test.</p>
+      <h3 id="side-by-side-fidelity-matrix">Side-by-side fidelity matrix</h3>
+      <table>
+      <colgroup>
+      <col style="width: 25%" />
+      <col style="width: 25%" />
+      <col style="width: 25%" />
+      <col style="width: 25%" />
+      </colgroup>
+      <thead>
+      <tr class="header">
+      <th>Published feature</th>
+      <th>Legacy (<code>7b5bed9</code>)</th>
+      <th>Staged</th>
+      <th>More faithful</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td>G1 and G2 normal distributions</td>
+      <td>Yes; normalized/area parameterization</td>
+      <td>Yes; peak-height parameterization</td>
+      <td>Tie; these are equivalent parameterizations</td>
+      </tr>
+      <tr class="even">
+      <td>Quadratic latent S density</td>
+      <td>Yes; quadratic Bernstein basis</td>
+      <td>No; multiplies that basis by <code>4t(1-t)</code>, making a quartic</td>
+      <td><strong>Legacy</strong></td>
+      </tr>
+      <tr class="odd">
+      <td>Fox equation (2): S density Gaussian-broadened across G1–G2</td>
+      <td>Yes; 64-node continuous midpoint analogue</td>
+      <td>No; direct evaluation only</td>
+      <td><strong>Legacy, decisively</strong></td>
+      </tr>
+      <tr class="even">
+      <td>Equation (2) broadening uses constant G1 CV</td>
+      <td>Approximate: linearly interpolates <code>sigma1..sigma2</code>; exact only when peak CVs are equal</td>
+      <td>Absent because S is not broadened</td>
+      <td><strong>Legacy</strong>, with a material caveat</td>
+      </tr>
+      <tr class="odd">
+      <td>G2 center and width</td>
+      <td>Independently fitted within bounds, matching Fox’s normal mode</td>
+      <td><code>mu2 = R * mu1</code>; <code>R = 2</code> fixed by default, but CV2 is not tied to CV1</td>
+      <td><strong>Legacy</strong> for Fox’s normal mode; neither implements Fox’s conditional center-and-CV tie exactly</td>
+      </tr>
+      <tr class="even">
+      <td>Fox parameter count</td>
+      <td>Nine DJ-style parameters</td>
+      <td>Eight free base parameters by default because <code>R</code> is fixed; Stage 7’s extra parameters have different meanings</td>
+      <td><strong>Legacy</strong> for asynchronous equation (4); <strong>neither</strong> has the 12-parameter synchronous model</td>
+      </tr>
+      <tr class="odd">
+      <td>Count-statistics-weighted fit</td>
+      <td>No</td>
+      <td>Optional, but off by default</td>
+      <td>Neither by default; staged has the capability</td>
+      </tr>
+      <tr class="even">
+      <td>Fox equation (5): latent synchronous-S Gaussian, then equation (2) broadening</td>
+      <td>No <code>Ns</code>, <code>sigmaS</code>, or <code>xS</code></td>
+      <td>No equivalent parameters or operation</td>
+      <td><strong>Neither</strong></td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Fox prints equation (2) as a discrete channel sum. The legacy 64-node integral is a continuous quadrature analogue, not a literal transcription. Also, although Fox calls the operation a convolution, its kernel width changes with <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>x</mi><mi>j</mi></msub><annotation encoding="application/x-tex">x_j</annotation></semantics></math>; mathematically it is a heteroscedastic Gaussian mixture rather than a stationary convolution.</p>
+      <p>The decisive difference is the S-phase equation. The legacy Bernstein form</p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>q</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>b</mi><mn>0</mn></msub><msup><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>−</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mn>2</mn></msup><mo>+</mo><mn>2</mn><msub><mi>b</mi><mn>1</mn></msub><mi>t</mi><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>−</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>+</mo><msub><mi>b</mi><mn>2</mn></msub><msup><mi>t</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">
+      q(t)=b_0(1-t)^2+2b_1t(1-t)+b_2t^2
+      </annotation></semantics></math></p>
+      <p>is exactly a quadratic after the affine substitution <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>=</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>u</mi><mo>−</mo><msub><mi>X</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow><mi>/</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>X</mi><mn>2</mn></msub><mo>−</mo><msub><mi>X</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">t=(u-X_1)/(X_2-X_1)</annotation></semantics></math>. The staged form is instead</p>
+      <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>s</mi><mrow><mi mathvariant="normal">s</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">g</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">d</mi></mrow></msub><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>4</mn><mi>t</mi><mrow><mo stretchy="true" form="prefix">(</mo><mn>1</mn><mo>−</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mi>q</mi><mrow><mo stretchy="true" form="prefix">(</mo><mi>t</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo></mrow><annotation encoding="application/x-tex">
+      s_{\mathrm{staged}}(x)=4t(1-t)q(t),
+      </annotation></semantics></math></p>
+      <p>which is generally degree four, is exactly zero at and outside both peak centers, and is never convolved with measurement broadening. Fox normally lets G2 float; his conditional tied mode combines equal peak CVs with an instrument-calibrated center ratio (about 1.9 in his system). The staged fixed ratio of 2 without an equal-CV tie therefore does not reproduce that mode. Adding Stage 7 contamination terms does not compensate for the S-model mismatch.</p>
+      <p>This is a fidelity judgment, not a claim about which optimizer is more robust or which curve will have the lower SSE on a particular sample. A noncanonical model can fit some histograms better; that does not make it the published named model.</p>
+      <h2 id="provenance">Provenance</h2>
+      <p><code>7b5bed9</code> is the last clean snapshot before the staged work began, not the first commit that ever introduced DJF. It is the direct parent of the staged scaffold:</p>
+      <table>
+      <colgroup>
+      <col style="width: 50%" />
+      <col style="width: 50%" />
+      </colgroup>
+      <thead>
+      <tr class="header">
+      <th>Commit</th>
+      <th>Role</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>7b5bed9</code> — “Finishing restructure”</td>
+      <td>Last pre-staged snapshot; active implementation is <code>js/analysis/djf.js</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>67b649a</code> — “Scaffold staged DJF pipeline”</td>
+      <td>First staged-pipeline commit; direct child of <code>7b5bed9</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>ac4243e</code> — “Add DJF fit extensions and reporting”</td>
+      <td>Last commit before the application switch. The legacy file still has the same Git blob as at <code>7b5bed9</code> (<code>20dde40b…</code>).</td>
+      </tr>
+      <tr class="even">
+      <td><code>22a8130</code> — “Wire staged DJF pipeline into the application”</td>
+      <td>Switches the application to the staged implementation and deletes <code>js/analysis/djf.js</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>70e52f4</code></td>
+      <td>Committed staged numeric baseline used by this audit.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>At audit time the numeric stage modules matched <code>70e52f4</code>. The current UI work also separates the pre-model QC controls (Stages 0–3) from modeling Run All (Stages 4–8); that orchestration detail is reflected below.</p>
+      <p>The historical source can be inspected without changing the working tree:</p>
+      <div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> show 7b5bed9:js/analysis/djf.js</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> diff 7b5bed9..HEAD <span class="at">--</span> js/analysis/djf.js js/analysis/djf/</span></code></pre></div>
+      <p>The legacy numeric core first appeared under earlier names (<code>js/djf_gpt.js</code>, then <code>js/analysis/djf.js</code>), but its relevant model equation remained essentially unchanged through the pre-staged baseline. This comparison therefore uses the last version that users actually ran before the staged switch.</p>
+      <h2 id="executive-comparison">Executive comparison</h2>
+      <table>
+      <colgroup>
+      <col style="width: 25%" />
+      <col style="width: 25%" />
+      <col style="width: 25%" />
+      <col style="width: 25%" />
+      </colgroup>
+      <thead>
+      <tr class="header">
+      <th>Area</th>
+      <th>Legacy behavior</th>
+      <th>Staged behavior</th>
+      <th>Potential impact</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td>S phase</td>
+      <td>64-node Gaussian-convolved quadratic Bernstein density</td>
+      <td>Direct tapered Bernstein bridge</td>
+      <td><strong>High</strong> — different component basis and tail allocation</td>
+      </tr>
+      <tr class="even">
+      <td>G1/G2 amplitudes</td>
+      <td>Normalized Gaussians; amplitudes are area-like</td>
+      <td>Peak-height Gaussians</td>
+      <td><strong>High</strong> for parameter interpretation</td>
+      </tr>
+      <tr class="odd">
+      <td>G2/G1 centers</td>
+      <td>Centers optimized independently within broad, initialization-relative bounds</td>
+      <td><code>G2 = 2 × G1</code> by default; ratio can be unlocked programmatically</td>
+      <td><strong>High</strong> on non-ideal ratios</td>
+      </tr>
+      <tr class="even">
+      <td>Cross-sample G1</td>
+      <td>If valid pairs exist, their median G1 constrains each shown fit to ±10%</td>
+      <td>Samples fit independently</td>
+      <td><strong>Medium–high</strong> for consistency and difficult samples</td>
+      </tr>
+      <tr class="odd">
+      <td>Peak workflow</td>
+      <td>Shared/manual threshold feeds both run anchor and fit</td>
+      <td>Stage 5 result is stored but not passed to Stage 6</td>
+      <td><strong>High</strong> workflow/initialization difference</td>
+      </tr>
+      <tr class="even">
+      <td>Histogram range</td>
+      <td>Shared linear <code>[0, sampled p99.5]</code></td>
+      <td>Stage 4 snapshots shared full retained min/max</td>
+      <td><strong>Medium–high</strong> outlier sensitivity</td>
+      </tr>
+      <tr class="odd">
+      <td>Singlet gate</td>
+      <td>Log A/H band plus log W band; intersects both when available</td>
+      <td>Robust PCA ridge on raw A/H, falling back to raw A/W</td>
+      <td><strong>High</strong> event-population difference</td>
+      </tr>
+      <tr class="even">
+      <td>Debris/aggregates</td>
+      <td>Optional event removal before histogramming</td>
+      <td>Separate Stages 0–3 can gate events; Stage 7 may additionally model contamination</td>
+      <td><strong>High</strong>, but not a one-for-one replacement</td>
+      </tr>
+      <tr class="odd">
+      <td>Fractions</td>
+      <td>Discrete component sums; G1/S/G2 only</td>
+      <td>Trapezoidal areas; biological and contamination denominators reported separately</td>
+      <td>Mostly a reporting improvement; model differences dominate</td>
+      </tr>
+      <tr class="even">
+      <td>Solver</td>
+      <td>Third-party bounded LM; exceptions/invalid results become <code>null</code></td>
+      <td>In-repository projected LM with diagnostics</td>
+      <td><strong>Medium</strong>, numerical effect not yet benchmarked broadly</td>
+      </tr>
+      <tr class="odd">
+      <td>QC/reporting</td>
+      <td>Minimal correction summary and phase moments</td>
+      <td>Mask provenance, GoF, residual structure, warnings, contamination</td>
+      <td>Clear staged expansion</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>The side-by-side snippets below are focused excerpts. Guards, returned metadata, and unchanged setup are occasionally elided; the linked/current files and Git references are authoritative.</p>
+      <h2 id="s-phase-model-and-peak-parameterization">1. S-phase model and peak parameterization</h2>
+      <p>This is the largest mathematical difference.</p>
+      <table>
+      <thead>
+      <tr>
+      <th width="50%">
+      Legacy — <code>7b5bed9:js/analysis/djf.js</code>
+      </th>
+      <th width="50%">
+      Staged — <a href="../js/analysis/djf/djf_components.js"><code>djf_components.js</code></a>
+      </th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td valign="top">
+      <pre><code class="language-js">const S_NODES = 64;
+
+      function gaussian(distance, sigma) {
+        return Math.exp(
+          -(distance * distance) / (2 * sigma * sigma)
+        ) / (sigma * SQRT_2PI);
+      }
+
+      const du = span / S_NODES;
+      for (let k = 0; k &lt; S_NODES; k += 1) {
+        const pos = (k + 0.5) / S_NODES;
+        const u = m1 + pos * span;
+        const sigma_u =
+          sigma1 + (sigma2 - sigma1) * pos;
+        s += s_phase_height(pos, b0, b1, b2)
+          * gaussian(value - u, sigma_u) * du;
+      }</code></pre>
+      </td>
+      <td valign="top">
+      <pre><code class="language-js">export function gaussianPeak(
+        xValue, mu, sigma, amplitude
+      ) {
+        const z = (xValue - mu) / sigma;
+        return amplitude * Math.exp(-0.5 * z * z);
+      }
+
+      export function evaluateSBridge(
+        xValue, mu1, mu2, s0, s1, s2
+      ) {
+        if (xValue &lt;= mu1 || xValue &gt;= mu2) return 0;
+        const t = (xValue - mu1) / (mu2 - mu1);
+        const u = 1 - t;
+        const polynomial =
+          s0 * u * u + 2 * s1 * t * u + s2 * t * t;
+        return 4 * t * u * polynomial;
+      }</code></pre>
+      </td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Sources: legacy lines 16 and 366–391; current <a href="../js/analysis/djf/djf_components.js"><code>djf_components.js</code></a>, especially <code>gaussianPeak</code>, <code>evaluateSBridge</code>, and <code>evaluateBaseAt</code>.</p>
+      <p>Consequences:</p>
+      <ul>
+      <li>The legacy S component is a numerical convolution. It has shoulders/tails outside <code>m1..m2</code>, and its local broadening interpolates from <code>sigma1</code> to <code>sigma2</code>.</li>
+      <li>The staged S component is a direct curve. It is identically zero at and outside <code>mu1..mu2</code>.</li>
+      <li>The legacy peak Gaussian is normalized, so <code>a_g1</code> and <code>a_g2</code> are area-like. The staged <code>A1</code> and <code>A2</code> are peak heights. Peak parameters cannot be compared directly between implementations even when their plotted curves look alike.</li>
+      <li>The current theoretical prose still describes a broadened S integral in <a href="dean_jett_fox_implementation.md"><code>dean_jett_fox_implementation.md</code></a>, while the shipped code uses the direct bridge. The implementation plan explicitly acknowledges that the staged phase model differs from and replaces the old one in <a href="djf_impl_plan.md"><code>djf_impl_plan.md</code></a>.</li>
+      <li>Despite the DJF product/module name, the legacy code has no <code>Ns</code>, <code>sigmaS</code>, or <code>xS</code> corresponding to Fox equation (5). The staged base model has no such parameters either. Stage 7’s aggregate and debris parameters model different functions and cannot substitute for them.</li>
+      </ul>
+      <p>Against the published equations, the legacy S-phase core is more faithful to both Dean–Jett and the backbone of Fox’s model: it approximates Fox equations (2) and (4). It is not a complete synchronous Fox model because it omits equation (5), and this fidelity result does not establish that legacy will produce better biological estimates on every data set.</p>
+      <h2 id="peak-centers-run-wide-anchoring-and-solver-constraints">2. Peak centers, run-wide anchoring, and solver constraints</h2>
+      <table>
+      <thead>
+      <tr>
+      <th width="50%">
+      Legacy
+      </th>
+      <th width="50%">
+      Staged
+      </th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td valign="top">
+      <pre><code class="language-js">const run_g1 = djf.estimate_run_g1(
+        series, threshold_value
+      );
+
+      for (const s of shown_series) {
+        const params = djf.fit(
+          s.points, range, threshold_value, run_g1
+        );
+      }
+
+      const m1_lo = g1_hint != null
+        ? g1_hint * 0.9 : /* local bound */;
+      const m1_hi = g1_hint != null
+        ? g1_hint * 1.1 : /* local bound */;
+
+      const m2_lo = Math.max(
+        range[0], m1_initial * 1.65, m1_hi + min_sigma
+      );
+      const m2_hi = Math.max(
+        m2_lo + min_sigma,
+        Math.min(range[1] + 0.1 * span, m1_initial * 2.35)
+      );</code></pre>
+      </td>
+      <td valign="top">
+      <pre><code class="language-js">export const DEFAULT_OPTIONS = Object.freeze({
+        cvMin: 0.01,
+        cvMax: 0.20,
+        ratioTarget: 2,
+        ratioMin: 1.70,
+        ratioMax: 2.30,
+        unlockRatio: false,
+      });
+
+      const ratio = options.unlockRatio
+        ? clamp(
+            projected[PARAMETER_INDEX.R],
+            options.ratioMin,
+            options.ratioMax,
+          )
+        : options.ratioTarget;
+
+      const mu2 = ratio * mu1;</code></pre>
+      </td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Sources: legacy <code>estimate_run_g1</code>, <code>fit</code>, and the historical <code>js/plotting/render.js</code>; current <a href="../js/analysis/djf/stage6_fit.js"><code>stage6_fit.js</code></a> and <a href="../js/analysis/djf/djf_components.js"><code>djf_components.js</code></a>.</p>
+      <p>When at least one plotted series supplied a valid detected G1/G2 pair, the legacy application estimated the median of those G1 positions and constrained each <strong>shown fit</strong> to ±10% of that anchor. If no pair was found, <code>g1_hint</code> was <code>null</code> and the fit instead used local bounds of 0.75–1.25× its initializer. G2 was an independent fit parameter with broad bounds relative to the <strong>initial</strong> G1. The staged application has no run-wide anchor: each sample initializes and fits independently. In the normal UI path, Stage 6 receives default options, fixing G2 at exactly twice G1. <code>unlockRatio: true</code> is supported by the API, but the UI does not currently expose it.</p>
+      <p>The solver also changed from <code>ml-levenberg-marquardt</code> (160-iteration cap, bounded parameter arrays, exceptions converted to <code>null</code>) to the local projected LM solver (150-iteration default plus convergence diagnostics). The solver’s independent numerical effect has not yet been isolated from the model and constraint changes.</p>
+      <h2 id="stage-5-does-not-seed-or-constrain-stage-6">3. Stage 5 does not seed or constrain Stage 6</h2>
+      <p>The old visible threshold and peak workflow directly affected fitting. In the staged orchestrator, Stage 5 is diagnostic-only with respect to Stage 6.</p>
+      <table>
+      <thead>
+      <tr>
+      <th width="50%">
+      Legacy application flow
+      </th>
+      <th width="50%">
+      Staged application flow
+      </th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td valign="top">
+      <pre><code class="language-js">if (peak_threshold == null) {
+        set_peak_threshold(0.05 * shown_max);
+      }
+      const threshold_value = peak_threshold;
+
+      const run_g1 = djf.estimate_run_g1(
+        series, threshold_value
+      );
+
+      const params = djf.fit(
+        s.points, range, threshold_value, run_g1
+      );</code></pre>
+      </td>
+      <td valign="top">
+      <pre><code class="language-js">export function run_stage5(row, options = {}) {
+        const histogram = require_histogram(state, 5);
+        const result = stage5.detectDNAContentPeaks(
+          histogram.y,
+          {
+            histogramMin: histogram.min,
+            binWidth: histogram.binWidth,
+            ...options,
+          },
+        );
+        state.peaks = result;
+      }
+
+      export function run_stage6(row, options = {}) {
+        const histogram = require_histogram(state, 6);
+        const result = stage6.fitCellCycleHistogram(
+          histogram.x, histogram.y, options
+        );
+        state.baseFit = result;
+      }</code></pre>
+      </td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Source: current <a href="../js/analysis/djf/index.js"><code>index.js</code></a>, <code>run_stage5</code> and <code>run_stage6</code>.</p>
+      <p>Stage 6 detects its own candidates inside <code>initializeParameters()</code> and never reads <code>state.peaks</code>. The two current detectors also use different defaults: Stage 5 accepts ratios from 1.8–2.1, whereas Stage 6 considers candidate pairs from 1.45–2.55 before applying its own scoring/fallback and final ratio constraint. A normal Stage 5 result with <code>found: false</code> does not prevent Run All from proceeding to Stage 6.</p>
+      <p>This is best described as a workflow disconnect, not dead code: Stage 5 still provides inspection/reporting information. The UI should either label it as diagnostic, pass its automatically selected peaks forward as Stage 6 hints or constraints, or add a separate manual-selection path if that is desired.</p>
+      <h2 id="shared-histogram-range">4. Shared histogram range</h2>
+      <p>Both applications use one range across the selected samples, but they choose that range differently.</p>
+      <table>
+      <thead>
+      <tr>
+      <th width="50%">
+      Legacy render-time range
+      </th>
+      <th width="50%">
+      Staged Stage 4 snapshot
+      </th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td valign="top">
+      <pre><code class="language-js">const stride = Math.max(
+        1, Math.floor(total / 50000)
+      );
+      // collect sampled finite values, then sort
+
+      let lo = at(0.005);
+      let hi = at(0.995);
+
+      if (!positive_only) {
+        lo = 0;
+        if (!(hi &gt; lo)) hi = 1;
+      }
+      return [lo, hi];</code></pre>
+      </td>
+      <td valign="top">
+      <pre><code class="language-js">for (const row of targets) {
+        const data = require_row_data(row);
+        const mask = recompute_final_mask(row);
+        for (
+          let i = 0;
+          i &lt; data.channels.DNA_A.length;
+          i += 1
+        ) {
+          if (!mask[i]) continue;
+          const value = data.channels.DNA_A[i];
+          if (!Number.isFinite(value)) continue;
+          minimum = Math.min(minimum, value);
+          maximum = Math.max(maximum, value);
+        }
+      }
+      return [minimum, maximum];</code></pre>
+      </td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Sources: legacy <code>7b5bed9:js/plotting/data.js</code>, <code>shared_range_for_values</code>; current <a href="../js/analysis/djf/index.js"><code>index.js</code></a>, <code>shared_histogram_range</code>.</p>
+      <p>On the normal legacy linear DNA axis, the effective range was <code>[0, sampled p99.5]</code>, recomputed with the histogram during rendering. In the normal staged multi-sample UI path, Stage 4 snapshots one shared full finite min/max <strong>after whichever QC masks are currently active</strong> and stores the bins. Changing the bin control or QC later does not silently re-bin that fit; Stage 4 must be rerun. One surviving extreme can therefore widen every selected sample’s frozen bins. The current modeling Run All executes Stages 4–8 and does not itself run the separate pre-model QC controls, so this protection depends on which filters the user has applied.</p>
+      <p>The direct <code>run_stage4(row)</code> API is a qualification: without an explicitly supplied range it derives min/max from that one row. The exported programmatic <code>run_all(row)</code> has the same behavior unless Stage 4 receives a range option. The shared-extrema behavior comes from the multi-row UI/batch path, which passes <code>shared_histogram_range(rows)</code> into every Stage 4 call.</p>
+      <p>The private legacy helper in <code>djf.js</code> also used p0.2–p99.8 for an internal histogram. That was not the final live-fit range and should not be confused with the plotting layer’s <code>[0, p99.5]</code> behavior above.</p>
+      <h2 id="singlet-gating">5. Singlet gating</h2>
+      <p>The gates use different coordinate systems and combine companion channels differently.</p>
+      <table>
+      <thead>
+      <tr>
+      <th width="50%">
+      Legacy optional doublet gate
+      </th>
+      <th width="50%">
+      Staged Stage 3 singlet gate
+      </th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td valign="top">
+      <pre><code class="language-js">const ratio = mode === "width"
+        ? Math.log(b)
+        : Math.log(a) - Math.log(b);
+
+      const lower = median - 4 * sigma;
+      const upper = median + 4 * sigma;
+
+      const height_gate = robust_ratio_mask(
+        dna_a, dna_h, current_mask, "height"
+      );
+      const width_gate = robust_ratio_mask(
+        dna_a, dna_w, current_mask, "width"
+      );
+
+      if (height_gate.available) {
+        mask = combine_mask(mask, height_gate.mask);
+      }
+      if (width_gate.available) {
+        mask = combine_mask(mask, width_gate.mask);
+      }</code></pre>
+      </td>
+      <td valign="top">
+      <pre><code class="language-js">// Prefer DNA-A/Height, fall back to DNA-A/Width.
+      if (dnaH &amp;&amp; dnaH.length === eventCount) {
+        return { areaChannel: dnaA,
+                 secondaryChannel: dnaH };
+      }
+      if (dnaW &amp;&amp; dnaW.length === eventCount) {
+        return { areaChannel: dnaA,
+                 secondaryChannel: dnaW };
+      }
+
+      const points = indexedPoints.map(item =&gt; item.point);
+      const ridge = fitRobustRidge2D(points, ridgeOptions);
+      const threshold = kMAD * ridge.distanceMAD;
+      // defaults: kMAD = 5, minimumPoints = 20</code></pre>
+      </td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Sources: legacy <code>robust_ratio_mask</code> and <code>apply_aggregate_mask</code>; current <a href="../js/analysis/djf/stage3_singlet_gate.js"><code>stage3_singlet_gate.js</code></a>.</p>
+      <p>Precisely, the legacy code used a log A/H band and a log-width band. When both companions were usable, both masks were intersected. It required at least 64 eligible ratios and used a median ±4 robust-sigma band. The staged code fits an iteratively reweighted PCA ridge in raw <code>[DNA_A, DNA_H]</code> space, falling back to raw <code>[DNA_A, DNA_W]</code>; it does not use both at once. Its defaults are 5 MAD and a 20-point minimum. These gates are not geometrically equivalent and may retain different event populations.</p>
+      <h2 id="debris-and-aggregate-semantics">6. Debris and aggregate semantics</h2>
+      <p>The legacy correction deletes events before histogramming. Stage 7 retains the histogram and may allocate modeled area to contamination after the base fit.</p>
+      <table>
+      <thead>
+      <tr>
+      <th width="50%">
+      Legacy preprocessing
+      </th>
+      <th width="50%">
+      Staged Stage 7 model
+      </th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td valign="top">
+      <pre><code class="language-js">const lower = Math.max(
+        q_lo, g1_peak.x - 4 * sigma1, 0.45 * g1_peak.x
+      );
+      const upper = Math.min(
+        q_hi,
+        Math.max(g2_peak.x + 4 * sigma2,
+                 2.65 * g1_peak.x)
+      );
+
+      debris_mask[i] = positive_number(value)
+        &amp;&amp; (!bounds
+            || (value &gt;= bounds.lo &amp;&amp; value &lt;= bounds.hi));
+
+      const values = compact_by_mask(dna_a, mask);</code></pre>
+      </td>
+      <td valign="top">
+      <pre><code class="language-js">function evaluateAggregateAt(xValue, parameters) {
+        const p = parameters[INDEX.P_AGGREGATE];
+        return 0.5 * p
+          * evaluateBaseAt(xValue / 2, parameters).total;
+      }
+
+      function evaluateDebrisAt(xValue, xMinimum, parameters) {
+        const amplitude = parameters[INDEX.DEBRIS_AMPLITUDE];
+        const tau = parameters[INDEX.DEBRIS_TAU];
+        const mu1 = parameters[INDEX.MU1];
+        const sigma1 = parameters[INDEX.SIGMA1];
+        const decay = Math.exp(
+          -Math.max(0, xValue - xMinimum) / tau
+        );
+        const cutoffCenter = mu1 - sigma1;
+        const cutoffWidth = Math.max(0.25 * sigma1, 1e-12);
+        const leftWindow = logistic(
+          (cutoffCenter - xValue) / cutoffWidth
+        );
+        return amplitude * decay * leftWindow;
+      }</code></pre>
+      </td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Sources: legacy <code>debris_bounds</code> and <code>prepare_row</code>; current <a href="../js/analysis/djf/stage7_extend.js"><code>stage7_extend.js</code></a>.</p>
+      <p>The staged code also provides four event-removing pre-model QC stages:</p>
+      <ol type="1">
+      <li>structural validity and saturation;</li>
+      <li>time/acquisition stability;</li>
+      <li>FSC/SSC main biological-cloud gating; and</li>
+      <li>pulse-geometry singlet gating.</li>
+      </ol>
+      <p>In the current UI these are separate controls, not automatic steps inside the modeling Run All (Stages 4–8). Stage 7 therefore sees whichever gated event population the user has chosen to apply before histogramming.</p>
+      <p>Stage 3 exclusion and Stage 7 aggregate modeling can both occur, so Stage 7 is not a direct replacement for the old doublet mask. Stage 7 only adds candidates when residual templates suggest them and uses conservative selection defaults: at least 2% relative SSE improvement, BIC improvement of 6, and 20% targeted residual improvement.</p>
+      <p>The shipped aggregate term is the simple <code>0.5 * p * F(x/2)</code> curve and the debris term is a left-windowed exponential. They are not the self-convolution/Bagwell forms discussed elsewhere in the design prose. A general background component also remains explicitly unimplemented; the Stage 8 orchestration result records “General background model has not yet been specified.”</p>
+      <h2 id="fractions-diagnostics-and-failure-behavior">7. Fractions, diagnostics, and failure behavior</h2>
+      <table>
+      <thead>
+      <tr>
+      <th width="50%">
+      Legacy reporting
+      </th>
+      <th width="50%">
+      Staged Stage 8 reporting
+      </th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td valign="top">
+      <pre><code class="language-js">stats[key].weight += weight;
+      stats[key].sum += weight * point.x;
+      stats[key].sum_sq += weight * point.x * point.x;
+
+      const total =
+        stats.g1.weight + stats.s.weight + stats.g2.weight;
+
+      item.percent = item.weight / total * 100;
+      item.mean = item.sum / item.weight;
+      item.stdev = Math.sqrt(variance);</code></pre>
+      </td>
+      <td valign="top">
+      <pre><code class="language-js">const areas = {
+        g1: integrateTrapezoidal(x, g1),
+        s: integrateTrapezoidal(x, s),
+        g2: integrateTrapezoidal(x, g2),
+        aggregate: integrateTrapezoidal(x, aggregate),
+        debris: integrateTrapezoidal(x, debris),
+      };
+
+      const biologicalSingletTotal =
+        areas.g1 + areas.s + areas.g2;
+
+      const totalModeledArea = biologicalSingletTotal
+        + areas.aggregate + areas.debris;</code></pre>
+      </td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Source: legacy <code>phase_stats</code>; current <a href="../js/analysis/djf/stage8_report.js"><code>stage8_report.js</code></a>.</p>
+      <p>The current biological G1/S/G2 fractions deliberately exclude aggregate and debris from their denominator. Contamination fractions are reported separately against all modeled area. Stage 8 also calculates SSE, MSE, RMSE, MAE, R², adjusted R², Pearson chi-square, AIC/BIC, boundary checks, peak checks, residual autocorrelation/local bias, pulse-geometry checks, and user-facing warnings.</p>
+      <p>The legacy sum omits a common bin-width multiplier, but its live histograms are uniformly spaced, so that omission mostly cancels in normalized phase fractions. The more important fraction differences are the fitted component shapes, constraints, histogram range, and input events—not sum versus trapezoid alone.</p>
+      <p>Legacy solver exceptions and invalid parameter results became <code>null</code>, after which rendering silently skipped the sample. The staged code validates array lengths and values, preserves solver diagnostics, tracks stage provenance, invalidates dependent products when an upstream gate changes, and lets the UI report sample failures without discarding successful samples.</p>
+      <h2 id="reproduced-smoke-comparison">8. Reproduced smoke comparison</h2>
+      <p>This is a targeted numerical check, not a scientific validation set. Both fitters received the same already-binned <code>x/y</code> arrays, so it isolates model/fitting/reporting differences rather than event QC or histogram building.</p>
+      <h3 id="repository-deterministic-histogram">Repository deterministic histogram</h3>
+      <p>The fixture is <a href="../tests/unit/test_harness.html"><code>tests/unit/test_harness.html</code></a>’s 256-bin histogram over 20,000–200,000:</p>
+      <div class="sourceCode" id="cb2"><pre class="sourceCode js"><code class="sourceCode javascript"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> g1 <span class="op">=</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">exp</span>(<span class="op">-</span><span class="fl">0.5</span> <span class="op">*</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">pow</span>((x <span class="op">-</span> <span class="dv">64000</span>) <span class="op">/</span> <span class="dv">4500</span><span class="op">,</span> <span class="dv">2</span>)) <span class="op">*</span> <span class="dv">800</span><span class="op">;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> g2 <span class="op">=</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">exp</span>(<span class="op">-</span><span class="fl">0.5</span> <span class="op">*</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">pow</span>((x <span class="op">-</span> <span class="dv">128000</span>) <span class="op">/</span> <span class="dv">6000</span><span class="op">,</span> <span class="dv">2</span>)) <span class="op">*</span> <span class="dv">400</span><span class="op">;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> s <span class="op">=</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">max</span>(<span class="dv">0</span><span class="op">,</span> <span class="dv">60</span> <span class="op">-</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">abs</span>(x <span class="op">-</span> <span class="dv">96000</span>) <span class="op">/</span> <span class="dv">1500</span>)<span class="op">;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> y <span class="op">=</span> g1 <span class="op">+</span> s <span class="op">+</span> g2<span class="op">;</span></span></code></pre></div>
+      <p>The audit served the historical snapshot and current application separately and used these calls. In the legacy call, the two <code>null</code> arguments mean the default 5%-of-maximum peak threshold and no run-wide G1 hint:</p>
+      <div class="sourceCode" id="cb3"><pre class="sourceCode js"><code class="sourceCode javascript"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Legacy page at 7b5bed9</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> points <span class="op">=</span> TestUtils<span class="op">.</span><span class="fu">buildBimodalHistogram</span>(<span class="dv">256</span>)<span class="op">;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> p <span class="op">=</span> PhaseFinder<span class="op">.</span><span class="at">djf</span><span class="op">.</span><span class="fu">fit</span>(points<span class="op">,</span> [<span class="dv">20000</span><span class="op">,</span> <span class="dv">200000</span>]<span class="op">,</span> <span class="kw">null</span><span class="op">,</span> <span class="kw">null</span>)<span class="op">;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> legacyFractions <span class="op">=</span> PhaseFinder<span class="op">.</span><span class="at">djf</span><span class="op">.</span><span class="fu">fractions</span>(points<span class="op">,</span> p)<span class="op">;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> legacySse <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (<span class="kw">const</span> point <span class="kw">of</span> points) {</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> c <span class="op">=</span> PhaseFinder<span class="op">.</span><span class="at">djf</span><span class="op">.</span><span class="fu">components</span>(point<span class="op">.</span><span class="at">x</span><span class="op">,</span> p)<span class="op">;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> fitted <span class="op">=</span> c<span class="op">.</span><span class="at">g1</span> <span class="op">+</span> c<span class="op">.</span><span class="at">s</span> <span class="op">+</span> c<span class="op">.</span><span class="at">g2</span><span class="op">;</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>  legacySse <span class="op">+=</span> (fitted <span class="op">-</span> point<span class="op">.</span><span class="at">y</span>) <span class="op">**</span> <span class="dv">2</span><span class="op">;</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div>
+      <div class="sourceCode" id="cb4"><pre class="sourceCode js"><code class="sourceCode javascript"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Current staged page, Stage 6 defaults; Stage 7 is not run</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> { x<span class="op">,</span> y } <span class="op">=</span> TestUtils<span class="op">.</span><span class="fu">buildDJFHistogram</span>(<span class="dv">256</span>)<span class="op">;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> fit <span class="op">=</span> PhaseFinder<span class="op">.</span><span class="at">pipeline</span><span class="op">.</span><span class="at">stage6</span><span class="op">.</span><span class="fu">fitCellCycleHistogram</span>(x<span class="op">,</span> y)<span class="op">;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> report <span class="op">=</span> PhaseFinder<span class="op">.</span><span class="at">pipeline</span><span class="op">.</span><span class="at">stage8</span><span class="op">.</span><span class="fu">summarizeCellCycleFit</span>(</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  fit<span class="op">,</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  { <span class="dt">pulseGeometryAvailable</span><span class="op">:</span> <span class="kw">true</span> }<span class="op">,</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>)<span class="op">;</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> stagedFractions <span class="op">=</span> report<span class="op">.</span><span class="at">fractions</span><span class="op">.</span><span class="at">biologicalSinglets</span><span class="op">;</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> stagedSse <span class="op">=</span> fit<span class="op">.</span><span class="at">diagnostics</span><span class="op">.</span><span class="at">sse</span><span class="op">;</span></span></code></pre></div>
+      <p><code>pulseGeometryAvailable: true</code> only avoids an unrelated warning; it does not change fitted curves or fractions. Both SSE values are unweighted sums of <code>(fitted - observed)²</code> at the same 256 bin centers.</p>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Result</th>
+      <th style="text-align: right;">Legacy</th>
+      <th style="text-align: right;">Staged</th>
+      <th style="text-align: right;">Staged − legacy</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td>G1</td>
+      <td style="text-align: right;">50.2055%</td>
+      <td style="text-align: right;">51.1561%</td>
+      <td style="text-align: right;">+0.9506 pp</td>
+      </tr>
+      <tr class="even">
+      <td>S</td>
+      <td style="text-align: right;">13.6351%</td>
+      <td style="text-align: right;">11.7391%</td>
+      <td style="text-align: right;">−1.8960 pp</td>
+      </tr>
+      <tr class="odd">
+      <td>G2</td>
+      <td style="text-align: right;">36.1593%</td>
+      <td style="text-align: right;">37.1048%</td>
+      <td style="text-align: right;">+0.9455 pp</td>
+      </tr>
+      <tr class="even">
+      <td>SSE</td>
+      <td style="text-align: right;">51,051.58</td>
+      <td style="text-align: right;">36,954.91</td>
+      <td style="text-align: right;">−14,096.67</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>On this simple exact-2:1 fixture, the staged model has the lower total-curve SSE and differs by less than two percentage points in each phase. That does not test the fixed-ratio behavior on samples whose G2 is not exactly 2×G1.</p>
+      <h3 id="required-model-mismatch-regression">Required model-mismatch regression</h3>
+      <p>A durable follow-up should generate noiseless curves from both S-phase bases and fit each curve with both implementations. It should preserve the full parameter vector, grid, options, fitted curves, component areas, and residual diagnostics. That test is important because a high total-curve R² does not guarantee that two different bases assign the same G1/S/G2 fractions. No unpublished ad hoc numbers are used as evidence here.</p>
+      <p>Limitations:</p>
+      <ul>
+      <li>only one simple synthetic curve was reproduced;</li>
+      <li>no real FCS validation set or external ground truth was used;</li>
+      <li>the check bypasses event QC and histogram-range construction;</li>
+      <li>the legacy call has no run-wide anchor, and the staged call bypasses Stage 5 and Stage 7;</li>
+      <li>the fixture’s exact 2:1 peaks understate the fixed-ratio change;</li>
+      <li>SSE measures total-curve fit, not component identifiability; and</li>
+      <li>the reproduction should be promoted into a checked-in regression test before these exact values are treated as durable acceptance thresholds.</li>
+      </ul>
+      <h2 id="recommended-decisions-and-regression-coverage">9. Recommended decisions and regression coverage</h2>
+      <ol type="1">
+      <li><strong>Align the equation with the product name.</strong> If the product is intended to implement Dean–Jett or Fox’s asynchronous mode, implement equations (2) and
+      <ol start="4" type="1">
+      <li>with the G1-CV width rule. If it is intended to implement Fox’s synchronous mode, add <code>Ns</code>, <code>sigmaS</code>, and <code>xS</code> to the latent equation (5) and pass the resulting polynomial-plus-Gaussian through equation (2). Otherwise rename the staged model so that code, theory documentation, UI labels, and tests do not claim the published model.</li>
+      </ol></li>
+      <li><strong>Define the role of Stage 5.</strong> Either pass its automatically selected peaks into Stage 6 or label it clearly as an independent diagnostic whose result does not control the fit. Add a manual-selection path separately if wanted.</li>
+      <li><strong>Confirm center defaults.</strong> Fox normally floats the G2 center and width. His fallback for an obscured G2 ties both the center ratio and CV to G1, using a separately calibrated ratio (about 1.9 in his system). Decide whether exact <code>G2 = 2 × G1</code>, independent peak CVs, no run-wide anchor, and no UI ratio control are intentional departures for the expected data.</li>
+      <li><strong>Make the shared range robust.</strong> Restore a pooled upper quantile, add explicit outlier handling, or make a full retained range an intentional, visible choice.</li>
+      <li><strong>Add old-versus-new golden tests.</strong> On representative real FCS files and difficult synthetic cases, record at least:
+      <ul>
+      <li>retained event counts and removal reasons per gate;</li>
+      <li>shared range, bin width, and histogram counts;</li>
+      <li>detected peaks and any manual hints;</li>
+      <li>fitted means, CVs, ratio, and convergence state;</li>
+      <li>G1/S/G2 and contamination fractions;</li>
+      <li>SSE/R² plus residual warnings; and</li>
+      <li>behavior on weak G2, G2-dominant, off-2:1, debris-heavy, and aggregate-heavy samples.</li>
+      </ul></li>
+      <li><strong>Keep the staged engineering improvements.</strong> Mask provenance, invalidation, input validation, optional-channel skips, per-sample isolation, diagnostics, and reporting remain useful regardless of which model equation is selected.</li>
+      </ol>
+      <h2 id="interpretation">Interpretation</h2>
+      <p>“High impact” means that a difference can plausibly alter fitted outputs; it is not a claim that every real sample will change materially. Likewise, lower SSE or higher R² does not by itself prove more accurate biological fractions when the component bases differ. Some changes—especially expanded QC and diagnostics— are intentional capabilities rather than parity defects.</p>
+      <p>This document is an audit only. It does not restore or remove either implementation.</p>
+      <h2 id="external-sources">External sources</h2>
+      <ol type="1">
+      <li>Phillip N. Dean and James H. Jett, “Mathematical Analysis of DNA Distributions Derived from Flow Microfluorometry,” <em>Journal of Cell Biology</em> 60(2), 523–527 (1974): <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC2109170/">open full text</a> and <a href="https://doi.org/10.1083/jcb.60.2.523">DOI 10.1083/jcb.60.2.523</a>.</li>
+      <li>Michael H. Fox, “A Model for the Computer Analysis of Synchronous DNA Distributions Obtained by Flow Cytometry,” <em>Cytometry</em> 1(1), 71–77 (1980): <a href="../assets/misc/fox_1980_djf_model.pdf#page=2">attached primary paper, equations on article page 72 / PDF page 2</a>, <a href="https://europepmc.org/article/MED/7023881">indexed record</a>, and <a href="https://doi.org/10.1002/cyto.990010114">DOI 10.1002/cyto.990010114</a>.</li>
+      <li>FlowJo, “Cell Cycle: Univariate”: <a href="https://docs.flowjo.com/flowjo/experiment-based-platforms/cell-cycle-univariate/">public DJ/DJF model description</a>.</li>
+      </ol>
+      <p>The equations and fitting details above are transcribed from the two primary papers. Fox equations (1)–(5) were visually checked against article page 72 in the attached PDF; the weighted-fitting discussion continues on pages 72–73. FlowJo is retained only as a modern corroborating description, not as the source of the Fox equations.</p>
+    </main>
+  </div>
+</body>
+</html>
