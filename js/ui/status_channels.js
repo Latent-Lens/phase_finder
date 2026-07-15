@@ -592,6 +592,10 @@ export function update_start_button_state() {
     if (btn) btn.disabled = !has_files;
   });
   if (metadata_add_column_button) metadata_add_column_button.disabled = !has_table_rows;
+  {
+    const remove_btn = document.querySelector("#metadata_remove_column_button");
+    if (remove_btn) remove_btn.disabled = !has_table_rows;
+  }
   if (metadata_import_button) metadata_import_button.disabled = !has_table_rows;
   if (metadata_parse_button) metadata_parse_button.disabled = !has_table_rows;
   if (metadata_export_button) metadata_export_button.disabled = !has_table_rows;

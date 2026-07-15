@@ -16,7 +16,7 @@ import {
   hide_progress,
   next_frame,
 } from "../../ui/status_channels.js";
-import { load_pipeline } from "./pipeline_loader.js";
+import { load_pipeline, load_pipeline_silently } from "./pipeline_loader.js";
 import { init_scatter_modal, open_scatter_modal } from "./scatter_modal.js";
 import { get_file_table } from "../../state/app_state.js";
 import { get_file_by_id } from "../../state/files.js";
@@ -25,11 +25,50 @@ import { ensure_companions_loaded } from "../../io/channel_loading.js";
 import { QC_LOST_COLUMNS, DJF_FRACTION_COLUMNS, TOTAL_EVENTS_COLUMN } from "../../data_structs/derived_columns.js";
 
 const IMPLEMENTED_STAGE_COUNT = 9;
-// The QC gating stages (0-3) are driven by the Pre-modeling QC buttons; the
-// manual "Run all" runs the modeling stages on whatever QC is currently applied.
-const MODEL_STAGES = [4, 5, 6, 7, 8];
+// The QC gating stages (0-3) are driven by the Pre-modeling QC buttons; Stage 4
+// (histogram) has no button of its own — it's regenerated automatically (see
+// regenerate_histograms below) rather than run as a manual step. The manual
+// "Run all" runs the remaining modeling stages on whatever QC is currently applied.
+const MODEL_STAGES = [5, 6, 7, 8];
 let initialized = false;
 let pipeline_busy = false;
+
+/*
+
+Purpose:
+	Rebuilds each row's Stage 4 histogram (masked DNA-content binning) at the
+	current Bins control value, using a range shared across every row so they
+	stay comparable. Called after any Pre-model QC change (so the histogram
+	always reflects whatever gates are currently applied) and lazily before
+	Identify Peaks / Model DJF (so those always have a fresh histogram to read,
+	even if QC was never touched).
+
+Input:
+	rows [array]: plottable sample rows to rebuild histograms for
+	pipeline [object]: the loaded DJF pipeline module
+
+Output:
+	(none) [void]: updates each row's stored Stage 4 histogram in place
+
+*/
+function regenerate_histograms(rows, pipeline) {
+  let shared_range;
+  try {
+    shared_range = pipeline.shared_histogram_range(rows);
+  } catch (_) {
+    // No row has any retained events yet (e.g. a filter removed everything) —
+    // leave histograms unset; the requesting stage's own per-row error
+    // handling will report it.
+    return;
+  }
+  for (const row of rows) {
+    try {
+      pipeline.run_stage(4, row, { binCount: plot_bin_count(), range: shared_range });
+    } catch (_) {
+      // This sample has nothing left to histogram; skip it.
+    }
+  }
+}
 
 function set_pipeline_controls_disabled(disabled) {
   djf_stage_buttons.forEach((stageButton) => {
@@ -160,9 +199,6 @@ function format_stage_result(stage, entry) {
   if (stage === 3) {
     return `${name}: Stage 3 retained ${result.retainedSingletCount.toLocaleString()} / ${result.fittedEventCount.toLocaleString()} pulse-geometry events · ${result.geometryMode}`;
   }
-  if (stage === 4) {
-    return `${name}: Stage 4 binned ${result.binnedCount.toLocaleString()} retained events into ${result.binCount} bins`;
-  }
   if (stage === 5) {
     return result.found
       ? `${name}: Stage 5 peaks at ${result.mu1.toFixed(2)} and ${result.mu2.toFixed(2)} · ratio ${result.ratio.toFixed(3)}`
@@ -217,17 +253,17 @@ async function run_manual_stage(
     // Let the lazy-loader's hide timer settle before reusing the overlay for
     // per-sample progress.
     await new Promise((resolve) => window.setTimeout(resolve, 0));
+    // Identify Peaks and Model DJF both read the stored Stage 4 histogram;
+    // rebuild it now at the current Bins value so it's never stale — whether
+    // Pre-model QC already refreshed it, or this is the first model stage run
+    // with no QC ever applied.
+    if (stage === 5 || stage === 6) {
+      regenerate_histograms(rows, pipeline);
+    }
     show_progress(`Running DJF Stage ${stage}`);
     const outputs = [];
     const failures = [];
-    // Stage 4 snapshots the current bin count and shared range into the stored
-    // histogram; Stages 6-8 then fit at those bin centers. The snapshot is
-    // deliberately frozen — changing the bin control afterwards does not re-bin
-    // a sample that already has stage state (see render.js prepare_row), because
-    // re-binning would silently invalidate the fit. Re-run Stage 4 to refresh.
-    const stageOptions = stage === 4
-      ? { binCount: plot_bin_count(), range: pipeline.shared_histogram_range(rows) }
-      : {};
+    const stageOptions = {};
 
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
@@ -457,13 +493,24 @@ async function apply_qc_selection() {
       pipeline.reset_qc_gates(row);
       for (const stage of checked) {
         try {
-          pipeline.run_stage(stage, row, {});
+          // Stages 0-1 reuse the eager background precompute (see
+          // schedule_qc_precompute below) instead of recomputing from
+          // scratch on every toggle; Stages 2-3 still run fresh each time.
+          if (stage === 0) pipeline.run_stage0_fast(row);
+          else if (stage === 1) pipeline.run_stage1_fast(row);
+          else pipeline.run_stage(stage, row, {});
         } catch (_) {
           // A gate can't run for this sample (e.g. too few events); leave its
           // mask unset so it simply doesn't filter.
         }
       }
     }
+
+    // Keep each sample's histogram in sync with whichever gates are now
+    // applied (or none), at the current Bins value, so Identify Peaks / Model
+    // DJF always read fresh, correctly filtered bins without a separate
+    // manual "build the histogram" step.
+    regenerate_histograms(rows, pipeline);
 
     update_qc_columns(rows, pipeline, checked);
     render_density_plot();
@@ -500,11 +547,22 @@ function init_premodel_qc() {
   }
 }
 
+// As soon as a channel finishes plotting, silently load the pipeline module
+// (no progress overlay — the user didn't ask for anything yet) and eagerly
+// compute Stage 0 and both Stage 1 variants in the background, so the first
+// Pre-model QC click is instant instead of waiting on them.
+function schedule_qc_precompute() {
+  load_pipeline_silently()
+    .then((pipeline) => pipeline.precompute_qc_stage01(plottable_rows()))
+    .catch(() => {}); // background best-effort; a real click will retry/report
+}
+
 export function init_pipeline_ui() {
   if (initialized) return;
   initialized = true;
   init_scatter_modal();
   init_premodel_qc();
+  document.addEventListener("pf-plot-complete", schedule_qc_precompute);
 
   djf_stage_buttons.forEach((button, stage) => {
     if (!button) return;
