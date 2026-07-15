@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """E2E coverage for the manual nine-stage Dean-Jett-Fox pipeline."""
 
+import math
+
 from helpers import (
     TestContext,
     density_curve_count,
@@ -136,6 +138,7 @@ def test_pipeline(ctx: TestContext):
     page = ctx.page
     group = "DJF Pipeline"
     previous_selection = []
+    manual_stage2_retained = None
 
     try:
         sample_name, previous_selection = isolate_first_plotted_sample(page)
@@ -209,12 +212,217 @@ def test_pipeline(ctx: TestContext):
                       and summary["maskLength"] == fixture["eventCount"]
                       and modal_visible and scatter_marks > 0)
                 label = "Stage 2 fits FSC/SSC GMM and opens populated gate diagnostics"
+
+                gate_before = page.evaluate(
+                    """(sampleName) => {
+                      const result = window.PhaseFinder.pipeline.get_state(sampleName).scatterGate;
+                      let indexSum = 0;
+                      for (let index = 0; index < result.scatterMask.length; index += 1) {
+                        if (result.scatterMask[index]) indexSum += index + 1;
+                      }
+                      return {
+                        mean: [...result.mainComponent.mean],
+                        threshold: result.threshold,
+                        retained: result.retainedEventCount,
+                        indexSum,
+                      };
+                    }""",
+                    sample_name,
+                )
+                center = page.locator("#djf_scatter_plot .djf_scatter_gate_center")
+                center_box = center.bounding_box()
+                page.mouse.move(
+                    center_box["x"] + center_box["width"] / 2,
+                    center_box["y"] + center_box["height"] / 2,
+                )
+                page.mouse.down()
+                page.mouse.move(
+                    center_box["x"] + center_box["width"] / 2 + 42,
+                    center_box["y"] + center_box["height"] / 2,
+                    steps=8,
+                )
+                page.mouse.up()
+                page.wait_for_function(
+                    """(sampleName) => Boolean(
+                      window.PhaseFinder.pipeline.get_state(sampleName)
+                        ?.scatterGate?.manualOverride
+                    )""",
+                    arg=sample_name,
+                    timeout=10000,
+                )
+                gate_moved = page.evaluate(
+                    """(sampleName) => {
+                      const state = window.PhaseFinder.pipeline.get_state(sampleName);
+                      const row = window.PhaseFinder.app.get_parsed_files()
+                        .find((candidate) => candidate.name === sampleName);
+                      const result = state.scatterGate;
+                      let indexSum = 0;
+                      for (let index = 0; index < result.scatterMask.length; index += 1) {
+                        if (result.scatterMask[index]) indexSum += index + 1;
+                      }
+                      return {
+                        mean: [...result.mainComponent.mean],
+                        threshold: result.threshold,
+                        retained: result.retainedEventCount,
+                        indexSum,
+                        source: result.gateSource,
+                        rawMaskIsAuthoritative: row.data.masks.scatter === result.scatterMask,
+                        filteredCount: row.data.filtered?.eventCount,
+                        finalCount: Array.from(row.data.masks.final)
+                          .reduce((sum, value) => sum + value, 0),
+                        caption: document.querySelector('#djf_scatter_caption')?.textContent,
+                        resetEnabled: !document.querySelector('#djf_scatter_reset')?.disabled,
+                      };
+                    }""",
+                    sample_name,
+                )
+                ctx.check(
+                    group,
+                    "Dragging the Stage 2 ellipse applies a new authoritative scatter mask",
+                    gate_moved["source"] == "manual"
+                    and gate_moved["mean"] != gate_before["mean"]
+                    and gate_moved["indexSum"] != gate_before["indexSum"]
+                    and gate_moved["rawMaskIsAuthoritative"]
+                    and gate_moved["filteredCount"] == gate_moved["finalCount"]
+                    and gate_moved["resetEnabled"]
+                    and "Manual gate applied" in gate_moved["caption"],
+                    f"before={gate_before}, moved={gate_moved}",
+                )
+
+                page.click("#djf_scatter_reset")
+                page.wait_for_function(
+                    """(sampleName) =>
+                      !window.PhaseFinder.pipeline.get_state(sampleName)
+                        ?.scatterGate?.manualOverride""",
+                    arg=sample_name,
+                    timeout=10000,
+                )
+                gate_reset = page.evaluate(
+                    """(sampleName) => {
+                      const result = window.PhaseFinder.pipeline.get_state(sampleName).scatterGate;
+                      let indexSum = 0;
+                      for (let index = 0; index < result.scatterMask.length; index += 1) {
+                        if (result.scatterMask[index]) indexSum += index + 1;
+                      }
+                      return {
+                        mean: [...result.mainComponent.mean],
+                        threshold: result.threshold,
+                        retained: result.retainedEventCount,
+                        indexSum,
+                        source: result.gateSource,
+                        resetDisabled: document.querySelector('#djf_scatter_reset')?.disabled,
+                      };
+                    }""",
+                    sample_name,
+                )
+                ctx.check(
+                    group,
+                    "Reset fitted gate restores the original ellipse and scatter mask",
+                    gate_reset["source"] == "fitted"
+                    and gate_reset["mean"] == gate_before["mean"]
+                    and gate_reset["threshold"] == gate_before["threshold"]
+                    and gate_reset["retained"] == gate_before["retained"]
+                    and gate_reset["indexSum"] == gate_before["indexSum"]
+                    and gate_reset["resetDisabled"],
+                    f"before={gate_before}, reset={gate_reset}",
+                )
+
+                fitted_ellipse_box = page.locator(
+                    "#djf_scatter_plot .djf_scatter_gate_visible"
+                ).bounding_box()
+                page.locator("#djf_scatter_coverage").fill("80")
+                page.wait_for_function(
+                    """(sampleName) => Math.abs(
+                      window.PhaseFinder.pipeline.get_state(sampleName)
+                        ?.scatterGate?.manualOverride?.coverage - 0.8
+                    ) < 1e-9""",
+                    arg=sample_name,
+                    timeout=10000,
+                )
+                resized_ellipse_box = page.locator(
+                    "#djf_scatter_plot .djf_scatter_gate_visible"
+                ).bounding_box()
+                gate_resized = page.evaluate(
+                    """(sampleName) => {
+                      const state = window.PhaseFinder.pipeline.get_state(sampleName);
+                      const row = window.PhaseFinder.app.get_parsed_files()
+                        .find((candidate) => candidate.name === sampleName);
+                      const result = state.scatterGate;
+                      return {
+                        mean: [...result.mainComponent.mean],
+                        threshold: result.threshold,
+                        coverage: result.manualOverride?.coverage,
+                        retained: result.retainedEventCount,
+                        rawMaskIsAuthoritative: row.data.masks.scatter === result.scatterMask,
+                        filteredCount: row.data.filtered?.eventCount,
+                        coverageLabel: document.querySelector('#djf_scatter_coverage_value')?.textContent,
+                        caption: document.querySelector('#djf_scatter_caption')?.textContent,
+                      };
+                    }""",
+                    sample_name,
+                )
+                ctx.check(
+                    group,
+                    "Changing Stage 2 coverage resizes the ellipse and applies its mask",
+                    gate_resized["mean"] == gate_before["mean"]
+                    and abs(gate_resized["threshold"] - (-2 * math.log(0.2))) < 1e-9
+                    and abs(gate_resized["coverage"] - 0.8) < 1e-9
+                    and gate_resized["retained"] < gate_before["retained"]
+                    and gate_resized["rawMaskIsAuthoritative"]
+                    and gate_resized["filteredCount"] == gate_resized["retained"]
+                    and resized_ellipse_box["width"] < fitted_ellipse_box["width"]
+                    and resized_ellipse_box["height"] < fitted_ellipse_box["height"]
+                    and gate_resized["coverageLabel"] == "80.0%"
+                    and "coverage 80.0%" in gate_resized["caption"],
+                    f"before={gate_before}, resized={gate_resized}, boxes={fitted_ellipse_box, resized_ellipse_box}",
+                )
+
+                # Restore both the fitted center and fitted coverage before the
+                # final translation used to exercise Stage 3.
+                page.click("#djf_scatter_reset")
+                page.wait_for_function(
+                    """(sampleName) =>
+                      !window.PhaseFinder.pipeline.get_state(sampleName)
+                        ?.scatterGate?.manualOverride""",
+                    arg=sample_name,
+                    timeout=10000,
+                )
+
+                # Leave a manual gate active so Stage 3 proves that downstream
+                # processing consumes the edited mask rather than the fitted one.
+                center = page.locator("#djf_scatter_plot .djf_scatter_gate_center")
+                center_box = center.bounding_box()
+                page.mouse.move(
+                    center_box["x"] + center_box["width"] / 2,
+                    center_box["y"] + center_box["height"] / 2,
+                )
+                page.mouse.down()
+                page.mouse.move(
+                    center_box["x"] + center_box["width"] / 2 - 32,
+                    center_box["y"] + center_box["height"] / 2,
+                    steps=8,
+                )
+                page.mouse.up()
+                page.wait_for_function(
+                    """(sampleName) => Boolean(
+                      window.PhaseFinder.pipeline.get_state(sampleName)
+                        ?.scatterGate?.manualOverride
+                    )""",
+                    arg=sample_name,
+                    timeout=10000,
+                )
+                manual_stage2_retained = page.evaluate(
+                    """(sampleName) => window.PhaseFinder.pipeline
+                      .get_state(sampleName).scatterGate.retainedEventCount""",
+                    sample_name,
+                )
                 page.click("#djf_scatter_modal_close")
                 page.wait_for_selector("#djf_scatter_modal", state="hidden", timeout=10000)
             elif stage == 3:
                 ok = (summary["skipped"] is False and bool(summary["geometryMode"])
                       and 0 < summary["retained"] <= summary["fitted"]
-                      and summary["maskLength"] == fixture["eventCount"])
+                      and summary["maskLength"] == fixture["eventCount"]
+                      and summary["fitted"] == manual_stage2_retained)
                 label = "Stage 3 exercises pulse-geometry singlet gating"
             elif stage == 4:
                 ok = (summary["bins"] >= 16 and summary["countSum"] > 0
