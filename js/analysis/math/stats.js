@@ -1,4 +1,4 @@
-// Shared robust-statistics helpers for the staged DJF pipeline.
+// Shared robust-statistics helpers for the cell-cycle pipeline.
 
 /** Clamp a number to an inclusive interval. */
 export function clamp(value, minimum, maximum) {

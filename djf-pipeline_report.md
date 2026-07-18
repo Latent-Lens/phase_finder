@@ -3,7 +3,7 @@
 **Branch:** `djf-pipeline` (reviewed against `main`, focused on the 7 DJF commits on top of `7b5bed9 Finishing restructure`)
 **Reviewed:** 2026-07-12 · **Updated:** 2026-07-12
 **Status:** All 8 findings resolved in commit `771b9fe`, plus two follow-on features.
-**Scope:** The staged Dean–Jett–Fox pipeline (`js/analysis/djf/**`), its app wiring (`pipeline_ui.js`, `start.js`, `channel_loading.js`, `stats.js`), and the plot-layer integration (`render.js`, `modeling.js`).
+**Scope:** The staged Dean–Jett–Fox pipeline (`js/analysis/**`), its app wiring (`pipeline_ui.js`, `start.js`, `channel_loading.js`, `stats.js`), and the plot-layer integration (`render.js`, `modeling.js`).
 
 ## Summary
 
@@ -17,7 +17,7 @@ The findings were mostly about **error isolation and diagnostic quality**, not w
 
 ### 1. No per-sample error isolation — one bad sample aborts the whole batch and the Run-All chain *(Medium)* — ✅ RESOLVED
 
-**Where:** [pipeline_ui.js](js/analysis/djf/pipeline_ui.js)
+**Where:** [pipeline_ui.js](js/analysis/pipeline_ui.js)
 
 The per-row loop ran inside a single `try/catch`, so one sample's throw skipped every remaining sample in the stage and returned `[]`, which broke `run_manual_all` — a single bad file stopped analysis for the whole selection.
 
@@ -27,7 +27,7 @@ The per-row loop ran inside a single `try/catch`, so one sample's throw skipped 
 
 ### 2. Sparse gating stages throw instead of skipping *(Low–Medium)* — ✅ RESOLVED
 
-**Where:** [stage2_scatter_gate.js](js/analysis/djf/stage2_scatter_gate.js)
+**Where:** [scatter_gmm_gate.js](js/analysis/scatter_gmm_gate.js)
 
 When fewer than 10 finite FSC/SSC events survived upstream masks — a normal gating outcome — `buildScatterPoints` threw, which (via Finding 1) aborted the batch.
 
@@ -37,7 +37,7 @@ When fewer than 10 finite FSC/SSC events survived upstream masks — a normal ga
 
 ### 3. Clean fits report `converged: false` / "stopped" *(Low, diagnostic quality)* — ✅ RESOLVED
 
-**Where:** [math/lm_solver.js](js/analysis/djf/math/lm_solver.js), [stage6_fit.js](js/analysis/djf/stage6_fit.js), [stage7_extend.js](js/analysis/djf/stage7_extend.js), [pipeline_ui.js](js/analysis/djf/pipeline_ui.js)
+**Where:** [math/lm_solver.js](js/analysis/math/lm_solver.js), [legacy_bridge_fit.js](js/analysis/legacy_bridge_fit.js), [debris_aggregate_extension.js](js/analysis/debris_aggregate_extension.js), [pipeline_ui.js](js/analysis/pipeline_ui.js)
 
 The LM driver only set `converged` on a tolerance hit, so an accurate fit that exhausted its iteration budget (common with any model/data mismatch) reported `converged: false` and showed "stopped".
 
@@ -47,7 +47,7 @@ The LM driver only set `converged` on a tolerance hit, so an accurate fit that e
 
 ### 4. `STATE_FIELDS_BY_STAGE[0]` doesn't match the actual Stage 0 field *(Low, latent trap)* — ✅ RESOLVED
 
-**Where:** [pipeline_state.js](js/analysis/djf/pipeline_state.js)
+**Where:** [pipeline_state.js](js/analysis/pipeline_state.js)
 
 The stage→field invalidation map listed `"structuralMask"` at index 0, but Stage 0's primary output is `state.structuralQC` (`structuralMask` is an unread secondary copy). Harmless today, but a trap if anything ever invalidated from Stage 0 downward.
 
@@ -57,7 +57,7 @@ The stage→field invalidation map listed `"structuralMask"` at index 0, but Sta
 
 ### 5. Iteration count over-reported by one *(Low, cosmetic)* — ✅ RESOLVED
 
-**Where:** [math/lm_solver.js](js/analysis/djf/math/lm_solver.js)
+**Where:** [math/lm_solver.js](js/analysis/math/lm_solver.js)
 
 On convergence the `for` loop's post-increment ran once more, so `iterationsPerformed` was one high on the converge and trivial paths.
 
@@ -67,7 +67,7 @@ On convergence the `for` loop's post-increment ran once more, so `iterationsPerf
 
 ### 6. Stage 4 histogram + fit overlays freeze at the run-time bin count *(Info / design)* — ✅ RESOLVED (documented)
 
-**Where:** [pipeline_ui.js](js/analysis/djf/pipeline_ui.js), [render.js](js/plotting/render.js)
+**Where:** [pipeline_ui.js](js/analysis/pipeline_ui.js), [render.js](js/plotting/render.js)
 
 Stage 4 snapshots the bin count/range into stored state; a later bin-count change re-bins only samples *without* stage state, so a mixed selection can show two bin widths. This is an edge case (the realistic trigger is a newly-checked or Stage-4-skipped sample) and freezing is defensible because re-binning would invalidate the fit.
 
@@ -87,7 +87,7 @@ Before Stage 8 ran, displayed 1C/S/2C percentages used a coarse discrete sum, th
 
 ### 8. Display staleness guard weaker than the state-creation guard *(Info)* — ✅ RESOLVED
 
-**Where:** [pipeline_state.js](js/analysis/djf/pipeline_state.js), [render.js](js/plotting/render.js)
+**Where:** [pipeline_state.js](js/analysis/pipeline_state.js), [render.js](js/plotting/render.js)
 
 `active_pipeline_state` gated display on `channelKey` only, while `get_or_create_state` also invalidated on `eventCount`/`rowId` — the two could drift.
 
@@ -99,7 +99,7 @@ Before Stage 8 ran, displayed 1C/S/2C percentages used a coarse discrete sum, th
 
 ### A. Progressively filtered "gated view"
 
-**Where:** [pipeline_state.js](js/analysis/djf/pipeline_state.js), [index.js](js/analysis/djf/index.js)
+**Where:** [pipeline_state.js](js/analysis/pipeline_state.js), [cell_cycle_pipeline.js](js/analysis/cell_cycle_pipeline.js)
 
 The originals remain the source of truth, and a second compacted array (`row.data.filtered`) now holds only the events surviving the composed masks so far, rebuilt at every mask change with an `originalIndex` map back to raw event indices — so each mask "deletes" events from the view as it runs while the mask layer keeps the scatter inspector and re-runs working. Stage 4 bins the gated array directly (verified numerically identical to the masked-originals path).
 
@@ -107,7 +107,7 @@ The originals remain the source of truth, and a second compacted array (`row.dat
 
 ### B. Metadata-table stats
 
-**Where:** [index.js](js/analysis/djf/index.js) (`pipeline_table_stats`), [pipeline_ui.js](js/analysis/djf/pipeline_ui.js)
+**Where:** [cell_cycle_pipeline.js](js/analysis/cell_cycle_pipeline.js) (`pipeline_table_stats`), [pipeline_ui.js](js/analysis/pipeline_ui.js)
 
 On Stage 8 completion, seven columns are written to the file table: per-filter losses **Structural / Time QC / Scatter / Singlet lost** formatted as `1,905 (4.5%)` (percent relative to the events *entering* that stage; skipped filters show "—"), then **G1 % / S % / G2/M %** from the report. The funnel is derived from the composed masks so it stays correct regardless of per-stage mask semantics, and columns populate only for samples that completed the pipeline.
 

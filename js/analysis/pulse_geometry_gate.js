@@ -1,4 +1,4 @@
-// Stage 3: optional pulse-geometry singlet gate.
+// Optional pulse-geometry singlet gate.
 
 import { mad, median } from "./math/stats.js";
 import {

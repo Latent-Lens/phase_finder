@@ -1,6 +1,6 @@
 "use strict";
 
-// Stage 6: constrained single-cycle Dean-Jett-Fox histogram fit.
+// Temporary compatibility fit using the project's legacy tapered S-phase bridge.
 
 import { gaussianSmooth } from "./math/gaussian.js";
 import {
@@ -502,6 +502,7 @@ export function fitCellCycleHistogram(x, y, userOptions = {}) {
     diagnostics: {
       converged: fit.converged,
       maxIterationsReached: fit.maxIterationsReached,
+      cancelled: fit.cancelled,
       iterations: fit.iterations,
       sse: fit.sse,
       finalLambda: fit.finalLambda,

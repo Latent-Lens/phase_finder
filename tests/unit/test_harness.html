@@ -33,14 +33,19 @@
       find_pipeline_channel_indexes,
     } from "/js/fcs/channel_cleaning.js";
     import { serialize_session, parse_session_toml } from "/js/session/toml_io.js";
-    import * as DJFPipeline from "/js/analysis/djf/index.js";
-    import * as DJFPipelineState from "/js/analysis/djf/pipeline_state.js";
-    import * as DJFStats from "/js/analysis/djf/math/stats.js";
-    import * as DJFGaussian from "/js/analysis/djf/math/gaussian.js";
-    import * as DJFIntegrate from "/js/analysis/djf/math/integrate.js";
-    import * as DJFLinearAlgebra from "/js/analysis/djf/math/linalg2d.js";
-    import * as DJFLMSolver from "/js/analysis/djf/math/lm_solver.js";
-    import * as DJFComponents from "/js/analysis/djf/djf_components.js";
+    import * as DJFPipeline from "/js/analysis/cell_cycle_pipeline.js";
+    import * as DJFPipelineState from "/js/analysis/pipeline_state.js";
+    import * as DJFStats from "/js/analysis/math/stats.js";
+    import * as DJFGaussian from "/js/analysis/math/gaussian.js";
+    import * as DJFIntegrate from "/js/analysis/math/integrate.js";
+    import * as DJFLinearAlgebra from "/js/analysis/math/linalg2d.js";
+    import * as DJFLMSolver from "/js/analysis/math/lm_solver.js";
+    import * as DJFComponents from "/js/analysis/djf_components.js";
+    import * as CellCycleModelRegistry from "/js/analysis/cell_cycle/model_registry.js";
+    import { run_fit_in_worker } from "/js/analysis/cell_cycle/fit_client.js";
+    import * as CellCyclePeakDetection from "/js/analysis/cell_cycle/peak_detection.js";
+    import * as CellCyclePeakRegions from "/js/analysis/cell_cycle/peak_regions.js";
+    import * as CellCycleModelingState from "/js/analysis/cell_cycle/modeling_state.js";
 
     Object.assign(window, {
       FCSParser, PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records,
@@ -67,6 +72,11 @@
       lm: DJFLMSolver,
       components: DJFComponents,
     };
+    window.CellCycleModelRegistry = CellCycleModelRegistry;
+    window.run_fit_in_worker = run_fit_in_worker;
+    window.CellCyclePeakDetection = CellCyclePeakDetection;
+    window.CellCyclePeakRegions = CellCyclePeakRegions;
+    window.CellCycleModelingState = CellCycleModelingState;
     window.__libsReady = true;
   </script>
 

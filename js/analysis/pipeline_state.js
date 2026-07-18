@@ -1,4 +1,4 @@
-// Per-sample state and mask composition for the staged DJF pipeline. State is
+// Per-sample state and mask composition for the cell-cycle pipeline. State is
 // keyed by filename for the public debugging API, while each entry records its
 // active channel key so changing DNA channels cannot reuse stale masks or fits.
 
@@ -22,6 +22,111 @@ const STATE_FIELDS_BY_STAGE = [
 
 const MASK_FIELDS_BY_STAGE = ["structural", "timeQC", "scatter", "singlet"];
 
+/**
+ * Default shape of the model-neutral modeling state (peak detection, peak
+ * regions, model settings, cached fit results) that the new Identify
+ * Peaks / model-dropdown workflow reads and writes. Lives alongside the
+ * current structuralQC/peaks/baseFit/etc. fields, not in place of them, until
+ * the new UI actually replaces the manual Stage 5-8 buttons.
+ */
+function create_modeling_state() {
+  return {
+    schemaVersion: 1,
+    histogramFingerprint: null,
+    fitDomain: null,
+
+    peakDetection: {
+      detectorId: "multiscale_v1",
+      status: null, // detected | low_confidence | inferred_g2
+      confidence: 0,
+      reasons: [],
+      candidates: [],
+      pairs: [],
+      selectedPairId: null,
+      alternatives: [],
+      configuration: {},
+    },
+
+    peakSelection: {
+      automaticRegions: null,
+      regions: null,
+      source: "automatic", // automatic | alternative | manual
+      reviewed: false,
+      stale: false,
+      revision: 0,
+      initialCenters: null,
+    },
+
+    settings: {
+      modelId: "auto_dj_djf",
+      ratioMode: "bounded",
+      ratioRange: [1.65, 2.25],
+      lockedRatio: 2,
+      cvMode: "free",
+      contaminants: { debris: "off", aggregate: "off", subG1: "off" },
+      ploidyCount: 1,
+    },
+
+    resultsByKey: {},
+    modelComparison: null,
+    activeResultKey: null,
+    revision: 0,
+  };
+}
+
+/**
+ * Called when the histogram fingerprint changes (QC/bins/range/fit-domain).
+ * Regions are preserved but flagged stale -- the user chooses "Keep manual
+ * limits" or "Reset to automatic" rather than having them silently
+ * discarded. Every cached fit is invalidated, since it was fit against the
+ * old histogram.
+ */
+export function invalidate_histogram_dependents(state, reason = "") {
+  const modeling = state?.modeling;
+  if (!modeling) return;
+  modeling.peakSelection.stale = true;
+  modeling.resultsByKey = {};
+  modeling.activeResultKey = null;
+  modeling.modelComparison = null;
+  modeling.lastInvalidationReason = reason;
+  modeling.revision += 1;
+}
+
+/**
+ * Clears every cached fit result regardless of model, without touching
+ * detection or regions. Used when regions are actually edited/accepted (not
+ * merely marked stale by a histogram change).
+ */
+export function invalidate_model_results(state, reason = "") {
+  const modeling = state?.modeling;
+  if (!modeling) return;
+  modeling.resultsByKey = {};
+  modeling.activeResultKey = null;
+  modeling.modelComparison = null;
+  modeling.lastInvalidationReason = reason;
+  modeling.revision += 1;
+}
+
+/**
+ * Removes only the cached results belonging to one model, preserving every
+ * other model's cached fits -- switching the model dropdown back and forth
+ * (or changing one model's constraint) never discards unrelated work.
+ */
+export function invalidate_model_config_result(state, modelId, reason = "") {
+  const modeling = state?.modeling;
+  if (!modeling) return;
+  for (const key of Object.keys(modeling.resultsByKey)) {
+    if (modeling.resultsByKey[key]?.modelId === modelId) {
+      delete modeling.resultsByKey[key];
+    }
+  }
+  if (modeling.activeResultKey && modeling.resultsByKey[modeling.activeResultKey] === undefined) {
+    modeling.activeResultKey = null;
+  }
+  modeling.lastInvalidationReason = reason;
+  modeling.revision += 1;
+}
+
 function empty_state(row) {
   return {
     rowId: row && row.id ? row.id : null,
@@ -39,6 +144,7 @@ function empty_state(row) {
     extendedFit: null,
     report: null,
     lastStageRun: null,
+    modeling: create_modeling_state(),
   };
 }
 
@@ -144,6 +250,10 @@ const FILTERED_CHANNELS = ["DNA_A", "DNA_H", "DNA_W", "FSC_A", "SSC_A", "Time"];
 export function build_filtered_view(row) {
   if (!row || !row.data) return null;
   const data = row.data;
+  // Bumped on every call (both branches below) so ensure_histogram_current()
+  // can detect that the gated view actually changed, instead of unconditionally
+  // rerunning Stage 4 (and invalidating its downstream products) every time.
+  data.filteredViewRevision = (data.filteredViewRevision || 0) + 1;
   const mask = data.masks?.final;
   const channels = data.channels || {};
   if (!mask) {
@@ -202,11 +312,18 @@ export function invalidate_after(row, state, completed_stage) {
   }
 
   if (row && row.data && row.data.masks) {
+    // Only stages 0-3 own a mask; completing a later stage (5-8) has nothing
+    // to clear here; rebuilding the gated view anyway would bump
+    // filteredViewRevision for no reason and defeat ensure_histogram_current().
+    let mask_cleared = false;
     for (let stage = completed_stage + 1; stage < MASK_FIELDS_BY_STAGE.length; stage += 1) {
+      if (row.data.masks[MASK_FIELDS_BY_STAGE[stage]] != null) mask_cleared = true;
       row.data.masks[MASK_FIELDS_BY_STAGE[stage]] = null;
     }
-    recompute_final_mask(row);
-    build_filtered_view(row);
+    if (mask_cleared) {
+      recompute_final_mask(row);
+      build_filtered_view(row);
+    }
   }
   state.lastStageRun = completed_stage;
   return state;

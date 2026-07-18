@@ -43,6 +43,23 @@ written to `results/assets/vid/`. At the start of each run, `drive_flow.py`
 clears both asset directories and removes old root-level HTML/Markdown reports
 plus legacy root-level `flow_e2e_*.png`, `flow_e2e_*.webm`, and `page@*.webm`
 artifacts.
+
+## Unit tests only
+
+`tests/unit/run_standalone.py` runs just the JavaScript unit suites
+(`tests/unit/test_harness.html`) against a headless page, independent of the
+full e2e driver above:
+
+```bash
+/tmp/flowvenv/bin/python tests/unit/run_standalone.py
+```
+
+Use this when an e2e failure or hang would otherwise block the unit suites
+from running at all, or when you just want a fast correctness check on the
+numeric/state modules without paying for the full browser-driven flow. It
+does not clear `results/` — it only adds its own timestamped
+`unit_only_*.html`/`.md` report there, so it's safe to run alongside or
+between full regression runs. Same `--url`/`--headed` flags as `drive_flow.py`.
 The directory is tracked but its contents are git-ignored.
 
 ## Commit-time regression gate
@@ -136,18 +153,19 @@ loading extra files that desync every row-count assertion in this suite.
 - Progress overlay during Plot Channel Events
 - Plot a strict subset of rows, verify curve count
 - Plot all rows, verify count, title, and y-axis label
-- Run DJF Pipeline becomes enabled after plotting
+- Cell Cycle Modeling becomes enabled after plotting
 - Turning rows off removes lines; turning them back on restores them
 - Data cache retained for unchecked rows
 - Channel change clears curves, resets button, reloads data, replots
 
 ### E2E — DJF pipeline
-- Manual Stage 0&ndash;8 controls store each checkpoint in original event order
+- Pre-modeling QC toggles (Stage 0&ndash;3) and manual Stage 5&ndash;8 DJF
+  buttons each store their own checkpoint in original event order
 - Time QC, FSC/SSC gating, and pulse-geometry gating exercise non-skip paths
-- Stage 2 opens a populated scatter/gate editor; dragging changes the center,
-  the coverage control resizes the ellipse, both change the authoritative
-  raw-index mask, reset restores the fitted gate, and Stage 3 consumes the
-  manually edited retained-event set
+- Turning on the Cell Gate QC toggle opens a populated scatter/gate editor;
+  dragging changes the center, the coverage control resizes the ellipse, both
+  change the authoritative raw-index mask, reset restores the fitted gate,
+  and the Singlet Gate consumes the manually edited retained-event set
 - Histogram and fitted component overlays render at the appropriate stages
 - Biological 1C + S + 2C fractions sum to ~100 %
 - Run all retains every checkpoint product and updates the report/status UI

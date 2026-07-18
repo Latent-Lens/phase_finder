@@ -1,4 +1,4 @@
-// Stage 4: build a masked, linear DNA-content histogram.
+// Build a masked, linear DNA-content histogram.
 
 const DEFAULT_BIN_COUNT = 512;
 
@@ -108,9 +108,13 @@ export function resolveHistogramRange(retainedValues, options = {}) {
 /**
  * Generate Stage 4's histogram from index-aligned DNA values and final mask.
  *
- * Exact values at `max` are assigned to the final bin. Values beyond an
- * explicitly supplied range are omitted. `x`, `y`, and `counts` are plain
- * arrays so they can pass directly to the fitter and plot layer.
+ * Exact values at `max` are assigned to the final bin. Values below/above an
+ * explicitly supplied range are excluded from binning but counted separately
+ * as `underflow`/`overflow`, so `underflow + binnedCount + overflow ===
+ * retainedCount` always holds. `x`/`centers`, `y`/`counts`, and `edges` are
+ * plain arrays so they can pass directly to the fitter, peak-region overlay,
+ * and plot layer. `options.dnaChannel` is purely descriptive and echoed back
+ * on the result; this module has no row/pipeline concept of its own.
  */
 export function generateHistogram(
   dnaValues,
@@ -138,35 +142,48 @@ export function generateHistogram(
   }
   const y = new Array(binCount).fill(0);
   let binnedCount = 0;
+  let underflow = 0;
+  let overflow = 0;
 
   for (const value of retainedValues) {
-    if (value < min || value > max) continue;
+    if (value < min) { underflow += 1; continue; }
+    if (value > max) { overflow += 1; continue; }
 
+    // value is in [min, max], so this is always within [0, binCount - 1].
     const binIndex = value === max
       ? binCount - 1
       : Math.min(binCount - 1, Math.floor((value - min) / binWidth));
 
-    if (binIndex >= 0 && binIndex < binCount) {
-      y[binIndex] += 1;
-      binnedCount += 1;
-    }
+    y[binIndex] += 1;
+    binnedCount += 1;
   }
 
   const x = Array.from(
     { length: binCount },
     (_, bin) => min + (bin + 0.5) * binWidth,
   );
+  const edges = Array.from(
+    { length: binCount + 1 },
+    (_, index) => min + index * binWidth,
+  );
 
   return {
     x,
     y,
     counts: y,
+    centers: x,
+    edges,
     min,
     max,
     binWidth,
     binCount,
     retainedCount: retainedValues.length,
     binnedCount,
+    underflow,
+    overflow,
+    totalEvents: dnaValues.length,
+    dnaChannel: settings.dnaChannel ?? null,
+    scale: "linear",
   };
 }
 

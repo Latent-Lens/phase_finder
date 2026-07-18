@@ -1,4 +1,4 @@
-// Stage 5: detect a prominent lower/upper DNA peak pair near a 2:1 ratio.
+// Detect a prominent lower/upper DNA peak pair near a 2:1 ratio.
 
 import { gaussianSmooth } from "./math/gaussian.js";
 import { maximumValue } from "./math/stats.js";

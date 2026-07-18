@@ -1,4 +1,4 @@
-// Shared Dean-Jett-Fox base-model component evaluators.
+// Shared legacy bridge-model component evaluators.
 
 export const PARAMETER_INDEX = Object.freeze({
   MU1: 0,
