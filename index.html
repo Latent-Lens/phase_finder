@@ -120,6 +120,30 @@
               </div>
             </div>
           </section>
+          <section id="sidebar_modeling_section" class="sidebar_section sidebar_modeling_section" hidden>
+            <fieldset class="premodel_qc_group">
+              <legend>Pre-modeling QC Filtering</legend>
+              <div class="qc_gate_grid">
+                <div class="qc_gate_buttons_2x2">
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage0" data-tooltip-key="qcStructural" aria-pressed="false">1. Structural</button>
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage1" data-tooltip-key="qcTime" aria-pressed="false">2. Time</button>
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage2" data-tooltip-key="qcCellGate" aria-pressed="false">3. Cell Gate</button>
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage3" data-tooltip-key="qcSingletGate" aria-pressed="false">4. Singlet Gate</button>
+                </div>
+                <button type="button" class="qc_gate_button qc_gate_run_all quick_tooltip" id="qc_stage_all" data-tooltip-key="qcRunAll" aria-pressed="false">Run All</button>
+              </div>
+            </fieldset>
+            <div class="djf_pipeline_controls" role="group" aria-label="Manual Dean-Jett-Fox pipeline stages">
+              <span class="djf_pipeline_label">DJF Pipeline (manual)</span>
+              <div class="djf_pipeline_buttons">
+                <button id="djf_stage5" type="button">Stage 5: Peaks</button>
+                <button id="djf_stage6" type="button">Stage 6: Fit DJF</button>
+                <button id="djf_stage7" type="button">Stage 7 (opt): Debris/Aggregate</button>
+                <button id="djf_stage8" type="button">Stage 8: Report</button>
+                <button id="djf_run_all" class="djf_run_all" type="button">Run all</button>
+              </div>
+            </div>
+          </section>
           <section class="sidebar_section sidebar_actions">
             <button
               id="start_analysis_button"
@@ -137,7 +161,7 @@
               data-tooltip-key="cellCycleModelingDisabled"
               disabled
             >
-              Run DJF Pipeline
+              Cell Cycle Modeling
             </button>
             <button
               id="calculate_stats_button"
@@ -147,6 +171,15 @@
               disabled
             >
               Calculate Statistics
+            </button>
+            <button
+              id="sidebar_back_button"
+              class="sidebar_back_button sidebar_plot_button quick_tooltip"
+              type="button"
+              data-tooltip-key="backToFiles"
+              hidden
+            >
+              Back
             </button>
           </section>
         </div>
@@ -162,7 +195,7 @@
           <button id="collapsed_plot_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="plotChannelEvents" aria-label="Plot channel events" disabled>
             <img class="sidebar_collapsed_histogram_icon" src="./assets/img/histogram.svg" alt="" aria-hidden="true" />
           </button>
-          <button id="collapsed_cell_cycle_modeling_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="cellCycleModelingDisabled" aria-label="DJF pipeline (disabled until channel is plotted)" disabled>
+          <button id="collapsed_cell_cycle_modeling_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="cellCycleModelingDisabled" aria-label="Cell Cycle Modeling (disabled until channel is plotted)" disabled>
             <img class="sidebar_collapsed_function_icon" src="./assets/img/function_icon.svg" alt="" aria-hidden="true" />
           </button>
           <button id="collapsed_calculate_stats_button" class="sidebar_collapsed_plot_button quick_tooltip" type="button" data-tooltip-key="calculateStats" aria-label="Calculate statistics" disabled>
@@ -202,28 +235,6 @@
                   <option value="bins">Bins</option>
                 </select>
               </label>
-              <fieldset class="premodel_qc_group">
-                <legend>Pre-modeling QC Filtering</legend>
-                <div class="qc_gate_grid">
-                  <div class="qc_gate_buttons_2x2">
-                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage0" data-tooltip-key="qcStructural" aria-pressed="false">1. Structural</button>
-                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage1" data-tooltip-key="qcTime" aria-pressed="false">2. Time</button>
-                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage2" data-tooltip-key="qcCellGate" aria-pressed="false">3. Cell Gate</button>
-                    <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage3" data-tooltip-key="qcSingletGate" aria-pressed="false">4. Singlet Gate</button>
-                  </div>
-                  <button type="button" class="qc_gate_button qc_gate_run_all quick_tooltip" id="qc_stage_all" data-tooltip-key="qcRunAll" aria-pressed="false">Run All</button>
-                </div>
-              </fieldset>
-              <div class="djf_pipeline_controls" role="group" aria-label="Manual Dean-Jett-Fox pipeline stages">
-                <span class="djf_pipeline_label">DJF Pipeline (manual)</span>
-                <div class="djf_pipeline_buttons">
-                  <button id="djf_stage5" type="button">Stage 5: Peaks</button>
-                  <button id="djf_stage6" type="button">Stage 6: Fit DJF</button>
-                  <button id="djf_stage7" type="button">Stage 7 (opt): Debris/Aggregate</button>
-                  <button id="djf_stage8" type="button">Stage 8: Report</button>
-                  <button id="djf_run_all" class="djf_run_all" type="button">Run all</button>
-                </div>
-              </div>
             </div>
             <div id="plot_area" class="table_wrap"></div>
             </div>

@@ -67,7 +67,7 @@
           <h2>1. Overview</h2>
           <p>PhaseFinder's screen is organized into these areas:</p>
           <ul>
-            <li><strong>Sidebar</strong> (left) &mdash; drop zone for FCS files, the DNA-content channel selector, and the main action buttons (<span class="ui_label">Plot Channel Events</span>, <span class="ui_label">Run DJF Pipeline</span>, <span class="ui_label">Calculate Statistics</span>).</li>
+            <li><strong>Sidebar</strong> (left) &mdash; drop zone for FCS files, the DNA-content channel selector, and the main action buttons (<span class="ui_label">Plot Channel Events</span>, <span class="ui_label">Cell Cycle Modeling</span>, <span class="ui_label">Calculate Statistics</span>). <span class="ui_label">Cell Cycle Modeling</span> switches the sidebar into a modeling view that holds the Pre-modeling QC filters and the manual DJF pipeline controls; <span class="ui_label">Back</span> returns it to the file/channel controls.</li>
             <li><strong>Plot panel</strong> (top of the workspace) &mdash; appears once you plot a channel; shows the overlaid event histogram, its controls, and (once modeling starts) the DJF fit overlay and results table.</li>
             <li><strong>Metadata table panel</strong> (bottom of the workspace) &mdash; one row per loaded FCS file with editable annotations, sorting, filtering, and optional summary-statistics columns.</li>
             <li><strong>Header</strong> (top) &mdash; the PhaseFinder logo plus <span class="ui_label">Help</span>, <span class="ui_label">Load session</span>, and <span class="ui_label">Save session</span>.</li>
@@ -240,7 +240,7 @@
             </div>
             <figcaption>After modeling starts, PhaseFinder overlays the fitted DJF curve/components and adds fit percentages and phase parameters beside the plot.</figcaption>
           </figure>
-          <p>Once a channel is plotted, <span class="ui_label">Run DJF Pipeline</span> and the nine stage buttons become available. Each stage runs for every currently plotted sample and stores its own masks, diagnostics, histogram, fit, or report. Use the individual buttons while inspecting a dataset, or <span class="ui_label">Run all</span> for the complete Stage 0&ndash;8 sequence.</p>
+          <p>Once a channel is plotted, click <span class="ui_label">Cell Cycle Modeling</span> in the sidebar. The file and channel controls slide away and the sidebar reveals the <span class="ui_label">Pre-modeling QC Filtering</span> box (Stage 0&ndash;3: Structural, Time, Cell Gate, Singlet Gate &mdash; toggle individually or with their own <span class="ui_label">Run All</span>) and the <span class="ui_label">DJF Pipeline (manual)</span> Stage 5&ndash;8 buttons; moving these out of the plot panel also gives the histogram more height. Each stage runs for every currently plotted sample and stores its own masks, diagnostics, histogram, fit, or report. Use the individual Stage 5&ndash;8 buttons while inspecting a dataset, or <span class="ui_label">Run all</span> to execute Stage 5&ndash;8 in sequence &mdash; QC (Stage 0&ndash;3) is a separate action, applied on its own before modeling. <span class="ui_label">Back</span> returns the sidebar to the file/channel controls without losing any modeling progress.</p>
           <p>The fit uses a G1 Gaussian, a G2 Gaussian constrained near twice the G1 mean, and an S-phase bridge. PhaseFinder overlays the fitted total plus filled G1/S/G2 components; selected debris or aggregate terms are shown separately. The readout beneath the controls lists normalized <strong>%1C &middot; %S &middot; %2C</strong> fractions and warning counts.</p>
 
           <h3 id="pipeline-stages">Pipeline stages</h3>
@@ -338,7 +338,7 @@
             <li>Confirm (or change) the DNA-content channel in the sidebar.</li>
             <li>Check the rows you want in the plot &mdash; unchecking removes a sample without losing its already-loaded data.</li>
             <li>Click <span class="ui_label">Plot Channel Events</span>. Adjust <strong>Color by</strong>, <strong>Display</strong>, and <strong>Bins</strong>.</li>
-            <li>Run individual Stage 0&ndash;8 controls to inspect checkpoints, or click <span class="ui_label">Run DJF Pipeline</span> / <span class="ui_label">Run all</span> for the complete analysis. Review the overlay, normalized fractions, contamination accounting, and diagnostics.</li>
+            <li>Click <span class="ui_label">Cell Cycle Modeling</span> to open the modeling controls in the sidebar. Apply the Pre-modeling QC filters you want (Stage 0&ndash;3), then run the manual Stage 5&ndash;8 controls to inspect checkpoints, or click <span class="ui_label">Run all</span> to execute Stage 5&ndash;8 in sequence. Review the overlay, normalized fractions, contamination accounting, and diagnostics.</li>
             <li>Optionally, use <span class="ui_label">Calculate Statistics</span> to compute per-file summary statistics for any channel, and export the table to TSV for use elsewhere.</li>
             <li>Click <span class="ui_label">Save session</span> before closing the tab so you (or a collaborator) can resume this same analysis later.</li>
           </ol>

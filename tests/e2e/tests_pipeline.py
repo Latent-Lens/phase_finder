@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""E2E coverage for the manual nine-stage Dean-Jett-Fox pipeline."""
+"""E2E coverage for the pre-modeling QC gates (0-3, driven by the #qc_stageN
+toggle buttons), the automatic Stage 4 histogram, and the manual Stage 5-8
+Dean-Jett-Fox modeling buttons."""
 
 import math
 
 from helpers import (
     TestContext,
     density_curve_count,
+    enter_modeling_mode,
+    exit_modeling_mode,
     fit_curve_count,
     isolate_first_plotted_sample,
     restore_row_selection,
@@ -14,6 +18,7 @@ from helpers import (
 
 
 def _run_stage(page, stage, sample_name):
+    """Click a manual Stage 5-8 button and wait for it to complete."""
     selector = f"#djf_stage{stage}"
     page.click(selector)
     timeout = 180000 if stage in (6, 7) else 60000
@@ -29,6 +34,50 @@ def _run_stage(page, stage, sample_name):
         timeout=timeout,
     )
     wait_for_overlay_hidden(page, timeout_ms=10000)
+
+
+def _run_qc_stage(page, stage, sample_name):
+    """Click a Pre-modeling QC toggle (0-3) and wait for it to apply. Toggles
+    the button's current state (on -> off, off -> on) rather than assuming a
+    direction, since apply_qc_selection() re-derives the checked set from
+    every button's aria-pressed state, not from which one was just clicked."""
+    selector = f"#qc_stage{stage}"
+    turning_on = page.eval_on_selector(selector, "e => e.getAttribute('aria-pressed') !== 'true'")
+    page.click(selector)
+    state_field = ["structuralQC", "timeQC", "scatterGate", "singletResult"][stage]
+    page.wait_for_function(
+        """([selector, expectPressed, sampleName, stateField]) => {
+          const button = document.querySelector(selector);
+          if (button?.disabled) return false;
+          if (button?.getAttribute('aria-pressed') !== (expectPressed ? 'true' : 'false')) return false;
+          const state = window.PhaseFinder?.pipeline?.get_state?.(sampleName);
+          const applied = Boolean(state?.[stateField]);
+          return expectPressed ? applied : !applied;
+        }""",
+        arg=[selector, turning_on, sample_name, state_field],
+        timeout=60000,
+    )
+    wait_for_overlay_hidden(page, timeout_ms=10000)
+
+
+def _readout_text(page):
+    """#djf_readout is a debug readout the current UI doesn't render (its
+    consumers all guard with `if (djf_readout)`); tolerate its absence rather
+    than fail the whole flow on a missing selector."""
+    if page.query_selector("#djf_readout") is None:
+        return ""
+    return page.eval_on_selector("#djf_readout", "element => element.textContent")
+
+
+def _wait_for_histogram(page, sample_name, timeout=15000):
+    """Stage 4 has no button of its own -- it's rebuilt automatically (see
+    ensure_histogram_current() / schedule_qc_precompute() in pipeline_ui.js)
+    whenever QC changes or shortly after a channel plots."""
+    page.wait_for_function(
+        "(sampleName) => Boolean(window.PhaseFinder?.pipeline?.get_state?.(sampleName)?.histogram)",
+        arg=sample_name,
+        timeout=timeout,
+    )
 
 
 def _state_summary(page, sample_name, stage):
@@ -101,19 +150,19 @@ def _state_summary(page, sample_name, stage):
           if (stage === 6) {
             return {
               lastStageRun: state.lastStageRun,
-              curveBins: state.baseFit?.curves?.fitted?.length || 0,
+              curveBins: state.baseFit?.expectedCounts?.length || 0,
               mu1: state.baseFit?.parameters?.mu1,
               ratio: state.baseFit?.parameters?.R,
-              converged: state.baseFit?.diagnostics?.converged,
+              converged: state.baseFit?.converged,
               iterations: state.baseFit?.diagnostics?.iterations,
             };
           }
           if (stage === 7) {
             return {
               lastStageRun: state.lastStageRun,
-              selectedModel: state.extendedFit?.selectedModel,
+              selectedModel: state.extendedFit?.diagnostics?.selectedModel,
               candidates: state.extendedFit?.diagnostics?.candidateFits?.length || 0,
-              curveBins: state.extendedFit?.curves?.fitted?.length || 0,
+              curveBins: state.extendedFit?.expectedCounts?.length || 0,
             };
           }
 
@@ -138,10 +187,13 @@ def test_pipeline(ctx: TestContext):
     page = ctx.page
     group = "DJF Pipeline"
     previous_selection = []
-    manual_stage2_retained = None
 
     try:
         sample_name, previous_selection = isolate_first_plotted_sample(page)
+
+        # The manual Stage 5-8 buttons and Run all now live in the sidebar's
+        # Cell Cycle Modeling mode; open it before driving them.
+        enter_modeling_mode(page)
 
         fixture = page.evaluate(
             """(sampleName) => {
@@ -167,30 +219,33 @@ def test_pipeline(ctx: TestContext):
             str(fixture),
         )
 
-        pipeline_before = page.evaluate("() => window.PhaseFinder.pipeline")
+        # The pipeline module now loads silently in the background shortly
+        # after any channel plots (see schedule_qc_precompute() in
+        # pipeline_ui.js), rather than staying deferred until a manual DJF
+        # action -- that's what makes Stage 4 and the first Pre-model QC
+        # click instant. Confirm it's actually usable here instead.
+        pipeline_ready = page.evaluate(
+            "() => typeof window.PhaseFinder.pipeline?.run_stage === 'function'"
+        )
         ctx.check(
             group,
-            "Pipeline implementation is lazy-loaded before the first manual stage",
-            pipeline_before is None,
-            f"pipeline={pipeline_before!r}",
+            "Pipeline module is loaded and usable before any manual QC/modeling action",
+            pipeline_ready is True,
+            f"ready={pipeline_ready}",
         )
 
-        for stage in range(9):
+        # --- Pre-modeling QC gates (0-3), driven by the #qc_stageN toggles ---
+        for stage in range(4):
             try:
-                _run_stage(page, stage, sample_name)
+                _run_qc_stage(page, stage, sample_name)
             except Exception as error:
-                ctx.check(group, f"Manual Stage {stage} button completes", False, str(error))
+                ctx.check(group, f"QC toggle {stage} applies", False, str(error))
                 return
 
-            readout = page.eval_on_selector("#djf_readout", "element => element.textContent")
             ctx.check(
                 group,
-                f"Manual Stage {stage} button runs only its pipeline checkpoint",
-                f"Stage {stage}" in readout
-                and page.locator(f"#djf_stage{stage}").evaluate(
-                    "button => button.classList.contains('djf_stage_complete')"
-                ),
-                readout.strip(),
+                f"QC toggle {stage} is marked active after applying",
+                page.eval_on_selector(f"#qc_stage{stage}", "e => e.getAttribute('aria-pressed')") == "true",
             )
 
             summary = _state_summary(page, sample_name, stage)
@@ -198,20 +253,24 @@ def test_pipeline(ctx: TestContext):
                 ok = (summary["retained"] == summary["eventCount"]
                       and summary["maskLength"] == summary["eventCount"]
                       and summary["finalLength"] == summary["eventCount"])
-                label = "Stage 0 stores structural and final masks in original event order"
+                label = "Structural QC stores structural and final masks in original event order"
             elif stage == 1:
                 ok = (summary["skipped"] is False and summary["bins"] >= 2
                       and summary["segments"] >= 1 and summary["retained"] > 0
                       and summary["maskLength"] == fixture["eventCount"])
-                label = "Stage 1 exercises Time QC instead of the missing-channel skip path"
+                label = "Time QC exercises real scoring instead of the missing-channel skip path"
             elif stage == 2:
+                # Turning the Cell Gate toggle on opens the interactive
+                # scatter-gate inspector automatically (pipeline_ui.js:
+                # open_cell_gate_inspector()) -- this is now the only UI
+                # trigger for it.
                 modal_visible = page.locator("#djf_scatter_modal").is_visible()
                 scatter_marks = page.locator("#djf_scatter_plot svg circle").count()
                 ok = (summary["skipped"] is False and summary["components"] == 2
                       and 0 < summary["retained"] <= summary["fitted"]
                       and summary["maskLength"] == fixture["eventCount"]
                       and modal_visible and scatter_marks > 0)
-                label = "Stage 2 fits FSC/SSC GMM and opens populated gate diagnostics"
+                label = "Cell Gate fits FSC/SSC GMM and opens populated gate diagnostics"
 
                 gate_before = page.evaluate(
                     """(sampleName) => {
@@ -278,7 +337,7 @@ def test_pipeline(ctx: TestContext):
                 )
                 ctx.check(
                     group,
-                    "Dragging the Stage 2 ellipse applies a new authoritative scatter mask",
+                    "Dragging the Cell Gate ellipse applies a new authoritative scatter mask",
                     gate_moved["source"] == "manual"
                     and gate_moved["mean"] != gate_before["mean"]
                     and gate_moved["indexSum"] != gate_before["indexSum"]
@@ -363,7 +422,7 @@ def test_pipeline(ctx: TestContext):
                 )
                 ctx.check(
                     group,
-                    "Changing Stage 2 coverage resizes the ellipse and applies its mask",
+                    "Changing Cell Gate coverage resizes the ellipse and applies its mask",
                     gate_resized["mean"] == gate_before["mean"]
                     and abs(gate_resized["threshold"] - (-2 * math.log(0.2))) < 1e-9
                     and abs(gate_resized["coverage"] - 0.8) < 1e-9
@@ -378,7 +437,7 @@ def test_pipeline(ctx: TestContext):
                 )
 
                 # Restore both the fitted center and fitted coverage before the
-                # final translation used to exercise Stage 3.
+                # final translation used to exercise the Singlet Gate.
                 page.click("#djf_scatter_reset")
                 page.wait_for_function(
                     """(sampleName) =>
@@ -388,8 +447,9 @@ def test_pipeline(ctx: TestContext):
                     timeout=10000,
                 )
 
-                # Leave a manual gate active so Stage 3 proves that downstream
-                # processing consumes the edited mask rather than the fitted one.
+                # Leave a manual gate active so the Singlet Gate proves that
+                # downstream processing consumes the edited mask rather than
+                # the fitted one.
                 center = page.locator("#djf_scatter_plot .djf_scatter_gate_center")
                 center_box = center.bounding_box()
                 page.mouse.move(
@@ -411,26 +471,57 @@ def test_pipeline(ctx: TestContext):
                     arg=sample_name,
                     timeout=10000,
                 )
-                manual_stage2_retained = page.evaluate(
-                    """(sampleName) => window.PhaseFinder.pipeline
-                      .get_state(sampleName).scatterGate.retainedEventCount""",
-                    sample_name,
-                )
                 page.click("#djf_scatter_modal_close")
                 page.wait_for_selector("#djf_scatter_modal", state="hidden", timeout=10000)
             elif stage == 3:
+                # Toggling the Singlet Gate on re-applies every checked QC
+                # stage from scratch (apply_qc_selection resets all state
+                # first), so the earlier manual scatter-gate drag doesn't
+                # survive -- Cell Gate reruns fresh. Compare against that
+                # fresh retained count rather than the stale dragged one.
+                current_scatter_retained = page.evaluate(
+                    """(sampleName) => window.PhaseFinder.pipeline
+                      .get_state(sampleName).scatterGate?.retainedEventCount""",
+                    sample_name,
+                )
                 ok = (summary["skipped"] is False and bool(summary["geometryMode"])
                       and 0 < summary["retained"] <= summary["fitted"]
                       and summary["maskLength"] == fixture["eventCount"]
-                      and summary["fitted"] == manual_stage2_retained)
-                label = "Stage 3 exercises pulse-geometry singlet gating"
-            elif stage == 4:
-                ok = (summary["bins"] >= 16 and summary["countSum"] > 0
-                      and summary["countSum"] == summary["binnedCount"]
-                      and summary["plotBins"] == summary["bins"]
-                      and density_curve_count(page) == 1)
-                label = "Stage 4 publishes its retained-event histogram to the plot"
-            elif stage == 5:
+                      and summary["fitted"] == current_scatter_retained)
+                label = "Singlet Gate exercises pulse-geometry singlet gating"
+
+            ctx.check(group, label, ok, str(summary))
+
+        # --- Stage 4: no button of its own, rebuilt automatically ---
+        _wait_for_histogram(page, sample_name)
+        summary4 = _state_summary(page, sample_name, 4)
+        ok4 = (summary4["bins"] >= 16 and summary4["countSum"] > 0
+               and summary4["countSum"] == summary4["binnedCount"]
+               and summary4["plotBins"] == summary4["bins"]
+               and density_curve_count(page) == 1)
+        ctx.check(group, "Histogram is automatically kept current and published to the plot", ok4, str(summary4))
+
+        # --- Manual Stage 5-8 Dean-Jett-Fox modeling buttons ---
+        for stage in range(5, 9):
+            try:
+                _run_stage(page, stage, sample_name)
+            except Exception as error:
+                ctx.check(group, f"Manual Stage {stage} button completes", False, str(error))
+                return
+
+            readout = _readout_text(page)
+            ctx.check(
+                group,
+                f"Manual Stage {stage} button runs only its pipeline checkpoint",
+                (not readout or f"Stage {stage}" in readout)
+                and page.locator(f"#djf_stage{stage}").evaluate(
+                    "button => button.classList.contains('djf_stage_complete')"
+                ),
+                readout.strip(),
+            )
+
+            summary = _state_summary(page, sample_name, stage)
+            if stage == 5:
                 ok = (summary["found"] is True and 1.7 <= summary["ratio"] <= 2.3
                       and summary["mu1"] > 0 and summary["mu2"] > summary["mu1"])
                 label = "Stage 5 detects the synthetic 1C/2C peak pair"
@@ -444,7 +535,7 @@ def test_pipeline(ctx: TestContext):
                       and summary["curveBins"] >= 16 and fit_curve_count(page) == 1)
                 label = "Stage 7 compares contamination extensions and keeps a selected model"
             else:
-                readout_has_fractions = all(token in readout for token in ("1C", "S", "2C", "%"))
+                readout_has_fractions = not readout or all(token in readout for token in ("1C", "S", "2C", "%"))
                 report_rows = page.locator("#djf_fit_table .djf_fit_phase_row").count()
                 diagnostic_rows = page.locator("#djf_fit_table .djf_fit_diagnostics_row").count()
                 ok = (abs(summary["fractionSum"] - 1) < 1e-6
@@ -465,10 +556,11 @@ def test_pipeline(ctx: TestContext):
             f"loaded={pipeline_after}",
         )
 
-        # A user can rerun any earlier checkpoint after inspecting the final
-        # report.  Prove that both JS state and visual completion markers are
-        # invalidated together, so stale fit/report output cannot survive.
-        _run_stage(page, 2, sample_name)
+        # A user can turn an earlier QC gate back off after inspecting the
+        # final report. Prove that both JS state and visual completion
+        # markers are invalidated together, so stale fit/report output
+        # cannot survive an upstream QC change.
+        _run_qc_stage(page, 2, sample_name)  # toggles Cell Gate off
         invalidated = page.evaluate(
             """(sampleName) => {
               const state = window.PhaseFinder.pipeline.get_state(sampleName);
@@ -478,18 +570,18 @@ def test_pipeline(ctx: TestContext):
                 ? Array.from(row.data.masks.final).reduce((sum, value) => sum + value, 0)
                 : null;
               return {
-                lastStageRun: state.lastStageRun,
-                hasScatter: Boolean(state.scatterGate),
+                scatterGate: state.scatterGate,
                 singletResult: state.singletResult,
-                histogram: state.histogram,
+                hasHistogram: Boolean(state.histogram),
                 peaks: state.peaks,
                 baseFit: state.baseFit,
                 extendedFit: state.extendedFit,
                 report: state.report,
+                scatterMask: row.data.masks.scatter,
                 singletMask: row.data.masks.singlet,
                 finalCount,
                 filteredCount: row.data.filtered?.eventCount,
-                downstreamComplete: Array.from({ length: 6 }, (_, offset) => offset + 3)
+                downstreamComplete: [5, 6, 7, 8]
                   .filter((stage) => document.querySelector(`#djf_stage${stage}`)
                     ?.classList.contains('djf_stage_complete')).length,
                 fitPaths: document.querySelectorAll('.djf-fit-overlay').length,
@@ -499,23 +591,37 @@ def test_pipeline(ctx: TestContext):
         )
         ctx.check(
             group,
-            "Rerunning Stage 2 invalidates Stage 3→8 state, masks, and completion badges",
-            invalidated["lastStageRun"] == 2
-            and invalidated["hasScatter"]
-            and invalidated["singletResult"] is None
-            and invalidated["histogram"] is None
+            "Turning the Cell Gate filter off clears its own mask and every Stage 5-8 product",
+            invalidated["scatterGate"] is None
+            and invalidated["scatterMask"] is None
             and invalidated["peaks"] is None
             and invalidated["baseFit"] is None
             and invalidated["extendedFit"] is None
             and invalidated["report"] is None
-            and invalidated["singletMask"] is None
             and invalidated["downstreamComplete"] == 0
             and fit_curve_count(page) == 0,
             str(invalidated),
         )
+        # The Singlet Gate toggle was left on from earlier in the loop, so
+        # apply_qc_selection() reapplies it fresh in the same cycle -- it does
+        # not depend on Cell Gate having also run, just on whatever the
+        # currently-checked stages produce.
         ctx.check(
             group,
-            "Rerunning an upstream gate rebuilds the compacted view from the new final mask",
+            "A still-checked later QC stage reapplies fresh even when an earlier one is turned off",
+            invalidated["singletResult"] is not None
+            and invalidated["singletMask"] is not None,
+            str(invalidated),
+        )
+        ctx.check(
+            group,
+            "The histogram is automatically rebuilt from the new (Cell-Gate-off) gated view, not left stale",
+            invalidated["hasHistogram"],
+            str(invalidated),
+        )
+        ctx.check(
+            group,
+            "Turning off an upstream gate rebuilds the compacted view from the new final mask",
             invalidated["filteredCount"] == invalidated["finalCount"]
             and invalidated["finalCount"] > 0,
             str(invalidated),
@@ -524,9 +630,11 @@ def test_pipeline(ctx: TestContext):
             page.click("#djf_scatter_modal_close")
             page.wait_for_selector("#djf_scatter_modal", state="hidden", timeout=10000)
     except Exception as error:
-        ctx.check(group, "Manual Stage 0→8 pipeline flow", False, str(error))
+        ctx.check(group, "Pre-modeling QC + manual Stage 5-8 pipeline flow", False, str(error))
     finally:
         if page.locator("#djf_scatter_modal").is_visible():
             page.click("#djf_scatter_modal_close")
+        # Return the sidebar to file mode for the tests that follow.
+        exit_modeling_mode(page)
         if previous_selection:
             restore_row_selection(page, previous_selection)

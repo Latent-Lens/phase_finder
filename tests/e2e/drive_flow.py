@@ -50,7 +50,7 @@ from tests_filtering import test_table_filtering_sorting
 from tests_plotting import test_plotting
 from tests_pipeline import test_pipeline
 from tests_modeling import test_modeling
-from tests_sidebar import test_sidebar_icons
+from tests_sidebar import test_sidebar_icons, test_sidebar_modeling_mode
 from tests_stats import test_summary_statistics
 from tests_metadata_wizard import test_metadata_wizard
 from tests_metadata_table import test_metadata_table_actions
@@ -122,6 +122,7 @@ def run(args):
         test_pipeline(e2e_ctx)
         test_modeling(e2e_ctx)
         test_sidebar_icons(e2e_ctx)
+        test_sidebar_modeling_mode(e2e_ctx)
         test_summary_statistics(e2e_ctx)
         test_metadata_wizard(e2e_ctx)
         test_metadata_table_actions(e2e_ctx)

@@ -26,6 +26,11 @@
 .sidebar_title_row h2 {
   margin: 0;
   line-height: 1.2;
+  transition: opacity 150ms ease;
+}
+
+.sidebar_title_row h2.sidebar_mode_fading {
+  opacity: 0;
 }
 
 .sidebar_content {
@@ -36,8 +41,16 @@
   flex-direction: column;
   gap: 0;
   transition:
-    opacity 120ms ease,
+    opacity 150ms ease,
+    transform 150ms ease,
     visibility 120ms ease;
+}
+
+/* Cross-dissolve applied by set_sidebar_modeling_mode() while it swaps which
+   sidebar controls are visible. */
+.sidebar_content.sidebar_mode_fading {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .sidebar_section {
@@ -350,8 +363,8 @@
   gap: 8px;
 }
 
-/* Compact action buttons: Plot + Run DJF share the top row, Calculate
-   Statistics spans the full width below. */
+/* Compact action buttons: Plot + Cell Cycle Modeling share the top row,
+   Calculate Statistics spans the full width below. */
 .sidebar_actions .sidebar_plot_button {
   min-height: 34px;
   min-width: 0;
@@ -408,4 +421,77 @@
   max-width: 100%;
   font-size: 0.72rem;
   padding: 2px 3px;
+}
+
+/* ── Cell Cycle Modeling mode ────────────────────────────────────────────────
+   set_sidebar_modeling_mode() adds .sidebar_modeling_mode on .app. It hides the
+   file/channel controls and the file-mode action buttons, and reveals the
+   relocated Pre-modeling QC + manual DJF controls (#sidebar_modeling_section)
+   and the Back button. Elements are display-toggled (not destroyed), so file,
+   channel, QC, and DJF state all persist across enter/Back. The two revealed
+   blocks are hidden in file mode via their [hidden] attribute; the rules below
+   win over [hidden] (author origin beats the UA rule) once the mode is active.
+   ──────────────────────────────────────────────────────────────────────────── */
+.app.sidebar_modeling_mode #file_upload_section,
+.app.sidebar_modeling_mode .sidebar_section.controls,
+.app.sidebar_modeling_mode #start_analysis_button,
+.app.sidebar_modeling_mode #cell_cycle_modeling_button,
+.app.sidebar_modeling_mode #calculate_stats_button {
+  display: none;
+}
+
+.app.sidebar_modeling_mode #sidebar_modeling_section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  /* It becomes the top-most visible section, so drop the
+     .sidebar_section + .sidebar_section separator it would otherwise inherit
+     from the (now hidden) .controls section before it. */
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.app.sidebar_modeling_mode .sidebar_back_button {
+  display: block;
+  grid-column: 1 / -1;
+}
+
+/* Narrow-column layout for the relocated control boxes (they were laid out
+   horizontally in the wide plot panel). */
+.sidebar_modeling_section .premodel_qc_group,
+.sidebar_modeling_section .qc_gate_grid,
+.sidebar_modeling_section .djf_pipeline_controls {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.sidebar_modeling_section .qc_gate_run_all {
+  align-self: stretch;
+  padding: 8px 14px;
+}
+
+.sidebar_modeling_section .djf_pipeline_label {
+  padding-top: 0;
+}
+
+.sidebar_modeling_section .djf_pipeline_buttons {
+  flex-direction: column;
+}
+
+.sidebar_modeling_section .djf_pipeline_buttons button {
+  width: 100%;
+  white-space: normal;
+}
+
+/* The JS already applies the mode swap instantly under reduced motion; zero the
+   cross-dissolve transitions too so nothing eases. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar_content,
+  .sidebar_title_row h2 {
+    transition: none;
+  }
 }
