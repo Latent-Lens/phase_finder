@@ -79,8 +79,8 @@ import {
 import { get_session_table_state, apply_session_state } from "./session/table_session.js";
 import { init_plot_listeners, plot_api } from "./plotting/axis_modal.js";
 import { init_analysis_listeners } from "./analysis/start.js";
-import { init_pipeline_ui } from "./analysis/djf/pipeline_ui.js";
-import { get_pipeline } from "./analysis/djf/pipeline_loader.js";
+import { init_pipeline_ui } from "./analysis/pipeline_ui.js";
+import { get_pipeline } from "./analysis/pipeline_loader.js";
 import { init_stats } from "./analysis/stats.js";
 import { init_panel_resize } from "./ui/panel_resize.js";
 import { init_remove_columns } from "./ui/column_remove.js";
@@ -283,7 +283,7 @@ init_tooltips();            // ui/hover_text.js tooltip runtime
 init_app_bootstrap();       // main.js event wiring + initial render
 init_plot_listeners();      // plotting/axis_modal.js listener block
 init_analysis_listeners();  // analysis/start.js listener block
-init_pipeline_ui();         // analysis/djf/pipeline_ui.js manual stage controls
+init_pipeline_ui();         // analysis/pipeline_ui.js manual stage controls
 init_stats();               // analysis/stats.js modal + auto-compute
 init_panel_resize();        // ui/panel_resize.js drag handlers
 init_remove_columns();      // ui/column_remove.js remove-columns mode

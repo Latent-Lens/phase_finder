@@ -1,4 +1,4 @@
-// Shared Gaussian/log-domain helpers for the staged DJF pipeline.
+// Shared Gaussian/log-domain helpers for the cell-cycle pipeline.
 
 import { invertCovariance2D } from "./linalg2d.js";
 

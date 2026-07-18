@@ -1,4 +1,4 @@
-// Stage 7: optional debris/aggregate extension with conservative selection.
+// Optional debris/aggregate extension with conservative selection.
 //
 // This intentionally ports the source implementation's simple contamination
 // model: aggregate = 0.5 * p * F(x / 2), plus a left-edge exponential debris

@@ -223,7 +223,7 @@ The historical source can be inspected without changing the working tree:
 
 ```bash
 git show 7b5bed9:js/analysis/djf.js
-git diff 7b5bed9..HEAD -- js/analysis/djf.js js/analysis/djf/
+git diff 7b5bed9..HEAD -- js/analysis/djf.js js/analysis/
 ```
 
 The legacy numeric core first appeared under earlier names (`js/djf_gpt.js`,
@@ -259,7 +259,7 @@ This is the largest mathematical difference.
 <thead>
 <tr>
 <th width="50%">Legacy — <code>7b5bed9:js/analysis/djf.js</code></th>
-<th width="50%">Staged — <a href="../js/analysis/djf/djf_components.js"><code>djf_components.js</code></a></th>
+<th width="50%">Staged — <a href="../js/analysis/djf_components.js"><code>djf_components.js</code></a></th>
 </tr>
 </thead>
 <tbody>
@@ -303,7 +303,7 @@ export function evaluateSBridge(
 </table>
 
 Sources: legacy lines 16 and 366–391; current
-[`djf_components.js`](../js/analysis/djf/djf_components.js), especially
+[`djf_components.js`](../js/analysis/djf_components.js), especially
 `gaussianPeak`, `evaluateSBridge`, and `evaluateBaseAt`.
 
 Consequences:
@@ -389,8 +389,8 @@ const mu2 = ratio * mu1;</code></pre></td>
 
 Sources: legacy `estimate_run_g1`, `fit`, and the historical
 `js/plotting/render.js`; current
-[`stage6_fit.js`](../js/analysis/djf/stage6_fit.js) and
-[`djf_components.js`](../js/analysis/djf/djf_components.js).
+[`legacy_bridge_fit.js`](../js/analysis/legacy_bridge_fit.js) and
+[`djf_components.js`](../js/analysis/djf_components.js).
 
 When at least one plotted series supplied a valid detected G1/G2 pair, the
 legacy application estimated the median of those G1 positions and constrained
@@ -458,7 +458,7 @@ export function run_stage6(row, options = {}) {
 </tbody>
 </table>
 
-Source: current [`index.js`](../js/analysis/djf/index.js), `run_stage5` and
+Source: current [`cell_cycle_pipeline.js`](../js/analysis/cell_cycle_pipeline.js), `run_stage5` and
 `run_stage6`.
 
 Stage 6 detects its own candidates inside `initializeParameters()` and never
@@ -522,7 +522,7 @@ return [minimum, maximum];</code></pre></td>
 
 Sources: legacy `7b5bed9:js/plotting/data.js`,
 `shared_range_for_values`; current
-[`index.js`](../js/analysis/djf/index.js), `shared_histogram_range`.
+[`cell_cycle_pipeline.js`](../js/analysis/cell_cycle_pipeline.js), `shared_histogram_range`.
 
 On the normal legacy linear DNA axis, the effective range was
 `[0, sampled p99.5]`, recomputed with the histogram during rendering. In the
@@ -597,7 +597,7 @@ const threshold = kMAD * ridge.distanceMAD;
 </table>
 
 Sources: legacy `robust_ratio_mask` and `apply_aggregate_mask`; current
-[`stage3_singlet_gate.js`](../js/analysis/djf/stage3_singlet_gate.js).
+[`pulse_geometry_gate.js`](../js/analysis/pulse_geometry_gate.js).
 
 Precisely, the legacy code used a log A/H band and a log-width band. When both
 companions were usable, both masks were intersected. It required at least 64
@@ -661,7 +661,7 @@ function evaluateDebrisAt(xValue, xMinimum, parameters) {
 </table>
 
 Sources: legacy `debris_bounds` and `prepare_row`; current
-[`stage7_extend.js`](../js/analysis/djf/stage7_extend.js).
+[`debris_aggregate_extension.js`](../js/analysis/debris_aggregate_extension.js).
 
 The staged code also provides four event-removing pre-model QC stages:
 
@@ -725,7 +725,7 @@ const totalModeledArea = biologicalSingletTotal
 </table>
 
 Source: legacy `phase_stats`; current
-[`stage8_report.js`](../js/analysis/djf/stage8_report.js).
+[`cell_cycle_fit_report.js`](../js/analysis/cell_cycle_fit_report.js).
 
 The current biological G1/S/G2 fractions deliberately exclude aggregate and
 debris from their denominator. Contamination fractions are reported separately

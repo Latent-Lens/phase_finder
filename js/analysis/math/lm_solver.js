@@ -1,4 +1,4 @@
-// Small, dependency-free Levenberg-Marquardt primitives shared by DJF fits.
+// Small, dependency-free Levenberg-Marquardt primitives shared by cell-cycle fits.
 
 const DEFAULT_OPTIONS = Object.freeze({
   maxIterations: 150,
@@ -160,10 +160,20 @@ export function buildNormalEquations(jacobian, residuals, lambda) {
 }
 
 /**
- * Construct a forward finite-difference Jacobian.
+ * Construct a finite-difference Jacobian, projected through model constraints.
  *
  * `residualFn(parameters)` may return residuals directly, or an object with
- * `objectiveResiduals`/`residuals`. `projectFn` applies model constraints.
+ * `objectiveResiduals`/`residuals`. `projectFn` applies model constraints
+ * (e.g. clipping a parameter to a hard bound).
+ *
+ * Each free parameter is probed in both directions. When both a forward and a
+ * backward step survive projection unclipped, the column uses a central
+ * difference (second-order accurate). When only one side survives — the
+ * parameter sits at a bound and the other direction gets clipped back to the
+ * same value — the column uses a one-sided difference in that feasible
+ * ("inward") direction instead of silently zeroing out. Only when *neither*
+ * direction moves the parameter (it is fully pinned, e.g. by a degenerate
+ * bound) does the column stay zero, which is the correct derivative there.
  */
 export function buildFiniteDiffJacobian({
   parameters,
@@ -204,26 +214,52 @@ export function buildFiniteDiffJacobian({
       Math.abs(currentParameters[parameterIndex]),
       1,
     );
-    const perturbed = [...currentParameters];
-    perturbed[parameterIndex] += requestedStep;
 
-    const projected = asFiniteArray(projectFn(perturbed), "projected parameters");
-    if (projected.length !== currentParameters.length) {
+    const perturbedForward = [...currentParameters];
+    perturbedForward[parameterIndex] += requestedStep;
+    const projectedForward = asFiniteArray(projectFn(perturbedForward), "projected parameters");
+    if (projectedForward.length !== currentParameters.length) {
       throw new RangeError("projectFn must preserve the parameter-vector length.");
     }
+    const actualStepForward = projectedForward[parameterIndex] - currentParameters[parameterIndex];
+    const forwardFeasible = Math.abs(actualStepForward) >= Number.EPSILON;
 
-    const actualStep =
-      projected[parameterIndex] - currentParameters[parameterIndex];
-    if (Math.abs(actualStep) < Number.EPSILON) continue;
-
-    const perturbedResiduals = objectiveResidualsFrom(residualFn(projected));
-    if (perturbedResiduals.length !== residuals.length) {
-      throw new RangeError("residualFn must preserve the residual-vector length.");
+    const perturbedBackward = [...currentParameters];
+    perturbedBackward[parameterIndex] -= requestedStep;
+    const projectedBackward = asFiniteArray(projectFn(perturbedBackward), "projected parameters");
+    if (projectedBackward.length !== currentParameters.length) {
+      throw new RangeError("projectFn must preserve the parameter-vector length.");
     }
+    const actualStepBackward = projectedBackward[parameterIndex] - currentParameters[parameterIndex];
+    const backwardFeasible = Math.abs(actualStepBackward) >= Number.EPSILON;
 
-    for (let row = 0; row < residuals.length; row += 1) {
-      jacobian[row][column] =
-        (perturbedResiduals[row] - residuals[row]) / actualStep;
+    if (!forwardFeasible && !backwardFeasible) continue; // fully pinned; zero is correct
+
+    if (forwardFeasible && backwardFeasible) {
+      const residualsForward = objectiveResidualsFrom(residualFn(projectedForward));
+      const residualsBackward = objectiveResidualsFrom(residualFn(projectedBackward));
+      if (
+        residualsForward.length !== residuals.length ||
+        residualsBackward.length !== residuals.length
+      ) {
+        throw new RangeError("residualFn must preserve the residual-vector length.");
+      }
+      const stepSpread = actualStepForward - actualStepBackward;
+      for (let row = 0; row < residuals.length; row += 1) {
+        jacobian[row][column] =
+          (residualsForward[row] - residualsBackward[row]) / stepSpread;
+      }
+    } else {
+      const projected = forwardFeasible ? projectedForward : projectedBackward;
+      const actualStep = forwardFeasible ? actualStepForward : actualStepBackward;
+      const perturbedResiduals = objectiveResidualsFrom(residualFn(projected));
+      if (perturbedResiduals.length !== residuals.length) {
+        throw new RangeError("residualFn must preserve the residual-vector length.");
+      }
+      for (let row = 0; row < residuals.length; row += 1) {
+        jacobian[row][column] =
+          (perturbedResiduals[row] - residuals[row]) / actualStep;
+      }
     }
   }
 
@@ -253,6 +289,9 @@ export function runLevenbergMarquardt({
     }
   }
 
+  const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+  const shouldCancel = typeof options.shouldCancel === "function" ? options.shouldCancel : null;
+
   let parameters = asFiniteArray(
     projectFn(asFiniteArray(initialParameters, "initialParameters")),
     "projected parameters",
@@ -260,6 +299,7 @@ export function runLevenbergMarquardt({
   const indices = Array.from(freeIndices ?? freeParameterIndices ?? []);
   let lambda = options.initialLambda;
   let converged = indices.length === 0;
+  let cancelled = false;
   let iterations = 0;
 
   let evaluation = residualFn(parameters);
@@ -271,6 +311,11 @@ export function runLevenbergMarquardt({
     !converged && iterations <= options.maxIterations;
     iterations += 1
   ) {
+    if (shouldCancel && shouldCancel()) {
+      cancelled = true;
+      break;
+    }
+
     const jacobian = buildFiniteDiffJacobian({
       parameters,
       baseResiduals: residuals,
@@ -318,6 +363,22 @@ export function runLevenbergMarquardt({
       );
     }
 
+    // Post-projection displacement alone can't distinguish "genuinely
+    // converged" from "the raw LM step got clipped to ~zero by a bound."
+    // Require the *unprojected* step to be small too before trusting a small
+    // projected step as convergence evidence; a large raw step that keeps
+    // getting clipped means the solver is still trying to move, just blocked.
+    let rawRelativeStep = 0;
+    for (let index = 0; index < indices.length; index += 1) {
+      const parameterIndex = indices[index];
+      rawRelativeStep = Math.max(
+        rawRelativeStep,
+        Math.abs(delta[index]) / Math.max(Math.abs(parameters[parameterIndex]), 1),
+      );
+    }
+    const stepGenuinelySmall =
+      relativeStep < options.stepTolerance && rawRelativeStep < options.stepTolerance;
+
     if (Number.isFinite(trialSse) && trialSse < currentSse) {
       const relativeImprovement =
         (currentSse - trialSse) / Math.max(currentSse, 1);
@@ -328,10 +389,7 @@ export function runLevenbergMarquardt({
       currentSse = trialSse;
       lambda = Math.max(lambda / 3, options.minimumLambda);
 
-      if (
-        relativeImprovement < options.tolerance ||
-        relativeStep < options.stepTolerance
-      ) {
+      if (relativeImprovement < options.tolerance || stepGenuinelySmall) {
         converged = true;
       }
     } else {
@@ -340,12 +398,16 @@ export function runLevenbergMarquardt({
       if (
         Number.isFinite(trialSse) &&
         relativeDifference < options.tolerance &&
-        relativeStep < options.stepTolerance
+        stepGenuinelySmall
       ) {
         converged = true;
       } else {
         lambda = Math.min(lambda * 10, options.maximumLambda);
       }
+    }
+
+    if (onProgress) {
+      onProgress({ iteration: iterations, maxIterations: options.maxIterations, sse: currentSse, converged });
     }
   }
 
@@ -376,6 +438,7 @@ export function runLevenbergMarquardt({
     iterations: iterationsPerformed,
     converged,
     maxIterationsReached,
+    cancelled,
     finalLambda: lambda,
   };
 }

@@ -11,8 +11,8 @@ import {
   djf_scatter_coverage_value,
   djf_scatter_plot,
   djf_scatter_caption,
-} from "../../ui/dom.js";
-import { createScatterGateMask } from "./stage2_scatter_gate.js";
+} from "../ui/dom.js";
+import { createScatterGateMask } from "./scatter_gmm_gate.js";
 import { eigenDecomposition2D } from "./math/linalg2d.js";
 
 const MAX_SCATTER_POINTS = 10000;

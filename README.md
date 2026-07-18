@@ -85,7 +85,7 @@ vendored ESM bundle in `js/vendor/` (no runtime CDN dependency), loads the split
 stylesheets, lays out the header, file drop zone, channel selector, metadata
 table, plot panel, staged DJF controls, progress overlay, and bottom status bar,
 then loads the app through the single ES-module entry (`js/main.js`). The native
-DJF numeric modules under `js/analysis/djf/` are lazy-loaded on the first pipeline
+DJF numeric modules under `js/analysis/` are lazy-loaded on the first pipeline
 action, so they stay off the initial load path.
 
 Load order is no longer hand-maintained: it is the ES-module dependency graph
@@ -106,7 +106,7 @@ runtime:
 5. `js/io/channel_loading.js` imports the file getters and `FCSParser` to load
    index-aligned DNA A/H/W, FSC-A, SSC-A, and Time channels (via the module
    worker), then `js/plotting/modeling.js`'s `init_plot` draws the plot.
-6. `js/analysis/djf/pipeline_loader.js` dynamically imports the Stage 0–8
+6. `js/analysis/pipeline_loader.js` dynamically imports the Stage 0–8
    orchestrator on the first stage or Run-all action.
 
 The only runtime third-party library is:
@@ -209,7 +209,7 @@ across `data.js` (state, data preparation, and histogram binning), `modeling.js`
 (fit/report table), `render.js` (the main SVG render pass), and `axis_modal.js`
 (axis-range modal, plot-control listeners, and the `window.PhaseFinder.plot`
 inspection API). Rendering reads the latest available checkpoint from the
-per-sample state owned by `js/analysis/djf/pipeline_state.js`.
+per-sample state owned by `js/analysis/pipeline_state.js`.
 
 Important responsibilities:
 
@@ -235,8 +235,9 @@ Important responsibilities:
 ### `js/analysis/`
 
 The selected-data loading and panel orchestration layer, loaded after
-`js/plotting/`. The `js/analysis/djf/` directory contains the Stage 0–8 model,
-numeric helpers, per-sample state, lazy loader, and UI orchestration;
+`js/plotting/`. The Stage 0–8 model, numeric helpers under `js/analysis/math/`,
+per-sample state, lazy loader, and UI orchestration live directly under
+`js/analysis/`;
 `js/analysis/start.js` coordinates plotting/pipeline actions, and
 `js/analysis/stats.js` owns summary statistics. Selected FCS DATA loading is in
 `js/io/channel_loading.js`, using `js/io/parameter_map.js` for parameter-index
@@ -344,8 +345,12 @@ offline — no network access or CDN is needed at runtime.
 7. Check the rows that should be included in the plot.
 8. Click **Plot Channel Events**.
 9. Review the overlaid event histogram; adjust Color by / Bins.
-10. Run individual Stage 0–8 buttons for checkpoint diagnostics, or click
-    **Run all** / **Run DJF Pipeline** to execute the full analysis.
+10. Click **Cell Cycle Modeling** to open the modeling controls in the
+    sidebar. Apply the **Pre-modeling QC** filters you want (Stage 0–3,
+    individually or via their own **Run All**), then run the manual
+    **Stage 5–8** DJF buttons for checkpoint diagnostics, or click **Run
+    all** to execute Stage 5–8 in sequence; **Back** returns to the
+    file/channel controls.
 11. Review the fitted components, normalized phase fractions, contamination
     accounting, diagnostics, and warnings in the plot and report table.
 12. Check or uncheck rows to add or remove plotted samples live.

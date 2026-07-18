@@ -1,4 +1,4 @@
-// Stage 1: optional time-based acquisition QC.
+// Optional time-based acquisition QC.
 
 import { mad, median, quantileSorted } from "./math/stats.js";
 

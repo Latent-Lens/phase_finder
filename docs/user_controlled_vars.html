@@ -856,17 +856,17 @@
 
       <h2 id="sources">Current source-of-truth files</h2>
       <ul class="source-list">
-        <li><code>js/analysis/djf/index.js</code> — stage orchestration and option routing.</li>
-        <li><code>js/analysis/djf/pipeline_ui.js</code> — current manual-stage UI behavior.</li>
-        <li><code>js/analysis/djf/stage0_structural.js</code> — structural/PnR rules.</li>
-        <li><code>js/analysis/djf/stage1_time_qc.js</code> — Time QC defaults and bin scoring.</li>
-        <li><code>js/analysis/djf/stage2_scatter_gate.js</code> — GMM and scatter gate defaults.</li>
-        <li><code>js/analysis/djf/stage3_singlet_gate.js</code> — robust ridge and singlet gate.</li>
-        <li><code>js/analysis/djf/stage4_histogram.js</code> — masked linear histogram.</li>
-        <li><code>js/analysis/djf/stage5_peaks.js</code> — diagnostic peak-pair detection.</li>
-        <li><code>js/analysis/djf/stage6_fit.js</code> — base DJF fit and constraints.</li>
-        <li><code>js/analysis/djf/stage7_extend.js</code> — debris/aggregate candidates and selection.</li>
-        <li><code>js/analysis/djf/stage8_report.js</code> — fractions, diagnostics, and warning thresholds.</li>
+        <li><code>js/analysis/cell_cycle_pipeline.js</code> — stage orchestration and option routing.</li>
+        <li><code>js/analysis/pipeline_ui.js</code> — current manual-stage UI behavior.</li>
+        <li><code>js/analysis/structural_qc.js</code> — structural/PnR rules.</li>
+        <li><code>js/analysis/acquisition_time_qc.js</code> — Time QC defaults and bin scoring.</li>
+        <li><code>js/analysis/scatter_gmm_gate.js</code> — GMM and scatter gate defaults.</li>
+        <li><code>js/analysis/pulse_geometry_gate.js</code> — robust ridge and singlet gate.</li>
+        <li><code>js/analysis/dna_histogram.js</code> — masked linear histogram.</li>
+        <li><code>js/analysis/peak_detection.js</code> — diagnostic peak-pair detection.</li>
+        <li><code>js/analysis/legacy_bridge_fit.js</code> — compatibility base fit and constraints.</li>
+        <li><code>js/analysis/debris_aggregate_extension.js</code> — debris/aggregate candidates and selection.</li>
+        <li><code>js/analysis/cell_cycle_fit_report.js</code> — fractions, diagnostics, and warning thresholds.</li>
         <li><code>docs/djf_impl_plan.md</code> and <code>docs/dean_jett_fox_implementation.md</code> — implementation rationale and source specification.</li>
       </ul>
     </main>

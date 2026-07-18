@@ -1,4 +1,4 @@
-// Stage 2: optional FSC/SSC biological-cloud gate.
+// Optional FSC/SSC biological-cloud gate using a Gaussian mixture model.
 
 import { mad, median, variance } from "./math/stats.js";
 import { logGaussian2D, logSumExp } from "./math/gaussian.js";

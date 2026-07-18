@@ -61,7 +61,7 @@ import {
 import { get_parsed_files } from "../state/files.js";
 import { update_plot_title, render_fit_results_table } from "./modeling.js";
 import { open_axis_range_modal } from "./axis_modal.js";
-import { get_state as get_pipeline_state, state_matches_row } from "../analysis/djf/pipeline_state.js";
+import { get_state as get_pipeline_state, state_matches_row } from "../analysis/pipeline_state.js";
 import { show_curve_tooltip, hide_curve_tooltip } from "./curve_tooltip.js";
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
@@ -129,20 +129,26 @@ function component_moments(x, values) {
   return { total, mean, stdev: Math.sqrt(variance / total) };
 }
 
+// Reads the model-neutral §4.5 result shape (state.extendedFit or
+// state.baseFit, whichever is current) via its `components` array rather
+// than assuming any model-specific curve names -- any registered model's
+// normalized result renders here identically, not just the legacy bridge's.
 function pipeline_fit_for_series(series_entry) {
   const state = active_pipeline_state(series_entry.row);
   const fit = state && (state.extendedFit || state.baseFit);
-  if (!fit?.curves?.x || !fit.curves.fitted) return null;
+  const histogram = state?.histogram;
+  if (!fit?.components?.length || !fit.expectedCounts || !histogram?.x) return null;
 
-  const x = fit.curves.x;
+  const x = histogram.x;
   const point_series = (values) => x.map((position, index) => ({
     x: position,
     y: Number(values?.[index]) || 0,
   }));
+  const component_counts = (id) => fit.components.find((entry) => entry.id === id)?.counts ?? null;
   const moments = {
-    g1: component_moments(x, fit.curves.g1),
-    s: component_moments(x, fit.curves.s),
-    g2: component_moments(x, fit.curves.g2),
+    g1: component_moments(x, component_counts("g1")),
+    s: component_moments(x, component_counts("s")),
+    g2: component_moments(x, component_counts("g2")),
   };
   const biologicalTotal = moments.g1.total + moments.s.total + moments.g2.total;
   const reportedFractions = state.report?.fractions?.biologicalSinglets;
@@ -165,19 +171,18 @@ function pipeline_fit_for_series(series_entry) {
     g2: phase("g2", "G2/M / 2C"),
   };
 
+  const debris_counts = component_counts("debris");
+  const aggregate_counts = component_counts("aggregate");
+
   return {
     row: series_entry.row,
     name: series_entry.name,
-    total: point_series(fit.curves.fitted),
-    g1: point_series(fit.curves.g1),
-    s: point_series(fit.curves.s),
-    g2: point_series(fit.curves.g2),
-    debris: fit.selectedModel?.includes("debris") && fit.curves.debris
-      ? point_series(fit.curves.debris)
-      : null,
-    aggregate: fit.selectedModel?.includes("aggregate") && fit.curves.aggregate
-      ? point_series(fit.curves.aggregate)
-      : null,
+    total: point_series(fit.expectedCounts),
+    g1: point_series(component_counts("g1")),
+    s: point_series(component_counts("s")),
+    g2: point_series(component_counts("g2")),
+    debris: debris_counts ? point_series(debris_counts) : null,
+    aggregate: aggregate_counts ? point_series(aggregate_counts) : null,
     fractions: {
       g1: phase_stats.g1.percent,
       s: phase_stats.s.percent,

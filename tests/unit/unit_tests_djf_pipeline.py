@@ -301,6 +301,45 @@ _STAGES_0_TO_4 = r"""() => {
     };
   });
 
+  run('Stage 4: edges has binCount + 1 boundaries and centers/counts alias x/y', () => {
+    const histogram = stage4.generateHistogram([0, 1, 3, 5], null, {
+      binCount: 3, range: [0, 6],
+    });
+    return {
+      pass: histogram.edges.length === 4
+        && histogram.edges.join(',') === '0,2,4,6'
+        && histogram.centers === histogram.x
+        && histogram.counts === histogram.y,
+      detail: JSON.stringify({ edges: histogram.edges }),
+    };
+  });
+
+  run('Stage 4: underflow/overflow are counted, and underflow + binnedCount + overflow === retainedCount', () => {
+    // range [2, 8]: 0 and 1 fall below (underflow), 9 falls above (overflow),
+    // 2..8 are binned.
+    const histogram = stage4.generateHistogram(
+      [0, 1, 2, 5, 8, 9], null, { binCount: 3, range: [2, 8] },
+    );
+    return {
+      pass: histogram.underflow === 2
+        && histogram.overflow === 1
+        && histogram.binnedCount === 3
+        && histogram.underflow + histogram.binnedCount + histogram.overflow === histogram.retainedCount
+        && histogram.totalEvents === 6,
+      detail: JSON.stringify(histogram),
+    };
+  });
+
+  run('Stage 4: dnaChannel is echoed back and scale is linear', () => {
+    const histogram = stage4.generateHistogram([1, 2, 3], null, {
+      binCount: 2, range: [0, 4], dnaChannel: 'GFP/FITC-A',
+    });
+    return {
+      pass: histogram.dnaChannel === 'GFP/FITC-A' && histogram.scale === 'linear',
+      detail: JSON.stringify({ dnaChannel: histogram.dnaChannel, scale: histogram.scale }),
+    };
+  });
+
   return results;
 }"""
 
@@ -608,6 +647,84 @@ _PIPELINE_HELPERS = r"""() => {
         peaks: state.peaks,
         baseFit: state.baseFit,
         lastStageRun: state.lastStageRun,
+      }),
+    };
+  });
+
+  run('pipeline orchestrator: ensure_histogram_current reuses an unchanged histogram without clearing Stage 5-8', () => {
+    // Regression for the "unconditional Stage 4 rerun deletes the Stage 5
+    // result before fitting" bug: rebuilding the histogram before Stage 5/6
+    // used to unconditionally invalidate downstream products even when the
+    // gated view and bin/range request hadn't changed at all.
+    const row = makeRow('unit-orchestrator-histogram-reuse');
+    pipeline.clear_state(row.name);
+    pipeline.run_stage0(row);
+    const first = pipeline.run_stage4(row, { binCount: 3, range: [0, 6] }).result;
+    const state = pipeline.get_state(row.name);
+    state.peaks = { found: true };
+    state.baseFit = { fake: true };
+
+    const reused = pipeline.ensure_histogram_current(row, { binCount: 3, range: [0, 6] }).result;
+    return {
+      pass: reused === first
+        && state.histogram === first
+        && state.peaks !== null
+        && state.baseFit !== null,
+      detail: JSON.stringify({
+        sameHistogram: reused === first,
+        peaks: state.peaks,
+        baseFit: state.baseFit,
+      }),
+    };
+  });
+
+  run('pipeline orchestrator: ensure_histogram_current rebuilds (and invalidates) when the request actually changes', () => {
+    const row = makeRow('unit-orchestrator-histogram-rebuild');
+    pipeline.clear_state(row.name);
+    pipeline.run_stage0(row);
+    const first = pipeline.run_stage4(row, { binCount: 3, range: [0, 6] }).result;
+    const state = pipeline.get_state(row.name);
+    state.peaks = { found: true };
+    state.baseFit = { fake: true };
+
+    // A different bin count is a genuine change; the histogram must rebuild
+    // and Stage 5-8 must be invalidated, same as before this fix.
+    const rebuilt = pipeline.ensure_histogram_current(row, { binCount: 4, range: [0, 6] }).result;
+    return {
+      pass: rebuilt !== first
+        && state.histogram === rebuilt
+        && state.peaks === null
+        && state.baseFit === null,
+      detail: JSON.stringify({
+        rebuilt: rebuilt !== first,
+        peaks: state.peaks,
+        baseFit: state.baseFit,
+      }),
+    };
+  });
+
+  run('pipeline orchestrator: run_stage4 stamps a self-contained fingerprint/revision on the histogram', () => {
+    const row = makeRow('unit-orchestrator-histogram-fingerprint');
+    pipeline.clear_state(row.name);
+    const first = pipeline.run_stage4(row, { binCount: 3, range: [0, 6] }).result;
+    const fingerprintV1 = first.fingerprint;
+
+    // A mask change bumps the gated-view revision; the fingerprint must
+    // change to match even at the same bin count/range, since it's built
+    // from row.data.filteredViewRevision, not a separately-tracked sidecar.
+    pipeline.run_stage0(row);
+    const second = pipeline.run_stage4(row, { binCount: 3, range: [0, 6] }).result;
+
+    return {
+      pass: typeof fingerprintV1 === 'string' && fingerprintV1.length > 0
+        && typeof first.revision === 'number'
+        && second.fingerprint !== fingerprintV1
+        && second.revision > first.revision
+        && second.dnaChannel === row.data.channel_key,
+      detail: JSON.stringify({
+        fingerprintV1, fingerprintV2: second.fingerprint,
+        revision1: first.revision, revision2: second.revision,
+        dnaChannel: second.dnaChannel,
       }),
     };
   });

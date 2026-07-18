@@ -118,7 +118,7 @@ flowchart TD
   M1 --> Q0{"Any plottable rows?"}
   Q0 -- "no" --> Q1["readout + error status"]
   Q0 -- "yes" --> L0["pipeline_loader.load_pipeline()"]
-  L0 --> L1["dynamic import djf/index.js"]
+  L0 --> L1["dynamic import cell_cycle_pipeline.js"]
   L1 --> M2["disable controls + show progress"]
   M2 --> M3["Stage 4 only:<br/>shared_histogram_range(rows)"]
   M2 --> M4["for each row:<br/>pipeline.run_stage(stage, row, options)"]
@@ -362,11 +362,14 @@ FCS and IO:
 
 Staged DJF pipeline:
 
-- `js/analysis/djf/pipeline_loader.js`, `pipeline_ui.js`, `pipeline_state.js`,
-  `index.js`, `scatter_modal.js` — lazy loading, manual controls, state/masks,
+- `js/analysis/pipeline_loader.js`, `pipeline_ui.js`, `pipeline_state.js`,
+  `cell_cycle_pipeline.js`, `scatter_modal.js` — lazy loading, manual controls, state/masks,
   orchestration, and Stage 2 inspection.
-- `stage0_structural.js` through `stage8_report.js` — the nine checkpoints;
-  `stage_background.js` — explicit unspecified-background stub.
+- `structural_qc.js`, `acquisition_time_qc.js`, `scatter_gmm_gate.js`,
+  `pulse_geometry_gate.js`, `dna_histogram.js`, `peak_detection.js`,
+  `legacy_bridge_fit.js`, `debris_aggregate_extension.js`, and
+  `cell_cycle_fit_report.js` — the nine checkpoints; `background_model.js` —
+  explicit unspecified-background stub.
 - `djf_components.js` and `math/{stats,gaussian,linalg2d,lm_solver,integrate}.js`
   — shared numerical implementation.
 

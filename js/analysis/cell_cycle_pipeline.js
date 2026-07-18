@@ -2,16 +2,16 @@
 // runs exactly one stage, stores diagnostics, invalidates downstream products,
 // and leaves optional missing-channel stages as null masks.
 
-import { plottable_rows } from "../../plotting/data.js";
-import * as stage0 from "./stage0_structural.js";
-import * as stage1 from "./stage1_time_qc.js";
-import * as stage2 from "./stage2_scatter_gate.js";
-import * as stage3 from "./stage3_singlet_gate.js";
-import * as stage4 from "./stage4_histogram.js";
-import * as stage5 from "./stage5_peaks.js";
-import * as stage6 from "./stage6_fit.js";
-import * as stage7 from "./stage7_extend.js";
-import * as stage8 from "./stage8_report.js";
+import { plottable_rows } from "../plotting/data.js";
+import * as stage0 from "./structural_qc.js";
+import * as stage1 from "./acquisition_time_qc.js";
+import * as stage2 from "./scatter_gmm_gate.js";
+import * as stage3 from "./pulse_geometry_gate.js";
+import * as stage4 from "./dna_histogram.js";
+import * as stage5 from "./peak_detection.js";
+import * as stage6 from "./legacy_bridge_fit.js";
+import * as stage7 from "./debris_aggregate_extension.js";
+import * as stage8 from "./cell_cycle_fit_report.js";
 import {
   pipeline_states,
   get_state,
@@ -22,7 +22,17 @@ import {
   invalidate_after,
   recompute_final_mask,
   build_filtered_view,
+  invalidate_histogram_dependents,
+  invalidate_model_results,
+  invalidate_model_config_result,
 } from "./pipeline_state.js";
+import { register_default_models, get_model } from "./cell_cycle/model_registry.js";
+import { normalize_legacy_extended_result } from "./cell_cycle/models/legacy_bridge.js";
+
+// This module is already lazy-loaded as a whole (see pipeline_loader.js), so
+// registering the (currently one-entry) model set here at load time carries
+// no extra critical-path cost.
+register_default_models();
 
 export { stage0, stage1, stage2, stage3, stage4, stage5, stage6, stage7, stage8 };
 export {
@@ -31,6 +41,9 @@ export {
   get_or_create_state,
   clear_state,
   recompute_final_mask,
+  invalidate_histogram_dependents,
+  invalidate_model_results,
+  invalidate_model_config_result,
 };
 
 function require_row_data(row) {
@@ -317,6 +330,19 @@ export function run_stage3(row, options = {}) {
   return stage_result(3, row, result, state);
 }
 
+/**
+ * Deterministic identity string for a histogram: sample name (the same key
+ * pipeline state is keyed by), DNA channel, gated-view revision, bin count,
+ * and range. Two calls with identical inputs produce the same fingerprint,
+ * regardless of whether a histogram was actually built for either -- this is
+ * what let ensure_histogram_current() compare "requested" against "stored"
+ * without rebuilding just to check.
+ */
+function build_histogram_fingerprint(row, { binCount, range, dnaChannel }, revision) {
+  const rangeKey = range ? `${range[0]}:${range[1]}` : "auto";
+  return [row.name, dnaChannel ?? "", revision, binCount ?? "auto", rangeKey].join("|");
+}
+
 export function run_stage4(row, options = {}) {
   const data = require_row_data(row);
   const state = get_or_create_state(row);
@@ -324,7 +350,23 @@ export function run_stage4(row, options = {}) {
   // Bin the gated view directly: prior filters have already deleted their events
   // from it, so no mask is applied here (identical to masking the originals).
   const filtered = build_filtered_view(row);
-  const result = stage4.generateHistogram(filtered.channels.DNA_A, null, options);
+  const dnaChannel = data.channel_key ?? null;
+  const result = stage4.generateHistogram(filtered.channels.DNA_A, null, {
+    ...options,
+    dnaChannel,
+  });
+  // revision is read after build_filtered_view() (which itself bumps it), so
+  // it reflects the exact gated view this histogram was binned from --
+  // stamped onto the result itself so later callers (peak detection, model
+  // fitting, ensure_histogram_current()) can verify identity without a
+  // separate sidecar.
+  const revision = data.filteredViewRevision || 0;
+  result.revision = revision;
+  result.fingerprint = build_histogram_fingerprint(
+    row,
+    { binCount: options.binCount ?? null, range: options.range ? [...options.range] : null, dnaChannel },
+    revision,
+  );
   state.histogram = result;
   invalidate_after(row, state, 4);
   return stage_result(4, row, result, state);
@@ -335,6 +377,29 @@ function require_histogram(state, target_stage) {
     throw new Error(`Run DJF Stage 4 before Stage ${target_stage}.`);
   }
   return state.histogram;
+}
+
+/**
+ * Like run_stage4(), but skips rebuilding (and therefore skips invalidating
+ * every downstream stage) when the previously stored histogram's fingerprint
+ * already matches the requested bin count, range, and gated-view revision.
+ * Called before Stages 5/6 and by the background precompute after plotting,
+ * so repeated calls with unchanged inputs are free instead of silently
+ * deleting whatever Stage 5-8 already computed.
+ */
+export function ensure_histogram_current(row, options = {}) {
+  const data = require_row_data(row);
+  const state = get_or_create_state(row);
+  const dnaChannel = data.channel_key ?? null;
+  const requested = build_histogram_fingerprint(
+    row,
+    { binCount: options.binCount ?? null, range: options.range ? [...options.range] : null, dnaChannel },
+    data.filteredViewRevision || 0,
+  );
+  if (state.histogram && state.histogram.fingerprint === requested) {
+    return stage_result(4, row, state.histogram, state);
+  }
+  return run_stage4(row, options);
 }
 
 export function run_stage5(row, options = {}) {
@@ -355,7 +420,9 @@ export function run_stage6(row, options = {}) {
   require_row_data(row);
   const state = get_or_create_state(row);
   const histogram = require_histogram(state, 6);
-  const result = stage6.fitCellCycleHistogram(histogram.x, histogram.y, options);
+  const entry = get_model("legacy_bridge_v1");
+  const rawResult = entry.fit({ histogram, config: options });
+  const result = entry.normalizeResult(rawResult);
   state.baseFit = result;
   invalidate_after(row, state, 6);
   return stage_result(6, row, result, state);
@@ -366,12 +433,17 @@ export function run_stage7(row, options = {}) {
   const state = get_or_create_state(row);
   const histogram = require_histogram(state, 7);
   if (!state.baseFit) throw new Error("Run DJF Stage 6 before Stage 7.");
-  const result = stage7.extendCellCycleFit(
+  // extendCellCycleFit() requires the exact original legacy-shaped fit
+  // (previousFit.parameters, previousFit.curves.residuals) -- the generic
+  // normalized shape doesn't carry those, so the raw fit is threaded through
+  // via provenance.rawResult instead of state.baseFit itself.
+  const rawResult = stage7.extendCellCycleFit(
     histogram.x,
     histogram.y,
-    state.baseFit,
+    state.baseFit.provenance.rawResult,
     options,
   );
+  const result = normalize_legacy_extended_result(rawResult);
   state.extendedFit = result;
   invalidate_after(row, state, 7);
   return stage_result(7, row, result, state);
@@ -382,6 +454,8 @@ export function run_stage8(row, options = {}) {
   const state = get_or_create_state(row);
   const fit = state.extendedFit || state.baseFit;
   if (!fit) throw new Error("Run DJF Stage 6 (and optionally Stage 7) before Stage 8.");
+  // summarizeCellCycleFit() likewise requires the original legacy shape.
+  const rawFit = fit.provenance.rawResult;
 
   const channelNames = options.channelNames ?? [
     ...(row.summary?.columns || []),
@@ -392,7 +466,7 @@ export function run_stage8(row, options = {}) {
   const pulseGeometryAvailable = typeof options.pulseGeometryAvailable === "boolean"
     ? options.pulseGeometryAvailable
     : state.singletResult?.geometryMode != null;
-  const report = stage8.summarizeCellCycleFit(fit, {
+  const report = stage8.summarizeCellCycleFit(rawFit, {
     ...options,
     channelNames,
     pulseGeometryAvailable,

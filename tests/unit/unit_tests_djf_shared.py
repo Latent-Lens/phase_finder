@@ -320,16 +320,28 @@ _SHARED_HELPERS = r"""() => {
     };
   });
 
-  run('LM: projected finite-difference columns become zero at a hard boundary', () => {
+  run('LM: finite-difference columns stay zero only when fully pinned in both directions', () => {
     const jacobian = lm.buildFiniteDiffJacobian({
       parameters: [1],
       baseResiduals: [1],
       freeIndices: [0],
       residualFn: ([value]) => [value],
-      projectFn: ([value]) => [Math.min(1, value)],
+      projectFn: () => [1], // locked regardless of the requested perturbation
       finiteDifferenceStep: 1e-4,
     });
     return { pass: jacobian[0][0] === 0, detail: JSON.stringify(jacobian) };
+  });
+
+  run('LM: a one-sided bound uses the feasible (inward) direction instead of zeroing out', () => {
+    const jacobian = lm.buildFiniteDiffJacobian({
+      parameters: [1],
+      baseResiduals: [1],
+      freeIndices: [0],
+      residualFn: ([value]) => [value],
+      projectFn: ([value]) => [Math.min(1, value)], // upper bound; backward direction is feasible
+      finiteDifferenceStep: 1e-4,
+    });
+    return { pass: close(jacobian[0][0], 1, 1e-6), detail: JSON.stringify(jacobian) };
   });
 
   run('LM: projected solver converges on a one-parameter least-squares target', () => {
@@ -345,6 +357,41 @@ _SHARED_HELPERS = r"""() => {
     };
   });
 
+  run('LM: an upper-bound-pinned start moves inward to the true feasible optimum', () => {
+    // Regression for the false-convergence-at-bounds bug: starts clipped to the
+    // upper bound (1), but the true minimum of (value - 0.5)^2 lies inward at
+    // 0.5, which is feasible. Before the central/inward-difference fix this
+    // fell into a zero Jacobian column and falsely converged at the bound
+    // after one iteration with sse=0.25.
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [2],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 0.5],
+      projectFn: ([value]) => [Math.min(1, value)],
+      options: { maxIterations: 200, tolerance: 1e-12, stepTolerance: 1e-12 },
+    });
+    return {
+      pass: fit.converged && close(fit.parameters[0], 0.5, 1e-4) && fit.sse < 1e-6,
+      detail: JSON.stringify({ parameter: fit.parameters[0], sse: fit.sse, iterations: fit.iterations }),
+    };
+  });
+
+  run('LM: a lower-bound-pinned start moves inward to the true feasible optimum', () => {
+    // Symmetric mirror of the upper-bound case: starts clipped to the lower
+    // bound (0), true minimum of (value - 1.5)^2 lies inward at 1.5.
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [-1],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 1.5],
+      projectFn: ([value]) => [Math.max(0, value)],
+      options: { maxIterations: 200, tolerance: 1e-12, stepTolerance: 1e-12 },
+    });
+    return {
+      pass: fit.converged && close(fit.parameters[0], 1.5, 1e-4) && fit.sse < 1e-6,
+      detail: JSON.stringify({ parameter: fit.parameters[0], sse: fit.sse, iterations: fit.iterations }),
+    };
+  });
+
   run('LM: no free parameters is an immediate converged result', () => {
     const fit = lm.runLevenbergMarquardt({
       initialParameters: [7],
@@ -354,6 +401,55 @@ _SHARED_HELPERS = r"""() => {
     return {
       pass: fit.converged && fit.iterations === 0 && fit.parameterCount === 0 && fit.parameters[0] === 7,
       detail: JSON.stringify(fit),
+    };
+  });
+
+  run('LM: shouldCancel halts the loop immediately and reports cancelled, not converged', () => {
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [0],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 100],
+      options: { maxIterations: 50, shouldCancel: () => true },
+    });
+    return {
+      pass: fit.cancelled === true && fit.converged === false && fit.iterations === 0,
+      detail: JSON.stringify({ cancelled: fit.cancelled, converged: fit.converged, iterations: fit.iterations }),
+    };
+  });
+
+  run('LM: shouldCancel checked after a chosen iteration count halts mid-fit', () => {
+    let calls = 0;
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [0],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 100],
+      options: {
+        maxIterations: 50, tolerance: 0, stepTolerance: 0,
+        shouldCancel: () => { calls += 1; return calls > 3; },
+      },
+    });
+    return {
+      pass: fit.cancelled === true && fit.iterations === 3,
+      detail: JSON.stringify({ cancelled: fit.cancelled, iterations: fit.iterations, calls }),
+    };
+  });
+
+  run('LM: onProgress fires once per iteration with increasing iteration numbers and a finite sse', () => {
+    const events = [];
+    lm.runLevenbergMarquardt({
+      initialParameters: [0],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 100],
+      options: { maxIterations: 50, onProgress: (event) => events.push(event) },
+    });
+    const strictlyIncreasing = events.every((event, index) =>
+      index === 0 || event.iteration > events[index - 1].iteration
+    );
+    return {
+      pass: events.length > 0
+        && strictlyIncreasing
+        && events.every((event) => Number.isFinite(event.sse) && Number.isFinite(event.maxIterations)),
+      detail: JSON.stringify(events),
     };
   });
 
@@ -548,6 +644,92 @@ _SHARED_HELPERS = r"""() => {
         indexes: Array.from(row.data.filtered.originalIndex),
         lastStageRun: pipelineState.lastStageRun,
       }),
+    };
+  });
+
+  run('pipeline state: a fresh state has the default model-neutral modeling shape', () => {
+    const row = { id: 'modeling-default-row', name: 'modeling-default-unit', data: { eventCount: 1 } };
+    const pipelineState = state.get_or_create_state(row);
+    const m = pipelineState.modeling;
+    return {
+      pass: m.schemaVersion === 1
+        && m.peakDetection.detectorId === 'multiscale_v1'
+        && m.peakDetection.status === null
+        && Array.isArray(m.peakDetection.candidates) && m.peakDetection.candidates.length === 0
+        && m.peakSelection.source === 'automatic'
+        && m.peakSelection.stale === false
+        && m.settings.modelId === 'auto_dj_djf'
+        && m.settings.ratioMode === 'bounded'
+        && Object.keys(m.resultsByKey).length === 0
+        && m.activeResultKey === null
+        && m.revision === 0,
+      detail: JSON.stringify(m),
+    };
+  });
+
+  run('pipeline state: invalidate_histogram_dependents marks regions stale, clears fits, preserves them', () => {
+    const row = { id: 'inv-hist-row', name: 'inv-hist-unit', data: { eventCount: 1 } };
+    const pipelineState = state.get_or_create_state(row);
+    const m = pipelineState.modeling;
+    m.peakSelection.regions = { g1: [1, 2], g2: [3, 4] };
+    m.peakSelection.source = 'manual';
+    m.resultsByKey = { 'dean_jett|fp1': { modelId: 'dean_jett' } };
+    m.activeResultKey = 'dean_jett|fp1';
+    m.modelComparison = { winner: 'dean_jett' };
+
+    state.invalidate_histogram_dependents(pipelineState, 'histogram rebuilt');
+
+    return {
+      pass: m.peakSelection.stale === true
+        && m.peakSelection.regions.g1[0] === 1 // preserved, not wiped
+        && m.peakSelection.source === 'manual' // preserved
+        && Object.keys(m.resultsByKey).length === 0
+        && m.activeResultKey === null
+        && m.modelComparison === null
+        && m.lastInvalidationReason === 'histogram rebuilt'
+        && m.revision === 1,
+      detail: JSON.stringify(m),
+    };
+  });
+
+  run('pipeline state: invalidate_model_results clears every cached fit without touching regions', () => {
+    const row = { id: 'inv-results-row', name: 'inv-results-unit', data: { eventCount: 1 } };
+    const pipelineState = state.get_or_create_state(row);
+    const m = pipelineState.modeling;
+    m.peakSelection.regions = { g1: [1, 2], g2: [3, 4] };
+    m.resultsByKey = { a: { modelId: 'dean_jett' }, b: { modelId: 'watson_pragmatic' } };
+    m.activeResultKey = 'a';
+
+    state.invalidate_model_results(pipelineState, 'regions accepted');
+
+    return {
+      pass: Object.keys(m.resultsByKey).length === 0
+        && m.activeResultKey === null
+        && m.peakSelection.regions.g1[0] === 1 // untouched
+        && m.peakSelection.stale === false // untouched
+        && m.lastInvalidationReason === 'regions accepted',
+      detail: JSON.stringify(m),
+    };
+  });
+
+  run('pipeline state: invalidate_model_config_result removes only the matching model\'s cached fits', () => {
+    const row = { id: 'inv-config-row', name: 'inv-config-unit', data: { eventCount: 1 } };
+    const pipelineState = state.get_or_create_state(row);
+    const m = pipelineState.modeling;
+    m.resultsByKey = {
+      'dean_jett|fp1': { modelId: 'dean_jett' },
+      'dean_jett|fp2': { modelId: 'dean_jett' },
+      'watson_pragmatic|fp1': { modelId: 'watson_pragmatic' },
+    };
+    m.activeResultKey = 'dean_jett|fp1';
+
+    state.invalidate_model_config_result(pipelineState, 'dean_jett', 'ratio constraint changed');
+
+    return {
+      pass: Object.keys(m.resultsByKey).join(',') === 'watson_pragmatic|fp1'
+        && m.activeResultKey === null // was pointing at a removed key
+        && m.lastInvalidationReason === 'ratio constraint changed',
+      detail: JSON.stringify(m),
     };
   });
 

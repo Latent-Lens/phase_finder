@@ -1,4 +1,4 @@
-// Shared numerical integration helpers for DJF reporting.
+// Shared numerical integration helpers for cell-cycle reporting.
 
 /**
  * Integrate samples with the trapezoidal rule.

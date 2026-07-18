@@ -82,3 +82,15 @@ def run_unit_tests(ctx: TestContext, app_url: str):
 
     from unit_tests_djf_edges import run_djf_edge_tests
     run_djf_edge_tests(ctx)
+
+    from unit_tests_cell_cycle_registry import run_cell_cycle_registry_tests
+    run_cell_cycle_registry_tests(ctx)
+
+    from unit_tests_cell_cycle_worker import run_cell_cycle_worker_tests
+    run_cell_cycle_worker_tests(ctx)
+
+    from unit_tests_cell_cycle_peak_detection import run_cell_cycle_peak_detection_tests
+    run_cell_cycle_peak_detection_tests(ctx)
+
+    from unit_tests_cell_cycle_modeling_state import run_cell_cycle_modeling_state_tests
+    run_cell_cycle_modeling_state_tests(ctx)

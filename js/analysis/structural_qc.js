@@ -1,4 +1,4 @@
-// Stage 0: structural validity mask.
+// Structural validity mask used at the start of the cell-cycle QC pipeline.
 
 export const BOUNDED_CHANNEL_NAMES = Object.freeze([
   "DNA_A",

@@ -10,8 +10,9 @@ Key architectural facts:
 - `index.html` loads one module entry, `js/main.js`; imports define runtime
   ordering after the explicit `init_*()` bootstrap.
 - D3 is the only vendored third-party module. Peak detection and nonlinear
-  fitting are repository-native modules under `js/analysis/djf/`.
-- `pipeline_loader.js` lazy-loads `djf/index.js` on the first stage action.
+  fitting are repository-native modules under `js/analysis/`.
+- `pipeline_loader.js` lazy-loads `cell_cycle_pipeline.js` on the first stage
+  action.
   Pipeline UI, state-aware rendering, and the Stage 2 scatter viewer are part of
   the eager application shell.
 - Loaded event channels remain full-length and aligned to original FCS event
@@ -38,10 +39,10 @@ flowchart LR
     START["analysis/start.js<br/>channel + plot orchestration"]
     STATS["analysis/stats.js"]
     PLOT["plotting/*<br/>data · render · modeling · axis"]
-    PUI["analysis/djf/pipeline_ui.js<br/>stage controls"]
-    PLOAD["analysis/djf/pipeline_loader.js"]
-    PST["analysis/djf/pipeline_state.js"]
-    SCATTER["analysis/djf/scatter_modal.js<br/>Stage 2 inspection"]
+    PUI["analysis/pipeline_ui.js<br/>stage controls"]
+    PLOAD["analysis/pipeline_loader.js"]
+    PST["analysis/pipeline_state.js"]
+    SCATTER["analysis/scatter_modal.js<br/>Stage 2 inspection"]
     SESSION["session/core.js<br/>save · load · restore"]
   end
 
@@ -56,8 +57,8 @@ flowchart LR
   end
 
   subgraph lazy["Lazy DJF orchestrator and stages"]
-    PIPE["analysis/djf/index.js<br/>stage orchestrator"]
-    STAGES["stage0 … stage8<br/>+ background stub"]
+    PIPE["analysis/cell_cycle_pipeline.js<br/>stage orchestrator"]
+    STAGES["structural_qc … cell_cycle_fit_report<br/>+ background_model stub"]
   end
 
   subgraph sharedmath["Shared DJF numeric modules"]
@@ -127,7 +128,7 @@ flowchart LR
   I7 --> I8["init_session()"]
   I8 --> HOOK["window.PhaseFinder<br/>{ app, get pipeline(), get djf(), plot }"]
   I8 -. "setTimeout(..., 0)" .-> AUTO["session/core.try_autoload()"]
-  I5 -. "first Stage / Run all click" .-> LAZY["pipeline_loader.load_pipeline()<br/>dynamic import djf/index.js"]
+  I5 -. "first Stage / Run all click" .-> LAZY["pipeline_loader.load_pipeline()<br/>dynamic import cell_cycle_pipeline.js"]
 ```
 
 ## 3. State ownership and runtime contracts
@@ -143,7 +144,7 @@ flowchart TB
     T["data_structs/table_state.js<br/>selection · filters · sort"]
     C["data_structs/channel_cache.js<br/>per-row/per-channel Map<br/>active row.data"]
     P["plotting/data.js<br/>active channel · series · histograms · axes"]
-    D["djf/pipeline_state.js<br/>Map keyed by filename<br/>row.data.masks"]
+    D["analysis/pipeline_state.js<br/>Map keyed by filename<br/>row.data.masks"]
     F["session/file_cache.js<br/>OPFS file records"]
   end
 
@@ -172,7 +173,7 @@ flowchart TB
   PRELOAD --> C
   START --> C
   REDRAW --> P
-  PIPE["djf/index.js run_stageN()"] --> D
+  PIPE["analysis/cell_cycle_pipeline.js run_stageN()"] --> D
   D --> REDRAW
   HOOK["window.PhaseFinder"] -. "read-only debug access" .-> A
   HOOK -.-> P

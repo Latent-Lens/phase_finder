@@ -31,8 +31,8 @@ debug harness first (all-manual), not an automated end-to-end run.
 
 ### Decisions locked with the user (three forks)
 
-1. **Pipeline wiring = new modules + rewire.** Add per-stage modules under
-   `js/analysis/djf/`; rewire `render.js`/`modeling.js` to read pipeline state.
+1. **Pipeline wiring = new modules + rewire.** Add checkpoint modules directly
+   under `js/analysis/`; rewire `render.js`/`modeling.js` to read pipeline state.
    Retire overlapping old `djf.js` helpers once the new path reaches parity.
 2. **Event data = extend loader (full fidelity).** Auto-detect + load FSC-A,
    SSC-A, Time alongside DNA-A/H/W; keep **raw uncompacted** typed arrays plus
@@ -142,10 +142,10 @@ ml-levenberg-marquardt or ml-gsd. Keep them only until old `djf.js` is retired
 
 ## 3. Target architecture
 
-### 3.1 New module layout (`js/analysis/djf/`)
+### 3.1 New module layout (`js/analysis/`)
 
 ```
-js/analysis/djf/
+js/analysis/
   math/
     stats.js           # median, mad, mean, variance, quantileSorted,
                        #   maximumValue, sumSquares, robustResidualScale,
@@ -162,26 +162,27 @@ js/analysis/djf/
     integrate.js       # integrateTrapezoidal
   djf_components.js    # shared model evals: evaluateSBridge, gaussianPeak,
                        #   evaluateBaseAt (+ shared PARAMETER_INDEX map)
-  stage0_structural.js # Stage 0  | createStructuralValidityMask
-  stage1_time_qc.js    # Stage 1  | prepareTimeQCBins + summarize + score + mask
-  stage2_scatter_gate.js # Stage 2 | gateMainBiologicalCloud (2-comp GMM)
+  structural_qc.js     # Stage 0  | createStructuralValidityMask
+  acquisition_time_qc.js # Stage 1 | prepareTimeQCBins + summarize + score + mask
+  scatter_gmm_gate.js  # Stage 2  | gateMainBiologicalCloud (2-comp GMM)
   scatter_modal.js     # Stage 2  | FSC/SSC scatter + gate-ellipse modal
-  stage3_singlet_gate.js # Stage 3 | gateByPulseGeometry (robust ridge)
-  stage4_histogram.js  # Stage 4  | generateHistogram (DNA_A, finalMask)
-  stage5_peaks.js      # Stage 5  | detectDNAContentPeaks
-  stage6_fit.js        # Stage 6  | fitCellCycleHistogram (shared LM)
-  stage7_extend.js     # Stage 7  | extendCellCycleFit (debris/aggregate)
-  stage8_report.js     # Stage 8  | summarizeCellCycleFit + createDisplaySummary
+  pulse_geometry_gate.js # Stage 3 | gateByPulseGeometry (robust ridge)
+  dna_histogram.js     # Stage 4  | generateHistogram (DNA_A, finalMask)
+  peak_detection.js    # Stage 5  | detectDNAContentPeaks
+  legacy_bridge_fit.js # Stage 6  | compatibility fitCellCycleHistogram (shared LM)
+  debris_aggregate_extension.js # Stage 7 | extendCellCycleFit
+  cell_cycle_fit_report.js # Stage 8 | summarizeCellCycleFit + createDisplaySummary
+  background_model.js  # unspecified-background stub
   pipeline_state.js    # per-sample state store (Map by row.name) + combine_masks
-  index.js             # orchestrator: run_stageN(row), run_all(row),
+  cell_cycle_pipeline.js # orchestrator: run_stageN(row), run_all(row),
                        #   run_stageN_all(), get_state(name)
   pipeline_loader.js   # dynamic import() on first stage-button click (model:
                        #   djf_loader.js)
   pipeline_ui.js       # wires the stage buttons -> orchestrator -> readout/redraw
 ```
 
-Each `stageN_*.js` is a faithful port of the doc's sample code, adapted to (a)
-typed-array channels, (b) the shared `math/` modules (§3.5), and (c) `Uint8Array`
+Each checkpoint module is a faithful port of the doc's sample code, adapted to
+(a) typed-array channels, (b) the shared `math/` modules (§3.5), and (c) `Uint8Array`
 masks over original event order. Keep the doc's function names as internal names
 where practical for traceability.
 
@@ -499,7 +500,7 @@ Standardize on: masks are `Uint8Array(eventCount)`, `1 = pass / 0 = fail`.
   `state.baseFit` (`{ parameters, curves:{x,observed,g1,s,g2,fitted,residuals},
   diagnostics }`).
 - **Mesh notes / pitfalls:**
-  - Port the doc's Section-1–22 code near-verbatim into `stage6_fit.js`; keep the
+  - Port the doc's Section-1–22 code near-verbatim into `legacy_bridge_fit.js`; keep the
     `export { fitCellCycleHistogram }`. Move shared `median/clamp/...` to
     `util_numeric.js`.
   - **Uses its own LM** — no `ml-levenberg-marquardt` dependency. Do not route
@@ -523,7 +524,7 @@ Standardize on: masks are `Uint8Array(eventCount)`, `1 = pass / 0 = fail`.
 - **Mesh notes / pitfalls:**
   - `extendCellCycleFit(x, y, previousFit, options)` where `previousFit =
     state.baseFit`. Gate the button so it errors clearly if Stage 6 hasn't run.
-  - Self-contained LM again. Port Sections 1–31 into `stage7_extend.js`, sharing
+  - Self-contained LM again. Port Sections 1–31 into `debris_aggregate_extension.js`, sharing
     `util_numeric.js`.
   - Conservative model selection (BIC/SSE/targeted-residual thresholds) is
     built-in — surface `selectedModel` + `diagnostics.comparisons` in the readout
@@ -607,7 +608,7 @@ raw plot (pre-Stage-0) is expected and desirable for debugging.
 ## 6. UI: one manual button per stage
 
 Files: `index.html`, `js/ui/dom.js`, `js/ui/panels.js`,
-`js/analysis/djf/pipeline_ui.js`, `js/analysis/start.js` (or `main.js`) for init,
+`js/analysis/pipeline_ui.js`, `js/analysis/start.js` (or `main.js`) for init,
 `css/` for button styling.
 
 1. **Markup.** Add a "DJF Pipeline (manual)" control group in the plot-controls
@@ -710,8 +711,9 @@ Do this as a separate commit so parity and retirement are reviewable apart.
 
 ## 9. Sequencing & commits
 
-1. **Branch + scaffolding:** `djf-pipeline` off `esm-restructure`; create
-   `js/analysis/djf/` with `util_numeric.js` and empty stage modules. Commit.
+1. **Branch + scaffolding:** `djf-pipeline` off `esm-restructure`; create the
+   shared `js/analysis/math/` helpers and empty checkpoint modules directly
+   under `js/analysis/`. Commit.
 2. **Loader full-fidelity:** §5 (channels + pnr + masks + alias). Verify the plot
    still renders raw. Commit.
 3. **Stages 0–3 (masks/gating)** + `pipeline_state.js` + orchestrator entries +

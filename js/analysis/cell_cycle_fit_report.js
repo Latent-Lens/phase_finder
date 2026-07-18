@@ -1,4 +1,4 @@
-// Stage 8: phase fractions, contamination accounting, and fit diagnostics.
+// Phase fractions, contamination accounting, and fit diagnostics.
 
 import {
   clamp,
