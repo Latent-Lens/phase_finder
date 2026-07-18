@@ -546,6 +546,34 @@ def click_plot_events(page):
     wait_briefly(0.4)
 
 
+def enter_modeling_mode(page):
+    """Open the sidebar's Cell Cycle Modeling mode.
+
+    The Pre-modeling QC filters (#qc_stage*) and the manual DJF stage buttons
+    (#djf_stage*, #djf_run_all) now live in #sidebar_modeling_section, which is
+    hidden until Cell Cycle Modeling is opened. Call this once after plotting,
+    before interacting with those controls. Idempotent — a no-op if modeling
+    mode is already active.
+    """
+    if page.eval_on_selector(".app", "e => e.classList.contains('sidebar_modeling_mode')"):
+        return
+    page.click("#cell_cycle_modeling_button")
+    page.wait_for_selector("#sidebar_modeling_section", state="visible", timeout=5000)
+    wait_briefly(0.4)  # let the cross-fade settle
+
+
+def exit_modeling_mode(page):
+    """Return the sidebar to file/channel mode via the Back button.
+
+    Idempotent — a no-op if modeling mode is not active.
+    """
+    if not page.eval_on_selector(".app", "e => e.classList.contains('sidebar_modeling_mode')"):
+        return
+    page.click("#sidebar_back_button")
+    page.wait_for_selector("#sidebar_modeling_section", state="hidden", timeout=5000)
+    wait_briefly(0.4)
+
+
 def select_all_visible_rows(page):
     if page.query_selector("#select_all_files") is None:
         return

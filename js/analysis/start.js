@@ -12,12 +12,15 @@ import {
   analysis_collapsed_plot_button,
   cell_cycle_modeling_button,
   collapsed_cell_cycle_modeling_button,
+  sidebar_back_button,
+  set_sidebar_modeling_mode,
   plot_panel,
   metadata_panel_toggle,
   plot_panel_toggle,
   toggle_metadata_panel,
   toggle_plot_panel,
 } from "../ui/panels.js";
+import { set_sidebar_collapsed } from "../ui/table_support.js";
 import { Tooltips } from "../ui/hover_text.js";
 import { get_parsed_files } from "../state/files.js";
 import {
@@ -266,11 +269,20 @@ export function init_analysis_listeners() {
     });
   });
 
-  // The sidebar modeling shortcuts trigger the same explicit Run all action as
-  // the manual pipeline control group.
-  [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
-    if (btn) btn.addEventListener("click", () => {
-      document.querySelector("#djf_run_all")?.click();
+  // The sidebar "Cell Cycle Modeling" buttons switch the sidebar into modeling
+  // mode (they no longer run the pipeline — the relocated Run all / stage
+  // buttons do that once modeling mode is open). The collapsed-rail variant
+  // expands the sidebar first so the modeling controls are actually visible.
+  if (cell_cycle_modeling_button) {
+    cell_cycle_modeling_button.addEventListener("click", () => set_sidebar_modeling_mode(true));
+  }
+  if (collapsed_cell_cycle_modeling_button) {
+    collapsed_cell_cycle_modeling_button.addEventListener("click", () => {
+      set_sidebar_collapsed(false);
+      set_sidebar_modeling_mode(true);
     });
-  });
+  }
+  if (sidebar_back_button) {
+    sidebar_back_button.addEventListener("click", () => set_sidebar_modeling_mode(false));
+  }
 }
