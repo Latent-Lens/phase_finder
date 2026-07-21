@@ -1,0 +1,118 @@
+name: Browser compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: ${{ matrix.os }} / ${{ matrix.browser }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        browser:
+          - chrome
+          - firefox
+          - brave
+          - safari
+          - edge
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install playwright
+
+      - name: Install Playwright browser
+        if: matrix.browser != 'brave'
+        shell: bash
+        run: |
+          case "${{ matrix.browser }}" in
+            chrome)  target="chrome" ;;
+            firefox) target="firefox" ;;
+            safari)  target="webkit" ;;
+            edge)    target="msedge" ;;
+          esac
+
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            python -m playwright install --with-deps "$target"
+          else
+            python -m playwright install "$target"
+          fi
+
+      # Installing Chromium also supplies Playwright's supporting media tools
+      # needed while controlling Brave through executable_path.
+      - name: Install Playwright support for Brave
+        if: matrix.browser == 'brave'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            python -m playwright install --with-deps chromium
+          else
+            python -m playwright install chromium
+          fi
+
+      - name: Install Brave on Ubuntu
+        if: runner.os == 'Linux' && matrix.browser == 'brave'
+        shell: bash
+        run: |
+          sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg \
+            https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" \
+            | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
+          sudo apt-get update
+          sudo apt-get install -y brave-browser
+          echo "BRAVE_PATH=/usr/bin/brave-browser" >> "$GITHUB_ENV"
+
+      - name: Install Brave on Windows
+        if: runner.os == 'Windows' && matrix.browser == 'brave'
+        shell: pwsh
+        run: |
+          choco install brave --yes --no-progress
+          "BRAVE_PATH=C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install Brave on macOS
+        if: runner.os == 'macOS' && matrix.browser == 'brave'
+        shell: bash
+        run: |
+          brew install --cask brave-browser
+          echo "BRAVE_PATH=/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
+            >> "$GITHUB_ENV"
+
+      - name: Run PhaseFinder tests
+        shell: bash
+        run: |
+          python tests/e2e/drive_flow.py --browser "${{ matrix.browser }}"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phasefinder-${{ matrix.os }}-${{ matrix.browser }}
+          path: tests/e2e/results/
+          if-no-files-found: warn
+          retention-days: 14
