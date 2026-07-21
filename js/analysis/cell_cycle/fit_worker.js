@@ -4,11 +4,16 @@
 // the request_id-keyed message protocol established by js/fcs/data_worker.js.
 //
 // Message protocol:
-//   in:  { type: "fit", request_id, modelId, histogram, config }
+//   in:  { type: "fit", request_id, modelId, histogram, peakRegions, config }
 //        { type: "cancel", request_id }
 //   out: { type: "progress", request_id, iteration, maxIterations, sse }
 //        { type: "result", request_id, ok: true, result }
 //        { type: "result", request_id, ok: false, error }
+//
+// peakRegions is optional -- legacy_bridge_v1 (the only model that predates
+// the canonical DJ/DJF/Watson contract) reads only {histogram, config} and
+// simply ignores an extra field; Dean-Jett, Dean-Jett-Fox, Watson Pragmatic,
+// and auto_dj_djf all require it.
 
 import { register_default_models, get_model } from "./model_registry.js";
 
@@ -25,7 +30,7 @@ self.addEventListener("message", (event) => {
   }
 
   if (message.type !== "fit") return;
-  const { request_id, modelId, histogram, config } = message;
+  const { request_id, modelId, histogram, peakRegions, config } = message;
 
   try {
     const entry = get_model(modelId);
@@ -35,6 +40,7 @@ self.addEventListener("message", (event) => {
 
     const rawResult = entry.fit({
       histogram,
+      peakRegions,
       config: {
         ...config,
         onProgress: ({ iteration, maxIterations, sse }) => {

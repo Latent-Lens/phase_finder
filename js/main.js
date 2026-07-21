@@ -82,6 +82,7 @@ import { render_density_plot } from "./plotting/render.js";
 import { init_analysis_listeners } from "./analysis/start.js";
 import { init_pipeline_ui } from "./analysis/pipeline_ui.js";
 import { init_peak_review_ui } from "./analysis/cell_cycle/peak_review_ui.js";
+import { init_modeling_ui } from "./analysis/cell_cycle/modeling_ui.js";
 import { get_pipeline } from "./analysis/pipeline_loader.js";
 import { init_stats } from "./analysis/stats.js";
 import { init_panel_resize } from "./ui/panel_resize.js";
@@ -291,6 +292,7 @@ init_plot_listeners();      // plotting/axis_modal.js listener block
 init_analysis_listeners();  // analysis/start.js listener block
 init_pipeline_ui();         // analysis/pipeline_ui.js manual stage controls
 init_peak_review_ui();      // analysis/cell_cycle/peak_review_ui.js Identify Peaks panel
+init_modeling_ui();         // analysis/cell_cycle/modeling_ui.js Model & Fit panel
 init_stats();               // analysis/stats.js modal + auto-compute
 init_panel_resize();        // ui/panel_resize.js drag handlers
 init_remove_columns();      // ui/column_remove.js remove-columns mode

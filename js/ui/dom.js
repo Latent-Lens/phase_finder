@@ -54,6 +54,13 @@ export const peak_region_error = document.querySelector("#peak_region_error");
 export const peak_regions_reset_button = document.querySelector("#peak_regions_reset_button");
 export const peak_regions_accept_button = document.querySelector("#peak_regions_accept_button");
 
+// ── Model & Fit (sidebar cell-cycle model panel) ─────────────────────────────
+export const cell_cycle_model_select = document.querySelector("#cell_cycle_model_select");
+export const cell_cycle_fit_current_button = document.querySelector("#cell_cycle_fit_current_button");
+export const cell_cycle_fit_all_button = document.querySelector("#cell_cycle_fit_all_button");
+export const cell_cycle_fit_status = document.querySelector("#cell_cycle_fit_status");
+export const cell_cycle_fit_result = document.querySelector("#cell_cycle_fit_result");
+
 // ── Companion (Height/Width/FSC/SSC) channel panel ───────────────────────────
 export const channel_aux_panel = document.querySelector("#channel_aux_panel");
 export const aux_height_select = document.querySelector("#aux_height_select");

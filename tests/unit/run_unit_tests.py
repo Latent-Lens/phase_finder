@@ -109,3 +109,6 @@ def run_unit_tests(ctx: TestContext, app_url: str):
 
     from unit_tests_cell_cycle_watson_pragmatic import run_cell_cycle_watson_pragmatic_tests
     run_cell_cycle_watson_pragmatic_tests(ctx)
+
+    from unit_tests_cell_cycle_fit_orchestration import run_cell_cycle_fit_orchestration_tests
+    run_cell_cycle_fit_orchestration_tests(ctx)

@@ -245,6 +245,96 @@
   gap: 6px;
 }
 
+/* Model & Fit: choose a registered cell-cycle model and fit it against the
+   reviewed sample's accepted peak regions. */
+.cell_cycle_model_field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.cell_cycle_model_select {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.cell_cycle_fit_result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 0.78rem;
+}
+
+.cell_cycle_fit_result_header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cell_cycle_fit_convergence {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.cell_cycle_fit_convergence.cell_cycle_fit_not_converged {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.cell_cycle_fit_fractions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.cell_cycle_fit_fraction_row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cell_cycle_fit_fraction_row dt {
+  color: var(--muted);
+}
+
+.cell_cycle_fit_fraction_row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.cell_cycle_fit_selected_model {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.cell_cycle_fit_warnings {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.cell_cycle_fit_warnings.cell_cycle_fit_has_warnings {
+  color: var(--danger);
+}
+
 .djf_scatter_modal .stats_modal_card {
   width: min(880px, 100%);
 }

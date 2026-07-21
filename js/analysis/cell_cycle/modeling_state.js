@@ -1,18 +1,21 @@
-// Peak-region state transitions for the model-neutral modeling workflow.
-// Operates on the modeling.peakDetection/peakSelection state
-// (js/analysis/pipeline_state.js's create_modeling_state()) using the
-// multi-scale detector and region validator. Kept separate from
-// pipeline_state.js: that module owns the generic state schema and
-// invalidation primitives; this module owns peak-detection-specific
+// Peak-region and model-fit state transitions for the model-neutral modeling
+// workflow. Operates on the modeling.peakDetection/peakSelection/settings/
+// resultsByKey state (js/analysis/pipeline_state.js's create_modeling_state())
+// using the multi-scale detector, region validator, and registered models.
+// Kept separate from pipeline_state.js: that module owns the generic state
+// schema and invalidation primitives; this module owns modeling-specific
 // behavior built on top of them.
 //
-// Implements the "Required public operations" from the modeling plan §4.2
-// that concern peak regions: detect_peak_regions, select_peak_pair,
-// update_peak_regions, accept_peak_regions, reset_peak_regions.
+// Implements the "Required public operations" from the modeling plan §4.2:
+// detect_peak_regions, select_peak_pair, update_peak_regions,
+// accept_peak_regions, reset_peak_regions (peak regions), plus
+// fit_cell_cycle_model, get_modeling_state, and set_model_settings (fitting).
 
 import { get_or_create_state, invalidate_model_results } from "../pipeline_state.js";
 import { detectCellCyclePeakPair, proposeAutomaticPeakRegions } from "./peak_detection.js";
 import { validatePeakRegions } from "./peak_regions.js";
+import { get_model } from "./model_registry.js";
+import { run_fit_in_worker } from "./fit_client.js";
 
 function require_histogram(state) {
   if (!state.histogram) {
@@ -144,4 +147,81 @@ export function reset_peak_regions(row) {
   modeling.peakSelection.revision += 1;
   invalidate_model_results(state, "peak regions reset to automatic");
   return modeling.peakSelection;
+}
+
+/** The row's model-neutral modeling state (plan §4.2's get_modeling_state). */
+export function get_modeling_state(row) {
+  return get_or_create_state(row).modeling;
+}
+
+/**
+ * Merges a patch into the row's model settings (plan §4.2's
+ * set_model_settings) -- e.g. ratio/CV mode, locked ratio -- without
+ * touching histogram, detection, regions, or cached results. Per the plan's
+ * invalidation table, changing a model *constraint* only invalidates that
+ * one model's mismatched cached results (not implemented at this
+ * fine a grain yet: the next fit_cell_cycle_model() call simply computes a
+ * fresh result key, so a stale settings/result pairing is never displayed,
+ * even though the old entry isn't proactively deleted from resultsByKey).
+ */
+export function set_model_settings(row, patch) {
+  const modeling = get_or_create_state(row).modeling;
+  Object.assign(modeling.settings, patch);
+  return modeling.settings;
+}
+
+/**
+ * Deterministic key for one (model, histogram, regions) combination -- not
+ * yet the plan's full "model ID/version, histogram fingerprint, peak-region
+ * revision, fit domain, and canonical configuration hash" (config-hash and
+ * fit-domain components are deferred until the advanced-controls UI exists
+ * to actually vary them); today every fit_cell_cycle_model() call for a
+ * given model/histogram/regions triple overwrites the same key rather than
+ * accumulating configuration variants.
+ */
+function build_result_key(modelId, modeling, histogram) {
+  return [
+    modelId,
+    `hist=${modeling.histogramFingerprint ?? histogram?.fingerprint ?? ""}`,
+    `regions=${modeling.peakSelection.revision}`,
+  ].join("|");
+}
+
+/**
+ * Fits `modelId` against row's current Stage 4 histogram and accepted G1/G2
+ * peak regions (plan §4.2's fit_cell_cycle_model), storing the normalized
+ * §4.5 result in modeling.resultsByKey and making it the active result.
+ * Runs off the UI thread via the shared fit worker when available (plan
+ * §13's "fits run off the UI thread"), falling back to a synchronous
+ * main-thread fit only when worker creation itself failed (fit_client.js's
+ * documented fallback contract) -- not a design choice made here.
+ */
+export async function fit_cell_cycle_model(row, modelId, options = {}) {
+  const state = get_or_create_state(row);
+  const modeling = state.modeling;
+  if (!state.histogram) {
+    throw new Error("Build the Stage 4 histogram before fitting a cell-cycle model.");
+  }
+  if (!modeling.peakSelection.regions) {
+    throw new Error("Identify G1/G2 peak regions before fitting a cell-cycle model.");
+  }
+  const entry = get_model(modelId);
+  if (!entry) {
+    throw new Error(`Unknown cell-cycle model "${modelId}".`);
+  }
+
+  const histogram = state.histogram;
+  const peakRegions = modeling.peakSelection.regions;
+  const { onProgress, ...config } = options;
+
+  const worker = run_fit_in_worker(modelId, histogram, config, { peakRegions, onProgress });
+  const result = worker
+    ? await worker.promise
+    : entry.normalizeResult(entry.fit({ histogram, peakRegions, config }));
+
+  modeling.resultsByKey[build_result_key(modelId, modeling, histogram)] = result;
+  modeling.activeResultKey = build_result_key(modelId, modeling, histogram);
+  modeling.settings.modelId = modelId;
+  modeling.revision += 1;
+  return result;
 }
