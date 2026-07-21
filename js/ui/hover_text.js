@@ -46,6 +46,9 @@ const HoverText = Object.freeze({
   detectPeaks: `Run automatic peak detection against the reviewed sample's current histogram, proposing G1 and G2/M regions you can then adjust.`,
   resetPeakRegions: `Discard any manual edits and restore the detector's automatic G1/G2 region proposal.`,
   acceptPeakRegions: `Mark the current G1/G2 regions as reviewed, without changing them.`,
+  cellCycleModelSelect: `Choose which cell-cycle model to fit. Automatic independently fits Dean–Jett and Dean–Jett–Fox and conservatively picks Fox only when the evidence for a complex S-phase wave is strong. Watson Pragmatic is a local peak-plus-residual decomposition, never compared against the generative models by AIC/BIC.`,
+  fitCurrentModel: `Fit the selected model to the reviewed sample's accepted G1/G2 peak regions.`,
+  fitAllReviewed: `Fit the selected model to every plotted sample whose peak regions have been reviewed and accepted.`,
 });
 
 export { HoverText };

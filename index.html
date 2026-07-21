@@ -165,6 +165,24 @@
                 <button type="button" id="peak_regions_accept_button" class="peak_review_button quick_tooltip" data-tooltip-key="acceptPeakRegions" disabled>Accept</button>
               </div>
             </fieldset>
+            <fieldset class="peak_review_group" id="cell_cycle_fit_group">
+              <legend>Model &amp; Fit</legend>
+              <label class="cell_cycle_model_field">
+                <span class="cell_cycle_model_label">Model</span>
+                <select id="cell_cycle_model_select" class="cell_cycle_model_select quick_tooltip" data-tooltip-key="cellCycleModelSelect">
+                  <option value="auto_dj_djf">Automatic — Dean–Jett / Dean–Jett–Fox</option>
+                  <option value="dean_jett">Dean–Jett</option>
+                  <option value="dean_jett_fox">Dean–Jett–Fox</option>
+                  <option value="watson_pragmatic">Watson Pragmatic</option>
+                </select>
+              </label>
+              <div class="peak_review_actions">
+                <button type="button" id="cell_cycle_fit_current_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitCurrentModel" disabled>Fit Current</button>
+                <button type="button" id="cell_cycle_fit_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitAllReviewed" disabled>Fit All Reviewed</button>
+              </div>
+              <p id="cell_cycle_fit_status" class="peak_review_status" role="status" hidden></p>
+              <div id="cell_cycle_fit_result" class="cell_cycle_fit_result" hidden></div>
+            </fieldset>
           </section>
           <section class="sidebar_section sidebar_actions">
             <button

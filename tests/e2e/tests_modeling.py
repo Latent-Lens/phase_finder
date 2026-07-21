@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""E2E coverage for the sidebar's Identify Peaks panel: automatic peak
-detection, manual G1/G2 region editing (with inline validation), Reset, and
-Accept. This replaced the old manual Stage 5-8 Dean-Jett-Fox buttons -- there
-is currently no UI path to actually run a model against the reviewed regions
-(that lands with the canonical Dean-Jett model), so this module stops at
-region review."""
+"""E2E coverage for the sidebar's Identify Peaks and Model & Fit panels:
+automatic peak detection, manual G1/G2 region editing (with inline
+validation), Reset, Accept, and fitting a registered cell-cycle model
+(Dean-Jett / Dean-Jett-Fox / Watson Pragmatic / Automatic) against the
+reviewed regions. This replaced the old manual Stage 5-8 Dean-Jett-Fox
+button strip."""
 
 from helpers import (
     TestContext,
@@ -268,6 +268,78 @@ def test_modeling(ctx: TestContext):
             "Peak-region actions report progress in the status bar",
             "accepted" in status_after.lower() or "peak" in status_after.lower(),
             status_after,
+        )
+
+        # Model & Fit: pick a registered model and fit it against the
+        # just-accepted regions. Watson Pragmatic first -- it makes no G2:G1-
+        # ratio assumption, so it fits whatever regions the detector produced
+        # (this sample's own low-confidence "inferred_g2" pair included --
+        # see the drag-test comment above) without the biological-ratio
+        # feasibility check the generative models apply.
+        page.select_option("#cell_cycle_model_select", "watson_pragmatic")
+        ctx.check(
+            group,
+            "Fit Current is enabled once regions are accepted",
+            not page.eval_on_selector("#cell_cycle_fit_current_button", "e => e.disabled"),
+        )
+
+        page.click("#cell_cycle_fit_current_button")
+        page.wait_for_function(
+            "() => !document.querySelector('#cell_cycle_fit_result').hidden",
+            timeout=30000,
+        )
+        fit_result_dom = page.evaluate(
+            """() => ({
+              header: document.querySelector('.cell_cycle_fit_result_header')?.textContent.trim(),
+              convergence: document.querySelector('.cell_cycle_fit_convergence')?.textContent.trim(),
+              fractionRows: Array.from(document.querySelectorAll('.cell_cycle_fit_fraction_row')).map(
+                (row) => row.textContent.trim()
+              ),
+              warnings: document.querySelector('.cell_cycle_fit_warnings')?.textContent.trim(),
+            })"""
+        )
+        modeling_after_fit = _modeling_state(page, sample_name)
+        active_result = modeling_after_fit["resultsByKey"][modeling_after_fit["activeResultKey"]]
+        ctx.check(
+            group,
+            "Fit Current fits Watson Pragmatic and renders a model-neutral phase-fraction summary",
+            active_result["modelId"] == "watson_pragmatic"
+            and isinstance(active_result["converged"], bool)
+            and len(fit_result_dom["fractionRows"]) == 3
+            and "G1" in fit_result_dom["fractionRows"][0]
+            and "%" in fit_result_dom["fractionRows"][0],
+            str({"active_result_fractions": active_result["phaseFractions"], "dom": fit_result_dom}),
+        )
+
+        status_after_fit = status_bar_text(page)
+        ctx.check(
+            group,
+            "Fitting a model reports progress in the status bar",
+            "fit" in status_after_fit.lower(),
+            status_after_fit,
+        )
+
+        # Dean-Jett assumes a biological ~2:1 G2:G1 ratio by default. This
+        # sample's detected regions don't support any ratio in its configured
+        # range (an inferred_g2 fallback, not a confident detection) -- the
+        # plan requires that to surface as a clear inline error instead of
+        # hanging or silently fitting something meaningless ("If a
+        # constraint is infeasible, disable Fit and explain it inline").
+        page.select_option("#cell_cycle_model_select", "dean_jett")
+        page.click("#cell_cycle_fit_current_button")
+        # Wait for the *new* status text specifically, not just visibility --
+        # the status element is already visible from the Watson fit above and
+        # would otherwise resolve immediately without waiting for this fit.
+        page.wait_for_function(
+            "() => (document.querySelector('#cell_cycle_fit_status')?.textContent || '').toLowerCase().includes('ratio')",
+            timeout=15000,
+        )
+        status_text = page.eval_on_selector("#cell_cycle_fit_status", "e => e.textContent")
+        ctx.check(
+            group,
+            "An infeasible ratio constraint surfaces a clear inline error instead of hanging",
+            "ratio" in status_text.lower() and "g2" in status_text.lower(),
+            status_text,
         )
     except Exception as error:
         ctx.check(group, "Identify Peaks region-review flow", False, str(error))

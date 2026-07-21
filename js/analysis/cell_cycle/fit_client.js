@@ -74,6 +74,9 @@ function get_fit_worker() {
  *   histogram [object]: a Stage 4-shaped histogram (x/y required)
  *   config [object]: model-specific fit config
  *   onProgress [function]: optional, called with {iteration, maxIterations, sse}
+ *   peakRegions [object]: optional, { g1: {left,right}, g2: {left,right} } --
+ *     required by Dean-Jett/Dean-Jett-Fox/Watson/auto_dj_djf, unused by
+ *     legacy_bridge_v1
  *
  * Output:
  *   { promise, cancel } | null: null when no worker is available (caller
@@ -93,7 +96,7 @@ function get_fit_worker() {
  * periodically yield so cancel() can interrupt an in-flight fit is real,
  * separate future work, not implied by this function existing.
  */
-export function run_fit_in_worker(modelId, histogram, config, { onProgress } = {}) {
+export function run_fit_in_worker(modelId, histogram, config, { onProgress, peakRegions } = {}) {
   const worker = get_fit_worker();
   if (!worker) return null;
 
@@ -103,7 +106,7 @@ export function run_fit_in_worker(modelId, histogram, config, { onProgress } = {
   });
 
   try {
-    worker.postMessage({ type: "fit", request_id, modelId, histogram, config });
+    worker.postMessage({ type: "fit", request_id, modelId, histogram, peakRegions, config });
   } catch (error) {
     fit_worker_requests.delete(request_id);
     return null;
