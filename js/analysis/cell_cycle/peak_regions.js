@@ -122,6 +122,12 @@ function localLinearBaseline(values, indexes) {
  * user-selected peak region -- no model fit required, so this can drive a
  * live preview as the user drags a region handle. The handles themselves are
  * never modified by this estimate.
+ *
+ * options.heightFraction (default 0.5, i.e. half-height/FWHM-style) sets
+ * where on the one-sided flank the width is measured -- models/dean_jett.js
+ * and models/dean_jett_fox.js use the default for their initial-guess
+ * seeding; models/watson_pragmatic.js passes 0.6 per the modeling plan's
+ * §5.5 "estimate G1 width near 60% peak height".
  */
 export function estimatePeakFromRegion(edges, counts, regionInput, options = {}) {
   const region = normalizePeakRegion(regionInput, options.label ?? "peak");
@@ -136,7 +142,8 @@ export function estimatePeakFromRegion(edges, counts, regionInput, options = {})
   }
 
   const cleanSide = options.cleanSide ?? "left";
-  const sigmaBins = estimateSigmaOneSidedWithinRegion(smoothed, peakIndex, indexes, 0.5, cleanSide);
+  const heightFraction = options.heightFraction ?? 0.5;
+  const sigmaBins = estimateSigmaOneSidedWithinRegion(smoothed, peakIndex, indexes, heightFraction, cleanSide);
   let sigma = sigmaBins * binWidth;
 
   // If the one-sided estimate is unusable, fall back to a baseline-subtracted

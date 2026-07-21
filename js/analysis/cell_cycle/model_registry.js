@@ -9,6 +9,7 @@
 import { legacy_bridge_v1 } from "./models/legacy_bridge.js";
 import { dean_jett } from "./models/dean_jett.js";
 import { dean_jett_fox } from "./models/dean_jett_fox.js";
+import { watson_pragmatic } from "./models/watson_pragmatic.js";
 import { auto_dj_djf } from "./model_selection.js";
 
 const registry = new Map();
@@ -53,11 +54,11 @@ export function clear_registry() {
  * Synchronous: cell_cycle_pipeline.js (this registry's only real caller) is
  * itself already lazy-loaded as a whole, so there's no separate "off the
  * critical path" benefit to also dynamically importing each model here.
- * Canonical Watson model registers here too once it lands.
  */
 export function register_default_models() {
   register_model(legacy_bridge_v1);
   register_model(dean_jett);
   register_model(dean_jett_fox);
+  register_model(watson_pragmatic);
   register_model(auto_dj_djf);
 }
