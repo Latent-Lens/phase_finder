@@ -319,7 +319,14 @@ export const dean_jett = {
    */
   fit(context) {
     const { histogram, peakRegions, config: userConfig = {} } = context;
-    const config = { ...DEFAULT_CONFIG, ...userConfig };
+    // onProgress/shouldCancel are live closures fit_worker.js injects into
+    // every model's config -- excluded from the merged `config` below since
+    // that object gets stored in the returned rawResult (provenance.rawResult
+    // in the normalized result), which the worker then postMessages back;
+    // a function reference there fails structured-clone. Read separately for
+    // the LM call itself instead.
+    const { onProgress, shouldCancel, ...restUserConfig } = userConfig;
+    const config = { ...DEFAULT_CONFIG, ...restUserConfig };
     const regions = validatePeakRegions(peakRegions);
     assert_ratio_feasible(regions, config);
 
@@ -350,8 +357,8 @@ export const dean_jett = {
         stepTolerance: config.stepTolerance,
         initialLambda: config.initialLambda,
         finiteDifferenceStep: config.finiteDifferenceStep,
-        onProgress: userConfig.onProgress,
-        shouldCancel: userConfig.shouldCancel,
+        onProgress,
+        shouldCancel,
       },
     });
 

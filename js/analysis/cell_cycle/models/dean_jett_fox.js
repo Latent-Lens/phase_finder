@@ -384,7 +384,11 @@ export const dean_jett_fox = {
    */
   fit(context) {
     const { histogram, peakRegions, config: userConfig = {} } = context;
-    const { djHint = null, ...restConfig } = userConfig;
+    // onProgress/shouldCancel excluded from the merged `config` for the same
+    // reason as dean_jett.js's fit(): that object is stored in the returned
+    // rawResult (provenance.rawResult), which the worker postMessages back,
+    // and a live function reference there fails structured-clone.
+    const { djHint = null, onProgress, shouldCancel, ...restConfig } = userConfig;
     const config = { ...DEFAULT_CONFIG, ...restConfig };
     const regions = validatePeakRegions(peakRegions);
     assert_ratio_feasible(regions, config);
@@ -411,8 +415,8 @@ export const dean_jett_fox = {
         stepTolerance: config.stepTolerance,
         initialLambda: config.initialLambda,
         finiteDifferenceStep: config.finiteDifferenceStep,
-        onProgress: userConfig.onProgress,
-        shouldCancel: userConfig.shouldCancel,
+        onProgress,
+        shouldCancel,
       },
     });
 

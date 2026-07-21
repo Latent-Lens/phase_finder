@@ -158,7 +158,15 @@ export const watson_pragmatic = {
    * No optimizer, no multi-start: every step is closed-form. */
   fit(context) {
     const { histogram, peakRegions, config: userConfig = {} } = context;
-    const config = { ...DEFAULT_CONFIG, ...userConfig };
+    // onProgress/shouldCancel (live closures fit_worker.js injects into
+    // every model's config, unused here since this fit is closed-form)
+    // excluded from the merged `config` for the same reason as
+    // dean_jett.js's fit(): that object is stored in the returned rawResult
+    // (provenance.rawResult in the normalized result), which the worker
+    // postMessages back, and a live function reference there fails
+    // structured-clone.
+    const { onProgress, shouldCancel, ...restUserConfig } = userConfig;
+    const config = { ...DEFAULT_CONFIG, ...restUserConfig };
     const regions = validatePeakRegions(peakRegions);
 
     const edges = histogram.edges;
