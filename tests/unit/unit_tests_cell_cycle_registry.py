@@ -132,6 +132,20 @@ _TESTS = r"""() => {
       };
     });
 
+    run('registry: register_default_models() also registers the watson_pragmatic decomposition', () => {
+      const entry = registry.get_model('watson_pragmatic');
+      return {
+        pass: !!entry
+          && entry.kind === 'decomposition'
+          && entry.fitScope === 'per_sample'
+          && entry.comparisonGroup === null
+          && entry.capabilities?.autoComparison === false
+          && typeof entry.fit === 'function'
+          && typeof entry.normalizeResult === 'function',
+        detail: JSON.stringify({ entry: entry && { id: entry.id, kind: entry.kind, comparisonGroup: entry.comparisonGroup } }),
+      };
+    });
+
     run('registry: register_default_models() also registers the auto_dj_djf selection policy', () => {
       const entry = registry.get_model('auto_dj_djf');
       return {
