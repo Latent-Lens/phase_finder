@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """E2E coverage for the pre-modeling QC gates (0-3, driven by the #qc_stageN
-toggle buttons), the automatic Stage 4 histogram, and the manual Stage 5-8
-Dean-Jett-Fox modeling buttons."""
+toggle buttons) and the automatic Stage 4 histogram. Peak identification (the
+workflow that replaced the old manual Stage 5-8 Dean-Jett-Fox buttons) is
+covered by tests_modeling.py."""
 
 import math
 
@@ -15,25 +16,6 @@ from helpers import (
     restore_row_selection,
     wait_for_overlay_hidden,
 )
-
-
-def _run_stage(page, stage, sample_name):
-    """Click a manual Stage 5-8 button and wait for it to complete."""
-    selector = f"#djf_stage{stage}"
-    page.click(selector)
-    timeout = 180000 if stage in (6, 7) else 60000
-    page.wait_for_function(
-        """([selector, stage, sampleName]) => {
-          const button = document.querySelector(selector);
-          const state = window.PhaseFinder?.pipeline?.get_state?.(sampleName);
-          return button?.classList.contains('djf_stage_complete')
-            && !button.classList.contains('djf_stage_running')
-            && state?.lastStageRun === stage;
-        }""",
-        arg=[selector, stage, sample_name],
-        timeout=timeout,
-    )
-    wait_for_overlay_hidden(page, timeout_ms=10000)
 
 
 def _run_qc_stage(page, stage, sample_name):
@@ -58,15 +40,6 @@ def _run_qc_stage(page, stage, sample_name):
         timeout=60000,
     )
     wait_for_overlay_hidden(page, timeout_ms=10000)
-
-
-def _readout_text(page):
-    """#djf_readout is a debug readout the current UI doesn't render (its
-    consumers all guard with `if (djf_readout)`); tolerate its absence rather
-    than fail the whole flow on a missing selector."""
-    if page.query_selector("#djf_readout") is None:
-        return ""
-    return page.eval_on_selector("#djf_readout", "element => element.textContent")
 
 
 def _wait_for_histogram(page, sample_name, timeout=15000):
@@ -128,55 +101,13 @@ def _state_summary(page, sample_name, stage):
               maskLength: row.data.masks.singlet?.length || 0,
             };
           }
-          if (stage === 4) {
-            const histogram = state.histogram;
-            return {
-              lastStageRun: state.lastStageRun,
-              bins: histogram?.x?.length || 0,
-              countSum: histogram?.y?.reduce((sum, value) => sum + value, 0) || 0,
-              binnedCount: histogram?.binnedCount || 0,
-              plotBins: window.PhaseFinder.plot.get_histogram(sampleName)?.counts?.length || 0,
-            };
-          }
-          if (stage === 5) {
-            return {
-              lastStageRun: state.lastStageRun,
-              found: state.peaks?.found,
-              ratio: state.peaks?.ratio,
-              mu1: state.peaks?.mu1,
-              mu2: state.peaks?.mu2,
-            };
-          }
-          if (stage === 6) {
-            return {
-              lastStageRun: state.lastStageRun,
-              curveBins: state.baseFit?.expectedCounts?.length || 0,
-              mu1: state.baseFit?.parameters?.mu1,
-              ratio: state.baseFit?.parameters?.R,
-              converged: state.baseFit?.converged,
-              iterations: state.baseFit?.diagnostics?.iterations,
-            };
-          }
-          if (stage === 7) {
-            return {
-              lastStageRun: state.lastStageRun,
-              selectedModel: state.extendedFit?.diagnostics?.selectedModel,
-              candidates: state.extendedFit?.diagnostics?.candidateFits?.length || 0,
-              curveBins: state.extendedFit?.expectedCounts?.length || 0,
-            };
-          }
-
-          const fractions = state.report?.fractions?.biologicalSinglets;
+          const histogram = state.histogram;
           return {
             lastStageRun: state.lastStageRun,
-            oneC: fractions?.oneC,
-            sPhase: fractions?.sPhase,
-            twoC: fractions?.twoC,
-            fractionSum: fractions
-              ? fractions.oneC + fractions.sPhase + fractions.twoC
-              : null,
-            warnings: state.report?.warnings?.length,
-            hasDisplaySummary: Boolean(state.report?.displaySummary?.cellCycle),
+            bins: histogram?.x?.length || 0,
+            countSum: histogram?.y?.reduce((sum, value) => sum + value, 0) || 0,
+            binnedCount: histogram?.binnedCount || 0,
+            plotBins: window.PhaseFinder.plot.get_histogram(sampleName)?.counts?.length || 0,
           };
         }""",
         [sample_name, stage],
@@ -436,7 +367,59 @@ def test_pipeline(ctx: TestContext):
                     f"before={gate_before}, resized={gate_resized}, boxes={fitted_ellipse_box, resized_ellipse_box}",
                 )
 
-                # Restore both the fitted center and fitted coverage before the
+                # Holding Shift while dragging the ellipse rotates it around its
+                # center (a modifier held anywhere during the gesture, checked
+                # once at drag start) instead of moving it.
+                rotate_center = page.locator("#djf_scatter_plot .djf_scatter_gate_center")
+                rotate_box = rotate_center.bounding_box()
+                rotate_cx = rotate_box["x"] + rotate_box["width"] / 2
+                rotate_cy = rotate_box["y"] + rotate_box["height"] / 2
+                # mousedown lands exactly on the center handle (small hit
+                # radius); the subsequent moves trace an arc around it, which
+                # is what actually produces a rotation (a straight-line drag
+                # starting from the center itself is degenerate).
+                page.mouse.move(rotate_cx, rotate_cy)
+                page.keyboard.down("Shift")
+                page.mouse.down()
+                page.mouse.move(rotate_cx + 60, rotate_cy, steps=4)
+                page.mouse.move(rotate_cx, rotate_cy - 60, steps=8)
+                page.mouse.up()
+                page.keyboard.up("Shift")
+                page.wait_for_function(
+                    """(sampleName) => Math.abs(
+                      window.PhaseFinder.pipeline.get_state(sampleName)
+                        ?.scatterGate?.rotation ?? 0
+                    ) > 1e-6""",
+                    arg=sample_name,
+                    timeout=10000,
+                )
+                gate_rotated = page.evaluate(
+                    """(sampleName) => {
+                      const result = window.PhaseFinder.pipeline.get_state(sampleName).scatterGate;
+                      return {
+                        mean: [...result.mainComponent.mean],
+                        rotation: result.rotation,
+                        manualRotation: result.manualOverride?.rotation,
+                        retained: result.retainedEventCount,
+                        source: result.gateSource,
+                        caption: document.querySelector('#djf_scatter_caption')?.textContent,
+                      };
+                    }""",
+                    sample_name,
+                )
+                ctx.check(
+                    group,
+                    "Shift-dragging the Cell Gate ellipse rotates it around its center and applies a new mask",
+                    gate_rotated["mean"] == gate_resized["mean"]
+                    and abs(gate_rotated["rotation"]) > 1e-6
+                    and gate_rotated["manualRotation"] == gate_rotated["rotation"]
+                    and gate_rotated["source"] == "manual"
+                    and gate_rotated["retained"] != gate_resized["retained"]
+                    and "rotation" in gate_rotated["caption"],
+                    f"resized={gate_resized}, rotated={gate_rotated}",
+                )
+
+                # Restore the fitted center, coverage, and rotation before the
                 # final translation used to exercise the Singlet Gate.
                 page.click("#djf_scatter_reset")
                 page.wait_for_function(
@@ -445,6 +428,17 @@ def test_pipeline(ctx: TestContext):
                         ?.scatterGate?.manualOverride""",
                     arg=sample_name,
                     timeout=10000,
+                )
+                gate_after_reset = page.evaluate(
+                    """(sampleName) => window.PhaseFinder.pipeline
+                      .get_state(sampleName).scatterGate.rotation""",
+                    sample_name,
+                )
+                ctx.check(
+                    group,
+                    "Reset fitted gate also clears rotation back to zero",
+                    gate_after_reset == 0,
+                    f"rotation_after_reset={gate_after_reset}",
                 )
 
                 # Leave a manual gate active so the Singlet Gate proves that
@@ -501,50 +495,6 @@ def test_pipeline(ctx: TestContext):
                and density_curve_count(page) == 1)
         ctx.check(group, "Histogram is automatically kept current and published to the plot", ok4, str(summary4))
 
-        # --- Manual Stage 5-8 Dean-Jett-Fox modeling buttons ---
-        for stage in range(5, 9):
-            try:
-                _run_stage(page, stage, sample_name)
-            except Exception as error:
-                ctx.check(group, f"Manual Stage {stage} button completes", False, str(error))
-                return
-
-            readout = _readout_text(page)
-            ctx.check(
-                group,
-                f"Manual Stage {stage} button runs only its pipeline checkpoint",
-                (not readout or f"Stage {stage}" in readout)
-                and page.locator(f"#djf_stage{stage}").evaluate(
-                    "button => button.classList.contains('djf_stage_complete')"
-                ),
-                readout.strip(),
-            )
-
-            summary = _state_summary(page, sample_name, stage)
-            if stage == 5:
-                ok = (summary["found"] is True and 1.7 <= summary["ratio"] <= 2.3
-                      and summary["mu1"] > 0 and summary["mu2"] > summary["mu1"])
-                label = "Stage 5 detects the synthetic 1C/2C peak pair"
-            elif stage == 6:
-                ok = (summary["curveBins"] >= 16 and summary["mu1"] > 0
-                      and 1.7 <= summary["ratio"] <= 2.3
-                      and fit_curve_count(page) == 1)
-                label = "Stage 6 stores and overlays a constrained base DJF fit"
-            elif stage == 7:
-                ok = (bool(summary["selectedModel"]) and summary["candidates"] >= 1
-                      and summary["curveBins"] >= 16 and fit_curve_count(page) == 1)
-                label = "Stage 7 compares contamination extensions and keeps a selected model"
-            else:
-                readout_has_fractions = not readout or all(token in readout for token in ("1C", "S", "2C", "%"))
-                report_rows = page.locator("#djf_fit_table .djf_fit_phase_row").count()
-                diagnostic_rows = page.locator("#djf_fit_table .djf_fit_diagnostics_row").count()
-                ok = (abs(summary["fractionSum"] - 1) < 1e-6
-                      and summary["hasDisplaySummary"] and readout_has_fractions
-                      and report_rows >= 5 and diagnostic_rows >= 1)
-                label = "Stage 8 shows normalized fractions and fit diagnostics"
-
-            ctx.check(group, label, ok, str(summary))
-
         pipeline_after = page.evaluate(
             "() => typeof window.PhaseFinder.pipeline?.run_stage === 'function'"
             " && typeof window.PhaseFinder.pipeline?.get_state === 'function'"
@@ -556,10 +506,8 @@ def test_pipeline(ctx: TestContext):
             f"loaded={pipeline_after}",
         )
 
-        # A user can turn an earlier QC gate back off after inspecting the
-        # final report. Prove that both JS state and visual completion
-        # markers are invalidated together, so stale fit/report output
-        # cannot survive an upstream QC change.
+        # A user can turn an earlier QC gate back off after inspecting later
+        # gates. Prove both JS state and the mask it drove are cleared together.
         _run_qc_stage(page, 2, sample_name)  # toggles Cell Gate off
         invalidated = page.evaluate(
             """(sampleName) => {
@@ -573,32 +521,19 @@ def test_pipeline(ctx: TestContext):
                 scatterGate: state.scatterGate,
                 singletResult: state.singletResult,
                 hasHistogram: Boolean(state.histogram),
-                peaks: state.peaks,
-                baseFit: state.baseFit,
-                extendedFit: state.extendedFit,
-                report: state.report,
                 scatterMask: row.data.masks.scatter,
                 singletMask: row.data.masks.singlet,
                 finalCount,
                 filteredCount: row.data.filtered?.eventCount,
-                downstreamComplete: [5, 6, 7, 8]
-                  .filter((stage) => document.querySelector(`#djf_stage${stage}`)
-                    ?.classList.contains('djf_stage_complete')).length,
-                fitPaths: document.querySelectorAll('.djf-fit-overlay').length,
               };
             }""",
             sample_name,
         )
         ctx.check(
             group,
-            "Turning the Cell Gate filter off clears its own mask and every Stage 5-8 product",
+            "Turning the Cell Gate filter off clears its own mask",
             invalidated["scatterGate"] is None
             and invalidated["scatterMask"] is None
-            and invalidated["peaks"] is None
-            and invalidated["baseFit"] is None
-            and invalidated["extendedFit"] is None
-            and invalidated["report"] is None
-            and invalidated["downstreamComplete"] == 0
             and fit_curve_count(page) == 0,
             str(invalidated),
         )
@@ -630,7 +565,7 @@ def test_pipeline(ctx: TestContext):
             page.click("#djf_scatter_modal_close")
             page.wait_for_selector("#djf_scatter_modal", state="hidden", timeout=10000)
     except Exception as error:
-        ctx.check(group, "Pre-modeling QC + manual Stage 5-8 pipeline flow", False, str(error))
+        ctx.check(group, "Pre-modeling QC gate flow", False, str(error))
     finally:
         if page.locator("#djf_scatter_modal").is_visible():
             page.click("#djf_scatter_modal_close")

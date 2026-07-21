@@ -290,6 +290,14 @@ th {
   opacity: 0.45;
 }
 
+/* A checked row the user clicked into focus for per-sample review (e.g.
+   Identify Peaks) when more than one file is checked at once. */
+.metadata_row_focused {
+  background: var(--accent_soft);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* Always-visible up/down sort arrows, side by side; the active one highlights. */
 .sort_indicator {
   display: inline-flex;

@@ -2,8 +2,10 @@
 """PhaseFinder end-to-end + unit test runner.
 
 This script is the single entry point. It:
-  1. Runs all e2e tests against a headed or headless Chromium instance, with a
-     full-session WebM recorded via Playwright and per-test clips trimmed by ffmpeg.
+  1. Runs all e2e tests against a headed or headless browser, with a full-session
+     WebM recorded via Playwright and per-test clips trimmed by ffmpeg. Local runs
+     always use the same bundled Chromium instance as before; GitHub Actions may
+     select a configured browser with --browser.
   2. Runs JavaScript unit tests via a second Playwright page pointed at
      tests/unit/test_harness.html.
   3. Writes a combined HTML + Markdown report to tests/e2e/results/.
@@ -13,6 +15,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 import time
 import threading
@@ -58,6 +61,47 @@ from tests_reset import test_reset
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 TEST_DATA_DIR = Path(__file__).resolve().parents[1] / "test_data"
+GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
+
+
+def launch_browser(playwright, browser_name, headed=False):
+    """Launch the requested CI browser while preserving local Chromium runs.
+
+    GitHub Actions sets GITHUB_ACTIONS=true for every workflow job. Outside
+    that environment, browser_name is deliberately ignored so the existing
+    local command continues to use Playwright's bundled Chromium.
+
+    The "safari" CI option runs Playwright WebKit for Safari-engine
+    compatibility; it is not the native Safari application. Brave is driven
+    through its installed executable, supplied by the workflow as BRAVE_PATH.
+    """
+    launch_options = {"headless": not headed}
+
+    if not GITHUB_ACTIONS:
+        print("Browser: Playwright Chromium (local default)", flush=True)
+        return playwright.chromium.launch(**launch_options)
+
+    print(f"Browser: {browser_name} (GitHub Actions)", flush=True)
+    if browser_name == "chrome":
+        return playwright.chromium.launch(channel="chrome", **launch_options)
+    if browser_name == "firefox":
+        return playwright.firefox.launch(**launch_options)
+    if browser_name == "safari":
+        return playwright.webkit.launch(**launch_options)
+    if browser_name == "edge":
+        return playwright.chromium.launch(channel="msedge", **launch_options)
+    if browser_name == "brave":
+        brave_path = os.environ.get("BRAVE_PATH")
+        if not brave_path:
+            raise RuntimeError(
+                "BRAVE_PATH must point to the Brave executable in GitHub Actions."
+            )
+        return playwright.chromium.launch(
+            executable_path=brave_path,
+            **launch_options,
+        )
+
+    raise ValueError(f"Unsupported GitHub Actions browser: {browser_name}")
 
 
 def run(args):
@@ -92,7 +136,7 @@ def run(args):
     unit_ctx = None
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=not args.headed)
+        browser = launch_browser(p, args.browser, args.headed)
 
         # ----------------------------------------------------------------
         # E2E phase — recorded to WebM
@@ -218,6 +262,15 @@ def main():
     parser.add_argument("--files", type=int, default=4, help="initial FCS files to load")
     parser.add_argument("--extra-files", type=int, default=2, help="additional unique FCS files to append")
     parser.add_argument("--channel", default="GFP/FITC-A")
+    parser.add_argument(
+        "--browser",
+        choices=["chrome", "firefox", "brave", "safari", "edge"],
+        default="chrome",
+        help=(
+            "browser for GitHub Actions jobs; local runs always use Playwright "
+            "Chromium regardless of this value"
+        ),
+    )
     parser.add_argument("--headed", action="store_true")
     args = parser.parse_args()
 

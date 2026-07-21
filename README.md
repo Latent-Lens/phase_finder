@@ -347,13 +347,12 @@ offline — no network access or CDN is needed at runtime.
 9. Review the overlaid event histogram; adjust Color by / Bins.
 10. Click **Cell Cycle Modeling** to open the modeling controls in the
     sidebar. Apply the **Pre-modeling QC** filters you want (Stage 0–3,
-    individually or via their own **Run All**), then run the manual
-    **Stage 5–8** DJF buttons for checkpoint diagnostics, or click **Run
-    all** to execute Stage 5–8 in sequence; **Back** returns to the
-    file/channel controls.
-11. Review the fitted components, normalized phase fractions, contamination
-    accounting, diagnostics, and warnings in the plot and report table.
-12. Check or uncheck rows to add or remove plotted samples live.
+    individually or via their own **Run All**), then use **Identify Peaks**
+    to detect and, if needed, manually adjust the G1 and G2/M peak regions
+    for the sample you're reviewing; **Back** returns to the file/channel
+    controls. (Choosing a model and running it against the reviewed regions
+    is not wired up yet.)
+11. Check or uncheck rows to add or remove plotted samples live.
 
 ## Development Notes
 

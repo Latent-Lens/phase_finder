@@ -158,22 +158,27 @@ loading extra files that desync every row-count assertion in this suite.
 - Data cache retained for unchecked rows
 - Channel change clears curves, resets button, reloads data, replots
 
-### E2E — DJF pipeline
-- Pre-modeling QC toggles (Stage 0&ndash;3) and manual Stage 5&ndash;8 DJF
-  buttons each store their own checkpoint in original event order
+### E2E — Pre-modeling QC
+- Pre-modeling QC toggles (Stage 0&ndash;3) each store their own checkpoint in
+  original event order
 - Time QC, FSC/SSC gating, and pulse-geometry gating exercise non-skip paths
 - Turning on the Cell Gate QC toggle opens a populated scatter/gate editor;
   dragging changes the center, the coverage control resizes the ellipse, both
   change the authoritative raw-index mask, reset restores the fitted gate,
   and the Singlet Gate consumes the manually edited retained-event set
-- Histogram and fitted component overlays render at the appropriate stages
-- Biological 1C + S + 2C fractions sum to ~100 %
-- Run all retains every checkpoint product and updates the report/status UI
-- Rerunning an upstream gate clears downstream masks, fits, reports, overlays,
-  and completion badges
+- The Stage 4 histogram is rebuilt automatically and stays current
+- Rerunning an upstream gate clears its own downstream mask
 - The compacted filtered view stays index-aligned with the recomputed final mask
-- Stage 8 publishes sequential filter losses and G1/S/G2-M percentages as
-  visible read-only table columns
+
+### E2E — Modeling (Identify Peaks)
+- Detect Peaks proposes an ordered, valid G1/G2 region pair with a status and
+  confidence readout, reflected in the sidebar's numeric inputs
+- An invalid manual region edit (breaks L1 &lt; R1 &le; L2 &lt; R2) shows an
+  inline error and leaves the stored regions untouched
+- A valid manual edit commits as "manual", marks the regions reviewed, and
+  clears the error
+- Reset restores the detector's automatic region proposal
+- Accept marks the current regions reviewed
 
 ### E2E — Sidebar/Icons
 - Collapsed sidebar shows upload / channel / histogram icons

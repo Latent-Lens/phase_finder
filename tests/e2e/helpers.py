@@ -549,11 +549,11 @@ def click_plot_events(page):
 def enter_modeling_mode(page):
     """Open the sidebar's Cell Cycle Modeling mode.
 
-    The Pre-modeling QC filters (#qc_stage*) and the manual DJF stage buttons
-    (#djf_stage*, #djf_run_all) now live in #sidebar_modeling_section, which is
-    hidden until Cell Cycle Modeling is opened. Call this once after plotting,
-    before interacting with those controls. Idempotent — a no-op if modeling
-    mode is already active.
+    The Pre-modeling QC filters (#qc_stage*) and the Identify Peaks panel
+    (#detect_peaks_button, #peak_region_*, etc.) now live in
+    #sidebar_modeling_section, which is hidden until Cell Cycle Modeling is
+    opened. Call this once after plotting, before interacting with those
+    controls. Idempotent — a no-op if modeling mode is already active.
     """
     if page.eval_on_selector(".app", "e => e.classList.contains('sidebar_modeling_mode')"):
         return

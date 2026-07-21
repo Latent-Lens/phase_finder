@@ -107,6 +107,27 @@ export function eigenDecomposition2D(covariance) {
   };
 }
 
+/**
+ * Rotates a symmetric 2 x 2 covariance matrix's principal axes by an angle
+ * (radians, counter-clockwise) while preserving its eigenvalues -- used to
+ * let a user manually reorient a fitted gate ellipse around its center
+ * without changing its shape (axis ratio) or size (coverage).
+ */
+export function rotateCovariance2D(covariance, angleRadians) {
+  const { values, vectors } = eigenDecomposition2D(covariance);
+  const [majorValue, minorValue] = values;
+  const cos = Math.cos(angleRadians);
+  const sin = Math.sin(angleRadians);
+  const rotate = ([x, y]) => [x * cos - y * sin, x * sin + y * cos];
+  const outer = ([x, y]) => [[x * x, x * y], [y * x, y * y]];
+  const major = outer(rotate(vectors[0]));
+  const minor = outer(rotate(vectors[1]));
+  return [
+    [majorValue * major[0][0] + minorValue * minor[0][0], majorValue * major[0][1] + minorValue * minor[0][1]],
+    [majorValue * major[1][0] + minorValue * minor[1][0], majorValue * major[1][1] + minorValue * minor[1][1]],
+  ];
+}
+
 /** Squared Mahalanobis distance from a GMM component or mean/covariance pair. */
 export function mahalanobisSquared(
   point,

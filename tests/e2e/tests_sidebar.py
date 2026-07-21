@@ -76,19 +76,19 @@ def test_sidebar_modeling_mode(ctx: TestContext):
         page.wait_for_selector("#sidebar_modeling_section", state="visible", timeout=5000)
         wait_briefly(0.4)
 
-        ctx.check(group, "Entering modeling mode reveals QC + DJF controls and Back",
+        ctx.check(group, "Entering modeling mode reveals QC + Identify Peaks controls and Back",
                   page.eval_on_selector(".app", "e => e.classList.contains('sidebar_modeling_mode')")
                   and page.is_visible("#qc_stage_all")
-                  and page.is_visible("#djf_run_all")
+                  and page.is_visible("#detect_peaks_button")
                   and page.is_visible("#sidebar_back_button"))
         ctx.check(group, "Modeling mode hides the file/channel controls and title reads 'Cell Cycle Modeling'",
                   not page.is_visible("#file_upload_section")
                   and not page.is_visible("#channel_select")
                   and not page.is_visible("#start_analysis_button")
                   and page.eval_on_selector(".sidebar_title_row h2", "e => e.textContent.trim()") == "Cell Cycle Modeling")
-        ctx.check(group, "QC and DJF controls no longer occupy the plot panel (plot reclaims the height)",
+        ctx.check(group, "QC and Identify Peaks controls no longer occupy the plot panel (plot reclaims the height)",
                   page.eval_on_selector_all("#plot_panel .premodel_qc_group", "els => els.length") == 0
-                  and page.eval_on_selector_all("#plot_panel .djf_pipeline_controls", "els => els.length") == 0)
+                  and page.eval_on_selector_all("#plot_panel .peak_review_group", "els => els.length") == 0)
 
         # Back
         page.click("#sidebar_back_button")

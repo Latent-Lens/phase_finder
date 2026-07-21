@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="875"
+     height="1000"
+     viewBox="0 0 875 1000">
+  <path
+      d="m0 788l0-876 875 0 0 876-875 0z m688-500l-500 0 0 125 500 0 0-125z"
+      transform="matrix(1 0 0 -1 0 850)"
+      fill="currentColor"/>
+</svg>

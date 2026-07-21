@@ -26,6 +26,7 @@ import {
   invalidate_model_results,
   invalidate_model_config_result,
 } from "./pipeline_state.js";
+import { rotateCovariance2D } from "./math/linalg2d.js";
 import { register_default_models, get_model } from "./cell_cycle/model_registry.js";
 import { normalize_legacy_extended_result } from "./cell_cycle/models/legacy_bridge.js";
 
@@ -226,6 +227,7 @@ export function run_stage2(row, options = {}) {
   if (!result.skipped && result.mainComponent) {
     result.fittedMainComponent = clone_scatter_component(result.mainComponent);
     result.fittedThreshold = result.threshold;
+    result.rotation = 0;
     result.manualOverride = null;
     result.gateSource = "fitted";
   }
@@ -236,17 +238,23 @@ export function run_stage2(row, options = {}) {
 }
 
 /**
- * Translate or resize Stage 2's fitted ellipse and make it authoritative.
+ * Translate, resize, or rotate Stage 2's fitted ellipse and make it
+ * authoritative.
  *
  * Translation changes the FSC-A/SSC-A center. Coverage changes the squared
- * Mahalanobis threshold while retaining the fitted covariance, so both axes
- * scale together without changing their ratio or rotation. The raw-index mask
- * is recomputed from the original scatter points, then Stage 3 and every
- * downstream product are invalidated.
+ * Mahalanobis threshold while retaining the covariance's axis ratio, so both
+ * axes scale together. Rotation reorients the covariance's principal axes by
+ * an angle (radians) around the center without changing its shape or size --
+ * always computed from the fitted covariance plus the current absolute
+ * rotation (not compounded onto an already-rotated matrix), the same
+ * always-relative-to-fitted pattern as mean and coverage, so any one of the
+ * three can be edited independently and "Reset fitted gate" clears all three
+ * together. The raw-index mask is recomputed from the original scatter
+ * points, then Stage 3 and every downstream product are invalidated.
  */
 export function update_stage2_gate(
   row,
-  { mean = null, coverage = null, reset = false } = {},
+  { mean = null, coverage = null, rotation = null, reset = false } = {},
 ) {
   const data = require_row_data(row);
   const state = get_or_create_state(row);
@@ -270,9 +278,18 @@ export function update_stage2_gate(
     : coverage == null
       ? Number(result.threshold)
       : scatter_threshold_for_coverage(coverage);
+  const nextRotation = reset
+    ? 0
+    : rotation == null
+      ? Number(result.rotation ?? 0)
+      : Number(rotation);
+  if (!Number.isFinite(nextRotation)) {
+    throw new RangeError("The Stage 2 gate rotation must be a finite number of radians.");
+  }
   const nextComponent = {
     ...(reset ? fittedComponent : currentComponent),
     mean: center,
+    covariance: rotateCovariance2D(fittedComponent.covariance, nextRotation),
   };
   const { mask, mahalanobisDistanceSquared } = stage2.createScatterGateMask(
     data.eventCount,
@@ -296,6 +313,7 @@ export function update_stage2_gate(
     fittedMainComponent: fittedComponent,
     fittedThreshold,
     threshold,
+    rotation: nextRotation,
     scatterMask: mask,
     mask,
     mahalanobisDistanceSquared,
@@ -306,6 +324,7 @@ export function update_stage2_gate(
           mean: [...center],
           threshold,
           coverage: 1 - Math.exp(-threshold / 2),
+          rotation: nextRotation,
         },
     gateSource: reset ? "fitted" : "manual",
   };

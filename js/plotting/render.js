@@ -63,6 +63,7 @@ import { update_plot_title, render_fit_results_table } from "./modeling.js";
 import { open_axis_range_modal } from "./axis_modal.js";
 import { get_state as get_pipeline_state, state_matches_row } from "../analysis/pipeline_state.js";
 import { show_curve_tooltip, hide_curve_tooltip } from "./curve_tooltip.js";
+import { render_peak_region_overlay } from "./peak_region_overlay.js";
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected. Only this render pass reads or writes them.
@@ -560,6 +561,18 @@ export function render_density_plot() {
     })
     .on("pointerleave", hide_curve_tooltip)
     .on("dblclick", (event, d) => isolate_on_dblclick(event, d.group));
+
+  // Draggable G1/G2 region handles for whichever sample Identify Peaks is
+  // currently reviewing, drawn last so they sit above everything else and
+  // reliably receive pointer events. Wrapped defensively: this is optional
+  // decoration, and letting it throw would abort the fit-results table below
+  // and the pf-plot-rendered dispatch every other listener (including the
+  // sidebar's own refresh) depends on.
+  try {
+    render_peak_region_overlay({ svg, series, x_scale, y_scale, margin, height, clipId: clip_id });
+  } catch (error) {
+    console.error("Peak region overlay failed to render:", error);
+  }
 
   // No legend: samples are identified by hovering their curve (curve_tooltip.js)
   // and DJF fit components keep their fixed reference colors (G1/S/G2/etc.)

@@ -1,5 +1,8 @@
-// Manual one-button-per-stage DJF debugging UI. Every click runs only its
-// selected stage for all currently plottable rows and records per-sample output.
+// Pre-modeling QC gate toggles: applies checked gating stages (Structural,
+// Time, Cell Gate, Singlet Gate) to every plotted sample, keeps their loss
+// columns and the Stage 4 histogram current, and owns the Cell Gate inspector
+// modal. The Identify Peaks / model workflow that follows QC lives in
+// cell_cycle/peak_review_ui.js.
 
 import {
   qc_gate_buttons,
@@ -195,14 +198,6 @@ async function apply_qc_selection() {
     // manual "build the histogram" step.
     regenerate_histograms(rows, pipeline);
 
-    // A QC change can invalidate every row's Stage 5-8 products (see
-    // ensure_histogram_current()'s invalidation cascade in
-    // cell_cycle_pipeline.js) without ever calling run_manual_stage(), which
-    // is the only other place that clears these badges. Clear them here too
-    // so a Stage button never shows "complete" for data QC just invalidated.
-    djf_stage_buttons.forEach((stageButton) => stageButton?.classList.remove("djf_stage_complete"));
-    djf_run_all_button?.classList.remove("djf_stage_complete");
-
     update_qc_columns(rows, pipeline, checked);
     render_density_plot();
     set_status_bar(checked.length
@@ -235,8 +230,6 @@ function open_cell_gate_inspector() {
   open_scatter_modal(inspect_row, pipeline.get_state(inspect_row.name).scatterGate, {
     onGateChange: (edit) => {
       const updated = pipeline.update_stage2_gate(inspect_row, edit);
-      djf_stage_buttons.forEach((stageButton) => stageButton?.classList.remove("djf_stage_complete"));
-      djf_run_all_button?.classList.remove("djf_stage_complete");
       // The gate edit invalidates every downstream mask for this row; keep
       // its Pre-modeling QC columns and the plot in sync with the new gate.
       regenerate_histograms(rows, pipeline);
@@ -313,22 +306,4 @@ export function init_pipeline_ui() {
   init_scatter_modal();
   init_premodel_qc();
   document.addEventListener("pf-plot-complete", schedule_qc_precompute);
-
-  djf_stage_buttons.forEach((button, stage) => {
-    if (!button) return;
-    if (stage >= IMPLEMENTED_STAGE_COUNT) {
-      button.disabled = true;
-      button.title = "This stage is enabled by the next pipeline checkpoint.";
-      return;
-    }
-    button.addEventListener("click", () => run_manual_stage(stage, button));
-  });
-
-  if (djf_run_all_button) {
-    djf_run_all_button.disabled = false;
-    djf_run_all_button.title = "Run all nine stages in order for selected samples.";
-    djf_run_all_button.addEventListener("click", run_manual_all);
-  }
 }
-
-export { run_manual_stage, run_manual_all };

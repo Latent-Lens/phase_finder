@@ -100,11 +100,15 @@ export function select_peak_pair(row, pairId) {
 /**
  * Applies a user-edited region pair (e.g. from dragging a handle or typing
  * exact limits). Validates ordering (L1 < R1 <= L2 < R2) before accepting --
- * an invalid edit throws and leaves the previous regions untouched.
+ * an invalid edit throws and leaves the previous regions untouched. Callers
+ * whose four values don't share the same precision (e.g. a UI redisplaying
+ * regions rounded to 2 decimals while only one field was actually edited) can
+ * pass a small negative minimumGap to tolerate that rounding noise at a
+ * touching G1/G2 boundary without relaxing genuine ordering violations.
  */
-export function update_peak_regions(row, regions, { source = "manual" } = {}) {
+export function update_peak_regions(row, regions, { source = "manual", minimumGap } = {}) {
   const state = get_or_create_state(row);
-  const validated = validatePeakRegions(regions);
+  const validated = validatePeakRegions(regions, { minimumGap });
   const modeling = state.modeling;
 
   modeling.peakSelection.regions = validated;
