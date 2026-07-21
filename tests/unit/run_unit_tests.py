@@ -94,3 +94,12 @@ def run_unit_tests(ctx: TestContext, app_url: str):
 
     from unit_tests_cell_cycle_modeling_state import run_cell_cycle_modeling_state_tests
     run_cell_cycle_modeling_state_tests(ctx)
+
+    from unit_tests_cell_cycle_math import run_cell_cycle_math_tests
+    run_cell_cycle_math_tests(ctx)
+
+    from unit_tests_cell_cycle_model_shared import run_cell_cycle_model_shared_tests
+    run_cell_cycle_model_shared_tests(ctx)
+
+    from unit_tests_cell_cycle_dean_jett import run_cell_cycle_dean_jett_tests
+    run_cell_cycle_dean_jett_tests(ctx)

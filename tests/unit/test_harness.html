@@ -41,11 +41,18 @@
     import * as DJFLinearAlgebra from "/js/analysis/math/linalg2d.js";
     import * as DJFLMSolver from "/js/analysis/math/lm_solver.js";
     import * as DJFComponents from "/js/analysis/djf_components.js";
+    import * as CellCycleGaussianBinMass from "/js/analysis/math/gaussian_bin_mass.js";
+    import * as CellCycleQuadrature from "/js/analysis/math/quadrature.js";
+    import * as CellCyclePoisson from "/js/analysis/math/poisson.js";
+    import * as CellCycleModelShared from "/js/analysis/cell_cycle/models/shared.js";
     import * as CellCycleModelRegistry from "/js/analysis/cell_cycle/model_registry.js";
     import { run_fit_in_worker } from "/js/analysis/cell_cycle/fit_client.js";
     import * as CellCyclePeakDetection from "/js/analysis/cell_cycle/peak_detection.js";
     import * as CellCyclePeakRegions from "/js/analysis/cell_cycle/peak_regions.js";
     import * as CellCycleModelingState from "/js/analysis/cell_cycle/modeling_state.js";
+    import * as CellCycleFitEngine from "/js/analysis/cell_cycle/fit_engine.js";
+    import * as CellCycleDiagnostics from "/js/analysis/cell_cycle/diagnostics.js";
+    import * as CellCycleDeanJett from "/js/analysis/cell_cycle/models/dean_jett.js";
 
     Object.assign(window, {
       FCSParser, PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records,
@@ -72,11 +79,18 @@
       lm: DJFLMSolver,
       components: DJFComponents,
     };
+    window.CellCycleGaussianBinMass = CellCycleGaussianBinMass;
+    window.CellCycleQuadrature = CellCycleQuadrature;
+    window.CellCyclePoisson = CellCyclePoisson;
+    window.CellCycleModelShared = CellCycleModelShared;
     window.CellCycleModelRegistry = CellCycleModelRegistry;
     window.run_fit_in_worker = run_fit_in_worker;
     window.CellCyclePeakDetection = CellCyclePeakDetection;
     window.CellCyclePeakRegions = CellCyclePeakRegions;
     window.CellCycleModelingState = CellCycleModelingState;
+    window.CellCycleFitEngine = CellCycleFitEngine;
+    window.CellCycleDiagnostics = CellCycleDiagnostics;
+    window.CellCycleDeanJett = CellCycleDeanJett;
     window.__libsReady = true;
   </script>
 

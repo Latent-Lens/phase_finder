@@ -97,7 +97,24 @@ _TESTS = r"""() => {
           && entry.comparisonGroup === null // never AIC/BIC-compared against canonical models
           && typeof entry.fit === 'function'
           && typeof entry.normalizeResult === 'function'
-          && registry.list_models().length === 1,
+          // Not an exact registry size: register_default_models() gains a new
+          // canonical model at each milestone (dean_jett here in M3; DJF/Watson
+          // later), and this test only cares that legacy_bridge_v1 itself is
+          // still registered with its documented compatibility-model shape.
+          && registry.list_models().some((m) => m.id === 'legacy_bridge_v1'),
+        detail: JSON.stringify({ entry: entry && { id: entry.id, version: entry.version, comparisonGroup: entry.comparisonGroup } }),
+      };
+    });
+
+    run('registry: register_default_models() also registers the canonical dean_jett model', () => {
+      const entry = registry.get_model('dean_jett');
+      return {
+        pass: !!entry
+          && entry.kind === 'generative'
+          && entry.fitScope === 'per_sample'
+          && entry.comparisonGroup === 'poisson_cell_cycle'
+          && typeof entry.fit === 'function'
+          && typeof entry.normalizeResult === 'function',
         detail: JSON.stringify({ entry: entry && { id: entry.id, version: entry.version, comparisonGroup: entry.comparisonGroup } }),
       };
     });
