@@ -51,7 +51,7 @@
 // result (plan §4.5) packaging around fit_engine.js's optimizer.
 // ============================================================================
 
-import { peakComponents, convolvedSPhase, isQuadraticProfileValid, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
+import { peakComponents, convolvedSPhase, projectQuadraticProfile, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
 import { fitPoissonModel } from "../fit_engine.js";
 import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning, boundaryHitWarnings } from "../diagnostics.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
@@ -146,23 +146,11 @@ function project_means(g1Mean, g2Mean, regions, config) {
   return { g1Mean: mu1, g2Mean: mu2 };
 }
 
-/**
- * Feasible domain for (b, c) -- enforces isQuadraticProfileValid(b, c), i.e.
- * min_{z in [0,1]} q(z) >= 0, per plan §5.3's explicit rejection rule. Shrinks
- * toward the flat profile (b=c=0, always valid) rather than clamping each
- * coefficient independently, since validity is a joint condition on the pair.
- */
-function project_quadratic(b, c) {
-  let bb = clamp(b, -8, 8);
-  let cc = clamp(c, -8, 8);
-  let guard = 0;
-  while (!isQuadraticProfileValid(bb, cc) && guard < 40) {
-    bb *= 0.7;
-    cc *= 0.7;
-    guard += 1;
-  }
-  return isQuadraticProfileValid(bb, cc) ? [bb, cc] : [0, 0];
-}
+// Feasible domain for (b, c) -- enforces isQuadraticProfileValid(b, c), i.e.
+// min_{z in [0,1]} q(z) >= 0, per plan §5.3's explicit rejection rule. Lives
+// in shared.js (projectQuadraticProfile) since Dean-Jett-Fox projects the
+// same (b, c) pair the same way before blending in its wave term.
+const project_quadratic = projectQuadraticProfile;
 
 /** Full theta projection: every parameter's feasible domain, all in one place. */
 function make_project_fn(regions, config) {

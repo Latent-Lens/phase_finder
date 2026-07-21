@@ -103,3 +103,6 @@ def run_unit_tests(ctx: TestContext, app_url: str):
 
     from unit_tests_cell_cycle_dean_jett import run_cell_cycle_dean_jett_tests
     run_cell_cycle_dean_jett_tests(ctx)
+
+    from unit_tests_cell_cycle_dean_jett_fox import run_cell_cycle_dean_jett_fox_tests
+    run_cell_cycle_dean_jett_fox_tests(ctx)

@@ -53,6 +53,8 @@
     import * as CellCycleFitEngine from "/js/analysis/cell_cycle/fit_engine.js";
     import * as CellCycleDiagnostics from "/js/analysis/cell_cycle/diagnostics.js";
     import * as CellCycleDeanJett from "/js/analysis/cell_cycle/models/dean_jett.js";
+    import * as CellCycleDeanJettFox from "/js/analysis/cell_cycle/models/dean_jett_fox.js";
+    import * as CellCycleModelSelection from "/js/analysis/cell_cycle/model_selection.js";
 
     Object.assign(window, {
       FCSParser, PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records,
@@ -91,6 +93,8 @@
     window.CellCycleFitEngine = CellCycleFitEngine;
     window.CellCycleDiagnostics = CellCycleDiagnostics;
     window.CellCycleDeanJett = CellCycleDeanJett;
+    window.CellCycleDeanJettFox = CellCycleDeanJettFox;
+    window.CellCycleModelSelection = CellCycleModelSelection;
     window.__libsReady = true;
   </script>
 
