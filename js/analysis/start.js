@@ -81,9 +81,6 @@ Output:
 
 */
 function enter_plotting_mode() {
-  document.querySelectorAll(".djf_pipeline_buttons .djf_stage_complete").forEach((button) => {
-    button.classList.remove("djf_stage_complete");
-  });
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (!btn) return;
     btn.disabled = true;

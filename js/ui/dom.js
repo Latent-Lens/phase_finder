@@ -41,6 +41,19 @@ export const qc_gate_buttons = [
 ];
 export const qc_gate_run_all = document.querySelector("#qc_stage_all");
 
+// ── Identify Peaks (sidebar peak-review panel) ───────────────────────────────
+export const peak_review_focus = document.querySelector("#peak_review_focus");
+export const detect_peaks_button = document.querySelector("#detect_peaks_button");
+export const peak_review_status = document.querySelector("#peak_review_status");
+export const peak_pair_alternatives = document.querySelector("#peak_pair_alternatives");
+export const peak_region_g1_left = document.querySelector("#peak_region_g1_left");
+export const peak_region_g1_right = document.querySelector("#peak_region_g1_right");
+export const peak_region_g2_left = document.querySelector("#peak_region_g2_left");
+export const peak_region_g2_right = document.querySelector("#peak_region_g2_right");
+export const peak_region_error = document.querySelector("#peak_region_error");
+export const peak_regions_reset_button = document.querySelector("#peak_regions_reset_button");
+export const peak_regions_accept_button = document.querySelector("#peak_regions_accept_button");
+
 // ── Companion (Height/Width/FSC/SSC) channel panel ───────────────────────────
 export const channel_aux_panel = document.querySelector("#channel_aux_panel");
 export const aux_height_select = document.querySelector("#aux_height_select");
@@ -79,11 +92,7 @@ export const metadata_preview = document.querySelector("#metadata_preview");
 export const start_analysis_button = document.querySelector("#start_analysis_button");
 export const collapsed_plot_button = document.querySelector("#collapsed_plot_button");
 
-// ── Manual DJF pipeline controls + Stage 2 diagnostics modal ───────────────
-export const djf_stage_buttons = Array.from({ length: 9 }, (_, stage) =>
-  document.querySelector(`#djf_stage${stage}`)
-);
-export const djf_run_all_button = document.querySelector("#djf_run_all");
+// ── Stage 2 (Cell Gate) diagnostics modal ───────────────────────────────────
 export const djf_scatter_modal = document.querySelector("#djf_scatter_modal");
 export const djf_scatter_modal_close = document.querySelector("#djf_scatter_modal_close");
 export const djf_scatter_reset = document.querySelector("#djf_scatter_reset");

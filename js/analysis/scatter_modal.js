@@ -13,7 +13,7 @@ import {
   djf_scatter_caption,
 } from "../ui/dom.js";
 import { createScatterGateMask } from "./scatter_gmm_gate.js";
-import { eigenDecomposition2D } from "./math/linalg2d.js";
+import { eigenDecomposition2D, rotateCovariance2D } from "./math/linalg2d.js";
 
 const MAX_SCATTER_POINTS = 10000;
 let listeners_initialized = false;
@@ -106,6 +106,7 @@ function set_caption({
   mask,
   component,
   threshold,
+  rotation = 0,
   preview = false,
 }) {
   if (!djf_scatter_caption) return;
@@ -125,6 +126,7 @@ function set_caption({
     `center (${component.mean[0].toFixed(2)}, ${component.mean[1].toFixed(2)})`,
     `coverage ${(100 * coverage_for_threshold(threshold)).toFixed(1)}%`,
     `Mahalanobis d² ≤ ${Number(threshold).toFixed(3)}`,
+    Math.abs(rotation) > 1e-9 ? `rotation ${(rotation * 180 / Math.PI).toFixed(1)}°` : "",
     `GMM ${result.converged ? "converged" : "did not converge"}`,
     weights,
     sampled.length < points.length ? `displayed ${sampled.length.toLocaleString()} downsampled points` : "",
@@ -236,11 +238,19 @@ export function render_scatter_gate(
 
   let selected_component = clone_component(result.mainComponent);
   let selected_threshold = Number(result.threshold);
+  let selected_rotation = Number(result.rotation ?? 0);
+  // Rotation is always computed from the fitted covariance plus the current
+  // absolute angle (never compounded onto an already-rotated matrix), the
+  // same pattern update_stage2_gate uses server-side -- see its docstring.
+  const fitted_covariance = clone_component(result.fittedMainComponent ?? result.mainComponent).covariance;
   let preview_gate = {
     mask: result.scatterMask || result.mask,
     mahalanobisDistanceSquared: result.mahalanobisDistanceSquared,
   };
+  let drag_mode = "move";
   let drag_offset = [0, 0];
+  let rotate_start_angle = 0;
+  let rotate_start_rotation = 0;
   let drag_changed = false;
 
   const visible_gate = svg.append("path")
@@ -256,7 +266,7 @@ export function render_scatter_gate(
     .attr("pointer-events", "stroke")
     .attr("tabindex", 0)
     .attr("role", "button")
-    .attr("aria-label", "Move Stage 2 cell gate. Use arrow keys for small movements and Shift plus arrow for larger movements.");
+    .attr("aria-label", "Move or rotate the Stage 2 cell gate. Drag to move it, or hold Shift or Ctrl and drag to rotate it around its center. Arrow keys move it in small steps (Shift plus arrow for larger steps); Ctrl plus Left/Right arrow rotates it (Ctrl plus Shift for a larger step).");
   const center_handle = svg.append("circle")
     .attr("class", "djf_scatter_gate_center")
     .attr("r", 5.5)
@@ -266,14 +276,20 @@ export function render_scatter_gate(
     mean,
     threshold = selected_threshold,
     preview = true,
+    rotation = selected_rotation,
   ) => {
-    selected_component = { ...selected_component, mean: [...mean] };
+    selected_rotation = rotation;
+    selected_component = {
+      ...selected_component,
+      mean: [...mean],
+      covariance: rotateCovariance2D(fitted_covariance, rotation),
+    };
     selected_threshold = threshold;
     preview_gate = gate_for_component(row, result, selected_component, selected_threshold);
     const path = line(ellipse_points(selected_component, selected_threshold));
     visible_gate.attr("d", path);
     gate_handle.attr("d", path)
-      .attr("aria-valuetext", `FSC-A ${mean[0].toFixed(2)}, SSC-A ${mean[1].toFixed(2)}`);
+      .attr("aria-valuetext", `FSC-A ${mean[0].toFixed(2)}, SSC-A ${mean[1].toFixed(2)}, rotation ${(rotation * 180 / Math.PI).toFixed(1)}°`);
     center_handle.attr("cx", x(mean[0])).attr("cy", y(mean[1]));
     circles
       .attr("fill", (entry) => preview_gate.mask[entry.eventIndex] ? "#01a5af" : "#9ca3af")
@@ -286,6 +302,7 @@ export function render_scatter_gate(
       mask: preview_gate.mask,
       component: selected_component,
       threshold: selected_threshold,
+      rotation: selected_rotation,
       preview,
     });
   };
@@ -300,18 +317,47 @@ export function render_scatter_gate(
     const [pixel_x, pixel_y] = d3.pointer(event.sourceEvent ?? event, svg.node());
     return [x.invert(pixel_x), y.invert(pixel_y)];
   };
+  const angle_from_center = (event) => {
+    const [px, py] = pointer_data(event);
+    return Math.atan2(py - selected_component.mean[1], px - selected_component.mean[0]);
+  };
+  const commit_current_gate = (options) => commit_active_gate({
+    mean: [...selected_component.mean],
+    coverage: coverage_for_threshold(selected_threshold),
+    rotation: selected_rotation,
+  }, options);
   const drag = d3.drag()
+    // d3.drag()'s default filter rejects any gesture where ctrlKey is held
+    // (`!event.ctrlKey && !event.button`), specifically to avoid clashing
+    // with OS-level Ctrl+click context-menu gestures -- which would silently
+    // block Ctrl+drag rotation entirely. Only the secondary-button exclusion
+    // is still wanted here.
+    .filter((event) => !event.button)
     .on("start", (event) => {
-      const pointer = pointer_data(event);
-      drag_offset = [
-        selected_component.mean[0] - pointer[0],
-        selected_component.mean[1] - pointer[1],
-      ];
+      const native = event.sourceEvent ?? event;
+      drag_mode = (native.shiftKey || native.ctrlKey) ? "rotate" : "move";
+      native.preventDefault?.();
+      if (drag_mode === "rotate") {
+        rotate_start_angle = angle_from_center(event);
+        rotate_start_rotation = selected_rotation;
+      } else {
+        const pointer = pointer_data(event);
+        drag_offset = [
+          selected_component.mean[0] - pointer[0],
+          selected_component.mean[1] - pointer[1],
+        ];
+      }
       drag_changed = false;
       gate_handle.classed("djf_scatter_gate_dragging", true);
       center_handle.classed("djf_scatter_gate_dragging", true);
     })
     .on("drag", (event) => {
+      if (drag_mode === "rotate") {
+        const rotation = rotate_start_rotation + (angle_from_center(event) - rotate_start_angle);
+        drag_changed = drag_changed || Math.abs(rotation - selected_rotation) > Number.EPSILON;
+        update_preview(selected_component.mean, selected_threshold, true, rotation);
+        return;
+      }
       const pointer = pointer_data(event);
       const mean = [
         clamp_to_domain(pointer[0] + drag_offset[0], x.domain()),
@@ -325,12 +371,7 @@ export function render_scatter_gate(
     .on("end", () => {
       gate_handle.classed("djf_scatter_gate_dragging", false);
       center_handle.classed("djf_scatter_gate_dragging", false);
-      if (drag_changed) {
-        commit_active_gate({
-          mean: [...selected_component.mean],
-          coverage: coverage_for_threshold(selected_threshold),
-        });
-      }
+      if (drag_changed) commit_current_gate();
     });
 
   gate_handle.call(drag);
@@ -339,6 +380,14 @@ export function render_scatter_gate(
     .on("focus", () => visible_gate.classed("djf_scatter_gate_focus", true))
     .on("blur", () => visible_gate.classed("djf_scatter_gate_focus", false))
     .on("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        event.preventDefault();
+        const step = event.key === "ArrowRight" ? 1 : -1;
+        const scale = event.shiftKey ? (15 * Math.PI) / 180 : (3 * Math.PI) / 180;
+        update_preview(selected_component.mean, selected_threshold, true, selected_rotation + step * scale);
+        commit_current_gate({ restoreFocus: true });
+        return;
+      }
       const movement = {
         ArrowLeft: [-1, 0],
         ArrowRight: [1, 0],
@@ -355,10 +404,7 @@ export function render_scatter_gate(
         clamp_to_domain(selected_component.mean[1] + movement[1] * scale * y_span, y.domain()),
       ];
       update_preview(mean, selected_threshold, true);
-      commit_active_gate({
-        mean,
-        coverage: coverage_for_threshold(selected_threshold),
-      }, { restoreFocus: true });
+      commit_current_gate({ restoreFocus: true });
     });
 
   update_preview(selected_component.mean, selected_threshold, false);

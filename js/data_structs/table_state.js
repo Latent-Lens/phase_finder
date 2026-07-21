@@ -19,6 +19,46 @@ let preserve_metadata_row_order = false;
 // IDs of files whose row checkbox is ticked. Persists across re-renders so
 // sorting/filtering don't drop the selection.
 export const selected_file_ids = new Set();
+// The id of the checked file the user clicked to bring into focus for
+// per-sample review (e.g. Identify Peaks) when more than one file is checked
+// at once. Meaningless -- and unused -- when only one file is checked, since
+// that file is unambiguously the one being reviewed.
+export let focused_file_id = null;
+
+/*
+
+Purpose:
+	Sets which checked file is in focus for per-sample review UI.
+
+Input:
+	id [string|null]: a file id, or null to clear focus
+
+Output:
+	(none) [void]: updates focused_file_id
+
+*/
+export function set_focused_file_id(id) {
+  focused_file_id = id;
+}
+
+/*
+
+Purpose:
+	Clears the focused file id if it no longer refers to a checked file (e.g.
+	its checkbox was just unticked).
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: updates focused_file_id
+
+*/
+export function prune_focused_file_id() {
+  if (focused_file_id && !selected_file_ids.has(focused_file_id)) {
+    focused_file_id = null;
+  }
+}
 // field -> Set of values ticked in that column's filter dropdown. A row passes
 // the column when the set is empty (no filter) or contains the row's value.
 export const column_filters = {};

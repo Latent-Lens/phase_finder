@@ -40,12 +40,22 @@ def test_metadata_table_actions(ctx: TestContext):
     page = ctx.page
     group = "Metadata Table"
 
+    # The four action buttons live inside .metadata_ops_group wrapper divs
+    # (grouped as "Column Operations" / "Table I/O"), not as direct children
+    # of .metadata_title_actions -- a plain child selector would only catch
+    # the unrelated panel-collapse toggle button. Query all descendant
+    # buttons and drop the two that aren't part of this ordering claim
+    # (Remove Columns has no fixed position in this set; the collapse toggle
+    # isn't a title-bar "action" at all).
     buttons = page.eval_on_selector_all(
-        ".metadata_title_actions > button",
-        """buttons => buttons.map((button) => ({
-          id: button.id,
-          src: button.querySelector('img')?.getAttribute('src') || '',
-        }))""",
+        ".metadata_title_actions button",
+        """buttons => buttons
+          .filter((button) => button.id !== 'metadata_remove_column_button'
+            && button.id !== 'metadata_panel_toggle')
+          .map((button) => ({
+            id: button.id,
+            src: button.querySelector('img')?.getAttribute('src') || '',
+          }))""",
     )
     expected_order = [
         ("metadata_parse_button", "text_to_col.svg"),
@@ -53,7 +63,7 @@ def test_metadata_table_actions(ctx: TestContext):
         ("metadata_import_button", "table_import.svg"),
         ("metadata_export_button", "table_export.svg"),
     ]
-    actual_order = [(entry["id"], Path(entry["src"]).name) for entry in buttons[:4]]
+    actual_order = [(entry["id"], Path(entry["src"]).name) for entry in buttons]
     ctx.check(group, "Metadata title-bar actions are ordered wizard, add, upload, download",
               actual_order == expected_order, str(actual_order))
 

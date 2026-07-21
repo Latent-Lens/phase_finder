@@ -1,30 +1,19 @@
 #!/usr/bin/env python3
-"""Modeling tests for the manual Stage 5-8 pipeline's Run-all convenience
-action. Run all (#djf_run_all) only executes the modeling checkpoints
-(Peaks/Fit/Extend/Report) -- it never touches Pre-modeling QC (Stage 0-3),
-which is a separate action with its own "Run All" button. This module applies
-QC explicitly before Run all, matching what a real user does, rather than
-depending on QC state left over by an earlier test module."""
+"""E2E coverage for the sidebar's Identify Peaks panel: automatic peak
+detection, manual G1/G2 region editing (with inline validation), Reset, and
+Accept. This replaced the old manual Stage 5-8 Dean-Jett-Fox buttons -- there
+is currently no UI path to actually run a model against the reviewed regions
+(that lands with the canonical Dean-Jett model), so this module stops at
+region review."""
 
 from helpers import (
     TestContext,
     enter_modeling_mode,
     exit_modeling_mode,
-    fit_curve_count,
     isolate_first_plotted_sample,
     restore_row_selection,
     status_bar_text,
-    wait_for_overlay_hidden,
 )
-
-
-def _readout_text(page):
-    """#djf_readout is a debug readout the current UI doesn't render (its
-    consumers all guard with `if (djf_readout)`); tolerate its absence rather
-    than fail the whole flow on a missing selector."""
-    if page.query_selector("#djf_readout") is None:
-        return ""
-    return page.eval_on_selector("#djf_readout", "element => element.textContent.trim()")
 
 
 def _ensure_qc_applied(page):
@@ -45,6 +34,26 @@ def _ensure_qc_applied(page):
                 page.wait_for_selector("#djf_scatter_modal", state="hidden", timeout=10000)
 
 
+def _modeling_state(page, sample_name):
+    return page.evaluate(
+        """(sampleName) => {
+          const state = window.PhaseFinder.pipeline?.get_state?.(sampleName);
+          return state ? state.modeling : null;
+        }""",
+        sample_name,
+    )
+
+
+def _set_region_input(page, selector, value):
+    """Sets a peak-region numeric input's value and fires a real 'change'
+    event -- peak_review_ui.js commits edits on change, not input."""
+    page.eval_on_selector(
+        selector,
+        "(el, v) => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }",
+        str(value),
+    )
+
+
 def test_modeling(ctx: TestContext):
     page = ctx.page
     group = "Modeling"
@@ -52,170 +61,216 @@ def test_modeling(ctx: TestContext):
 
     try:
         sample_name, previous_selection = isolate_first_plotted_sample(page)
-
-        # Run all / stage buttons now live in the sidebar's Cell Cycle Modeling
-        # mode; open it before driving them.
         enter_modeling_mode(page)
-
         _ensure_qc_applied(page)
 
-        # Clear only the modeling checkpoints (not the QC just applied above)
-        # so this check proves Run all executes real work, rather than merely
-        # redisplaying state left by an earlier test module.
-        page.evaluate(
-            """(sampleName) => {
-              const state = window.PhaseFinder.pipeline?.get_state?.(sampleName);
-              if (state) {
-                state.peaks = null;
-                state.baseFit = null;
-                state.extendedFit = null;
-                state.report = null;
-              }
-              document.querySelector('#djf_run_all')?.classList.remove('djf_stage_complete');
-            }""",
-            sample_name,
+        page.wait_for_function(
+            "(sampleName) => Boolean(window.PhaseFinder?.pipeline?.get_state?.(sampleName)?.histogram)",
+            arg=sample_name,
+            timeout=15000,
         )
 
-        run_all_enabled = page.locator("#djf_run_all").is_enabled()
         ctx.check(
             group,
-            "Run-all pipeline control is enabled after plotting a DNA channel",
-            run_all_enabled,
+            "Identify Peaks shows the reviewed sample and enables Detect Peaks",
+            page.eval_on_selector("#peak_review_focus", "e => e.textContent.trim()") == sample_name
+            and not page.eval_on_selector("#detect_peaks_button", "e => e.disabled"),
         )
-        if not run_all_enabled:
-            return
 
-        status_before = status_bar_text(page)
-        page.click("#djf_run_all")
+        page.click("#detect_peaks_button")
+        page.wait_for_function(
+            """(sampleName) => Boolean(
+              window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection?.regions
+            )""",
+            arg=sample_name,
+            timeout=30000,
+        )
+
+        modeling = _modeling_state(page, sample_name)
+        regions = modeling["peakSelection"]["regions"]
+        detection = modeling["peakDetection"]
+        ok_detected = (
+            regions["g1"]["left"] < regions["g1"]["right"] <= regions["g2"]["left"] < regions["g2"]["right"]
+            and detection["status"] in ("detected", "low_confidence", "inferred_g2")
+            and 0 <= detection["confidence"] <= 1
+            and modeling["peakSelection"]["source"] == "automatic"
+        )
+        ctx.check(
+            group,
+            "Detect Peaks proposes an ordered, valid G1/G2 region pair",
+            ok_detected,
+            str({"regions": regions, "detection": detection}),
+        )
+
+        dom_regions = page.evaluate(
+            """() => ({
+              g1Left: Number(document.querySelector('#peak_region_g1_left').value),
+              g1Right: Number(document.querySelector('#peak_region_g1_right').value),
+              g2Left: Number(document.querySelector('#peak_region_g2_left').value),
+              g2Right: Number(document.querySelector('#peak_region_g2_right').value),
+              statusVisible: !document.querySelector('#peak_review_status').hidden,
+              inputsEnabled: !document.querySelector('#peak_region_g1_left').disabled,
+            })"""
+        )
+        ctx.check(
+            group,
+            "Sidebar region inputs reflect the detected regions and are enabled",
+            abs(dom_regions["g1Left"] - regions["g1"]["left"]) < 0.01
+            and abs(dom_regions["g1Right"] - regions["g1"]["right"]) < 0.01
+            and abs(dom_regions["g2Left"] - regions["g2"]["left"]) < 0.01
+            and abs(dom_regions["g2Right"] - regions["g2"]["right"]) < 0.01
+            and dom_regions["statusVisible"]
+            and dom_regions["inputsEnabled"],
+            str(dom_regions),
+        )
+
+        # Dragging the G1 left handle on the plot leftward (toward the domain
+        # minimum) commits a manual edit exactly like the sidebar inputs do,
+        # keeping the plot overlay and the sidebar's numeric fields in sync.
+        # G1 left is used rather than an interior/touching boundary: this
+        # sample's low-confidence "inferred_g2" detection placed G1.right and
+        # G2.left at the exact same position (a legitimate touching pair per
+        # validatePeakRegions's L1 < R1 <= L2 < R2 rule), and G2.right exactly
+        # at the plot's domain edge -- both invalid choices for a drag test,
+        # since two boundary handles occupying the same pixel would make a
+        # coordinate-based drag ambiguous, and the domain edge leaves no room
+        # to move outward. G1 left has no such neighbor and is not pinned.
+        handle = page.locator('#plot_area svg rect.peak_region_handle[data-boundary-key="g1_left"]')
+        handle_box = handle.bounding_box()
+        page.mouse.move(handle_box["x"] + handle_box["width"] / 2, handle_box["y"] + handle_box["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(handle_box["x"] + handle_box["width"] / 2 - 40, handle_box["y"] + handle_box["height"] / 2, steps=8)
+        page.mouse.up()
         page.wait_for_function(
             """(sampleName) => {
-              const button = document.querySelector('#djf_run_all');
-              const state = window.PhaseFinder?.pipeline?.get_state?.(sampleName);
-              return state?.lastStageRun === 8
-                && button?.classList.contains('djf_stage_complete')
-                && !button.disabled
-                && !button.classList.contains('djf_stage_running');
+              const selection = window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection;
+              return selection?.source === 'manual';
             }""",
             arg=sample_name,
-            timeout=300000,
+            timeout=5000,
         )
-        wait_for_overlay_hidden(page, timeout_ms=15000)
+        after_drag = _modeling_state(page, sample_name)
+        dom_after_drag = page.evaluate(
+            "() => Number(document.querySelector('#peak_region_g1_left').value)"
+        )
+        ctx.check(
+            group,
+            "Dragging a plot region handle commits a manual edit and syncs the sidebar",
+            after_drag["peakSelection"]["source"] == "manual"
+            and after_drag["peakSelection"]["regions"]["g1"]["left"] < regions["g1"]["left"]
+            and abs(dom_after_drag - after_drag["peakSelection"]["regions"]["g1"]["left"]) < 0.01,
+            str({"after_drag": after_drag["peakSelection"], "dom_g1_left": dom_after_drag}),
+        )
 
-        summary = page.evaluate(
+        # Reset back to the automatic proposal before exercising the invalid/
+        # valid manual-input-edit checks below, so they start from a known
+        # (detected) baseline rather than the drag's result.
+        page.click("#peak_regions_reset_button")
+        page.wait_for_function(
             """(sampleName) => {
-              const state = window.PhaseFinder.pipeline.get_state(sampleName);
-              const fractions = state.report?.fractions?.biologicalSinglets;
-              return {
-                lastStageRun: state.lastStageRun,
-                structural: Boolean(state.structuralMask),
-                timeQC: Boolean(state.timeQC) && !state.timeQC.skipped,
-                scatter: Boolean(state.scatterGate) && !state.scatterGate.skipped,
-                singlet: Boolean(state.singletResult) && !state.singletResult.skipped,
-                histogram: Boolean(state.histogram),
-                peaks: Boolean(state.peaks),
-                baseFit: Boolean(state.baseFit),
-                extendedFit: Boolean(state.extendedFit),
-                report: Boolean(state.report),
-                fractionSum: fractions
-                  ? fractions.oneC + fractions.sPhase + fractions.twoC
-                  : null,
-                stagesComplete: [5, 6, 7, 8]
-                  .filter((stage) => document.querySelector(`#djf_stage${stage}`)
-                    ?.classList.contains('djf_stage_complete'))
-                  .length,
-              };
+              const selection = window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection;
+              return selection?.source === 'automatic';
             }""",
-            sample_name,
-        )
-        ctx.check(
-            group,
-            "Pre-modeling QC (applied explicitly above) is in effect for this sample",
-            summary["structural"] and summary["timeQC"] and summary["scatter"] and summary["singlet"],
-            str(summary),
-        )
-        modeling_products = all(summary[key] for key in (
-            "histogram", "peaks", "baseFit", "extendedFit", "report",
-        ))
-        ctx.check(
-            group,
-            "Run all executes Stage 5-8 and retains every modeling checkpoint product",
-            summary["lastStageRun"] == 8
-            and summary["stagesComplete"] == 4
-            and modeling_products,
-            str(summary),
+            arg=sample_name,
+            timeout=5000,
         )
 
-        readout = _readout_text(page)
+        # An invalid edit (G2 left dragged into the middle of the G1 region)
+        # must be rejected: the sidebar shows an inline error and the stored
+        # regions are untouched. Scaled to the G1 region's own width so this
+        # is robust regardless of the DNA channel's absolute unit scale.
+        invalid_g2_left = regions["g1"]["right"] - 0.5 * (regions["g1"]["right"] - regions["g1"]["left"])
+        _set_region_input(page, "#peak_region_g2_left", invalid_g2_left)
+        page.wait_for_function(
+            "() => !document.querySelector('#peak_region_error').hidden",
+            timeout=5000,
+        )
+        after_invalid = _modeling_state(page, sample_name)
+        ctx.check(
+            group,
+            "An invalid region edit (L1 < R1 <= L2 < R2 broken) shows an inline error and leaves state untouched",
+            page.eval_on_selector("#peak_region_error", "e => e.textContent.length > 0")
+            and after_invalid["peakSelection"]["regions"] == regions,
+            str(after_invalid["peakSelection"]["regions"]),
+        )
+
+        # Restoring G2 left to its original position is itself a valid edit:
+        # it commits as manual, clears the error, and leaves the sidebar in a
+        # known-good state for the next edit.
+        _set_region_input(page, "#peak_region_g2_left", regions["g2"]["left"])
+        page.wait_for_function(
+            """(sampleName) => {
+              const selection = window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection;
+              return selection?.source === 'manual';
+            }""",
+            arg=sample_name,
+            timeout=5000,
+        )
+
+        # A further valid edit (nudging G1 right partway into the G1/G2 gap,
+        # never past G2 left) stays committed as manual and reviewed.
+        widened_g1_right = regions["g1"]["right"] + 0.4 * (regions["g2"]["left"] - regions["g1"]["right"])
+        _set_region_input(page, "#peak_region_g1_right", widened_g1_right)
+        page.wait_for_function(
+            """([sampleName, expected]) => {
+              const selection = window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection;
+              return Math.abs((selection?.regions?.g1?.right ?? NaN) - expected) < 0.01;
+            }""",
+            arg=[sample_name, widened_g1_right],
+            timeout=5000,
+        )
+        after_valid = _modeling_state(page, sample_name)
+        ctx.check(
+            group,
+            "A valid region edit commits as 'manual', marks reviewed, and clears the error",
+            page.eval_on_selector("#peak_region_error", "e => e.hidden")
+            and after_valid["peakSelection"]["source"] == "manual"
+            and after_valid["peakSelection"]["reviewed"] is True
+            and abs(after_valid["peakSelection"]["regions"]["g1"]["right"] - widened_g1_right) < 0.01,
+            str(after_valid["peakSelection"]),
+        )
+
+        page.click("#peak_regions_reset_button")
+        page.wait_for_function(
+            """(sampleName) => {
+              const selection = window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection;
+              return selection?.source === 'automatic';
+            }""",
+            arg=sample_name,
+            timeout=5000,
+        )
+        after_reset = _modeling_state(page, sample_name)
+        ctx.check(
+            group,
+            "Reset restores the detector's automatic region proposal",
+            after_reset["peakSelection"]["regions"] == after_reset["peakSelection"]["automaticRegions"]
+            and after_reset["peakSelection"]["reviewed"] is False,
+            str(after_reset["peakSelection"]),
+        )
+
+        page.click("#peak_regions_accept_button")
+        page.wait_for_function(
+            """(sampleName) => Boolean(
+              window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection?.reviewed
+            )""",
+            arg=sample_name,
+            timeout=5000,
+        )
+        ctx.check(
+            group,
+            "Accept marks the current regions as reviewed",
+            _modeling_state(page, sample_name)["peakSelection"]["reviewed"] is True,
+        )
+
         status_after = status_bar_text(page)
-        phase_rows = page.locator("#djf_fit_table .djf_fit_phase_row").count()
         ctx.check(
             group,
-            "Run-all result is rendered as a fit overlay, report table, and fraction readout",
-            fit_curve_count(page) == 1
-            and phase_rows >= 5
-            and (not readout or all(token in readout for token in ("Stage 8", "1C", "S", "2C", "%")))
-            and abs(summary["fractionSum"] - 1) < 1e-6,
-            f"fits={fit_curve_count(page)}, rows={phase_rows}, readout={readout}",
-        )
-        ctx.check(
-            group,
-            "Run all reports completion in the status bar",
-            "modeling stages completed" in status_after.lower()
-            and status_after != status_before,
-            f"before={status_before!r}, after={status_after!r}",
-        )
-
-        table_stats = page.evaluate(
-            """(sampleName) => {
-              const frame = window.PhaseFinder.app.get_file_table();
-              const columns = [
-                'Structural lost', 'Time QC lost', 'Scatter lost', 'Singlet lost',
-                'G1 %', 'S %', 'G2/M %',
-              ];
-              const rowIndex = [...frame.col('name')].indexOf(sampleName);
-              return {
-                rowIndex,
-                columnsPresent: columns.every((column) => frame.columns.includes(column)),
-                values: Object.fromEntries(columns.map((column) => [
-                  column,
-                  frame.columns.includes(column) && rowIndex >= 0
-                    ? frame.col(column)[rowIndex]
-                    : null,
-                ])),
-                visibleHeaders: [...document.querySelectorAll('#file_table thead th')]
-                  .map((cell) => cell.textContent.trim()),
-              };
-            }""",
-            sample_name,
-        )
-        losses = [table_stats["values"][name] for name in (
-            "Structural lost", "Time QC lost", "Scatter lost", "Singlet lost",
-        )]
-        fractions = [table_stats["values"][name] for name in ("G1 %", "S %", "G2/M %")]
-        formatted_losses = all(
-            value == "—" or (isinstance(value, str) and "(" in value and value.endswith("%)"))
-            for value in losses
-        )
-        formatted_fractions = all(
-            isinstance(value, str) and value.endswith("%") for value in fractions
-        )
-        fraction_total = sum(float(value.rstrip("%")) for value in fractions) if formatted_fractions else 0
-        ctx.check(
-            group,
-            "Stage 8 publishes sequential filter losses and G1/S/G2-M percentages to the metadata table",
-            table_stats["rowIndex"] >= 0
-            and table_stats["columnsPresent"]
-            and formatted_losses
-            and formatted_fractions
-            and abs(fraction_total - 100) <= 0.2
-            and all(name in table_stats["visibleHeaders"] for name in (
-                "Structural lost", "Time QC lost", "Scatter lost", "Singlet lost",
-                "G1 %", "S %", "G2/M %",
-            )),
-            str(table_stats),
+            "Peak-region actions report progress in the status bar",
+            "accepted" in status_after.lower() or "peak" in status_after.lower(),
+            status_after,
         )
     except Exception as error:
-        ctx.check(group, "QC-applied, Run-all Stage 5-8 pipeline flow", False, str(error))
+        ctx.check(group, "Identify Peaks region-review flow", False, str(error))
     finally:
         if page.locator("#djf_scatter_modal").is_visible():
             page.click("#djf_scatter_modal_close")

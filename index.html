@@ -133,16 +133,38 @@
                 <button type="button" class="qc_gate_button qc_gate_run_all quick_tooltip" id="qc_stage_all" data-tooltip-key="qcRunAll" aria-pressed="false">Run All</button>
               </div>
             </fieldset>
-            <div class="djf_pipeline_controls" role="group" aria-label="Manual Dean-Jett-Fox pipeline stages">
-              <span class="djf_pipeline_label">DJF Pipeline (manual)</span>
-              <div class="djf_pipeline_buttons">
-                <button id="djf_stage5" type="button">Stage 5: Peaks</button>
-                <button id="djf_stage6" type="button">Stage 6: Fit DJF</button>
-                <button id="djf_stage7" type="button">Stage 7 (opt): Debris/Aggregate</button>
-                <button id="djf_stage8" type="button">Stage 8: Report</button>
-                <button id="djf_run_all" class="djf_run_all" type="button">Run all</button>
+            <fieldset class="peak_review_group" id="peak_review_group">
+              <legend>Identify Peaks</legend>
+              <p id="peak_review_focus" class="peak_review_focus">Plot a channel and check a sample in the table to identify peaks.</p>
+              <div class="peak_review_actions">
+                <button type="button" id="detect_peaks_button" class="peak_review_button quick_tooltip" data-tooltip-key="detectPeaks" disabled>Detect Peaks</button>
               </div>
-            </div>
+              <p id="peak_review_status" class="peak_review_status" hidden></p>
+              <div id="peak_pair_alternatives" class="peak_pair_alternatives" hidden></div>
+              <div class="peak_region_grid">
+                <label class="peak_region_field">
+                  <span>G1 Left</span>
+                  <input type="number" id="peak_region_g1_left" class="peak_region_input" step="any" disabled />
+                </label>
+                <label class="peak_region_field">
+                  <span>G1 Right</span>
+                  <input type="number" id="peak_region_g1_right" class="peak_region_input" step="any" disabled />
+                </label>
+                <label class="peak_region_field">
+                  <span>G2/M Left</span>
+                  <input type="number" id="peak_region_g2_left" class="peak_region_input" step="any" disabled />
+                </label>
+                <label class="peak_region_field">
+                  <span>G2/M Right</span>
+                  <input type="number" id="peak_region_g2_right" class="peak_region_input" step="any" disabled />
+                </label>
+              </div>
+              <p id="peak_region_error" class="peak_region_error" hidden></p>
+              <div class="peak_review_footer_actions">
+                <button type="button" id="peak_regions_reset_button" class="peak_review_button quick_tooltip" data-tooltip-key="resetPeakRegions" disabled>Reset</button>
+                <button type="button" id="peak_regions_accept_button" class="peak_review_button quick_tooltip" data-tooltip-key="acceptPeakRegions" disabled>Accept</button>
+              </div>
+            </fieldset>
           </section>
           <section class="sidebar_section sidebar_actions">
             <button
@@ -451,13 +473,13 @@
       <div class="stats_modal_backdrop"></div>
       <div class="stats_modal_card djf_scatter_card">
         <div class="stats_modal_header">
-          <h3 id="djf_scatter_modal_title" class="stats_modal_title">Stage 2 FSC-A × SSC-A Cell Gate</h3>
+          <h3 id="djf_scatter_modal_title" class="stats_modal_title">3. Cell Gate: Forward scatter vs Side scatter</h3>
           <button id="djf_scatter_modal_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
         </div>
         <div class="stats_modal_body djf_scatter_body">
           <div class="djf_scatter_tools">
             <p id="djf_scatter_instructions" class="djf_scatter_instructions">
-              Drag the teal ellipse or its center marker to move the cell gate. Change coverage to resize it. Edits apply to downstream stages.
+              Drag the teal ellipse or its center marker to move the cell gate; hold Shift or Ctrl while dragging to rotate it around its center. Change coverage to resize it. Edits apply to downstream stages.
             </p>
             <div class="djf_scatter_controls">
               <label for="djf_scatter_coverage">Gate coverage</label>

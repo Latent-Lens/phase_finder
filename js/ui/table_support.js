@@ -49,6 +49,24 @@ export function notify_selection_changed() {
 /*
 
 Purpose:
+	Dispatches the custom "cell-cycle-focus-change" event so the Identify Peaks
+	sidebar panel (js/analysis/cell_cycle/peak_review_ui.js) can refresh when
+	the user clicks a different row into focus.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]: dispatches a document event
+
+*/
+export function notify_focus_changed() {
+  document.dispatchEvent(new CustomEvent("cell-cycle-focus-change"));
+}
+
+/*
+
+Purpose:
 	Collapses or expands the left sidebar and asks plot code to recalculate after
 	the grid column transition changes the workspace width.
 

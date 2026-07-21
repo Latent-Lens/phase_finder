@@ -39,10 +39,9 @@
               </ol>
             </li>
             <li>
-              <a href="#djf-modeling">6. Staged Cell Cycle Modeling (DJF)</a>
+              <a href="#djf-modeling">6. Cell Cycle Modeling</a>
               <ol>
-                <li><a href="#pipeline-stages">Pipeline stages</a></li>
-                <li><a href="#fit-results">Fit results table</a></li>
+                <li><a href="#pipeline-stages">Pre-modeling QC stages</a></li>
               </ol>
             </li>
             <li><a href="#summary-stats">7. Summary Statistics</a></li>
@@ -233,27 +232,17 @@
         </section>
 
         <section id="djf-modeling" class="help_section">
-          <h2>6. Staged Cell Cycle Modeling (Dean&ndash;Jett&ndash;Fox)</h2>
-          <figure class="help_figure">
-            <div class="screenshot_frame">
-              <img src="./assets/img/help/cell-cycle-modeling.png" alt="Cell cycle modeling view with DJF component fills, fitted curve, sample fit readout, and fit results table." />
-            </div>
-            <figcaption>After modeling starts, PhaseFinder overlays the fitted DJF curve/components and adds fit percentages and phase parameters beside the plot.</figcaption>
-          </figure>
-          <p>Once a channel is plotted, click <span class="ui_label">Cell Cycle Modeling</span> in the sidebar. The file and channel controls slide away and the sidebar reveals the <span class="ui_label">Pre-modeling QC Filtering</span> box (Stage 0&ndash;3: Structural, Time, Cell Gate, Singlet Gate &mdash; toggle individually or with their own <span class="ui_label">Run All</span>) and the <span class="ui_label">DJF Pipeline (manual)</span> Stage 5&ndash;8 buttons; moving these out of the plot panel also gives the histogram more height. Each stage runs for every currently plotted sample and stores its own masks, diagnostics, histogram, fit, or report. Use the individual Stage 5&ndash;8 buttons while inspecting a dataset, or <span class="ui_label">Run all</span> to execute Stage 5&ndash;8 in sequence &mdash; QC (Stage 0&ndash;3) is a separate action, applied on its own before modeling. <span class="ui_label">Back</span> returns the sidebar to the file/channel controls without losing any modeling progress.</p>
-          <p>The fit uses a G1 Gaussian, a G2 Gaussian constrained near twice the G1 mean, and an S-phase bridge. PhaseFinder overlays the fitted total plus filled G1/S/G2 components; selected debris or aggregate terms are shown separately. The readout beneath the controls lists normalized <strong>%1C &middot; %S &middot; %2C</strong> fractions and warning counts.</p>
+          <h2>6. Cell Cycle Modeling</h2>
+          <p>Once a channel is plotted, click <span class="ui_label">Cell Cycle Modeling</span> in the sidebar. The file and channel controls slide away and the sidebar reveals the <span class="ui_label">Pre-modeling QC Filtering</span> box (Stage 0&ndash;3: Structural, Time, Cell Gate, Singlet Gate &mdash; toggle individually or with their own <span class="ui_label">Run All</span>) and the <span class="ui_label">Identify Peaks</span> panel; moving these out of the plot panel also gives the histogram more height. QC (Stage 0&ndash;3) is a separate action, applied on its own before peak review. <span class="ui_label">Back</span> returns the sidebar to the file/channel controls without losing any progress.</p>
+          <p>With exactly one sample checked, <span class="ui_label">Identify Peaks</span> reviews that sample; with several checked at once, click a row in the table to choose which one it's reviewing. <span class="ui_label">Detect Peaks</span> runs automatic peak detection and proposes G1 and G2/M regions, shown with a confidence readout; the four numeric fields let you adjust each region's left/right limits directly, with inline validation if an edit breaks their ordering. <span class="ui_label">Reset</span> discards manual edits and restores the automatic proposal; <span class="ui_label">Accept</span> marks the current regions reviewed. Choosing a model and fitting it against the reviewed regions is not wired up in the UI yet.</p>
 
-          <h3 id="pipeline-stages">Pipeline stages</h3>
+          <h3 id="pipeline-stages">Pre-modeling QC stages</h3>
           <ol>
             <li><strong>Stage 0: Structural QC</strong> rejects non-finite, negative, and saturated measurements while preserving original event indexes.</li>
-            <li><strong>Stages 1&ndash;3 (optional)</strong> perform Time acquisition QC, FSC/SSC cell-cloud gating, and DNA pulse-geometry singlet gating when the required channels exist. After Stage 2, drag the teal ellipse or its center marker to reposition the cell gate, or change <span class="ui_label">Gate coverage</span> to resize it. Each edit immediately updates the scatter mask and invalidates Stages 3&ndash;8 so they can be rerun with the edited gate. <span class="ui_label">Reset fitted gate</span> restores the GMM-selected center and coverage.</li>
-            <li><strong>Stages 4&ndash;6</strong> build the masked histogram, detect the 1C/2C peaks, and fit the constrained base DJF model.</li>
-            <li><strong>Stage 7 (optional)</strong> tests conservative debris and aggregate extensions.</li>
-            <li><strong>Stage 8</strong> reports biological-singlet fractions, contamination accounting, goodness-of-fit diagnostics, and warnings.</li>
+            <li><strong>Stages 1&ndash;3 (optional)</strong> perform Time acquisition QC, FSC/SSC cell-cloud gating, and DNA pulse-geometry singlet gating when the required channels exist. After Stage 2, drag the teal ellipse or its center marker to reposition the cell gate, hold Shift or Ctrl while dragging (or Ctrl plus Left/Right arrow when focused) to rotate it around its center, or change <span class="ui_label">Gate coverage</span> to resize it. Each edit immediately updates the scatter mask and invalidates the histogram and any peak regions so they can be rerun with the edited gate. <span class="ui_label">Reset fitted gate</span> restores the GMM-selected center, coverage, and rotation.</li>
+            <li><strong>Stage 4</strong> builds the masked histogram automatically, rebuilding whenever QC changes.</li>
           </ol>
 
-          <h3 id="fit-results">Fit results table</h3>
-          <p>Every Stage 8 report adds a group to the results table beside the plot: a title row with sample annotations, biological phase rows, separate contamination rows when applicable, goodness-of-fit values, and diagnostic warnings.</p>
           <div class="callout">
             <p class="callout_title">Works offline</p>
             <p>Peak detection and nonlinear fitting are implemented in PhaseFinder's own ES modules, and D3 is vendored locally. The complete pipeline requires no runtime CDN connection.</p>
@@ -338,7 +327,7 @@
             <li>Confirm (or change) the DNA-content channel in the sidebar.</li>
             <li>Check the rows you want in the plot &mdash; unchecking removes a sample without losing its already-loaded data.</li>
             <li>Click <span class="ui_label">Plot Channel Events</span>. Adjust <strong>Color by</strong>, <strong>Display</strong>, and <strong>Bins</strong>.</li>
-            <li>Click <span class="ui_label">Cell Cycle Modeling</span> to open the modeling controls in the sidebar. Apply the Pre-modeling QC filters you want (Stage 0&ndash;3), then run the manual Stage 5&ndash;8 controls to inspect checkpoints, or click <span class="ui_label">Run all</span> to execute Stage 5&ndash;8 in sequence. Review the overlay, normalized fractions, contamination accounting, and diagnostics.</li>
+            <li>Click <span class="ui_label">Cell Cycle Modeling</span> to open the modeling controls in the sidebar. Apply the Pre-modeling QC filters you want (Stage 0&ndash;3), then use <span class="ui_label">Identify Peaks</span> to detect and, if needed, adjust the G1 and G2/M peak regions for the sample you're reviewing.</li>
             <li>Optionally, use <span class="ui_label">Calculate Statistics</span> to compute per-file summary statistics for any channel, and export the table to TSV for use elsewhere.</li>
             <li>Click <span class="ui_label">Save session</span> before closing the tab so you (or a collaborator) can resume this same analysis later.</li>
           </ol>

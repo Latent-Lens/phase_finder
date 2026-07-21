@@ -78,8 +78,10 @@ import {
 } from "./io/metadata_io.js";
 import { get_session_table_state, apply_session_state } from "./session/table_session.js";
 import { init_plot_listeners, plot_api } from "./plotting/axis_modal.js";
+import { render_density_plot } from "./plotting/render.js";
 import { init_analysis_listeners } from "./analysis/start.js";
 import { init_pipeline_ui } from "./analysis/pipeline_ui.js";
+import { init_peak_review_ui } from "./analysis/cell_cycle/peak_review_ui.js";
 import { get_pipeline } from "./analysis/pipeline_loader.js";
 import { init_stats } from "./analysis/stats.js";
 import { init_panel_resize } from "./ui/panel_resize.js";
@@ -269,6 +271,10 @@ function init_app_bootstrap() {
   // Keeps the metadata table's per-row color swatches in sync with the plot
   // (see plotting/render.js) after every redraw.
   document.addEventListener("pf-plot-rendered", sync_filename_swatches);
+  // A peak-region edit (sidebar or plot-overlay drag) commits straight to
+  // pipeline state without going through the plot; re-render so the overlay
+  // (and the sidebar, which also listens for this) reflect it immediately.
+  document.addEventListener("cell-cycle-regions-changed", render_density_plot);
 
   clear_channel_controls();
   render_file_table();
@@ -284,6 +290,7 @@ init_app_bootstrap();       // main.js event wiring + initial render
 init_plot_listeners();      // plotting/axis_modal.js listener block
 init_analysis_listeners();  // analysis/start.js listener block
 init_pipeline_ui();         // analysis/pipeline_ui.js manual stage controls
+init_peak_review_ui();      // analysis/cell_cycle/peak_review_ui.js Identify Peaks panel
 init_stats();               // analysis/stats.js modal + auto-compute
 init_panel_resize();        // ui/panel_resize.js drag handlers
 init_remove_columns();      // ui/column_remove.js remove-columns mode

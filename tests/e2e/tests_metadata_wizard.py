@@ -185,17 +185,25 @@ def test_metadata_wizard(ctx: TestContext):
               row_a_tsv is not None and row_a_tsv.split("\t")[1:5] == ["9500", "a", "N", "12"],
               row_a_tsv)
 
-    if page.evaluate("() => typeof window.showSaveFilePicker") != "function":
-        try:
-            with page.expect_download(timeout=8000) as download_info:
-                page.click("#metadata_export_button")
-            download = download_info.value
-            ctx.check(group, "Export icon triggers a TSV file download",
-                      download.suggested_filename == "phasefinder_loaded_fcs_samples.tsv",
-                      download.suggested_filename)
-        except Exception as error:
-            ctx.check(group, "Export icon triggers a TSV file download", False, str(error))
-    else:
-        ctx.warn(group, "Export icon triggers a TSV file download",
-                 "window.showSaveFilePicker is available in this browser; skipped to avoid a native file "
-                 "dialog the test runner cannot interact with (TSV content itself was verified above)")
+    # save_blob() (js/io/metadata_io.js) checks window.showSaveFilePicker at
+    # call time and prefers it when present -- which it is in Playwright's
+    # Chromium, but a real native OS picker can't be driven by automation.
+    # Stub it away just for this click so save_blob() takes its anchor-
+    # download fallback path instead, which *is* deterministically testable
+    # and still proves the export button drives a real end-to-end save (the
+    # TSV content itself was already verified above independent of this).
+    had_save_file_picker = page.evaluate("() => typeof window.showSaveFilePicker") == "function"
+    if had_save_file_picker:
+        page.evaluate("() => { window.__realShowSaveFilePicker = window.showSaveFilePicker; delete window.showSaveFilePicker; }")
+    try:
+        with page.expect_download(timeout=8000) as download_info:
+            page.click("#metadata_export_button")
+        download = download_info.value
+        ctx.check(group, "Export icon triggers a TSV file download",
+                  download.suggested_filename == "phasefinder_loaded_fcs_samples.tsv",
+                  download.suggested_filename)
+    except Exception as error:
+        ctx.check(group, "Export icon triggers a TSV file download", False, str(error))
+    finally:
+        if had_save_file_picker:
+            page.evaluate("() => { window.showSaveFilePicker = window.__realShowSaveFilePicker; delete window.__realShowSaveFilePicker; }")

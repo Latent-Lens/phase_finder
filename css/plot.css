@@ -128,61 +128,121 @@
   padding: 8px 14px;
 }
 
-.djf_pipeline_controls {
+/* Identify Peaks: detect/review/adjust the G1 and G2/M peak regions for one
+   sample before choosing a model to fit against them. */
+.peak_review_group {
   flex: 1 0 100%;
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
 }
 
-.djf_pipeline_label {
-  flex: 0 0 auto;
-  padding-top: 6px;
-  color: var(--muted);
+.peak_review_group legend {
+  padding: 0 6px;
   font-size: 0.78rem;
   font-weight: 700;
+  color: var(--muted);
 }
 
-.djf_pipeline_buttons {
+.peak_review_focus {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.peak_review_actions {
   display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
   gap: 6px;
 }
 
-.djf_pipeline_buttons button {
-  width: auto;
+.peak_review_button {
   min-height: 28px;
   padding: 4px 9px;
   border-color: var(--border);
   background: var(--panel);
   color: var(--text);
-  font-size: 0.75rem;
-  white-space: nowrap;
+  font-size: 0.78rem;
 }
 
-.djf_pipeline_buttons button:hover:not(:disabled) {
+.peak_review_button:hover:not(:disabled) {
   border-color: var(--logo_teal);
   background: var(--bg);
 }
 
-.djf_pipeline_buttons button.djf_stage_running {
-  border-color: var(--logo_teal);
-  color: var(--logo_teal);
+.peak_review_status {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
 }
 
-.djf_pipeline_buttons button.djf_stage_complete {
-  border-color: var(--logo_teal);
-  background: var(--bg);
+.peak_pair_alternatives {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
-.djf_pipeline_buttons .djf_run_all {
-  border-color: var(--logo_teal);
-  background: var(--logo_teal);
-  color: var(--panel);
-  font-weight: 700;
+.peak_pair_alternatives_label {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.peak_pair_alternative_button {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.peak_pair_alternative_button:hover {
+  border-color: var(--accent);
+}
+
+.peak_region_grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.peak_region_field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.peak_region_input {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.peak_region_input:disabled {
+  opacity: 0.55;
+}
+
+.peak_region_error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.76rem;
+}
+
+.peak_review_footer_actions {
+  display: flex;
+  gap: 6px;
 }
 
 .djf_scatter_modal .stats_modal_card {
@@ -195,9 +255,9 @@
 
 .djf_scatter_tools {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
@@ -209,6 +269,10 @@
 }
 
 .djf_scatter_tools button {
+  /* The global button{width:100%} rule (css/base.css) would otherwise win:
+     flex-basis:auto resolves to the element's own width property when one is
+     set, so flex-grow/shrink alone can't stop it from filling the row. */
+  width: auto;
   flex: 0 0 auto;
 }
 
@@ -274,16 +338,6 @@
 }
 
 @media (max-width: 760px) {
-  .djf_pipeline_controls {
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .djf_scatter_tools {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   .djf_scatter_controls {
     flex-wrap: wrap;
   }
@@ -590,4 +644,57 @@
 
 .plot_axis_title {
   cursor: pointer;
+}
+
+/* Draggable G1/G2 peak-region handles (js/plotting/peak_region_overlay.js). */
+.peak_region_band {
+  pointer-events: none;
+}
+
+.peak_region_line {
+  transition: stroke-width 80ms ease;
+}
+
+.peak_region_line_focus {
+  stroke-width: 2.6;
+}
+
+.peak_region_handle_marker {
+  pointer-events: none;
+  stroke: var(--panel);
+  stroke-width: 1.5;
+}
+
+.peak_region_handle {
+  touch-action: none;
+}
+
+.peak_region_handle:focus {
+  outline: none;
+}
+
+.peak_region_dragging {
+  cursor: grabbing;
+}
+
+.peak_region_label_pill {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.peak_region_label_text {
+  pointer-events: none;
+  font-size: 0.7rem;
+  font-weight: 700;
+  fill: #fff;
+}
+
+.peak_region_value_label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 3px;
+  pointer-events: none;
 }

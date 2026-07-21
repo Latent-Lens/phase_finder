@@ -43,6 +43,9 @@ const HoverText = Object.freeze({
   qcCellGate: `3. Cell gate: Fits a two-component, full-covariance Gaussian mixture to FSC-A and SSC-A, then selects a substantial component with the highest mean FSC-A (using SSC-A to break ties). By default it keeps events with squared Mahalanobis distance d² = (x − μ)ᵀΣ⁻¹(x − μ) ≤ 5.991, the nominal 95% ellipse for a 2D Gaussian. The ellipse can be adjusted manually; excluded events are off-cloud candidates, not proven debris.`,
   qcSingletGate: `4. Singlet gate: Fits an iteratively robust PCA ridge to raw DNA-A versus DNA-H, falling back to DNA-W. For signed orthogonal distances d, it keeps |d − median(d)| ≤ 5 · MAD(d) by default. Off-ridge events are doublet/aggregate candidates; the gate does not prove their biological identity.`,
   qcRunAll: `Apply all four pre-modeling QC filters (Structural, Time, Cell gate, Singlet gate). Click again to clear them.`,
+  detectPeaks: `Run automatic peak detection against the reviewed sample's current histogram, proposing G1 and G2/M regions you can then adjust.`,
+  resetPeakRegions: `Discard any manual edits and restore the detector's automatic G1/G2 region proposal.`,
+  acceptPeakRegions: `Mark the current G1/G2 regions as reviewed, without changing them.`,
 });
 
 export { HoverText };

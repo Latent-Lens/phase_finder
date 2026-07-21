@@ -462,8 +462,7 @@
 /* Narrow-column layout for the relocated control boxes (they were laid out
    horizontally in the wide plot panel). */
 .sidebar_modeling_section .premodel_qc_group,
-.sidebar_modeling_section .qc_gate_grid,
-.sidebar_modeling_section .djf_pipeline_controls {
+.sidebar_modeling_section .qc_gate_grid {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
@@ -474,17 +473,17 @@
   padding: 8px 14px;
 }
 
-.sidebar_modeling_section .djf_pipeline_label {
-  padding-top: 0;
-}
-
-.sidebar_modeling_section .djf_pipeline_buttons {
+.sidebar_modeling_section .peak_review_actions,
+.sidebar_modeling_section .peak_review_footer_actions {
   flex-direction: column;
 }
 
-.sidebar_modeling_section .djf_pipeline_buttons button {
+.sidebar_modeling_section .peak_review_button {
   width: 100%;
-  white-space: normal;
+}
+
+.sidebar_modeling_section .peak_region_grid {
+  grid-template-columns: 1fr;
 }
 
 /* The JS already applies the mode swap instantly under reduced motion; zero the

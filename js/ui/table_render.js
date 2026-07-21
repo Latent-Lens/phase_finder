@@ -15,6 +15,9 @@ import { get_file_map, get_file_table } from "../state/app_state.js";
 import {
   TABLE_COLUMNS,
   selected_file_ids,
+  focused_file_id,
+  set_focused_file_id,
+  prune_focused_file_id,
   column_filters,
   sort_state,
   set_sort_state,
@@ -36,6 +39,7 @@ import {
   header_label_cell,
   header_filter_cell,
   notify_selection_changed,
+  notify_focus_changed,
 } from "./table_support.js";
 import { update_start_button_state } from "./status_channels.js";
 import { sync_color_by_options, get_row_color, toggle_isolated_color_group } from "../plotting/data.js";
@@ -297,8 +301,9 @@ export function render_file_table() {
             return `<td class="stats_td${cls}" data-column-key="${key}">${fmt(row[`${g.channel}:${m}`])}</td>`;
           }).join("")
         ).join("") : "";
+        const focus_class = row.id === focused_file_id ? " metadata_row_focused" : "";
         return `
-        <tr class="${is_linked ? "" : "metadata_row_unlinked"}">
+        <tr class="${is_linked ? "" : "metadata_row_unlinked"}${focus_class}" data-file-id="${row.id}">
           <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) && is_linked ? " checked" : ""}${is_linked ? "" : " disabled"} /></td>
           ${metadata_tds}
           ${derived_tds}
@@ -480,6 +485,7 @@ export function handle_table_change(event) {
         selected_file_ids.delete(entry.id);
       }
     });
+    prune_focused_file_id();
     render_file_table();
     update_start_button_state();
     notify_selection_changed();
@@ -496,6 +502,7 @@ export function handle_table_change(event) {
       selected_file_ids.add(file_id);
     } else {
       selected_file_ids.delete(file_id);
+      prune_focused_file_id();
     }
     update_select_all_checkbox();
     update_start_button_state();
@@ -532,6 +539,23 @@ export function handle_table_click(event) {
     const field = filter_toggle.dataset.filterField;
     set_open_filter_field(open_filter_field === field ? null : field);
     render_file_table();
+    return;
+  }
+
+  // Clicking anywhere on a checked sample's row (not its checkbox) brings it
+  // into focus for per-sample review UI (e.g. Identify Peaks) -- only
+  // meaningful when more than one file is checked at once, since with exactly
+  // one checked file that file is unambiguously the one being reviewed.
+  const body_row = event.target.closest("tbody tr[data-file-id]");
+  if (body_row) {
+    const file_id = body_row.dataset.fileId;
+    if (file_id && selected_file_ids.has(file_id) && file_id !== focused_file_id) {
+      set_focused_file_id(file_id);
+      file_table.querySelectorAll("tbody tr[data-file-id]").forEach((row_el) => {
+        row_el.classList.toggle("metadata_row_focused", row_el.dataset.fileId === file_id);
+      });
+      notify_focus_changed();
+    }
     return;
   }
 
