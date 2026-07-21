@@ -119,6 +119,30 @@ _TESTS = r"""() => {
       };
     });
 
+    run('registry: register_default_models() also registers the canonical dean_jett_fox model', () => {
+      const entry = registry.get_model('dean_jett_fox');
+      return {
+        pass: !!entry
+          && entry.kind === 'generative'
+          && entry.fitScope === 'per_sample'
+          && entry.comparisonGroup === 'poisson_cell_cycle'
+          && typeof entry.fit === 'function'
+          && typeof entry.normalizeResult === 'function',
+        detail: JSON.stringify({ entry: entry && { id: entry.id, version: entry.version, comparisonGroup: entry.comparisonGroup } }),
+      };
+    });
+
+    run('registry: register_default_models() also registers the auto_dj_djf selection policy', () => {
+      const entry = registry.get_model('auto_dj_djf');
+      return {
+        pass: !!entry
+          && entry.fitScope === 'per_sample'
+          && typeof entry.fit === 'function'
+          && typeof entry.normalizeResult === 'function',
+        detail: JSON.stringify({ entry: entry && { id: entry.id, version: entry.version } }),
+      };
+    });
+
     run('registry: legacy_bridge_v1 fits a real bimodal histogram and normalizes to the generic result contract', () => {
       const entry = registry.get_model('legacy_bridge_v1');
       const histogram = window.TestUtils.buildDJFHistogram(256);

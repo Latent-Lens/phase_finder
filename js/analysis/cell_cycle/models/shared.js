@@ -15,6 +15,7 @@
 
 import { gaussianBinMass, normalCdf } from "../../math/gaussian_bin_mass.js";
 import { gaussLegendre } from "../../math/quadrature.js";
+import { clamp } from "../../math/stats.js";
 
 const EPS = 1e-12;
 export const DEFAULT_S_QUADRATURE_NODES = 64;
@@ -52,6 +53,29 @@ export function isQuadraticProfileValid(b, c) {
 }
 
 /**
+ * Projects (b, c) onto the feasible set { isQuadraticProfileValid(b, c) },
+ * shrinking both coefficients toward the always-valid flat profile (b=c=0)
+ * rather than clamping each independently, since validity is a joint
+ * condition on the pair, not two separate bounds. Shared by every model
+ * whose latent occupancy profile includes this quadratic term as a
+ * component -- Dean-Jett uses it directly as q(z); Dean-Jett-Fox (M4) uses
+ * the same projection on the same (b, c) before blending in the wave term,
+ * since q_F(z) = (1-w)*q(z) + w*T(z) only stays nonnegative when q(z) itself
+ * does (T(z) is a density, already nonnegative by construction).
+ */
+export function projectQuadraticProfile(b, c, { maxMagnitude = 8, shrinkFactor = 0.7, maxIterations = 40 } = {}) {
+  let bb = clamp(b, -maxMagnitude, maxMagnitude);
+  let cc = clamp(c, -maxMagnitude, maxMagnitude);
+  let guard = 0;
+  while (!isQuadraticProfileValid(bb, cc) && guard < maxIterations) {
+    bb *= shrinkFactor;
+    cc *= shrinkFactor;
+    guard += 1;
+  }
+  return isQuadraticProfileValid(bb, cc) ? [bb, cc] : [0, 0];
+}
+
+/**
  * G1 and G2/M peaks as area-parameterized Gaussians integrated exactly over
  * each histogram bin (plan §5.2). sigma = CV * mean for each peak
  * independently -- equal-CV/locked-ratio behavior is an explicit caller
@@ -72,35 +96,42 @@ export function peakComponents(edges, { g1Area, g1Mean, g1CV, g2Area, g2Mean, g2
 }
 
 /**
- * Broadened Dean-Jett S-phase count per bin (plan §5.3): every latent DNA
- * position u(z) = g1Mean + z*(g2Mean-g1Mean), z in [0,1], carries quadratic-
- * profile mass q(z)dz and its own CV-scaled Gaussian broadening; the total
- * per-bin count is the sum over quadrature nodes of each node's broadened
- * contribution. Evaluates each node's CDF at every bin edge once (not twice
- * per bin) by sweeping edges left to right and reusing the previous edge's
- * CDF value, the same trick gaussianBinMass uses internally.
+ * Broadened S-phase count per bin, generalized over the latent z-occupancy
+ * profile (plan §5.3's structure, generic over which profile function fills
+ * it): every latent DNA position u(z) = g1Mean + z*(g2Mean-g1Mean), z in
+ * [0,1], carries profileFn(z)*dz of occupancy mass and its own CV-scaled
+ * Gaussian broadening; the total per-bin count is the sum over quadrature
+ * nodes of each node's broadened contribution. Evaluates each node's CDF at
+ * every bin edge once (not twice per bin) by sweeping edges left to right
+ * and reusing the previous edge's CDF value, the same trick gaussianBinMass
+ * uses internally.
  *
- * Returns an all-zero array (rather than throwing) for a non-positive area,
- * a non-positive g1-to-g2 span, or an invalid quadratic profile -- those are
- * caller/optimizer-side validation failures (isQuadraticProfileValid,
- * bounds on g1Mean < g2Mean), not this integrator's concern.
+ * Dean-Jett's convolvedSPhase() below is this function specialized to
+ * profileFn = z => quadraticProfile(z, b, c). Dean-Jett-Fox (M4) is the
+ * other specialization, with profileFn = z => (1-w)*quadraticProfile(z,b,c)
+ * + w*waveProfile(z, ...) -- see models/dean_jett_fox.js.
+ *
+ * Returns an all-zero array (rather than throwing) for a non-positive area
+ * or a non-positive g1-to-g2 span -- those are caller/optimizer-side
+ * validation failures, not this integrator's concern. profileFn's own
+ * validity (e.g. isQuadraticProfileValid) is the caller's responsibility.
  */
-export function convolvedSPhase(
+export function convolvedSPhaseWithProfile(
   edges,
-  { sArea, g1Mean, g2Mean, broadeningCV, b, c },
+  { sArea, g1Mean, g2Mean, broadeningCV, profileFn },
   quadratureNodes = DEFAULT_S_QUADRATURE_NODES,
 ) {
   const binCount = edges.length - 1;
   const out = new Array(binCount).fill(0);
   const span = g2Mean - g1Mean;
-  if (!(sArea > 0) || !(span > 0) || !isQuadraticProfileValid(b, c)) return out;
+  if (!(sArea > 0) || !(span > 0)) return out;
 
   const { nodes, weights } = gaussLegendre(quadratureNodes);
   for (let k = 0; k < nodes.length; k += 1) {
     // Rescale this node from [-1, 1] to z in [0, 1] (dz-scale factor 0.5).
     const z = 0.5 * (nodes[k] + 1);
     const weight = 0.5 * weights[k];
-    const qz = quadraticProfile(z, b, c);
+    const qz = profileFn(z);
     if (!(qz > 0)) continue;
     const u = g1Mean + z * span;
     const sigma = Math.max(EPS, Math.abs(broadeningCV * u));
@@ -114,4 +145,23 @@ export function convolvedSPhase(
     }
   }
   return out;
+}
+
+/**
+ * Dean-Jett S phase (plan §5.3): convolvedSPhaseWithProfile() specialized to
+ * the quadratic occupancy profile q(z). Returns an all-zero array for an
+ * invalid quadratic profile in addition to the generic non-positive-area/
+ * span cases -- see convolvedSPhaseWithProfile()'s own doc for those.
+ */
+export function convolvedSPhase(
+  edges,
+  { sArea, g1Mean, g2Mean, broadeningCV, b, c },
+  quadratureNodes = DEFAULT_S_QUADRATURE_NODES,
+) {
+  if (!isQuadraticProfileValid(b, c)) return new Array(edges.length - 1).fill(0);
+  return convolvedSPhaseWithProfile(
+    edges,
+    { sArea, g1Mean, g2Mean, broadeningCV, profileFn: (z) => quadraticProfile(z, b, c) },
+    quadratureNodes,
+  );
 }

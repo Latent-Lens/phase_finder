@@ -28,6 +28,15 @@ export function normalCdf(x, mu = 0, sigma = 1) {
   return 0.5 * (1 + erf((x - mu) / (s * Math.SQRT2)));
 }
 
+/** Closed-form normal PDF (no erf approximation involved). Paired with
+ * normalCdf() above by Dean-Jett-Fox's truncated-normal wave profile (plan
+ * §5.4), which needs both the density and its normalizing mass over [0,1]. */
+export function normalPdf(x, mu = 0, sigma = 1) {
+  const s = Math.max(Math.abs(sigma), EPS);
+  const z = (x - mu) / s;
+  return Math.exp(-0.5 * z * z) / (s * Math.sqrt(2 * Math.PI));
+}
+
 /**
  * Expected count per bin for a Gaussian(mu, sigma) peak scaled to total area
  * `area`, integrated exactly (via the CDF) over each [edges[i], edges[i+1]]
