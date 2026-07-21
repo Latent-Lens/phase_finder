@@ -1,0 +1,83 @@
+name: Native Safari compatibility
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 8 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  safari:
+    name: Safari latest on macOS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Selenium dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            -r tests/selenium/requirements.txt
+
+      - name: Configure BrowserStack credentials
+        uses: browserstack/github-actions/setup-env@master
+        with:
+          username: ${{ secrets.BROWSERSTACK_USERNAME }}
+          access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+
+      - name: Start BrowserStack Local tunnel
+        uses: browserstack/github-actions/setup-local@master
+        with:
+          local-testing: start
+          local-identifier: random
+
+      - name: Start PhaseFinder server
+        shell: bash
+        run: |
+          python -m http.server 8000 \
+            --bind 0.0.0.0 \
+            > phasefinder-server.log 2>&1 &
+          curl --retry 10 \
+            --retry-delay 1 \
+            --retry-connrefused \
+            http://127.0.0.1:8000/index.html
+
+      - name: Run Safari Selenium test
+        env:
+          BROWSERSTACK_OS_VERSION: Sequoia
+        run: |
+          python -m pytest \
+            tests/selenium/test_safari_smoke.py \
+            -v
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safari-browserstack-failure
+          path: |
+            safari-failure.png
+            phasefinder-server.log
+          if-no-files-found: ignore
+
+      - name: Stop BrowserStack Local tunnel
+        if: always()
+        uses: browserstack/github-actions/setup-local@master
+        with:
+          local-testing: stop
