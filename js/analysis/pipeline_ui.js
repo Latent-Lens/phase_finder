@@ -8,7 +8,7 @@ import {
   qc_gate_buttons,
   qc_gate_run_all,
 } from "../ui/dom.js";
-import { plottable_rows, plot_bin_count } from "../plotting/data.js";
+import { plottable_rows, plot_bin_count, clamp_range_to_axis_override } from "../plotting/data.js";
 import { render_density_plot } from "../plotting/render.js";
 import {
   set_status_bar,
@@ -26,6 +26,16 @@ import { ensure_companions_loaded } from "../io/channel_loading.js";
 import { QC_LOST_COLUMNS, TOTAL_EVENTS_COLUMN } from "../data_structs/derived_columns.js";
 
 let initialized = false;
+
+// User-facing names for the four pre-model QC stages (indexes 0-3), matching
+// the sidebar toggle labels, so the progress readout can name exactly which
+// filters are being applied rather than a generic "Applying pre-model QC".
+const QC_STAGE_NAMES = ["Structural", "Time QC", "Cell gate", "Singlet gate"];
+
+function qc_progress_label(checked_stages) {
+  if (!checked_stages.length) return "Clearing pre-model QC";
+  return `Applying QC: ${checked_stages.map((stage) => QC_STAGE_NAMES[stage]).join(", ")}`;
+}
 
 /*
 
@@ -50,7 +60,9 @@ Output:
 export function regenerate_histograms(rows, pipeline) {
   let shared_range;
   try {
-    shared_range = pipeline.shared_histogram_range(rows);
+    // Clamp to the visible x-range so QC-gated histograms (which feed peak
+    // detection + fitting) exclude events outside the current x-axis.
+    shared_range = clamp_range_to_axis_override(pipeline.shared_histogram_range(rows));
   } catch (_) {
     // No row has any retained events yet (e.g. a filter removed everything) —
     // leave histograms unset; the requesting stage's own per-row error
@@ -171,10 +183,11 @@ async function apply_qc_selection() {
       await ensure_companions_loaded(rows);
     }
 
-    show_progress("Applying pre-model QC");
+    const progress_label = qc_progress_label(checked);
+    show_progress(progress_label);
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
-      update_progress((100 * index) / rows.length, "Applying pre-model QC", row.name);
+      update_progress((100 * index) / rows.length, progress_label, row.name);
       await next_frame();
       pipeline.reset_qc_gates(row);
       for (const stage of checked) {
@@ -245,6 +258,19 @@ function open_cell_gate_inspector() {
   });
 }
 
+/**
+ * Programmatically set the four QC toggles to exactly `stages` (an array of
+ * stage indexes 0-3) and apply them -- used by session restore to reinstate the
+ * saved pre-model QC selection before re-fitting. Awaits the apply so callers
+ * can sequence the histogram rebuild before restoring peaks/fits.
+ */
+export async function apply_saved_qc_stages(stages) {
+  const wanted = new Set(stages || []);
+  qc_gate_buttons.forEach((button, index) => set_qc_active(button, wanted.has(index)));
+  sync_qc_run_all_state();
+  await apply_qc_selection();
+}
+
 function init_premodel_qc() {
   qc_gate_buttons.forEach((button, stage) => {
     if (!button) return;
@@ -284,7 +310,7 @@ function schedule_qc_precompute() {
       const rows = plottable_rows();
       let shared_range;
       try {
-        shared_range = pipeline.shared_histogram_range(rows);
+        shared_range = clamp_range_to_axis_override(pipeline.shared_histogram_range(rows));
       } catch (_) {
         return; // no retained events yet; nothing to histogram
       }

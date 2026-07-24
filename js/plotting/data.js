@@ -17,9 +17,23 @@ export const plot_area = document.querySelector("#plot_area");
 export const plot_title = document.querySelector("#plot_title");
 export const plot_color_by_select = document.querySelector("#plot_color_by");
 export const plot_display_mode_select = document.querySelector("#plot_display_mode");
+export const plot_view_mode_select = document.querySelector("#plot_view_mode");
 export const plot_x_scale_select = document.querySelector("#plot_x_scale");
 export const plot_bins_input = document.querySelector("#plot_bins");
 export const djf_readout = document.querySelector("#djf_readout");
+
+// Plot toolbar (plot_toolbar.js): camera + the pan/zoom mode and reset buttons.
+export const plot_toolbar = document.querySelector("#plot_toolbar");
+export const plot_tool_camera = document.querySelector("#plot_tool_camera");
+export const plot_tool_pan = document.querySelector("#plot_tool_pan");
+export const plot_tool_zoom_in = document.querySelector("#plot_tool_zoom_in");
+export const plot_tool_zoom_out = document.querySelector("#plot_tool_zoom_out");
+export const plot_tool_autoscale = document.querySelector("#plot_tool_autoscale");
+export const plot_tool_home = document.querySelector("#plot_tool_home");
+
+export const plot_export_modal = document.querySelector("#plot_export_modal");
+export const plot_export_scale_select = document.querySelector("#plot_export_scale");
+export const plot_export_error = document.querySelector("#plot_export_error");
 
 export const axis_range_modal = document.querySelector("#axis_range_modal");
 export const axis_range_x_min_input = document.querySelector("#axis_range_x_min");
@@ -27,7 +41,30 @@ export const axis_range_x_max_input = document.querySelector("#axis_range_x_max"
 export const axis_range_y_min_input = document.querySelector("#axis_range_y_min");
 export const axis_range_y_max_input = document.querySelector("#axis_range_y_max");
 
-export const DEFAULT_BINS = 512;
+// The Bins control is a slider over these discrete power-of-two stops. Its
+// native value is the index 0..BIN_STOPS.length-1; plot_bin_count() maps that
+// to the actual bin count so every consumer keeps reading a real bin count.
+export const BIN_STOPS = [128, 256, 512, 1024];
+export const DEFAULT_BINS = 256;
+const DEFAULT_BIN_INDEX = BIN_STOPS.indexOf(DEFAULT_BINS);
+
+// Nearest slider index for an arbitrary bin count (used to restore a saved
+// session's stored bin count onto the discrete slider).
+export function slider_index_for_bins(bins) {
+  const target = Number(bins);
+  if (!Number.isFinite(target)) return DEFAULT_BIN_INDEX;
+  let best = 0;
+  for (let i = 1; i < BIN_STOPS.length; i += 1) {
+    if (Math.abs(BIN_STOPS[i] - target) < Math.abs(BIN_STOPS[best] - target)) best = i;
+  }
+  return best;
+}
+
+// Sets the slider to the stop nearest `bins`. Does not dispatch an event, so
+// callers (session restore) update the control without triggering a recalc.
+export function set_plot_bins(bins) {
+  if (plot_bins_input) plot_bins_input.value = String(slider_index_for_bins(bins));
+}
 
 // Colors come from the CSS custom properties in base.css so there is a single
 // source of truth for the whole app; the fallback is used only if a token is
@@ -88,6 +125,24 @@ export const ISOLATED_DIM_OPACITY = 0.12;
 export let plot_channels = null;
 export function set_plot_channels(channels) { plot_channels = channels; }
 
+// Plot view: "overlay" (all samples superimposed, the default) or "ridge"
+// (each sample a stacked small-multiple for multi-sample review). When a single
+// sample is "blown up" from the ridge for manual review, `ridge_focus_name`
+// holds its name and the overlay renders just that sample.
+export let plot_view_mode = "overlay";
+export function set_plot_view_mode(mode) { plot_view_mode = mode === "ridge" ? "ridge" : "overlay"; }
+export let ridge_focus_name = null;
+export function set_ridge_focus_name(name) { ridge_focus_name = name || null; }
+
+// Interactive pan/zoom VIEWPORT for the overlay plot: display-only x/y domains
+// set by drag-pan, box-zoom and wheel-zoom. null on an axis = use that axis's
+// base domain (auto or the modeling axis_range_override). This never feeds the
+// modeling histogram -- it only re-scales the axes for viewing, so panning or
+// zooming to inspect a fit never re-runs detection/modeling.
+export let plot_viewport = { x: null, y: null };
+export function set_plot_viewport(viewport) { plot_viewport = { x: viewport?.x || null, y: viewport?.y || null }; }
+export function reset_plot_viewport() { plot_viewport = { x: null, y: null }; }
+
 // Per-sample histogram series (name, color, points, etc.) from the most recent
 // render, exposed via window.PhaseFinder.plot for other modules to read.
 export let last_series = [];
@@ -130,6 +185,18 @@ export const axis_range_override = { x_min: null, x_max: null, y_min: null, y_ma
 // them as placeholders even for the axis that wasn't double-clicked.
 export let last_auto_x_range = [0, 1];
 export function set_last_auto_x_range(range) { last_auto_x_range = range; }
+
+// Clamps an auto-computed [min, max] DNA-A range to the manual x-axis override,
+// matching the plot's own x-domain logic (render.js): each end uses the
+// override when set, else the auto bound, falling back to the full auto range
+// if that would invert the range. Used to build the modeling histogram over
+// exactly the visible x-range, so events the user has zoomed/clipped out of
+// view are excluded from peak detection and fitting.
+export function clamp_range_to_axis_override([min, max]) {
+  const lo = axis_range_override.x_min != null ? axis_range_override.x_min : min;
+  const hi = axis_range_override.x_max != null ? axis_range_override.x_max : max;
+  return hi > lo ? [lo, hi] : [min, max];
+}
 export let last_auto_y_max = 1;
 export function set_last_auto_y_max(value) { last_auto_y_max = value; }
 
@@ -194,20 +261,22 @@ export function format_fit_number(value, digits = 2) {
 /*
 
 Purpose:
-	Reads the bin count from the "Bins" input and clamps it to a safe range.
-	Falls back to the default when the field is empty or non-numeric.
+	Reads the bin count the "Bins" slider currently selects. The slider's native
+	value is an index into BIN_STOPS; this maps it back to a real bin count so
+	every consumer keeps working in bin counts. Falls back to the default when
+	the control is missing or holds an out-of-range index.
 
 Input:
 	(none)
 
 Output:
-	bins [number]: the bin count, clamped to [16, 1024] (default 256)
+	bins [number]: the selected bin count from BIN_STOPS (default 512)
 
 */
 export function plot_bin_count() {
-  const raw = Number.parseInt(plot_bins_input && plot_bins_input.value, 10);
-  if (!Number.isFinite(raw)) return DEFAULT_BINS;
-  return Math.max(16, Math.min(1024, raw));
+  const index = Number.parseInt(plot_bins_input && plot_bins_input.value, 10);
+  if (!Number.isInteger(index) || index < 0 || index >= BIN_STOPS.length) return DEFAULT_BINS;
+  return BIN_STOPS[index];
 }
 
 /*
