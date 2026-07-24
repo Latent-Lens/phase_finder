@@ -8,13 +8,43 @@ tests/unit/__pycache__
 tests/test_data/*
 flow_data
 
-# Production build output
-dist/
-
-
 # Local AI tooling
 .claude/
 
 # Editors and IDEs
 .vscode/
 .idea/
+
+# Python for testing
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+
+# Node dependencies
+node_modules/
+
+# Production build output
+dist/
+
+# Test and coverage output
+coverage/
+playwright-report/
+
+# Tool caches
+.vite/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment files
+.env
+
+# OS metadata
+.DS_Store
+Thumbs.db
