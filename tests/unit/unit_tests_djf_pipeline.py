@@ -110,7 +110,7 @@ _STAGES_0_TO_4 = r"""() => {
     };
   });
 
-  run('Stage 0: structural mask keeps zero and rejects nonfinite, negative, and saturated values', () => {
+  run('Stage 0: structural mask keeps zero, rejects nonfinite/negative on all channels and saturation on DNA only', () => {
     const dataset = {
       eventCount: 8,
       channels: {
@@ -125,10 +125,16 @@ _STAGES_0_TO_4 = r"""() => {
     };
     const qc = stage0.runStructuralQC(dataset);
     const actual = Array.from(qc.structuralMask).join('');
+    // Event 4 (DNA_A at its PnR ceiling) is rejected -- saturated DNA content.
+    // Event 5 (FSC_A at its ceiling) is NOW KEPT: the saturation ceiling is
+    // DNA-only, so scatter saturation no longer strips events (which on real
+    // data preferentially removed the large-cell G2/M population). Event 6
+    // (SSC_A = -1) is still rejected: the non-negative check remains on every
+    // channel. Event 1 (DNA_A = -1) and event 2 (DNA_H = NaN) are rejected too.
     return {
-      pass: actual === '10010001'
-        && qc.retainedEventCount === 3
-        && qc.rejectedEventCount === 5,
+      pass: actual === '10010101'
+        && qc.retainedEventCount === 4
+        && qc.rejectedEventCount === 4,
       detail: `mask=${actual}, retained=${qc.retainedEventCount}`,
     };
   });
