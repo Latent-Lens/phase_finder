@@ -50,7 +50,7 @@ from helpers import (
 )
 from tests_io import test_file_loading, test_libraries
 from tests_filtering import test_table_filtering_sorting
-from tests_plotting import test_plotting
+from tests_plotting import test_plotting, test_plot_toolbar
 from tests_pipeline import test_pipeline
 from tests_modeling import test_modeling
 from tests_sidebar import test_sidebar_icons, test_sidebar_modeling_mode
@@ -163,6 +163,7 @@ def run(args):
         test_file_loading(e2e_ctx, drag_drop_files, file_browser_files, additional_files)
         test_table_filtering_sorting(e2e_ctx)
         test_plotting(e2e_ctx, args.channel)
+        test_plot_toolbar(e2e_ctx)
         test_pipeline(e2e_ctx)
         test_modeling(e2e_ctx)
         test_sidebar_icons(e2e_ctx)

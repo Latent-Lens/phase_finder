@@ -201,3 +201,199 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     else:
         ctx.warn(group, "Changing channel restores Plot Channel Events button",
                  "Only one channel option available")
+
+
+# ---------------------------------------------------------------------------
+# Plot toolbar: display-only pan/zoom + image export
+# ---------------------------------------------------------------------------
+
+# The invariant this whole group exists to protect: pan/zoom is a VIEW change.
+# It must never write axis_range_override (the modeling range), because that
+# would silently re-run peak detection and every fit just from looking around.
+BLANK_OVERRIDE = {"x_min": None, "x_max": None, "y_min": None, "y_max": None}
+
+
+def _viewport(page):
+    return page.evaluate("() => window.PhaseFinder.plot.viewport")
+
+
+def _override(page):
+    return page.evaluate("() => window.PhaseFinder.plot.axis_range_override")
+
+
+def _span(domain):
+    return None if not domain else domain[1] - domain[0]
+
+
+def _plot_box(page):
+    return page.query_selector("#plot_area svg").bounding_box()
+
+
+def _reset_view(page):
+    page.click("#plot_tool_home")
+    wait_briefly(0.4)
+
+
+def test_plot_toolbar(ctx: TestContext):
+    """Toolbar icons, the display-only pan/zoom viewport, and image export."""
+    page = ctx.page
+    group = "Plot Toolbar"
+
+    if page.query_selector("#plot_area svg") is None:
+        ctx.warn(group, "Plot toolbar", "Skipped: no plot is rendered")
+        return
+
+    buttons = page.evaluate(
+        "() => [...document.querySelectorAll('#plot_toolbar .plot_tool')].map(b => b.id)")
+    ctx.check(group, "Toolbar renders the six plot tools in order",
+              buttons == ["plot_tool_camera", "plot_tool_pan", "plot_tool_zoom_in",
+                          "plot_tool_zoom_out", "plot_tool_autoscale", "plot_tool_home"],
+              str(buttons))
+
+    ctx.check(group, "Pan is the armed mode by default",
+              page.get_attribute("#plot_tool_pan", "aria-pressed") == "true"
+              and page.evaluate("() => window.PhaseFinder.plot.interaction_mode") == "pan"
+              and page.eval_on_selector("#plot_area", "e => e.dataset.plotMode") == "pan",
+              page.evaluate("() => window.PhaseFinder.plot.interaction_mode"))
+
+    ctx.check(group, "An interaction surface is drawn under the plot layers",
+              page.evaluate("() => document.querySelectorAll('#plot_area .plot_interaction_surface').length") == 1
+              and page.evaluate(
+                  """() => {
+                    const svg = document.querySelector('#plot_area svg');
+                    const surface = svg.querySelector('.plot_interaction_surface');
+                    return svg.firstElementChild === surface || svg.children[0] === surface;
+                  }"""),
+              "surface must be the first child so curves/handles stay on top")
+
+    _reset_view(page)
+    base = _viewport(page)
+    ctx.check(group, "A freshly drawn plot has no pan/zoom viewport",
+              base["x"] is None and base["y"] is None, str(base))
+
+    box = _plot_box(page)
+    cx = box["x"] + box["width"] / 2
+    cy = box["y"] + box["height"] / 2
+
+    # --- wheel zoom -------------------------------------------------------
+    page.mouse.move(cx, cy)
+    page.mouse.wheel(0, -400)
+    wait_briefly(0.5)
+    wheeled = _viewport(page)
+    ctx.check(group, "Mouse wheel zooms the view about the cursor",
+              wheeled["x"] is not None and wheeled["y"] is not None,
+              str(wheeled))
+    ctx.check(group, "Wheel zoom leaves the modeling axis range untouched",
+              _override(page) == BLANK_OVERRIDE, str(_override(page)))
+
+    page.mouse.wheel(0, 800)
+    wait_briefly(0.5)
+    zoomed_out = _viewport(page)
+    ctx.check(group, "Wheeling back out widens the view again",
+              zoomed_out["x"] is None or _span(zoomed_out["x"]) > _span(wheeled["x"]),
+              f"{zoomed_out['x']} vs {wheeled['x']}")
+
+    # --- home ------------------------------------------------------------
+    _reset_view(page)
+    ctx.check(group, "Reset axes clears the pan/zoom viewport",
+              _viewport(page) == {"x": None, "y": None}, str(_viewport(page)))
+
+    # --- shift+drag box zoom ---------------------------------------------
+    page.keyboard.down("Shift")
+    page.mouse.move(cx - 150, cy - 90)
+    page.mouse.down()
+    page.mouse.move(cx + 60, cy + 90, steps=10)
+    page.mouse.up()
+    page.keyboard.up("Shift")
+    wait_briefly(0.5)
+    boxed = _viewport(page)
+    ctx.check(group, "Shift-drag zooms into the painted rectangle on both axes",
+              boxed["x"] is not None and boxed["y"] is not None
+              and boxed["x"][0] < boxed["x"][1] and boxed["y"][0] < boxed["y"][1],
+              str(boxed))
+    ctx.check(group, "Box zoom leaves the modeling axis range untouched",
+              _override(page) == BLANK_OVERRIDE, str(_override(page)))
+
+    # --- double-click resets ---------------------------------------------
+    page.mouse.dblclick(box["x"] + box["width"] * 0.35, box["y"] + 25)
+    wait_briefly(0.5)
+    ctx.check(group, "Double-clicking empty plot space resets the view",
+              _viewport(page) == {"x": None, "y": None}, str(_viewport(page)))
+
+    # --- pan --------------------------------------------------------------
+    page.mouse.move(cx, cy)
+    page.mouse.down()
+    page.mouse.move(cx - 130, cy, steps=12)
+    page.mouse.up()
+    wait_briefly(0.5)
+    panned = _viewport(page)
+    ctx.check(group, "Dragging pans the view without changing its width",
+              panned["x"] is not None and _span(panned["x"]) > 0,
+              str(panned))
+    ctx.check(group, "Panning leaves the modeling axis range untouched",
+              _override(page) == BLANK_OVERRIDE, str(_override(page)))
+    _reset_view(page)
+
+    # --- zoom modes -------------------------------------------------------
+    page.click("#plot_tool_zoom_out")
+    wait_briefly(0.3)
+    ctx.check(group, "Selecting a zoom mode moves the pressed state off Pan",
+              page.get_attribute("#plot_tool_zoom_out", "aria-pressed") == "true"
+              and page.get_attribute("#plot_tool_pan", "aria-pressed") == "false"
+              and page.eval_on_selector("#plot_area", "e => e.dataset.plotMode") == "zoom_out",
+              page.evaluate("() => window.PhaseFinder.plot.interaction_mode"))
+
+    page.mouse.click(cx, cy)
+    wait_briefly(0.7)
+    clicked_out = _viewport(page)
+    ctx.check(group, "Clicking in zoom-out mode zooms the view out about the cursor",
+              clicked_out["x"] is not None and clicked_out["y"] is not None,
+              str(clicked_out))
+    page.click("#plot_tool_pan")
+    _reset_view(page)
+
+    # --- autoscale --------------------------------------------------------
+    page.click("#plot_tool_autoscale")
+    wait_briefly(0.5)
+    autoscaled = _viewport(page)
+    ctx.check(group, "Autoscale fits the axes to the plotted data",
+              autoscaled["x"] is not None and autoscaled["y"] is not None
+              and autoscaled["y"][0] == 0 and autoscaled["y"][1] > 0,
+              str(autoscaled))
+    ctx.check(group, "Autoscale leaves the modeling axis range untouched",
+              _override(page) == BLANK_OVERRIDE, str(_override(page)))
+    _reset_view(page)
+
+    # --- image export -----------------------------------------------------
+    # Each format is downloaded for real and checked by its file signature, so
+    # a silently corrupt encoder can't pass on file size alone.
+    signatures = {
+        "svg": (b"<?xml", ".svg"),
+        "pdf": (b"%PDF-", ".pdf"),
+        "png": (b"\x89PNG", ".png"),
+        "jpeg": (b"\xff\xd8\xff", ".jpg"),
+    }
+    for fmt, (magic, extension) in signatures.items():
+        try:
+            page.click("#plot_tool_camera")
+            page.wait_for_selector("#plot_export_modal:not([hidden])", timeout=5000)
+            page.check(f"input[name='plot_export_format'][value='{fmt}']")
+            with page.expect_download(timeout=25000) as download_info:
+                page.click("#plot_export_download")
+            download = download_info.value
+            saved = ctx.results_dir / f"{ctx.report_stem}_plot_export{extension}"
+            download.save_as(str(saved))
+            head = saved.read_bytes()[:8]
+            ctx.check(group, f"Camera exports a valid {fmt.upper()} file",
+                      download.suggested_filename.endswith(extension)
+                      and head.startswith(magic)
+                      and saved.stat().st_size > 1000
+                      and page.is_hidden("#plot_export_modal"),
+                      f"{download.suggested_filename}, {saved.stat().st_size} bytes, head={head!r}")
+        except Exception as error:
+            ctx.check(group, f"Camera exports a valid {fmt.upper()} file", False, str(error))
+            if page.is_visible("#plot_export_modal"):
+                page.click("#plot_export_cancel")
+
+    # Leave the plot exactly as the next test module expects to find it.
+    _reset_view(page)
