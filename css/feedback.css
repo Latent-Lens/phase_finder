@@ -134,7 +134,9 @@
   height: 100%;
   border-radius: 5px;
   background: linear-gradient(90deg, var(--logo_teal), var(--logo_blue));
-  transition: width 180ms ease;
+  /* No width transition: batch stages (e.g. pre-model QC) update the percentage
+     faster than an eased transition can follow, which left the fill visibly
+     trailing the displayed number. The fill now always matches the percent. */
 }
 
 .progress_meta {
