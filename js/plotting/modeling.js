@@ -84,6 +84,26 @@ export function render_fit_results_table(fits, placement = {}) {
           <td class="numeric_cell">${format_fit_number(phase.stdev, 2)}</td>
         </tr>`)
       .join("");
+    // Canonical models (Dean-Jett, DJF, Watson, Auto) carry their fit warnings
+    // on the series entry itself (fit.warnings, each {code, severity, message});
+    // the legacy pipeline instead reports through its Stage 8 report below. Show
+    // the actual warning messages here in the top-right overlay so the user sees
+    // what a fit flagged, not just a count in the sidebar.
+    const model_warnings = !fit.pipelineState?.report && Array.isArray(fit.warnings) ? fit.warnings : [];
+    let model_warning_rows = "";
+    if (model_warnings.length) {
+      const items = model_warnings
+        .map((warning) => `<li>${plot_escape_html(warning.message || String(warning))}</li>`)
+        .join("");
+      model_warning_rows = `
+        <tr class="djf_fit_warnings_row djf_fit_model_warnings_row">
+          <td colspan="4">
+            <span class="djf_fit_warnings_title">⚠ ${model_warnings.length} fit warning${model_warnings.length === 1 ? "" : "s"}</span>
+            <ul class="djf_fit_warnings_list">${items}</ul>
+          </td>
+        </tr>`;
+    }
+
     const report = fit.pipelineState?.report;
     let report_rows = "";
     if (report) {
@@ -128,6 +148,7 @@ export function render_fit_results_table(fits, placement = {}) {
         </tr>
         ${phase_rows}
         ${report_rows}
+        ${model_warning_rows}
       </tbody>`);
   });
 

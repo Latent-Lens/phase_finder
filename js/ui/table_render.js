@@ -30,7 +30,10 @@ import {
   sync_file_annotations,
 } from "../data_structs/table_state.js";
 import { unique_metadata_label } from "../data_structs/metadata_columns.js";
-import { DERIVED_COLUMN_GROUPS, TOTAL_EVENTS_COLUMN, TOTAL_EVENTS_HEADER } from "../data_structs/derived_columns.js";
+import {
+  DERIVED_COLUMN_GROUPS, TOTAL_EVENTS_COLUMN, TOTAL_EVENTS_HEADER,
+  CELL_CYCLE_COLUMN_PREFIX, CELL_CYCLE_PHASE_LABELS, CELL_CYCLE_MODEL_LABELS,
+} from "../data_structs/derived_columns.js";
 import { decorate_removable_headers, handle_remove_columns_click } from "./column_remove.js";
 import {
   displayed_files,
@@ -150,9 +153,33 @@ export function render_file_table() {
   // Stats columns live in the frame as "CHANNEL:metric".
   // Group them by channel to build the two-row stats header.
   const BASE_COLS = table_base_field_set();
+  // Cell-cycle fit fraction columns ("cellCycleFit:<modelId>:<phase>") are
+  // pulled out first: they contain colons but must NOT be treated as
+  // CHANNEL:metric stats columns. Grouped by model so each model in use gets its
+  // own G1/S/G2-M header block.
+  const cell_cycle_model_columns = {};
+  for (const col of frame.columns) {
+    if (col.startsWith(CELL_CYCLE_COLUMN_PREFIX)) {
+      const rest = col.slice(CELL_CYCLE_COLUMN_PREFIX.length);
+      const sep = rest.lastIndexOf(":");
+      if (sep > 0) {
+        const modelId = rest.slice(0, sep);
+        const phase = rest.slice(sep + 1);
+        (cell_cycle_model_columns[modelId] ??= {})[phase] = col;
+      }
+    }
+  }
+  const cell_cycle_groups = Object.entries(cell_cycle_model_columns).map(([modelId, phases]) => ({
+    label: CELL_CYCLE_MODEL_LABELS[modelId] || modelId,
+    columns: ["g1", "s", "g2"]
+      .filter((phase) => phases[phase])
+      .map((phase) => ({ field: phases[phase], label: CELL_CYCLE_PHASE_LABELS[phase] })),
+  })).filter((group) => group.columns.length);
+  const has_cell_cycle = cell_cycle_groups.length > 0;
+
   const channel_groups = {};
   for (const col of frame.columns) {
-    if (!BASE_COLS.has(col)) {
+    if (!BASE_COLS.has(col) && !col.startsWith(CELL_CYCLE_COLUMN_PREFIX)) {
       const sep = col.lastIndexOf(":");
       if (sep > 0) {
         const channel = col.slice(0, sep);
@@ -203,7 +230,7 @@ export function render_file_table() {
   // Any grouped section (or the split total header) forces the two-row header
   // even without stats, so section titles align with the metadata labels and
   // column titles align with the metadata filter dropdowns.
-  const two_row_header = has_stats || derived_groups.length > 0 || has_total_events;
+  const two_row_header = has_stats || derived_groups.length > 0 || has_total_events || has_cell_cycle;
   // Removable derived/stats headers carry data-column-key="col:<frame column>".
   const col_key = (column) =>
     ` data-column-key="col:${escape_html(column)}" data-column-label="${escape_html(column)}"`;
@@ -250,17 +277,31 @@ export function render_file_table() {
         return `<th class="stats_sub_th${cls}" data-column-key="${key}" data-column-label="${label}">${STAT_LABELS[m] || m}</th>`;
       }).join("")
     ).join("");
+    // Per-model cell-cycle groups: model label spanning its G1/S/G2-M columns.
+    const cell_cycle_group_headers = cell_cycle_groups.map((g) =>
+      `<th colspan="${g.columns.length}" class="stats_group_th cell_cycle_group_th stats_col_start">${escape_html(g.label)}</th>`
+    ).join("");
+    const cell_cycle_sub_headers = cell_cycle_groups.map((g) =>
+      g.columns.map((c, ci) => {
+        const cls = ci === 0 ? " stats_col_start" : "";
+        const key = `col:${escape_html(c.field)}`;
+        const label = escape_html(`${g.label} ${c.label}`);
+        return `<th class="stats_sub_th cell_cycle_sub_th${cls}" data-column-key="${key}" data-column-label="${label}">${escape_html(c.label)}</th>`;
+      }).join("")
+    ).join("");
     head_html = `
         <tr>
           <th class="checkbox_col stats_checkbox_th" rowspan="2">${checkbox_th_inner}</th>
           ${label_ths}
           ${derived_group_ths}
           ${group_headers}
+          ${cell_cycle_group_headers}
         </tr>
         <tr>
           ${filter_ths}
           ${derived_sub_ths}
           ${sub_headers}
+          ${cell_cycle_sub_headers}
         </tr>`;
   } else {
     const regular_headers = TABLE_COLUMNS.map((col) => header_cell(col)).join("");
@@ -273,7 +314,8 @@ export function render_file_table() {
   }
 
   const total_stat_cols = has_stats ? stats_groups.reduce((sum, g) => sum + g.metrics.length, 0) : 0;
-  const empty_colspan = TABLE_COLUMNS.length + 1 + derived_columns.length + total_stat_cols;
+  const total_cell_cycle_cols = cell_cycle_groups.reduce((sum, g) => sum + g.columns.length, 0);
+  const empty_colspan = TABLE_COLUMNS.length + 1 + derived_columns.length + total_stat_cols + total_cell_cycle_cols;
   const body = visible_files.length
     ? visible_files.map((row) => {
         const is_linked = metadata_row_is_linked(row);
@@ -301,6 +343,14 @@ export function render_file_table() {
             return `<td class="stats_td${cls}" data-column-key="${key}">${fmt(row[`${g.channel}:${m}`])}</td>`;
           }).join("")
         ).join("") : "";
+        const cell_cycle_tds = has_cell_cycle ? cell_cycle_groups.map((g) =>
+          g.columns.map((c, ci) => {
+            const cls = ci === 0 ? " stats_col_start" : "";
+            const key = `col:${escape_html(c.field)}`;
+            const value = row[c.field];
+            return `<td class="stats_td cell_cycle_td${cls}" data-column-key="${key}">${value ? escape_html(String(value)) : "—"}</td>`;
+          }).join("")
+        ).join("") : "";
         const focus_class = row.id === focused_file_id ? " metadata_row_focused" : "";
         return `
         <tr class="${is_linked ? "" : "metadata_row_unlinked"}${focus_class}" data-file-id="${row.id}">
@@ -308,6 +358,7 @@ export function render_file_table() {
           ${metadata_tds}
           ${derived_tds}
           ${stats_tds}
+          ${cell_cycle_tds}
         </tr>`;
       }).join("")
     : `<tr><td class="empty_note" colspan="${empty_colspan}">No files match the current filters.</td></tr>`;

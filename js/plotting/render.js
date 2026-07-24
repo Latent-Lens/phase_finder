@@ -14,6 +14,12 @@ import {
   plot_color_by_select,
   plot_bin_count,
   plot_display_mode,
+  plot_view_mode,
+  ridge_focus_name,
+  set_ridge_focus_name,
+  plot_viewport,
+  set_plot_viewport,
+  reset_plot_viewport,
   shared_range_for_values,
   axis_opts,
   build_color_assigner,
@@ -59,11 +65,14 @@ import {
   DJF_TOTAL_LINE_WIDTH,
 } from "./data.js";
 import { get_parsed_files } from "../state/files.js";
+import { set_focused_file_id } from "../data_structs/table_state.js";
 import { update_plot_title, render_fit_results_table } from "./modeling.js";
 import { open_axis_range_modal } from "./axis_modal.js";
 import { get_state as get_pipeline_state, state_matches_row } from "../analysis/pipeline_state.js";
+import { update_peak_regions, fit_cell_cycle_model } from "../analysis/cell_cycle/modeling_state.js";
 import { show_curve_tooltip, hide_curve_tooltip } from "./curve_tooltip.js";
 import { render_peak_region_overlay } from "./peak_region_overlay.js";
+import { install_plot_interactions } from "./plot_viewport.js";
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected. Only this render pass reads or writes them.
@@ -84,6 +93,18 @@ function compact_final_values(row) {
     if (mask[index] && Number.isFinite(values[index])) retained.push(values[index]);
   }
   return retained;
+}
+
+// Per-sample plot inputs, shared by the overlay and ridge renderers. A sample
+// with a stored Stage 4 histogram renders from that frozen snapshot (its own
+// bin count/range) so its fit stays valid; otherwise it bins live from the
+// events surviving the active QC gates (compact_final_values returns every
+// finite event when no mask is set, so this is correct before any gating too).
+function prepare_row(row) {
+  const pipelineState = active_pipeline_state(row);
+  const values = compact_final_values(row);
+  const stats = { raw: row.data.dna_a.length, plotted: values.length };
+  return { values, stats, pipelineState, stageHistogram: pipelineState?.histogram || null };
 }
 
 function stage_histogram_summary(histogram) {
@@ -130,17 +151,17 @@ function component_moments(x, values) {
   return { total, mean, stdev: Math.sqrt(variance / total) };
 }
 
-// Reads the model-neutral §4.5 result shape (state.extendedFit or
-// state.baseFit, whichever is current) via its `components` array rather
-// than assuming any model-specific curve names -- any registered model's
-// normalized result renders here identically, not just the legacy bridge's.
-function pipeline_fit_for_series(series_entry) {
-  const state = active_pipeline_state(series_entry.row);
-  const fit = state && (state.extendedFit || state.baseFit);
-  const histogram = state?.histogram;
-  if (!fit?.components?.length || !fit.expectedCounts || !histogram?.x) return null;
-
-  const x = histogram.x;
+// Builds the series-overlay shape from any model's generic §4.5 result (its
+// `components` array and `expectedCounts`), independent of which model
+// produced it -- the canonical models (Dean-Jett, Dean-Jett-Fox, Watson
+// Pragmatic, auto_dj_djf) and the legacy bridge all normalize to this same
+// shape. `reportFractionByKey` is legacy-only: the old Stage 8 report
+// recomputes phase fractions more precisely than the Stage 6/7 fit alone, so
+// when present it wins over the moments-based percent computed here;
+// canonical-model results have no separate report stage; their own
+// `phaseFractions` already is the final number, threaded straight through.
+function build_fit_series_entry(series_entry, state, fit, { reportFractionByKey = {} } = {}) {
+  const x = state.histogram.x;
   const point_series = (values) => x.map((position, index) => ({
     x: position,
     y: Number(values?.[index]) || 0,
@@ -152,12 +173,6 @@ function pipeline_fit_for_series(series_entry) {
     g2: component_moments(x, component_counts("g2")),
   };
   const biologicalTotal = moments.g1.total + moments.s.total + moments.g2.total;
-  const reportedFractions = state.report?.fractions?.biologicalSinglets;
-  const reportFractionByKey = {
-    g1: reportedFractions?.oneC,
-    s: reportedFractions?.sPhase,
-    g2: reportedFractions?.twoC,
-  };
   const phase = (key, label) => ({
     phase: label,
     percent: Number.isFinite(reportFractionByKey[key])
@@ -191,7 +206,288 @@ function pipeline_fit_for_series(series_entry) {
     },
     phase_stats,
     pipelineState: state,
+    modelId: fit.modelId,
+    modelLabel: fit.modelLabel,
+    warnings: fit.warnings ?? [],
   };
+}
+
+// Prefers the row's active model-neutral result (js/analysis/cell_cycle/
+// modeling_state.js's fit_cell_cycle_model(), any registered model) over the
+// legacy Stage 6/7 fit -- invalidate_histogram_dependents() already clears
+// activeResultKey whenever the histogram changes, so a stale model-neutral
+// result never lingers here once QC/regions move on; it just falls back to
+// "no overlay" (or the legacy fit, if that's what's current) until refit.
+function pipeline_fit_for_series(series_entry) {
+  const state = active_pipeline_state(series_entry.row);
+  if (!state?.histogram?.x) return null;
+
+  const modeling = state.modeling;
+  const modelResult = modeling?.activeResultKey ? modeling.resultsByKey[modeling.activeResultKey] : null;
+  if (modelResult?.components?.length && modelResult.expectedCounts) {
+    return build_fit_series_entry(series_entry, state, modelResult);
+  }
+
+  const legacyFit = state.extendedFit || state.baseFit;
+  if (!legacyFit?.components?.length || !legacyFit.expectedCounts) return null;
+  const reportedFractions = state.report?.fractions?.biologicalSinglets;
+  return build_fit_series_entry(series_entry, state, legacyFit, {
+    reportFractionByKey: {
+      g1: reportedFractions?.oneC,
+      s: reportedFractions?.sPhase,
+      g2: reportedFractions?.twoC,
+    },
+  });
+}
+
+// Strips a trailing .fcs for compact display; the full name stays in the title.
+function strip_fcs_ext(name) {
+  return String(name || "").replace(/\.fcs$/i, "");
+}
+
+// Vertical space the floating top-right plot controls occupy, so plot content
+// under them (the first ridge row's header, the overlay fit table) can clear it.
+function plot_controls_offset() {
+  const el = document.querySelector(".plot_controls");
+  return el ? Math.ceil(el.getBoundingClientRect().height) + 10 : 0;
+}
+
+// Ridge "Review" -> blow one sample up to the full single-sample plot for manual
+// region editing. Focusing the row makes it the Identify Peaks panel's active
+// sample (so its draggable region handles + inputs target it); render then falls
+// through to the overlay path (filtered to this one sample) because
+// ridge_focus_name is set.
+function enter_ridge_review(row) {
+  set_ridge_focus_name(row.name);
+  set_focused_file_id(row.id);
+  document.dispatchEvent(new CustomEvent("cell-cycle-focus-change"));
+  render_density_plot();
+}
+
+// Accept -> leave the blow-up and return to the ridge (badge back to Ready).
+function exit_ridge_review() {
+  set_ridge_focus_name(null);
+  render_density_plot();
+}
+
+// Draggable G1/G2 peak-region boundaries drawn directly on a ridge row, so the
+// user can resize/move each region without blowing the sample up. Mirrors
+// peak_region_overlay.js's ordering rule (G1.left < G1.right <= G2.left <
+// G2.right) live during the drag, and commits + refits that one sample on
+// release (commit_ridge_regions).
+const RIDGE_G1_COLOR = "#2563eb";
+const RIDGE_G2_COLOR = "#b42318";
+const RIDGE_BOUNDARIES = [
+  { key: "g1_left", region: "g1", side: "left", color: RIDGE_G1_COLOR },
+  { key: "g1_right", region: "g1", side: "right", color: RIDGE_G1_COLOR },
+  { key: "g2_left", region: "g2", side: "left", color: RIDGE_G2_COLOR },
+  { key: "g2_right", region: "g2", side: "right", color: RIDGE_G2_COLOR },
+];
+const ridge_boundary_value = (live, key) => live[key.startsWith("g1") ? "g1" : "g2"][key.endsWith("left") ? "left" : "right"];
+const set_ridge_boundary = (live, key, value) => { live[key.startsWith("g1") ? "g1" : "g2"][key.endsWith("left") ? "left" : "right"] = value; };
+
+let ridge_commit_pending = false;
+
+// Commit a ridge row's edited regions and re-fit just that sample with its
+// model, then re-render the ridge so its fit + box reflect the edit.
+async function commit_ridge_regions(row, live) {
+  try {
+    update_peak_regions(row, {
+      g1: { left: live.g1.left, right: live.g1.right },
+      g2: { left: live.g2.left, right: live.g2.right },
+    }, { source: "manual", minimumGap: -0.01 });
+    const modelId = get_pipeline_state(row.name)?.modeling?.settings?.modelId;
+    if (modelId) await fit_cell_cycle_model(row, modelId);
+  } catch (_) {
+    // Invalid bounds or a failed fit -- fall through and re-render with whatever
+    // committed; the row simply shows no (or the prior) fit.
+  } finally {
+    ridge_commit_pending = false;
+    document.dispatchEvent(new CustomEvent("cell-cycle-fit-changed"));
+    render_density_plot();
+  }
+}
+
+function draw_ridge_region_editor(svg, row, x_scale, top, bottom) {
+  const regions = get_pipeline_state(row.name)?.modeling?.peakSelection?.regions;
+  if (!regions?.g1 || !regions?.g2) return;
+  const [domain_min, domain_max] = x_scale.domain();
+  const live = { g1: { ...regions.g1 }, g2: { ...regions.g2 } };
+
+  const group = svg.append("g").attr("class", "ridge_region_editor");
+  const bands = {
+    g1: group.append("rect").attr("class", "ridge_region_band").attr("fill", RIDGE_G1_COLOR).attr("fill-opacity", 0.1),
+    g2: group.append("rect").attr("class", "ridge_region_band").attr("fill", RIDGE_G2_COLOR).attr("fill-opacity", 0.1),
+  };
+  const edges = {};
+
+  const redraw = () => {
+    ["g1", "g2"].forEach((region) => {
+      const x0 = x_scale(live[region].left);
+      const x1 = x_scale(live[region].right);
+      bands[region].attr("x", Math.min(x0, x1)).attr("y", top).attr("width", Math.max(0, Math.abs(x1 - x0))).attr("height", Math.max(0, bottom - top));
+    });
+    RIDGE_BOUNDARIES.forEach(({ key }) => {
+      const px = x_scale(ridge_boundary_value(live, key));
+      edges[key].line.attr("x1", px).attr("x2", px).attr("y1", top).attr("y2", bottom);
+      edges[key].hit.attr("x", px - 5).attr("y", top).attr("width", 10).attr("height", Math.max(0, bottom - top));
+    });
+  };
+
+  const boundary_limits = (key) => {
+    switch (key) {
+      case "g1_left": return [domain_min, live.g1.right];
+      case "g1_right": return [live.g1.left, live.g2.left];
+      case "g2_left": return [live.g1.right, live.g2.right];
+      case "g2_right": return [live.g2.left, domain_max];
+      default: return [domain_min, domain_max];
+    }
+  };
+
+  RIDGE_BOUNDARIES.forEach(({ key, color }) => {
+    const line = group.append("line").attr("class", "ridge_region_edge").attr("stroke", color).attr("stroke-width", 1.5).attr("stroke-dasharray", "3 2");
+    const hit = group.append("rect").attr("class", "ridge_region_hit").attr("fill", "transparent").style("cursor", "ew-resize");
+    edges[key] = { line, hit };
+    hit.call(d3.drag()
+      .on("drag", (event) => {
+        const [lo, hi] = boundary_limits(key);
+        set_ridge_boundary(live, key, Math.max(lo, Math.min(hi, x_scale.invert(event.x))));
+        redraw();
+      })
+      .on("end", () => { if (!ridge_commit_pending) { ridge_commit_pending = true; commit_ridge_regions(row, live); } }));
+  });
+
+  // Band body drag -> move the whole region (both edges) within its neighbours.
+  const px_per_data = (x_scale.range()[1] - x_scale.range()[0]) / (domain_max - domain_min || 1);
+  ["g1", "g2"].forEach((region) => {
+    bands[region].style("cursor", "grab").call(d3.drag()
+      .on("drag", (event) => {
+        const width = live[region].right - live[region].left;
+        const lower = region === "g1" ? domain_min : live.g1.right;
+        const upper = region === "g1" ? live.g2.left : domain_max;
+        let left = live[region].left + event.dx / px_per_data;
+        left = Math.max(lower, Math.min(upper - width, left));
+        live[region].left = left;
+        live[region].right = left + width;
+        redraw();
+      })
+      .on("end", () => { if (!ridge_commit_pending) { ridge_commit_pending = true; commit_ridge_regions(row, live); } }));
+  });
+
+  redraw();
+}
+
+// Ridge view: each plotted sample rendered as its own small histogram (with its
+// fit overlay) stacked vertically for side-by-side multi-sample review. All
+// rows share one x-scale so peaks line up. Each row shows a "Ready to model"
+// status badge; the per-row Review blow-up is wired in Phase 2. Keeps the shared
+// plot maps in sync (debug API + table swatches) exactly like the overlay path.
+function render_ridge_plot() {
+  const rows = plottable_rows();
+  plot_area.innerHTML = "";
+  if (!rows.length) return;
+
+  const bins = plot_bin_count();
+  const is_log = false;
+  const prepared_rows = rows.map((row) => ({ row, prepared: prepare_row(row) }));
+
+  const staged = prepared_rows.map((entry) => entry.prepared.stageHistogram).filter(Boolean);
+  const range = staged.length
+    ? [d3.min(staged, (histogram) => histogram.min), d3.max(staged, (histogram) => histogram.max)]
+    : shared_range_for_values(prepared_rows.map((entry) => entry.prepared.values), is_log);
+  const opts = axis_opts(range, is_log, bins);
+  let x_domain = [
+    axis_range_override.x_min != null ? axis_range_override.x_min : range[0],
+    axis_range_override.x_max != null ? axis_range_override.x_max : range[1],
+  ];
+  if (!(x_domain[1] > x_domain[0])) x_domain = range;
+
+  const assign = build_color_assigner(rows, plot_color_by_select ? plot_color_by_select.value : "file");
+  const entries = prepared_rows.map(({ row, prepared }, index) => {
+    const { color, group } = assign(row, index);
+    const points = prepared.stageHistogram
+      ? prepared.stageHistogram.x.map((x, bin) => ({ x, y: prepared.stageHistogram.y[bin] }))
+      : histogram_curve(prepared.values, opts);
+    const histogram = prepared.stageHistogram
+      ? stage_histogram_summary(prepared.stageHistogram)
+      : build_histogram_summary(points, opts);
+    const entry = { row, name: row.name, color, group, values: prepared.values, stats: prepared.stats, points, histogram, pipelineState: prepared.pipelineState };
+    return { entry, color, fit: pipeline_fit_for_series(entry) };
+  });
+
+  set_last_series(entries.map((item) => item.entry));
+  set_row_colors(entries.map((item) => ({ id: item.entry.row.id, color: item.color, group: item.entry.group })));
+  entries.forEach((item) => {
+    series_by_name.set(item.entry.name, item.entry);
+    histograms_by_name.set(item.entry.name, item.entry.histogram);
+  });
+  update_plot_title(rows, entries.reduce((sum, item) => sum + item.entry.values.length, 0));
+
+  const total_width = plot_area.clientWidth || PLOT_FALLBACK_WIDTH;
+  const row_height = 92;
+  const margin = { top: 8, right: 14, bottom: 6, left: 14 };
+  const x_scale = d3.scaleLinear().domain(x_domain).range([margin.left, total_width - margin.right]);
+
+  const container = document.createElement("div");
+  container.className = "ridge_container";
+  // Clear the floating controls so the first row's header isn't hidden.
+  container.style.paddingTop = `${plot_controls_offset()}px`;
+
+  entries.forEach(({ entry, color, fit }) => {
+    const row_el = document.createElement("div");
+    row_el.className = "ridge_row";
+    row_el.dataset.sampleName = entry.name;
+
+    const header = document.createElement("div");
+    header.className = "ridge_row_header";
+    const name_el = document.createElement("span");
+    name_el.className = "ridge_row_name";
+    name_el.textContent = strip_fcs_ext(entry.name);
+    name_el.title = entry.name;
+    const badge = document.createElement("span");
+    badge.className = "ridge_badge ridge_badge_ready";
+    badge.textContent = "Ready to model";
+    const review_btn = document.createElement("button");
+    review_btn.type = "button";
+    review_btn.className = "ridge_review_button";
+    review_btn.textContent = "Review";
+    review_btn.title = `Blow up ${strip_fcs_ext(entry.name)} for manual peak-region review`;
+    review_btn.addEventListener("click", () => enter_ridge_review(entry.row));
+    header.append(name_el, badge, review_btn);
+    row_el.appendChild(header);
+
+    const svg = d3.select(document.createElementNS("http://www.w3.org/2000/svg", "svg"))
+      .attr("class", "ridge_svg")
+      .attr("width", total_width)
+      .attr("height", row_height);
+    const y_max = Math.max(
+      d3.max(entry.points, (point) => point.y) || 0,
+      fit ? (d3.max(fit.total, (point) => point.y) || 0) : 0,
+    ) || 1;
+    const y_scale = d3.scaleLinear().domain([0, y_max]).range([row_height - margin.bottom, margin.top]);
+    const line = d3.line().x((point) => x_scale(point.x)).y((point) => y_scale(point.y));
+
+    if (fit) {
+      const area = d3.area().x((point) => x_scale(point.x)).y0(y_scale(0)).y1((point) => y_scale(point.y));
+      const component = (data, fill) => {
+        if (data) svg.append("path").attr("fill", fill).attr("fill-opacity", DJF_FILL_OPACITY).attr("stroke", "none").attr("d", area(data));
+      };
+      component(fit.g1, DJF_G1_COLOR);
+      component(fit.s, DJF_S_COLOR);
+      component(fit.g2, DJF_G2_COLOR);
+    }
+    svg.append("path").attr("fill", "none").attr("stroke", color || "#5b6472").attr("stroke-width", SAMPLE_LINE_WIDTH).attr("d", line(entry.points));
+    if (fit) {
+      svg.append("path").attr("fill", "none").attr("stroke", DJF_TOTAL_COLOR).attr("stroke-width", 1.4).attr("d", line(fit.total));
+    }
+    // Draggable G1/G2 region boundaries so peaks can be edited in place.
+    draw_ridge_region_editor(svg, entry.row, x_scale, margin.top, row_height - margin.bottom);
+    row_el.appendChild(svg.node());
+    container.appendChild(row_el);
+  });
+
+  plot_area.appendChild(container);
+  document.dispatchEvent(new CustomEvent("pf-plot-rendered"));
 }
 
 /*
@@ -214,7 +510,18 @@ Output:
 export function render_density_plot() {
   if (!plot_area || !plot_channels) return;
 
-  const rows = plottable_rows();
+  // Ridge view: stacked per-sample small-multiples for multi-sample review.
+  // Skipped when a single sample is "blown up" for manual review
+  // (ridge_focus_name), which falls through to the normal single-sample overlay.
+  if (plot_view_mode === "ridge" && !ridge_focus_name && plottable_rows().length > 0) {
+    render_ridge_plot();
+    return;
+  }
+
+  // When a ridge row is blown up for review, render just that one sample so the
+  // full plot (with its draggable region handles) is dedicated to editing it.
+  let rows = plottable_rows();
+  if (ridge_focus_name) rows = rows.filter((row) => row.name === ridge_focus_name);
 
   plot_area.innerHTML = "";
   const has_pipeline_state = rows.some((row) => active_pipeline_state(row)?.lastStageRun != null);
@@ -227,32 +534,6 @@ export function render_density_plot() {
   const show_bins = display_mode === "bins" || display_mode === "curve_bins";
   const show_curves = display_mode !== "bins";
 
-  const prepare_row = (row) => {
-    const pipelineState = active_pipeline_state(row);
-    // A sample with a stored Stage 4 histogram renders from that frozen snapshot
-    // (its own bin count/range), so its overlaid fit stays valid. Samples without
-    // stage state re-bin live at the current control value — so after a bin-count
-    // change a mixed selection (e.g. a newly-checked or Stage-4-skipped sample
-    // alongside fitted ones) can show two bin widths until Stage 4 is re-run.
-    if (pipelineState?.histogram) {
-      const values = compact_final_values(row);
-      return {
-        values,
-        stats: { raw: row.data.dna_a.length, plotted: values.length },
-        pipelineState,
-        stageHistogram: pipelineState.histogram,
-      };
-    }
-    // No stored histogram: bin live from the events surviving the active QC
-    // gates (compact_final_values returns every finite event when no mask is
-    // set, so this stays correct before any gating too).
-    const values = compact_final_values(row);
-    const prepared = {
-      values,
-      stats: { raw: row.data.dna_a.length, plotted: values.length },
-    };
-    return { ...prepared, pipelineState, stageHistogram: null };
-  };
   const prepared_rows = rows.map((row) => ({ row, prepared: prepare_row(row) }));
 
   // With samples, compute the range from the plotted events and remember it;
@@ -334,11 +615,14 @@ export function render_density_plot() {
   // Auto-computed bounds (from the data) are what "empty field = auto" falls
   // back to; a user override, when present and valid, wins over them.
   const auto_x_range = range;
-  let x_domain = [
+  let base_x_domain = [
     axis_range_override.x_min != null ? axis_range_override.x_min : auto_x_range[0],
     axis_range_override.x_max != null ? axis_range_override.x_max : auto_x_range[1],
   ];
-  if (!(x_domain[1] > x_domain[0])) x_domain = auto_x_range;
+  if (!(base_x_domain[1] > base_x_domain[0])) base_x_domain = auto_x_range;
+  // The interactive pan/zoom viewport (display-only) overrides the base domain
+  // for viewing; double-click resets it back to base_x_domain.
+  const x_domain = plot_viewport.x || base_x_domain;
 
   const x_scale = (is_log ? d3.scaleLog() : d3.scaleLinear())
     .domain(x_domain)
@@ -352,15 +636,17 @@ export function render_density_plot() {
     y_max = last_y_max || 1;
   }
   const auto_y_max = y_max;
-  let y_domain = [
+  let base_y_domain = [
     axis_range_override.y_min != null ? axis_range_override.y_min : 0,
     axis_range_override.y_max != null ? axis_range_override.y_max : auto_y_max,
   ];
-  if (!(y_domain[1] > y_domain[0])) y_domain = [0, auto_y_max];
+  if (!(base_y_domain[1] > base_y_domain[0])) base_y_domain = [0, auto_y_max];
+  const y_domain = plot_viewport.y || base_y_domain;
   const y_scale = d3.scaleLinear().domain(y_domain);
-  // Only auto-round to "nice" bounds when both ends are auto-computed; an
-  // explicit user bound should be drawn exactly as entered.
-  if (axis_range_override.y_min == null && axis_range_override.y_max == null) y_scale.nice();
+  // Only auto-round to "nice" bounds when both ends are auto-computed and no
+  // pan/zoom viewport is active; an explicit user bound or a zoom should be
+  // drawn exactly.
+  if (!plot_viewport.y && axis_range_override.y_min == null && axis_range_override.y_max == null) y_scale.nice();
   y_scale.range([height - margin.bottom, margin.top]);
 
   // Remembered so the axis-range modal can show live placeholders for both
@@ -389,8 +675,11 @@ export function render_density_plot() {
   // padded hit-area rect (fill: transparent still receives pointer events)
   // so double-clicking near the ticks reliably opens the range modal instead
   // of requiring a precise hit on a thin tick line or label.
+  // stopPropagation so the double-click doesn't also reach the SVG-level
+  // viewport reset (plot_viewport.js) -- opening the range modal is the whole
+  // intent of a double-click here.
   const x_axis_group = svg.append("g").attr("class", "x_axis_group")
-    .on("dblclick", () => open_axis_range_modal("x"));
+    .on("dblclick", (event) => { event.stopPropagation(); open_axis_range_modal("x"); });
   x_axis_group.append("rect")
     .attr("class", "axis_hit_area")
     .attr("x", margin.left)
@@ -411,7 +700,7 @@ export function render_density_plot() {
     .text(plot_channels.dna_area || "DNA-content area");
 
   const y_axis_group = svg.append("g").attr("class", "y_axis_group")
-    .on("dblclick", () => open_axis_range_modal("y"));
+    .on("dblclick", (event) => { event.stopPropagation(); open_axis_range_modal("y"); });
   y_axis_group.append("rect")
     .attr("class", "axis_hit_area")
     .attr("x", 0)
@@ -574,21 +863,43 @@ export function render_density_plot() {
     console.error("Peak region overlay failed to render:", error);
   }
 
+  // Display-only pan/zoom gestures (plot_viewport.js). Installed last so its
+  // interaction surface is inserted under the drawn layers while its SVG-level
+  // listeners see everything that bubbles. Wrapped for the same reason as the
+  // overlay above: it is optional interactivity, and a throw here must not cost
+  // the fit table or the pf-plot-rendered dispatch below.
+  try {
+    install_plot_interactions({
+      svg, x_scale, y_scale, margin, width, height,
+      base_x_domain, base_y_domain,
+    });
+  } catch (error) {
+    console.error("Plot pan/zoom interactions failed to install:", error);
+  }
+
   // No legend: samples are identified by hovering their curve (curve_tooltip.js)
   // and DJF fit components keep their fixed reference colors (G1/S/G2/etc.)
   // without needing a label, since there's only ever this one small fixed set.
 
-  // Numeric stats are only shown once a sample has completed the full pipeline
-  // (the Stage 8 report). Before that, the fitted curve overlay is drawn but no
-  // numbers are reported, so the user never sees phase fractions change as later
-  // stages run (the pre-report values also use a coarser integration than the
-  // report). The fit curve for Stages 6-7 still renders above.
-  const report_fits = fits.filter((fit) => fit.pipelineState?.report);
+  // Numeric stats for a legacy_bridge_v1 fit are only shown once a sample has
+  // completed the full pipeline (the Stage 8 report). Before that, the
+  // fitted curve overlay is drawn but no numbers are reported, so the user
+  // never sees phase fractions change as later stages run (the pre-report
+  // values also use a coarser integration than the report). The fit curve
+  // for Stages 6-7 still renders above. A canonical-model result has no
+  // separate report stage to wait for -- fit_cell_cycle_model()'s result is
+  // already final, so it's included immediately.
+  const report_fits = fits.filter((fit) => fit.pipelineState?.report || fit.modelId !== "legacy_bridge_v1");
   render_fit_results_table(report_fits, {
-    top: margin.top,
+    // Sit below the floating top-right controls so they don't overlap.
+    top: Math.max(margin.top, plot_controls_offset()),
     right: 8,
     max_width: Math.max(190, margin.right - 18),
   });
+
+  // In a ridge blow-up, overlay a header bar with the sample name, an "Under
+  // manual review" badge, and Accept (returns to the ridge).
+  if (ridge_focus_name) render_ridge_review_header(ridge_focus_name);
 
   // Lets the metadata table keep its per-row color swatches in sync (see
   // sync_filename_swatches in table_render.js) without this module reaching
@@ -596,4 +907,24 @@ export function render_density_plot() {
   // on every redraw -- this fires on every one, including high-frequency
   // ones like dragging the bin-count control.
   document.dispatchEvent(new CustomEvent("pf-plot-rendered"));
+}
+
+// The overlay bar shown while a ridge row is blown up for manual review.
+function render_ridge_review_header(name) {
+  const bar = document.createElement("div");
+  bar.className = "ridge_review_bar";
+  const label = document.createElement("span");
+  label.className = "ridge_review_name";
+  label.textContent = strip_fcs_ext(name);
+  label.title = name;
+  const badge = document.createElement("span");
+  badge.className = "ridge_badge ridge_badge_review";
+  badge.textContent = "Under manual review";
+  const accept = document.createElement("button");
+  accept.type = "button";
+  accept.className = "ridge_review_accept";
+  accept.textContent = "Accept & back to ridge";
+  accept.addEventListener("click", exit_ridge_review);
+  bar.append(label, badge, accept);
+  plot_area.appendChild(bar);
 }

@@ -78,16 +78,20 @@ import {
 } from "./io/metadata_io.js";
 import { get_session_table_state, apply_session_state } from "./session/table_session.js";
 import { init_plot_listeners, plot_api } from "./plotting/axis_modal.js";
+import { init_plot_toolbar } from "./plotting/plot_toolbar.js";
 import { render_density_plot } from "./plotting/render.js";
 import { init_analysis_listeners } from "./analysis/start.js";
 import { init_pipeline_ui } from "./analysis/pipeline_ui.js";
 import { init_peak_review_ui } from "./analysis/cell_cycle/peak_review_ui.js";
 import { init_modeling_ui } from "./analysis/cell_cycle/modeling_ui.js";
+import { init_bin_settings_sync } from "./analysis/cell_cycle/bin_settings_sync.js";
+import { init_cell_cycle_columns } from "./ui/cell_cycle_columns.js";
 import { get_pipeline } from "./analysis/pipeline_loader.js";
 import { init_stats } from "./analysis/stats.js";
 import { init_panel_resize } from "./ui/panel_resize.js";
 import { init_remove_columns } from "./ui/column_remove.js";
 import { init_session } from "./session/core.js";
+import { get_modeling_session_state, apply_modeling_session } from "./session/modeling_session.js";
 import { init_unload_guard, suppress_next_unload_warning } from "./session/unload_guard.js";
 
 /*
@@ -289,10 +293,13 @@ function init_app_bootstrap() {
 init_tooltips();            // ui/hover_text.js tooltip runtime
 init_app_bootstrap();       // main.js event wiring + initial render
 init_plot_listeners();      // plotting/axis_modal.js listener block
+init_plot_toolbar();        // plotting/plot_toolbar.js pan/zoom/export icon strip
 init_analysis_listeners();  // analysis/start.js listener block
 init_pipeline_ui();         // analysis/pipeline_ui.js manual stage controls
 init_peak_review_ui();      // analysis/cell_cycle/peak_review_ui.js Identify Peaks panel
 init_modeling_ui();         // analysis/cell_cycle/modeling_ui.js Model & Fit panel
+init_bin_settings_sync();   // analysis/cell_cycle/bin_settings_sync.js Bins-change invalidation + hint
+init_cell_cycle_columns();  // ui/cell_cycle_columns.js per-model G1/S/G2-M metadata columns
 init_stats();               // analysis/stats.js modal + auto-compute
 init_panel_resize();        // ui/panel_resize.js drag handlers
 init_remove_columns();      // ui/column_remove.js remove-columns mode
@@ -306,4 +313,7 @@ window.PhaseFinder = {
   get djf() { return get_pipeline(); },
   get pipeline() { return get_pipeline(); },
   plot: plot_api,
+  // Session modeling persistence (recompute-on-reload): collect the saveable
+  // config and re-apply it. Surfaced for the E2E round-trip test.
+  session: { collect_modeling: get_modeling_session_state, apply_modeling: apply_modeling_session },
 };

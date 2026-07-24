@@ -140,7 +140,6 @@
                 <button type="button" id="detect_peaks_button" class="peak_review_button quick_tooltip" data-tooltip-key="detectPeaks" disabled>Detect Peaks</button>
               </div>
               <p id="peak_review_status" class="peak_review_status" hidden></p>
-              <div id="peak_pair_alternatives" class="peak_pair_alternatives" hidden></div>
               <div class="peak_region_grid">
                 <label class="peak_region_field">
                   <span>G1 Left</span>
@@ -163,6 +162,7 @@
               <div class="peak_review_footer_actions">
                 <button type="button" id="peak_regions_reset_button" class="peak_review_button quick_tooltip" data-tooltip-key="resetPeakRegions" disabled>Reset</button>
                 <button type="button" id="peak_regions_accept_button" class="peak_review_button quick_tooltip" data-tooltip-key="acceptPeakRegions" disabled>Accept</button>
+                <button type="button" id="peak_regions_apply_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="applyRegionsToAll" disabled>Apply to All</button>
               </div>
             </fieldset>
             <fieldset class="peak_review_group" id="cell_cycle_fit_group">
@@ -174,11 +174,12 @@
                   <option value="dean_jett">Dean–Jett</option>
                   <option value="dean_jett_fox">Dean–Jett–Fox</option>
                   <option value="watson_pragmatic">Watson Pragmatic</option>
+                  <option value="cloccs" disabled>CLOCCS (joint time-series — coming soon)</option>
                 </select>
               </label>
               <div class="peak_review_actions">
                 <button type="button" id="cell_cycle_fit_current_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitCurrentModel" disabled>Fit Current</button>
-                <button type="button" id="cell_cycle_fit_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitAllReviewed" disabled>Fit All Reviewed</button>
+                <button type="button" id="cell_cycle_fit_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitAllReviewed" disabled>Auto-Fit All</button>
               </div>
               <p id="cell_cycle_fit_status" class="peak_review_status" role="status" hidden></p>
               <div id="cell_cycle_fit_result" class="cell_cycle_fit_result" hidden></div>
@@ -265,9 +266,19 @@
                   <option value="file">File</option>
                 </select>
               </label>
-              <label class="plot_control">Bins
-                <input id="plot_bins" type="number" min="16" max="1024" step="16" value="512" />
-              </label>
+              <div class="plot_control plot_bins_control">
+                <span class="plot_bins_control_top">Bins <strong id="plot_bins_value">256</strong></span>
+                <input id="plot_bins" class="plot_bins_slider" type="range" min="0" max="3" step="1" value="1"
+                       aria-label="Histogram bin count" />
+                <div id="plot_bins_ticks" class="plot_bins_ticks" aria-hidden="true">
+                  <span class="plot_bins_tick" data-index="0" style="left:0%">128</span>
+                  <span class="plot_bins_tick" data-index="1" style="left:33.333%">256</span>
+                  <span class="plot_bins_tick" data-index="2" style="left:66.667%">512</span>
+                  <span class="plot_bins_tick" data-index="3" style="left:100%">1024</span>
+                </div>
+              </div>
+              <button id="plot_bins_undo" class="plot_bins_undo" type="button" hidden
+                      title="Undo the last bin-size change and restore the previous peaks and fits">↶ Undo bin change</button>
               <label class="plot_control">Display
                 <select id="plot_display_mode">
                   <option value="curve">Curve</option>
@@ -275,6 +286,32 @@
                   <option value="bins">Bins</option>
                 </select>
               </label>
+              <label class="plot_control">View
+                <select id="plot_view_mode" class="quick_tooltip" data-tooltip-key="plotViewMode">
+                  <option value="overlay">Overlay</option>
+                  <option value="ridge">Ridge</option>
+                </select>
+              </label>
+            </div>
+            <div id="plot_toolbar" class="plot_toolbar" role="toolbar" aria-label="Plot tools">
+              <button id="plot_tool_camera" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolCamera" aria-label="Download plot image">
+                <img src="./assets/img/plot_icons/camera.svg" alt="" aria-hidden="true" />
+              </button>
+              <button id="plot_tool_pan" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolPan" aria-label="Pan" aria-pressed="true">
+                <img src="./assets/img/plot_icons/pan.svg" alt="" aria-hidden="true" />
+              </button>
+              <button id="plot_tool_zoom_in" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolZoomIn" aria-label="Zoom in" aria-pressed="false">
+                <img src="./assets/img/plot_icons/zoom_plus.svg" alt="" aria-hidden="true" />
+              </button>
+              <button id="plot_tool_zoom_out" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolZoomOut" aria-label="Zoom out" aria-pressed="false">
+                <img src="./assets/img/plot_icons/zoom_minus.svg" alt="" aria-hidden="true" />
+              </button>
+              <button id="plot_tool_autoscale" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolAutoscale" aria-label="Autoscale">
+                <img src="./assets/img/plot_icons/autoscale.svg" alt="" aria-hidden="true" />
+              </button>
+              <button id="plot_tool_home" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolHome" aria-label="Reset axes">
+                <img src="./assets/img/plot_icons/home.svg" alt="" aria-hidden="true" />
+              </button>
             </div>
             <div id="plot_area" class="table_wrap"></div>
             </div>
@@ -484,6 +521,62 @@
             <button id="axis_range_apply" type="button">Apply</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="plot_export_modal" class="stats_modal plot_export_modal" hidden role="dialog" aria-modal="true" aria-labelledby="plot_export_modal_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card plot_export_card">
+        <div class="stats_modal_header">
+          <h3 id="plot_export_modal_title" class="stats_modal_title">Download Plot Image</h3>
+          <button id="plot_export_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="stats_modal_body">
+          <fieldset class="plot_export_group">
+            <legend>Vector (scales to any size, editable)</legend>
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="svg" checked />
+              <span><strong>SVG</strong> — the plot exactly as drawn</span>
+            </label>
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="pdf" />
+              <span><strong>PDF</strong> — single page, sized to the plot</span>
+            </label>
+          </fieldset>
+          <fieldset class="plot_export_group">
+            <legend>Rasterized</legend>
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="png" />
+              <span><strong>PNG</strong> — transparent background</span>
+            </label>
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="jpeg" />
+              <span><strong>JPEG</strong> — white background</span>
+            </label>
+            <label class="plot_export_field">
+              <span>Scale</span>
+              <select id="plot_export_scale">
+                <option value="1">1× (on-screen size)</option>
+                <option value="2" selected>2× (retina)</option>
+                <option value="4">4× (print)</option>
+              </select>
+            </label>
+          </fieldset>
+          <p id="plot_export_error" class="plot_export_error" hidden></p>
+          <div class="stats_modal_actions">
+            <button id="plot_export_cancel" type="button" class="secondary_button">Cancel</button>
+            <button id="plot_export_download" type="button">Download</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="bin_recalc_modal" class="stats_modal bin_recalc_modal" hidden role="dialog" aria-modal="true" aria-labelledby="bin_recalc_title" aria-describedby="bin_recalc_detail">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card bin_recalc_card" role="status" aria-live="assertive">
+        <div class="bin_recalc_spinner" aria-hidden="true"></div>
+        <h3 id="bin_recalc_title" class="stats_modal_title">Bin size changed</h3>
+        <p id="bin_recalc_detail" class="bin_recalc_detail">Recalculating all values…</p>
       </div>
     </div>
 

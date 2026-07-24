@@ -16,16 +16,24 @@ export const QC_LOST_COLUMNS = [
   { key: "singlet", label: "Singlet lost" },
 ];
 
-// Cell-cycle percentage columns, written once the Stage 8 report exists.
-export const DJF_FRACTION_COLUMNS = [
-  { key: "g1", label: "G1 %" },
-  { key: "s", label: "S %" },
-  { key: "g2", label: "G2/M %" },
-];
-
 // Section headers rendered above the derived columns, each centered over its
-// member columns (only the members present in the frame are shown).
+// member columns (only the members present in the frame are shown). Cell-cycle
+// fit fractions are NOT here -- they are dynamic, one 3-column group per model
+// in use, keyed by CELL_CYCLE_COLUMN_PREFIX (see below and cell_cycle_columns.js).
 export const DERIVED_COLUMN_GROUPS = [
   { label: "Quality Control", columns: QC_LOST_COLUMNS.map((column) => column.label) },
-  { label: "Dean-Jett-Fox Modeling", columns: DJF_FRACTION_COLUMNS.map((column) => column.label) },
 ];
+
+// Per-model cell-cycle fit fraction columns. Frame keys are
+// "cellCycleFit:<modelId>:<phase>" (phase in CELL_CYCLE_PHASES). table_render.js
+// recognises the prefix and groups them by model (model label over G1/S/G2-M).
+export const CELL_CYCLE_COLUMN_PREFIX = "cellCycleFit:";
+export const CELL_CYCLE_PHASES = ["g1", "s", "g2"];
+export const CELL_CYCLE_PHASE_LABELS = { g1: "G1", s: "S", g2: "G2/M" };
+export const CELL_CYCLE_MODEL_LABELS = {
+  auto_dj_djf: "Automatic",
+  dean_jett: "Dean–Jett",
+  dean_jett_fox: "Dean–Jett–Fox",
+  watson_pragmatic: "Watson Pragmatic",
+  legacy_bridge_v1: "Legacy Bridge",
+};

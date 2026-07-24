@@ -38,7 +38,7 @@ const HoverText = Object.freeze({
   filterBy(label) {
     return "Filter by " + label;
   },
-  qcStructural: `1. Structural QC: Before other gates, rejects events with non-finite (NaN or infinite) or negative readings in loaded DNA-A, DNA-H, DNA-W, FSC-A, SSC-A, or Time channels. It also rejects DNA/scatter values at or above a configured PnR limit; zero remains valid, and no upper-PnR limit is applied to Time.`,
+  qcStructural: `1. Structural QC: Before other gates, rejects events with non-finite (NaN or infinite) or negative readings in loaded DNA-A, DNA-H, DNA-W, FSC-A, SSC-A, or Time channels. It also rejects saturated DNA readings at or above the configured PnR limit (DNA-A/H/W only); zero remains valid, and no upper-PnR limit is applied to FSC-A, SSC-A, or Time. Scatter saturation is left to the Cell gate, since side/forward scatter maxes out for the largest cells and a ceiling here would preferentially discard the G2/M population.`,
   qcTime: `2. Time QC: Unwraps timer rollovers, splits unrelated backward jumps into acquisition segments, and forms roughly 500-event bins within each segment. For event rate and DNA-A, FSC-A, and SSC-A medians and IQRs, it calculates z = (value − across-bin median) / (1.4826 · MAD) and, by default, rejects a bin when any available |z| > 4. When MAD is effectively zero, matches score 0 and differences are treated as infinite outliers.`,
   qcCellGate: `3. Cell gate: Fits a two-component, full-covariance Gaussian mixture to FSC-A and SSC-A, then selects a substantial component with the highest mean FSC-A (using SSC-A to break ties). By default it keeps events with squared Mahalanobis distance d² = (x − μ)ᵀΣ⁻¹(x − μ) ≤ 5.991, the nominal 95% ellipse for a 2D Gaussian. The ellipse can be adjusted manually; excluded events are off-cloud candidates, not proven debris.`,
   qcSingletGate: `4. Singlet gate: Fits an iteratively robust PCA ridge to raw DNA-A versus DNA-H, falling back to DNA-W. For signed orthogonal distances d, it keeps |d − median(d)| ≤ 5 · MAD(d) by default. Off-ridge events are doublet/aggregate candidates; the gate does not prove their biological identity.`,
@@ -46,9 +46,17 @@ const HoverText = Object.freeze({
   detectPeaks: `Run automatic peak detection against the reviewed sample's current histogram, proposing G1 and G2/M regions you can then adjust.`,
   resetPeakRegions: `Discard any manual edits and restore the detector's automatic G1/G2 region proposal.`,
   acceptPeakRegions: `Mark the current G1/G2 regions as reviewed, without changing them.`,
-  cellCycleModelSelect: `Choose which cell-cycle model to fit. Automatic independently fits Dean–Jett and Dean–Jett–Fox and conservatively picks Fox only when the evidence for a complex S-phase wave is strong. Watson Pragmatic is a local peak-plus-residual decomposition, never compared against the generative models by AIC/BIC.`,
+  applyRegionsToAll: `Copy this sample's exact G1/G2 regions to every plotted sample and fit them all with the selected model. Only valid if the samples share the same DNA-content axis/calibration; each sample can still be adjusted afterward.`,
+  plotToolCamera: `Download the plot as an image — SVG or PDF (vector) or PNG/JPEG (rasterized, 1×–4×).`,
+  plotToolPan: `Pan (default): drag anywhere in the plot to move it, hold Shift and drag to zoom into a rectangle. Panning and zooming only change the view — they never re-run peak detection or a fit.`,
+  plotToolZoomIn: `Zoom in: click the plot to zoom in about the cursor, or drag a rectangle to zoom into it (hold Shift to pan instead). The mouse wheel zooms in every mode.`,
+  plotToolZoomOut: `Zoom out: click the plot to zoom out about the cursor, or drag a rectangle to zoom into it (hold Shift to pan instead). The mouse wheel zooms in every mode.`,
+  plotToolAutoscale: `Autoscale: fit both axes tightly around the plotted data, ignoring any manual axis limits. View only — the modeling range is unchanged.`,
+  plotToolHome: `Reset axes: return to the ranges the plot was drawn with (your manual axis limits if set, otherwise auto). Double-clicking empty plot space does the same.`,
+  plotViewMode: `Overlay superimposes every plotted sample on one axis. Ridge stacks each sample as its own small histogram (with its fit) for side-by-side multi-sample review; a bulk fit switches to Ridge automatically.`,
+  cellCycleModelSelect: `Choose which cell-cycle model to fit. Automatic independently fits Dean–Jett and Dean–Jett–Fox and conservatively picks Fox only when the evidence for a complex S-phase wave is strong. Watson Pragmatic is a local peak-plus-residual decomposition, never compared against the generative models by AIC/BIC. CLOCCS jointly fits a time-series of samples and is not yet available — it needs per-sample timepoint/replicate metadata.`,
   fitCurrentModel: `Fit the selected model to the reviewed sample's accepted G1/G2 peak regions.`,
-  fitAllReviewed: `Fit the selected model to every plotted sample whose peak regions have been reviewed and accepted.`,
+  fitAllReviewed: `Auto-fit the selected model to every plotted sample: auto-detect each sample's G1/G2 regions, average the four bounds across the batch, apply those shared regions to all samples, then fit each. Per-sample review/adjust afterward overrides them.`,
 });
 
 export { HoverText };
