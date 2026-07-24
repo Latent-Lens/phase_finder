@@ -45,7 +45,6 @@ export const qc_gate_run_all = document.querySelector("#qc_stage_all");
 export const peak_review_focus = document.querySelector("#peak_review_focus");
 export const detect_peaks_button = document.querySelector("#detect_peaks_button");
 export const peak_review_status = document.querySelector("#peak_review_status");
-export const peak_pair_alternatives = document.querySelector("#peak_pair_alternatives");
 export const peak_region_g1_left = document.querySelector("#peak_region_g1_left");
 export const peak_region_g1_right = document.querySelector("#peak_region_g1_right");
 export const peak_region_g2_left = document.querySelector("#peak_region_g2_left");
@@ -53,6 +52,7 @@ export const peak_region_g2_right = document.querySelector("#peak_region_g2_righ
 export const peak_region_error = document.querySelector("#peak_region_error");
 export const peak_regions_reset_button = document.querySelector("#peak_regions_reset_button");
 export const peak_regions_accept_button = document.querySelector("#peak_regions_accept_button");
+export const peak_regions_apply_all_button = document.querySelector("#peak_regions_apply_all_button");
 
 // ── Model & Fit (sidebar cell-cycle model panel) ─────────────────────────────
 export const cell_cycle_model_select = document.querySelector("#cell_cycle_model_select");

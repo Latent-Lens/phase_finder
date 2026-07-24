@@ -10,8 +10,10 @@
   min-height: 460px;
 }
 
-/* Stack the controls bar above the plot area. */
+/* The plot area fills the panel; the controls float over its top-right corner
+   (position: relative anchors the absolute .plot_controls below). */
 .plot_panel_inner {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -32,12 +34,26 @@
   min-height: 220px;
 }
 
+/* Floated into the plot's top-right corner as a translucent card so the plot
+   canvas reclaims the full panel height (render.js clears the ridge/fit-table
+   under it). */
 .plot_controls {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 20;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: flex-end;
-  gap: 14px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin: 0;
+  padding: 6px 10px;
+  max-width: calc(100% - 16px);
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .plot_control {
@@ -61,6 +77,308 @@
 
 .plot_control input {
   width: 88px;
+}
+
+/* ── Bins slider ──────────────────────────────────────────────────────────
+   A range input over discrete power-of-two stops (see bin_settings_sync.js).
+   The track background is a per-stop risk gradient set inline as --bins-track;
+   value label sits above, stop labels below. */
+.plot_bins_control {
+  gap: 2px;
+  min-width: 168px;
+}
+
+.plot_bins_control_top {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.plot_bins_control_top strong {
+  color: var(--text);
+}
+
+.plot_bins_slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 160px;
+  height: 8px;
+  padding: 0;
+  min-height: 0;
+  border-radius: 4px;
+  background: var(--bins-track, var(--muted));
+  cursor: pointer;
+}
+
+.plot_bins_slider:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+.plot_bins_slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.plot_bins_slider::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bins-track, var(--muted));
+}
+
+.plot_bins_slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.plot_bins_slider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.plot_bins_slider:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Stop labels: absolutely positioned so each label's centre sits exactly on
+   its stop's position (0/33/66/100%), which is also where the track gradient
+   anchors that stop's colour -- so labels line up with the heatmap. */
+.plot_bins_ticks {
+  position: relative;
+  width: 160px;
+  height: 0.9rem;
+  font-size: 0.62rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.plot_bins_tick {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.plot_bins_tick_recommended {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Appears after a bin-size recalc; one click reverts the whole change. */
+.plot_bins_undo {
+  align-self: flex-end;
+  margin-bottom: 2px;
+  padding: 3px 9px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--panel, #fff);
+  border: 1px solid var(--muted);
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.plot_bins_undo:hover {
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.plot_bins_undo:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* ── Plot toolbar ─────────────────────────────────────────────────────────
+   Plotly-style icon strip floating over the plot's top-LEFT corner: the
+   top-right is already taken by the controls card and, under it, the fit
+   results table. Faded until the plot is hovered so it never competes with
+   the data, and always fully visible on keyboard focus. */
+.plot_toolbar {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  opacity: 0.45;
+  transition: opacity 120ms ease-in-out;
+}
+
+.plot_panel_inner:hover .plot_toolbar,
+.plot_toolbar:focus-within {
+  opacity: 1;
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  border-color: var(--border);
+}
+
+.plot_tool {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.plot_tool img {
+  width: 16px;
+  height: 16px;
+  /* The icon assets are dark-on-transparent; dim them to the muted UI weight
+     and bring them to full strength on hover/active. */
+  opacity: 0.6;
+}
+
+.plot_tool:hover img,
+.plot_tool__active img {
+  opacity: 1;
+}
+
+.plot_tool:hover {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+/* The armed drag/click mode (pan, zoom in, zoom out). */
+.plot_tool__active {
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.plot_tool:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+/* ── Pan/zoom cursors and the box-zoom rubber band ────────────────────────
+   Set on the SVG so every layer inherits it; curves and region handles
+   override it with their own pointer/ew-resize cursors. */
+#plot_area[data-plot-mode="pan"] svg {
+  cursor: grab;
+}
+
+#plot_area[data-plot-mode="zoom_in"] svg {
+  cursor: zoom-in;
+}
+
+#plot_area[data-plot-mode="zoom_out"] svg {
+  cursor: zoom-out;
+}
+
+#plot_area.plot_area__panning svg {
+  cursor: grabbing;
+}
+
+.plot_zoom_band {
+  fill: color-mix(in srgb, var(--text) 8%, transparent);
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+/* ── Plot image export modal ──────────────────────────────────────────────
+   Format picker behind the toolbar's camera button. */
+.plot_export_card {
+  max-width: 26rem;
+}
+
+.plot_export_group {
+  margin: 0 0 12px;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.plot_export_group legend {
+  padding: 0 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.plot_export_option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.plot_export_field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.84rem;
+}
+
+.plot_export_error {
+  margin: 0 0 10px;
+  padding: 6px 9px;
+  font-size: 0.8rem;
+  color: var(--danger, #b3261e);
+  background: color-mix(in srgb, var(--danger, #b3261e) 10%, transparent);
+  border-radius: 5px;
+}
+
+/* ── Bin-size-change recalculation modal ──────────────────────────────────
+   Blocking notice shown while peaks/fits are recomputed for the new bin size. */
+.bin_recalc_card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  max-width: 22rem;
+  padding: 26px 30px;
+}
+
+.bin_recalc_spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-top-color: var(--logo_teal, #01a5af);
+  animation: bin_recalc_spin 0.8s linear infinite;
+}
+
+.bin_recalc_detail {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+@keyframes bin_recalc_spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bin_recalc_spinner { animation: none; }
 }
 
 /* Pre-model QC gate checkboxes: a compact dashed box to the right of Display,
@@ -177,32 +495,6 @@
   margin: 0;
   font-size: 0.76rem;
   color: var(--muted);
-}
-
-.peak_pair_alternatives {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.peak_pair_alternatives_label {
-  font-size: 0.74rem;
-  color: var(--muted);
-}
-
-.peak_pair_alternative_button {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
-  font-size: 0.74rem;
-  cursor: pointer;
-}
-
-.peak_pair_alternative_button:hover {
-  border-color: var(--accent);
 }
 
 .peak_region_grid {
@@ -607,6 +899,31 @@
   white-space: normal;
 }
 
+/* Canonical-model fit warnings: prominent amber block listing the actual
+   messages, so a flagged fit is obvious at a glance in the top-right overlay. */
+.djf_fit_model_warnings_row td {
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--warning, #b45309) 12%, transparent);
+  color: var(--text);
+}
+
+.djf_fit_warnings_title {
+  display: block;
+  font-weight: 700;
+  color: var(--warning, #b45309);
+  margin-bottom: 2px;
+}
+
+.djf_fit_warnings_list {
+  margin: 0;
+  padding-left: 16px;
+  list-style: disc;
+}
+
+.djf_fit_warnings_list li {
+  margin: 1px 0;
+}
+
 /* Axis min/max modal (double-click an axis to open) */
 
 /* feedback.css (the other stats_modal_* dialogs) loads after this file, so a
@@ -786,5 +1103,144 @@
   paint-order: stroke;
   stroke: var(--panel);
   stroke-width: 3px;
+  pointer-events: none;
+}
+
+/* ── Ridge view: stacked per-sample small-multiples ───────────────────────── */
+/* Fill #plot_area (position: relative) and scroll internally, so a ridge with
+   more rows than fit the plot area scrolls rather than overflowing the panel. */
+.ridge_container {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px;
+}
+
+.ridge_row {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 3px 8px 2px;
+}
+
+.ridge_row_header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ridge_row_name {
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ridge_badge {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.ridge_badge_ready {
+  color: var(--success, #059669);
+  background: color-mix(in srgb, var(--success, #059669) 14%, transparent);
+}
+
+.ridge_badge_review {
+  color: var(--warning, #b45309);
+  background: color-mix(in srgb, var(--warning, #b45309) 16%, transparent);
+}
+
+.ridge_svg {
+  display: block;
+  width: 100%;
+}
+
+/* Ridge per-row Review button + the blow-up review header bar. */
+.ridge_review_button {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 9px;
+  border: 1px solid var(--muted);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ridge_review_button:hover {
+  border-color: var(--text);
+}
+
+.ridge_review_bar {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  z-index: 5;
+}
+
+.ridge_review_name {
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ridge_review_accept {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 12px;
+  border: 1px solid var(--success, #059669);
+  border-radius: 6px;
+  background: var(--success, #059669);
+  color: #fff;
+  cursor: pointer;
+}
+
+.ridge_review_accept:hover {
+  background: var(--success_strong, #047857);
+}
+
+/* Ridge in-place region editing: draggable G1/G2 boundaries + band bodies. */
+.ridge_region_band {
+  cursor: grab;
+}
+
+.ridge_region_band:active {
+  cursor: grabbing;
+}
+
+.ridge_region_hit:hover {
+  fill: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.ridge_region_edge {
   pointer-events: none;
 }

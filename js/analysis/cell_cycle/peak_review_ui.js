@@ -15,7 +15,6 @@ import {
   detect_peaks_button,
   peak_review_focus,
   peak_review_status,
-  peak_pair_alternatives,
   peak_region_g1_left,
   peak_region_g1_right,
   peak_region_g2_left,
@@ -24,14 +23,13 @@ import {
   peak_regions_reset_button,
   peak_regions_accept_button,
 } from "../../ui/dom.js";
-import { plottable_rows, plot_bin_count } from "../../plotting/data.js";
+import { plottable_rows, plot_bin_count, clamp_range_to_axis_override } from "../../plotting/data.js";
 import { focused_file_id } from "../../data_structs/table_state.js";
 import { set_status_bar } from "../../ui/status_channels.js";
 import { load_pipeline } from "../pipeline_loader.js";
 import { get_state } from "../pipeline_state.js";
 import {
   detect_peak_regions,
-  select_peak_pair,
   update_peak_regions,
   accept_peak_regions,
   reset_peak_regions,
@@ -113,34 +111,6 @@ function status_text(peakDetection) {
   return `${label} (${confidence}% confidence)${reasons}`;
 }
 
-function render_alternatives(row, peakDetection) {
-  if (!peak_pair_alternatives) return;
-  const alternatives = peakDetection?.alternatives ?? [];
-  if (!row || !alternatives.length) {
-    peak_pair_alternatives.hidden = true;
-    peak_pair_alternatives.innerHTML = "";
-    return;
-  }
-  peak_pair_alternatives.hidden = false;
-  peak_pair_alternatives.innerHTML = [
-    `<span class="peak_pair_alternatives_label">Other candidate pairs:</span>`,
-    ...alternatives.map(
-      (pair) => `<button type="button" class="peak_pair_alternative_button" data-pair-id="${pair.id}">${pair.id}</button>`,
-    ),
-  ].join("");
-  peak_pair_alternatives.querySelectorAll(".peak_pair_alternative_button").forEach((button) => {
-    button.addEventListener("click", () => {
-      try {
-        select_peak_pair(row, button.dataset.pairId);
-        notify_regions_changed();
-      } catch (error) {
-        set_status_bar(error.message, true);
-      }
-      refresh_panel();
-    });
-  });
-}
-
 function refresh_panel() {
   const row = active_peak_review_row();
   const rows = plottable_rows();
@@ -153,7 +123,6 @@ function refresh_panel() {
     }
     if (detect_peaks_button) detect_peaks_button.disabled = true;
     if (peak_review_status) peak_review_status.hidden = true;
-    render_alternatives(null, null);
     set_region_inputs_disabled(true);
     show_region_error("");
     return;
@@ -170,7 +139,6 @@ function refresh_panel() {
 
   if (!modeling || !modeling.peakSelection.regions) {
     if (peak_review_status) peak_review_status.hidden = true;
-    render_alternatives(row, null);
     set_region_inputs_disabled(true);
     return;
   }
@@ -180,9 +148,17 @@ function refresh_panel() {
     peak_review_status.textContent = text;
     peak_review_status.hidden = !text;
   }
-  render_alternatives(row, modeling.peakDetection);
   set_region_inputs_disabled(false);
   fill_region_inputs(modeling.peakSelection.regions);
+
+  // A histogram change (e.g. the Bins control, see bin_settings_sync.js) marks
+  // the still-displayed regions stale: they were detected against a different
+  // histogram than the plot now shows. Surface that so the user re-detects
+  // rather than trusting/fitting mismatched regions -- the region x-bounds
+  // themselves are preserved and remain editable in the meantime.
+  if (modeling.peakSelection.stale) {
+    show_region_error("Bin count changed — re-detect peaks to refresh these regions.");
+  }
 }
 
 async function on_detect_peaks_click() {
@@ -192,8 +168,10 @@ async function on_detect_peaks_click() {
   try {
     const pipeline = await load_pipeline();
     const rows = plottable_rows();
-    const shared_range = pipeline.shared_histogram_range(rows);
-    pipeline.ensure_histogram_current(row, { binCount: plot_bin_count(), range: shared_range });
+    // Build the detection histogram over the visible x-range only, so events
+    // outside the current x-axis (a manual zoom/override) aren't considered.
+    const range = clamp_range_to_axis_override(pipeline.shared_histogram_range(rows));
+    pipeline.ensure_histogram_current(row, { binCount: plot_bin_count(), range });
     detect_peak_regions(row);
     notify_regions_changed();
     set_status_bar(`Peaks detected for ${row.name}.`);

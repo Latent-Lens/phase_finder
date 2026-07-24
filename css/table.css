@@ -402,6 +402,12 @@ th {
   overflow: visible;
 }
 
+/* Per-model cell-cycle fraction groups: distinguished from the teal stats
+   groups so the model name reads as a modeling output, not a stats channel. */
+.file_table th.cell_cycle_group_th {
+  color: var(--logo_blue, #1d4ed8);
+}
+
 /* Row-2 filter cells: sticky just below the label row. */
 .file_table th.stats_filter_th {
   height: auto;
