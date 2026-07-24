@@ -102,8 +102,13 @@ export function serialize_session(s) {
     `channel = ${toml_str(s.plot.channel)}`,
     `color_by = ${toml_str(s.plot.color_by)}`,
     `display_mode = ${toml_str(s.plot.display_mode || 'curve')}`,
-    `bins = ${s.plot.bins}`,
-    `remove_debris = ${s.plot.remove_debris}`,
+    `bins = ${s.plot.bins}`);
+  // TOML has no null: emit a manual axis override only when it is actually set,
+  // so a missing key parses back to "auto" for that bound.
+  for (const key of ['axis_x_min', 'axis_x_max', 'axis_y_min', 'axis_y_max']) {
+    if (Number.isFinite(s.plot[key])) p(`${key} = ${s.plot[key]}`);
+  }
+  p(`remove_debris = ${s.plot.remove_debris}`,
     `remove_doublets = ${s.plot.remove_doublets}`,
     `show_peak_threshold = ${s.plot.show_peak_threshold}`,
     '');
@@ -122,6 +127,34 @@ export function serialize_session(s) {
       p('[[stats_plan.entries]]',
         `channel = ${toml_str(entry.channel)}`,
         `metrics = [${entry.metrics.map(toml_str).join(', ')}]`,
+        '');
+    });
+  }
+
+  // Cell-cycle modeling config: applied QC stages + one flat record per plotted
+  // sample with accepted peak regions (recompute-on-reload; no fit results).
+  if (s.modeling) {
+    p('', '[modeling]', `qc_stages = [${(s.modeling.qc_stages || []).join(', ')}]`, '');
+    (s.modeling.samples || []).forEach((sample) => {
+      p('[[modeling.samples]]',
+        `name = ${toml_str(sample.name)}`,
+        `model = ${toml_str(sample.model)}`,
+        `reviewed = ${Boolean(sample.reviewed)}`,
+        `g1_left = ${sample.g1_left}`,
+        `g1_right = ${sample.g1_right}`,
+        `g1_source = ${toml_str(sample.g1_source || '')}`,
+        `g2_left = ${sample.g2_left}`,
+        `g2_right = ${sample.g2_right}`,
+        `g2_source = ${toml_str(sample.g2_source || '')}`,
+        `ratio_mode = ${toml_str(sample.ratio_mode || 'bounded')}`,
+        `ratio_min = ${sample.ratio_min}`,
+        `ratio_max = ${sample.ratio_max}`,
+        `locked_ratio = ${sample.locked_ratio}`,
+        `cv_mode = ${toml_str(sample.cv_mode || 'free')}`,
+        `ploidy_count = ${sample.ploidy_count}`,
+        `contaminant_debris = ${toml_str(sample.contaminant_debris || 'off')}`,
+        `contaminant_aggregate = ${toml_str(sample.contaminant_aggregate || 'off')}`,
+        `contaminant_subg1 = ${toml_str(sample.contaminant_subg1 || 'off')}`,
         '');
     });
   }

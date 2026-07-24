@@ -25,6 +25,17 @@ _FULL_SUITE = r"""() => {
     session: { created: '2026-07-09T00:00:00.000Z' },
     files: { names: ['A.fcs', 'B.fcs'], records: [] },
     stats_plan: [{ channel: 'DAPI-A', metrics: ['mean', 'median'] }],
+    modeling: {
+      qc_stages: [0, 1, 3],
+      samples: [{
+        name: 'A.fcs', model: 'watson_pragmatic', reviewed: true,
+        g1_left: 55.5, g1_right: 84.25, g1_source: 'detected',
+        g2_left: 115, g2_right: 165, g2_source: 'inferred',
+        ratio_mode: 'bounded', ratio_min: 1.65, ratio_max: 2.25,
+        locked_ratio: 2, cv_mode: 'free', ploidy_count: 1,
+        contaminant_debris: 'off', contaminant_aggregate: 'off', contaminant_subg1: 'off',
+      }],
+    },
     metadata: {
       columns: [
         { field: 'strain', label: 'Strain', headerEditable: false, source: 'filename' },
@@ -47,6 +58,8 @@ _FULL_SUITE = r"""() => {
     },
     plot: {
       channel: 'DAPI-A', color_by: 'strain', display_mode: 'curve_bins', bins: 384,
+      // x range pinned, y left auto (null) -- only the set bounds serialize.
+      axis_x_min: 1200, axis_x_max: 9800, axis_y_min: null, axis_y_max: null,
       remove_debris: true, remove_doublets: false, show_peak_threshold: true,
     },
     ui: {
@@ -79,10 +92,30 @@ _FULL_SUITE = r"""() => {
        parsed.plot.channel === 'DAPI-A' && parsed.plot.display_mode === 'curve_bins'
        && parsed.plot.bins === 384,
        JSON.stringify(parsed.plot));
+  push('round-trip: set axis-range overrides survive; unset bounds are omitted (auto)',
+       parsed.plot.axis_x_min === 1200 && parsed.plot.axis_x_max === 9800
+       && parsed.plot.axis_y_min === undefined && parsed.plot.axis_y_max === undefined,
+       JSON.stringify({x_min: parsed.plot.axis_x_min, x_max: parsed.plot.axis_x_max,
+                       y_min: parsed.plot.axis_y_min, y_max: parsed.plot.axis_y_max}));
   push('round-trip: plot boolean toggles survive as booleans',
        parsed.plot.remove_debris === true && parsed.plot.remove_doublets === false
        && parsed.plot.show_peak_threshold === true,
        JSON.stringify({ d: parsed.plot.remove_debris, db: parsed.plot.remove_doublets, t: parsed.plot.show_peak_threshold }));
+
+  push('round-trip: modeling QC stages survive as a numeric array',
+       JSON.stringify(parsed.modeling.qc_stages) === JSON.stringify([0, 1, 3]),
+       JSON.stringify(parsed.modeling.qc_stages));
+  push('round-trip: modeling per-sample config (regions, model, settings) survives',
+       parsed.modeling.samples.length === 1
+       && parsed.modeling.samples[0].name === 'A.fcs'
+       && parsed.modeling.samples[0].model === 'watson_pragmatic'
+       && parsed.modeling.samples[0].reviewed === true
+       && parsed.modeling.samples[0].g1_left === 55.5
+       && parsed.modeling.samples[0].g2_right === 165
+       && parsed.modeling.samples[0].g1_source === 'detected'
+       && parsed.modeling.samples[0].ratio_min === 1.65
+       && parsed.modeling.samples[0].ploidy_count === 1,
+       JSON.stringify(parsed.modeling.samples[0]));
 
   push('round-trip: table sort field and direction survive',
        parsed.table.sort_field === 'strain' && parsed.table.sort_direction === 'desc',

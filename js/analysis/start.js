@@ -208,7 +208,7 @@ Output:
 	(none) [Promise<void>]: runs analysis or starts modeling
 
 */
-async function start_analysis() {
+export async function start_analysis() {
   plot_panel.hidden = false;
   document.dispatchEvent(new CustomEvent("pf-plot-started", {
     detail: { channel: get_selected_channels().dna_area },

@@ -34,7 +34,13 @@ import { save_filename_metadata_template } from "../ui/metadata_wizard.js";
 import { get_stats_plan, restore_stats_plan } from "../analysis/stats.js";
 import { get_file_table, get_file_map } from "../state/app_state.js";
 import { get_parsed_files } from "../state/files.js";
+import { plot_bin_count, set_plot_bins, axis_range_override } from "../plotting/data.js";
 import { get_session_table_state, apply_session_state } from "./table_session.js";
+import { get_modeling_session_state, apply_modeling_session } from "./modeling_session.js";
+import { start_analysis } from "../analysis/start.js";
+import { apply_saved_qc_stages } from "../analysis/pipeline_ui.js";
+import { show_progress, update_progress, hide_progress } from "../ui/status_channels.js";
+import { render_density_plot } from "../plotting/render.js";
 import { suppress_next_unload_warning } from "./unload_guard.js";
 
 // ── Session-file restore orchestration ───────────────────────────────────────
@@ -126,6 +132,9 @@ function collect_session() {
     session: { created: new Date().toISOString() },
     files:   { names, records: build_file_records_for(names) },
     stats_plan: get_stats_plan(),
+    // Cell-cycle modeling config (recompute-on-reload): QC selection + each
+    // plotted sample's accepted peak regions and model/settings. No fit results.
+    modeling: get_modeling_session_state(),
     metadata: {
       columns: user_cols.map((c) => ({
         field: c.field,
@@ -146,7 +155,17 @@ function collect_session() {
       channel:             ch_sel?.value || '',
       color_by:            color_by?.value || 'file',
       display_mode:        display_el?.value || 'curve',
-      bins:                parseInt(bins_el?.value || '512', 10),
+      // Store the actual bin count, not the slider's raw index -- the Bins
+      // control is a slider over BIN_STOPS (plotting/data.js) whose value is an
+      // index; plot_bin_count() maps it back to a real bin count.
+      bins:                plot_bin_count(),
+      // Manual axis-range overrides (double-click an axis). null = auto-scaled;
+      // only the set ones are serialized (see toml_io.js). Preserves a user's
+      // pinned zoom/range across reload.
+      axis_x_min:          axis_range_override.x_min,
+      axis_x_max:          axis_range_override.x_max,
+      axis_y_min:          axis_range_override.y_min,
+      axis_y_max:          axis_range_override.y_max,
       // Retained as false for backward-compatible session schemas; staged DJF
       // controls now own cleaning and peak inspection.
       remove_debris:       false,
@@ -167,6 +186,11 @@ function collect_session() {
 // ── State application ────────────────────────────────────────────────────────
 
 let pending_session = null;
+// Saved modeling config awaiting the recompute-on-reload flow: once files
+// reconnect and the saved channel is available we auto-plot, then the one-shot
+// pf-plot-complete handler re-applies QC and re-fits from this config.
+let pending_modeling_restore = null;
+let modeling_restore_started = false;
 
 function apply_plot_settings(plot) {
   if (!plot) return;
@@ -178,7 +202,14 @@ function apply_plot_settings(plot) {
 
   if (color_by && plot.color_by)     color_by.value   = plot.color_by;
   if (display_el && plot.display_mode) display_el.value = plot.display_mode;
-  if (bins_el && plot.bins > 0)      bins_el.value    = plot.bins;
+  if (bins_el && plot.bins > 0)      set_plot_bins(plot.bins);
+
+  // Restore manual axis-range overrides; a missing/non-numeric value means
+  // that bound stays auto-scaled (null). Read by render_density_plot on draw.
+  axis_range_override.x_min = Number.isFinite(plot.axis_x_min) ? plot.axis_x_min : null;
+  axis_range_override.x_max = Number.isFinite(plot.axis_x_max) ? plot.axis_x_max : null;
+  axis_range_override.y_min = Number.isFinite(plot.axis_y_min) ? plot.axis_y_min : null;
+  axis_range_override.y_max = Number.isFinite(plot.axis_y_max) ? plot.axis_y_max : null;
   if (ch_sel && plot.channel) {
     const opt = [...ch_sel.options].find((o) => o.value === plot.channel);
     if (opt) {
@@ -208,8 +239,54 @@ function apply_table_session(session, { restore_selection = true } = {}) {
   });
 }
 
+// Once files are reconnected and the saved channel is set, auto-plot so the
+// pf-plot-complete handler can recompute the saved modeling. Only fires when
+// there is saved modeling to restore, so sessions without modeling keep the
+// existing "reconnect, then plot yourself" behaviour.
+function maybe_start_modeling_restore() {
+  if (!pending_modeling_restore || modeling_restore_started) return;
+  if (!all_rows_linked()) return;
+  if (!document.getElementById('channel_select')?.value) return;
+  modeling_restore_started = true;
+  start_analysis();
+}
+
+// One-shot recompute after the auto-plot: re-apply the saved QC gates (rebuilds
+// each histogram), then restore regions/model and re-fit each saved sample.
+async function run_modeling_restore(config) {
+  try {
+    if (config.qc_stages?.length) {
+      // apply_saved_qc_stages runs its own progress overlay.
+      await apply_saved_qc_stages(config.qc_stages);
+    }
+    show_progress('Restoring modeling');
+    const result = await apply_modeling_session(config, {
+      onProgress: (index, total, name) =>
+        update_progress(total ? (100 * index) / total : 0, 'Restoring modeling', name),
+    });
+    document.dispatchEvent(new CustomEvent('cell-cycle-fit-changed'));
+    render_density_plot();
+    set_status_bar(
+      `Restored modeling for ${result.restored} sample${result.restored === 1 ? '' : 's'}` +
+        `${result.failed ? `, ${result.failed} failed` : ''}.`,
+      result.failed > 0 && result.restored === 0,
+    );
+    hide_progress(300);
+  } catch (error) {
+    set_status_bar(`Modeling restore failed: ${error.message}`, true);
+    hide_progress(800);
+  }
+}
+
 function apply_session(session) {
   pending_session = session;
+  // Stash modeling config for the recompute-on-reload flow (only when the saved
+  // session actually has modeled samples or an applied QC selection).
+  pending_modeling_restore =
+    session.modeling && (session.modeling.samples?.length || session.modeling.qc_stages?.length)
+      ? session.modeling
+      : null;
+  modeling_restore_started = false;
   apply_plot_settings(session.plot);
 
   const plan = session.stats_plan?.entries;
@@ -423,9 +500,23 @@ export function init_session() {
   // freshly-built session, with Save just serializing live state (collect_session)
   // and no further TOML replay on later, unrelated file loads.
   document.addEventListener('pf-files-loaded', () => {
-    if (!pending_session) return;
-    apply_table_session(pending_session, { restore_selection: false });
-    if (all_rows_linked()) pending_session = null;
+    if (pending_session) {
+      apply_table_session(pending_session, { restore_selection: false });
+      if (all_rows_linked()) pending_session = null;
+    }
+    // Once every row is reconnected, kick off the modeling recompute (auto-plot
+    // -> QC -> refit). Runs at most once per restored session.
+    maybe_start_modeling_restore();
+  });
+
+  // The recompute-on-reload second half: when the auto-plot completes, restore
+  // the saved modeling exactly once, then release the pending config so later
+  // user-initiated plots don't re-trigger it.
+  document.addEventListener('pf-plot-complete', () => {
+    if (!pending_modeling_restore) return;
+    const config = pending_modeling_restore;
+    pending_modeling_restore = null;
+    run_modeling_restore(config);
   });
 
   document.getElementById('reconnect_choose_folder')?.addEventListener('click', () => {
