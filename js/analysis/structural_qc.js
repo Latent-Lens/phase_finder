@@ -8,6 +8,17 @@ export const BOUNDED_CHANNEL_NAMES = Object.freeze([
   "SSC_A",
 ]);
 
+// The PnR ("upper margin"/saturation) ceiling is applied only to the DNA
+// channels. A maxed-out DNA reading corrupts the cell-cycle content the whole
+// pipeline measures, so those events must go. Forward/side scatter, by
+// contrast, saturate heavily on real instruments (side scatter especially) and
+// scale with cell size -- G2/M cells are the largest, so a scatter-saturation
+// ceiling here would preferentially delete the entire G2 population before
+// modeling ever runs. Scatter-based removal belongs to the interactive Stage 2
+// Cell Gate (GMM on FSC/SSC), not this blunt pre-filter, so FSC_A/SSC_A are
+// checked only for non-finite/negative values below, never the ceiling.
+const CEILING_CHANNEL_NAMES = Object.freeze(["DNA_A", "DNA_H", "DNA_W"]);
+
 function resolveStructuralInput(datasetOrChannels, pnrOverride) {
   const isDataset = Boolean(datasetOrChannels?.channels);
   const channels = isDataset
@@ -69,13 +80,18 @@ export function createStructuralValidityMask(datasetOrChannels, pnrOverride) {
       }
 
       // Diverges from the source document by user decision: zero is valid.
-      const configuredLimit = pnr[channelName];
-      const numericLimit = configuredLimit == null || configuredLimit === ""
-        ? NaN
-        : Number(configuredLimit);
-      if (Number.isFinite(numericLimit) && value >= numericLimit) {
-        retained = false;
-        break;
+      // The saturation ceiling is DNA-only (see CEILING_CHANNEL_NAMES) --
+      // scatter channels are checked for finiteness/negativity above but not
+      // for the upper margin.
+      if (CEILING_CHANNEL_NAMES.includes(channelName)) {
+        const configuredLimit = pnr[channelName];
+        const numericLimit = configuredLimit == null || configuredLimit === ""
+          ? NaN
+          : Number(configuredLimit);
+        if (Number.isFinite(numericLimit) && value >= numericLimit) {
+          retained = false;
+          break;
+        }
       }
     }
 
