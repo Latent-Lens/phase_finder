@@ -18,14 +18,18 @@ import {
   last_auto_y_max,
   plot_color_by_select,
   plot_display_mode_select,
-  plot_bins_input,
+  plot_view_mode_select,
+  set_plot_view_mode,
+  set_ridge_focus_name,
   plot_channels,
   plot_area,
   last_series,
   series_by_name,
   histograms_by_name,
+  plot_viewport,
 } from "./data.js";
 import { render_density_plot } from "./render.js";
+import { plot_interaction_mode } from "./plot_viewport.js";
 
 /*
 
@@ -103,12 +107,19 @@ export function apply_axis_range_modal() {
   const y_max = parse(axis_range_y_max_input);
   if (x_min === undefined || x_max === undefined || y_min === undefined || y_max === undefined) return;
 
+  const x_range_changed = x_min !== axis_range_override.x_min || x_max !== axis_range_override.x_max;
   axis_range_override.x_min = x_min;
   axis_range_override.x_max = x_max;
   axis_range_override.y_min = y_min;
   axis_range_override.y_max = y_max;
   close_axis_range_modal();
   render_density_plot();
+  // Explicitly setting the x-range changes how much data is visible, which
+  // bounds the modeling histogram -- so it triggers a full recompute of peaks
+  // and fits (bin_settings_sync.js), same as a bin-count change. The y-range is
+  // display-only. NOTE: a future interactive zoom/pan must stay viewport-only
+  // (examining an existing fit), so it must NOT reuse this event.
+  if (x_range_changed) document.dispatchEvent(new CustomEvent("pf-x-range-changed"));
 }
 
 /*
@@ -126,9 +137,22 @@ Output:
 
 */
 export function init_plot_listeners() {
-  [plot_color_by_select, plot_display_mode_select, plot_bins_input].forEach((el) => {
+  // #plot_bins is handled by analysis/cell_cycle/bin_settings_sync.js instead:
+  // a bin-count change must also invalidate stale peak regions/fits before
+  // re-rendering, not merely redraw, so it can't share this render-only wiring.
+  [plot_color_by_select, plot_display_mode_select].forEach((el) => {
     if (el) el.addEventListener("change", render_density_plot);
   });
+
+  // Overlay/Ridge view toggle. Switching out of a blown-up review returns to
+  // the ridge, so clear any ridge focus when the mode is changed by hand.
+  if (plot_view_mode_select) {
+    plot_view_mode_select.addEventListener("change", () => {
+      set_plot_view_mode(plot_view_mode_select.value);
+      set_ridge_focus_name(null);
+      render_density_plot();
+    });
+  }
 
   // Live-update when the table checkbox selection changes (uncheck removes a
   // curve, re-check restores it from the still-loaded data).
@@ -142,12 +166,16 @@ export function init_plot_listeners() {
     axis_range_modal.querySelector("#axis_range_cancel").addEventListener("click", close_axis_range_modal);
     axis_range_modal.querySelector("#axis_range_apply").addEventListener("click", apply_axis_range_modal);
     axis_range_modal.querySelector("#axis_range_reset").addEventListener("click", () => {
+      const x_range_changed = axis_range_override.x_min != null || axis_range_override.x_max != null;
       axis_range_override.x_min = null;
       axis_range_override.x_max = null;
       axis_range_override.y_min = null;
       axis_range_override.y_max = null;
       close_axis_range_modal();
       render_density_plot();
+      // Clearing an x-range override widens the visible data back to the full
+      // extent, so re-include the previously-excluded events (recompute).
+      if (x_range_changed) document.dispatchEvent(new CustomEvent("pf-x-range-changed"));
     });
     axis_range_modal.addEventListener("keydown", (event) => {
       if (event.key === "Enter") apply_axis_range_modal();
@@ -223,5 +251,19 @@ export const plot_api = {
   },
   get histogram_names() {
     return Array.from(histograms_by_name.keys());
+  },
+  // The live axis-range override object (mutable). Exposed for the E2E x-range
+  // test; production code sets it through the axis-range modal.
+  get axis_range_override() {
+    return axis_range_override;
+  },
+  // Display-only pan/zoom state (plot_viewport.js). Read-only here: it exists so
+  // tests can assert that a gesture moved the *view* while axis_range_override
+  // (the modeling range) stayed untouched.
+  get viewport() {
+    return { x: plot_viewport.x ? plot_viewport.x.slice() : null, y: plot_viewport.y ? plot_viewport.y.slice() : null };
+  },
+  get interaction_mode() {
+    return plot_interaction_mode();
   },
 };
