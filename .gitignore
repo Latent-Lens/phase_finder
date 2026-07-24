@@ -8,6 +8,9 @@ tests/unit/__pycache__
 tests/test_data/*
 flow_data
 
+# Production build output
+dist/
+
 
 # Local AI tooling
 .claude/
