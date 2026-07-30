@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "policy": "Anything not listed as supported is rejected at import or blocked before analysis.",
+  "cells": [
+    { "feature": "version", "value": "FCS2.0", "status": "supported", "fixtures": ["parser_fcs20_linear"] },
+    { "feature": "version", "value": "FCS3.0", "status": "supported", "fixtures": ["parser_fcs30_linear"] },
+    { "feature": "version", "value": "FCS3.1", "status": "supported", "fixtures": ["parser_f32_little_endian"] },
+    { "feature": "version", "value": "other", "status": "analysis_blocked", "fixtures": ["parser_fcs10_unsupported"] },
+    { "feature": "mode", "value": "L", "status": "supported", "fixtures": ["parser_f32_little_endian"] },
+    { "feature": "mode", "value": "non-list", "status": "analysis_blocked", "fixtures": ["parser_non_list_mode"] },
+    { "feature": "datatype", "value": "F/32", "status": "supported", "fixtures": ["parser_f32_little_endian", "parser_f32_big_endian"] },
+    { "feature": "datatype", "value": "D/64", "status": "supported", "fixtures": ["parser_f64_big_endian"] },
+    { "feature": "datatype", "value": "A", "status": "import_rejected", "fixtures": ["parser_unsupported_ascii"] },
+    { "feature": "byte_order", "value": "little", "status": "supported", "fixtures": ["parser_f32_little_endian"] },
+    { "feature": "byte_order", "value": "big", "status": "supported", "fixtures": ["parser_f32_big_endian", "parser_f64_big_endian", "parser_i16_big_endian"] },
+    { "feature": "byte_order", "value": "other", "status": "import_rejected", "fixtures": ["parser_unknown_byte_order"] },
+    { "feature": "integer_width", "value": "8/16/24/32/40/48 byte-aligned", "status": "supported", "fixtures": ["parser_i8_little_endian", "parser_i16_little_endian", "parser_i24_little_endian", "parser_i32_little_endian", "parser_i40_little_endian", "parser_i48_little_endian"] },
+    { "feature": "integer_width", "value": "non-byte-aligned", "status": "import_rejected", "fixtures": ["parser_i12_packed"] },
+    { "feature": "integer_width", "value": ">53 bits", "status": "import_rejected", "fixtures": ["parser_i64_unsafe"] },
+    { "feature": "scaling", "value": "$PnE=0,0 and $PnG=1", "status": "supported", "fixtures": ["parser_f32_little_endian"] },
+    { "feature": "scaling", "value": "logarithmic $PnE", "status": "analysis_blocked", "fixtures": ["parser_log_amplified_dna"] },
+    { "feature": "scaling", "value": "non-unit $PnG", "status": "analysis_blocked", "fixtures": ["parser_nonunit_gain_dna"] },
+    { "feature": "compensation", "value": "absent or matrix excludes DNA", "status": "supported", "fixtures": ["parser_f32_little_endian", "parser_spillover_other"] },
+    { "feature": "compensation", "value": "matrix includes DNA", "status": "analysis_blocked", "fixtures": ["parser_spillover_dna"] },
+    { "feature": "text", "value": "escaped primary TEXT delimiter", "status": "supported", "fixtures": ["parser_escaped_text_delimiter"] },
+    { "feature": "text", "value": "supplemental TEXT", "status": "import_rejected", "fixtures": ["parser_supplemental_text"] },
+    { "feature": "datasets", "value": "single", "status": "supported", "fixtures": ["parser_f32_little_endian"] },
+    { "feature": "datasets", "value": "$NEXTDATA nonzero", "status": "analysis_blocked", "fixtures": ["parser_nextdata_nonzero"] }
+  ]
+}
