@@ -7,7 +7,7 @@ const root = path.resolve(process.env.DIST_DIR || "dist");
 const configuredBase = (process.env.BASE_PATH || "/").replace(/^\/+|\/+$/g, "");
 const basePath = configuredBase ? `/${configuredBase}/` : "/";
 const required = [
-  "index.html", "help.html", "_headers",
+  "index.html", "help/index.html", "_headers",
   "artifact-manifest.json", "build-metadata.json", "sbom.cdx.json", "SHA256SUMS",
   "assets/img/favicon/site.webmanifest",
   "assets/img/favicon/android-chrome-192x192.png",

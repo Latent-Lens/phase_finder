@@ -67,7 +67,7 @@ def main():
             help_href = page.get_attribute("#status_bar a", "href")
             if not help_href:
                 failures.append("Help link is missing")
-                help_href = "help.html"
+                help_href = "help/index.html"
             help_page.goto(urljoin(page.url, help_href), wait_until="networkidle")
             if "PhaseFinder Help" not in help_page.title():
                 failures.append("Help page title is missing")
