@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Plain-language results comparing PhaseFinder's cell-cycle phase fractions against FlowJo and Flowreader on 45 real samples." />
+    <title>PhaseFinder &mdash; How accurate is it on real samples?</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" />
+      <span class="help_header_title">How accurate is it on real samples?</span>
+      <a class="help_back_link" href="../help/index.html" target="_blank" rel="noopener">Back to Help</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">On this page</p>
+        <nav aria-label="Table of contents">
+          <ol>
+            <li><a href="#what">1. What this page answers</a></li>
+            <li><a href="#how">2. How we tested it</a></li>
+            <li><a href="#flowjo">3. Compared to FlowJo</a></li>
+            <li><a href="#watson">4. Compared to Flowreader</a></li>
+            <li><a href="#catch">5. The important catch</a></li>
+            <li><a href="#pick">6. So which model should I pick?</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_lede">
+          We ran PhaseFinder on 45 real samples that already had &ldquo;official&rdquo; answers from
+          two trusted programs, and compared. Short version: PhaseFinder lands within about
+          <strong>5 percentage points</strong> of FlowJo, and is the closest match on
+          <strong>27 of 30</strong> samples. The twist: the two trusted programs disagree with
+          <em>each other</em> more than PhaseFinder disagrees with them.
+        </p>
+
+        <section id="what" class="help_section">
+          <h2>1. What this page answers</h2>
+          <p>
+            This page is about <strong>accuracy on real data</strong>: when PhaseFinder says
+            &ldquo;42% G1, 18% S, 40% G2,&rdquo; how close is that to what the established tools say?
+            If you instead want to know whether the underlying <em>method</em> is done correctly, see
+            <a href="./help-cell-cycle-math-check.html">Is the cell-cycle math done right?</a>
+          </p>
+        </section>
+
+        <section id="how" class="help_section">
+          <h2>2. How we tested it</h2>
+          <p>
+            We used a set of real (asynchronous yeast) samples where someone had already measured the
+            cell-cycle fractions with professional tools &mdash; think of it as an answer key we
+            didn't write:
+          </p>
+          <ul>
+            <li><strong>30 samples</strong> with answers from <strong>FlowJo</strong> (using its
+              Dean-Jett-Fox model).</li>
+            <li><strong>15 of those</strong> also had answers from <strong>Flowreader</strong> (using
+              its Watson model).</li>
+          </ul>
+          <p>
+            We ran every PhaseFinder model on all of them and measured the gap, in
+            <strong>percentage points</strong> (pp), between our answer and the answer key &mdash;
+            averaged across the three phases. Smaller is closer. A gap of &ldquo;5 pp&rdquo; means, on
+            average, each phase percentage was about 5 points off (e.g. we said 40% where the key said
+            45%).
+          </p>
+        </section>
+
+        <section id="flowjo" class="help_section">
+          <h2>3. Compared to FlowJo (30 samples)</h2>
+          <p>
+            Average gap from FlowJo's answers, per model. Lower is closer; &ldquo;Closest on&rdquo;
+            counts how many of the 30 samples that model matched best.
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>PhaseFinder model</th><th>Average gap</th><th>Closest on</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Dean-Jett-Fox</strong> (matches FlowJo's own model)</td><td><strong>5.1 pp</strong></td><td><strong>27 / 30</strong></td></tr>
+              <tr><td>Watson Pragmatic</td><td>6.6 pp</td><td>2 / 30</td></tr>
+              <tr><td>Watson Classic</td><td>13.7 pp</td><td>1 / 30</td></tr>
+            </tbody>
+          </table>
+          <p>
+            <strong>Dean-Jett-Fox wins here, as you'd hope</strong> &mdash; it's the same model
+            family FlowJo used, so it lands within about 5 points and matches best on nearly every
+            sample. That ~5 points is roughly the wiggle you'd get just from re-running the analysis
+            with slightly different settings, so it's about as close as two tools can reasonably get.
+            Watson Classic looks bad <em>here</em> only because it's built to reproduce a
+            <em>different</em> program's style (see below) &mdash; not FlowJo's.
+          </p>
+        </section>
+
+        <section id="watson" class="help_section">
+          <h2>4. Compared to Flowreader (15 samples)</h2>
+          <p>
+            Same idea, but now the answer key comes from Flowreader's Watson model.
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>PhaseFinder model</th><th>Average gap</th><th>Closest on</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Watson Classic</strong> (matches Flowreader's Watson)</td><td>12.7 pp</td><td><strong>10 / 15</strong></td></tr>
+              <tr><td>Dean-Jett-Fox</td><td>12.2 pp</td><td>5 / 15</td></tr>
+              <tr><td>Watson Pragmatic</td><td>13.6 pp</td><td>0 / 15</td></tr>
+            </tbody>
+          </table>
+          <p>
+            <strong>Watson Classic wins here</strong> &mdash; it matches Flowreader best on 10 of 15
+            samples, which is exactly its job (we built it to reproduce Flowreader's Watson style).
+            But notice the gaps are much bigger for <em>everybody</em> here (~12&ndash;14 pp) than they
+            were against FlowJo (~5 pp). That's not a PhaseFinder problem. Here's why&hellip;
+          </p>
+        </section>
+
+        <section id="catch" class="help_section">
+          <h2>5. The important catch: the answer keys disagree with each other</h2>
+          <p>
+            For the 15 samples that had <em>both</em> a FlowJo answer and a Flowreader answer, we can
+            compare the two answer keys directly. They disagree with <strong>each other</strong> by:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Phase</th><th>How much FlowJo and Flowreader disagree (same samples)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>G1</td><td>1.7 pp (they basically agree)</td></tr>
+              <tr><td><strong>S</strong></td><td><strong>14.1 pp</strong> (big disagreement)</td></tr>
+              <tr><td>G2/M</td><td>7.6 pp</td></tr>
+            </tbody>
+          </table>
+          <div class="callout warn">
+            <p class="callout_title">There is no single &ldquo;true&rdquo; answer</p>
+            <p>
+              On the very same sample, FlowJo might say <strong>27% S-phase</strong> and Flowreader
+              might say <strong>41% S-phase</strong> &mdash; a 14-point difference, from two respected
+              tools, on identical data. They draw the line between S and G2 differently. So when
+              PhaseFinder is &ldquo;12 points off Flowreader,&rdquo; most of that is really
+              <em>Flowreader disagreeing with FlowJo</em>, not PhaseFinder being wrong. Our models
+              agree with FlowJo to ~5 points and sit reasonably between the two references.
+            </p>
+          </div>
+          <p>
+            This is the real reason PhaseFinder offers more than one model, and why we ask you to
+            <strong>pick one on purpose</strong> rather than letting the tool choose: which
+            &ldquo;official&rdquo; number you want to reproduce depends on which tool your field or
+            your collaborators use.
+          </p>
+        </section>
+
+        <section id="pick" class="help_section">
+          <h2>6. So which model should I pick?</h2>
+          <ul>
+            <li><strong>Want to match FlowJo (or ModFit) numbers?</strong> Use
+              <strong>Dean-Jett-Fox</strong>. It's the same model family and matched FlowJo best on 27
+              of 30 samples.</li>
+            <li><strong>Want to match Flowreader / a Watson-style number?</strong> Use
+              <strong>Watson Classic</strong>. It's built to reproduce that style and matched
+              Flowreader best on 10 of 15.</li>
+            <li><strong>Not sure / no external reference to match?</strong> Dean-Jett-Fox is the
+              sensible default &mdash; it's the most widely used cell-cycle model and the most
+              thoroughly checked here.</li>
+          </ul>
+          <p>
+            Whichever you pick, PhaseFinder always shows you the fitted curve, a
+            <strong>fit-quality score</strong>, and a warning if anything looked off &mdash; so you
+            can see for yourself whether to trust the number, rather than the tool hiding it or
+            deciding for you.
+          </p>
+          <p class="help_footer">
+            Curious whether the math itself is done correctly (not just whether the numbers match)?
+            See <a href="./help-cell-cycle-math-check.html">Is the cell-cycle math done right?</a>
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

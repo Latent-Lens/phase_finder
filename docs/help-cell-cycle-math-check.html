@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Plain-language explanation of how PhaseFinder's Dean-Jett-Fox cell-cycle math was checked against open-source implementations and FlowJo's documentation." />
+    <title>PhaseFinder &mdash; Is the cell-cycle math done right?</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" />
+      <span class="help_header_title">Is the cell-cycle math done right?</span>
+      <a class="help_back_link" href="../help/index.html" target="_blank" rel="noopener">Back to Help</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">On this page</p>
+        <nav aria-label="Table of contents">
+          <ol>
+            <li><a href="#what">1. What this page answers</a></li>
+            <li><a href="#job">2. What the tool is actually doing</a></li>
+            <li><a href="#against">3. What we checked against</a></li>
+            <li><a href="#peaks">4. Finding the two humps</a></li>
+            <li><a href="#curve">5. Drawing the curve</a></li>
+            <li><a href="#bottom">6. The bottom line</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_lede">
+          Short version: PhaseFinder measures the cell cycle the same way the rest of the field
+          does &mdash; we checked our math, step by step, against every open recipe we could find and
+          against FlowJo's own written instructions. This page explains that in plain language.
+        </p>
+
+        <section id="what" class="help_section">
+          <h2>1. What this page answers</h2>
+          <p>
+            One fair question about any analysis tool is: <em>&ldquo;How do I know it's doing the
+            math right, and not just making up a nice-looking number?&rdquo;</em> This page answers
+            that for PhaseFinder's cell-cycle fitting. It does <strong>not</strong> ask &ldquo;how
+            accurate is it on real samples&rdquo; &mdash; that's a separate page,
+            <a href="./help-cell-cycle-accuracy.html">How accurate is it on real samples?</a>
+          </p>
+        </section>
+
+        <section id="job" class="help_section">
+          <h2>2. What the tool is actually doing</h2>
+          <p>
+            When a cell is getting ready to divide, it copies its DNA. So at any moment a cell is in
+            one of three situations:
+          </p>
+          <ul>
+            <li><strong>G1</strong> &mdash; one copy of DNA (hasn't started copying yet).</li>
+            <li><strong>S</strong> &mdash; busy copying, so somewhere between one and two copies.</li>
+            <li><strong>G2/M</strong> &mdash; two full copies, about to split.</li>
+          </ul>
+          <p>
+            If you stain the DNA and measure a whole population, you get a histogram with
+            <strong>two humps</strong>: a tall one at &ldquo;one copy&rdquo; (G1) and a shorter one at
+            &ldquo;two copies&rdquo; (G2/M), with a low bridge between them (the S cells, caught
+            mid-copy). PhaseFinder's job is to figure out <strong>what fraction of cells sits under
+            each part</strong> &mdash; how much G1, how much S, how much G2/M.
+          </p>
+          <p>
+            It does that by drawing a smooth mathematical curve through the histogram and reading the
+            areas off it. The recipe for that curve has a name: <strong>Dean-Jett-Fox</strong> (after
+            the scientists who worked it out in the 1970s&ndash;80s). The expensive programs most
+            labs trust &mdash; FlowJo, ModFit &mdash; use the same recipe. The catch: their code is
+            closed, so you can't just read it and check.
+          </p>
+          <div class="callout tip">
+            <p class="callout_title">The one-sentence version</p>
+            <p>
+              Two Gaussian &ldquo;bell curves&rdquo; for the G1 and G2/M humps, plus a gently curved
+              ramp for the S bridge between them. Add up the areas &rarr; the phase percentages.
+            </p>
+          </div>
+        </section>
+
+        <section id="against" class="help_section">
+          <h2>3. What we checked against</h2>
+          <p>
+            Since we can't read FlowJo's code, we lined our math up against the recipes we
+            <em>can</em> read &mdash; and against FlowJo's own published description of how it works:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Source</th><th>What it is</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>FlowJo's cell-cycle documentation</td><td>The reference tool's own written explanation of its method</td></tr>
+              <tr><td>Two open-source Dean-Jett-Fox programs (Python)</td><td>Independent code that fits the same model</td></tr>
+              <tr><td>A dedicated flow-cytometry peak-finder (R, &ldquo;PloidyPeaks&rdquo;)</td><td>A whole package just for finding the humps</td></tr>
+            </tbody>
+          </table>
+          <p>
+            We also checked a package people often <em>assume</em> does this (RGLab's
+            <code>flowCore</code>) and confirmed it has no cell-cycle model at all &mdash; it's
+            plumbing for reading the data, not fitting it. Worth knowing, so nobody points at it as a
+            reference it isn't.
+          </p>
+        </section>
+
+        <section id="peaks" class="help_section">
+          <h2>4. Finding the two humps</h2>
+          <p>
+            Before you can fit a curve you have to find the two humps. Think of it like spotting the
+            two tallest hills on a bumpy horizon and ignoring the little bushes. <strong>Every one of
+            these tools &mdash; including ours &mdash; uses the same basic recipe:</strong>
+          </p>
+          <ul>
+            <li>Smooth the histogram a little so noise doesn't look like a hump.</li>
+            <li>Find the local high points that are tall enough to be real.</li>
+            <li>Throw away junk at the far-left edge (dead cells and debris pile up there).</li>
+            <li>Call the big one <strong>G1</strong>.</li>
+            <li>Expect the second hump at <strong>about double</strong> the DNA (because two copies) &mdash; and look for it there.</li>
+          </ul>
+          <p>
+            That &ldquo;second hump at double&rdquo; rule is the anchor everyone leans on, because
+            it's simple biology: two copies is twice the DNA. PhaseFinder uses it exactly like the
+            others. The only difference is that PhaseFinder does the search at
+            <strong>several zoom levels at once</strong> and scores each candidate on more features,
+            and it tells you how confident it is (a clear pair, a weak pair, or a guessed second
+            hump) &mdash; where the simpler tools just take the two tallest and move on.
+          </p>
+        </section>
+
+        <section id="curve" class="help_section">
+          <h2>5. Drawing the curve</h2>
+          <p>
+            Once the humps are located, you build the curve. Here's the recipe, and how ours lines up:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Piece of the curve</th><th>Everyone does&hellip;</th><th>PhaseFinder</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>The two humps (G1, G2/M)</td>
+                <td>Bell curves</td>
+                <td>Same &mdash; and we add up each bell across the width of a histogram bar rather than
+                  just sampling its height, which is a touch more accurate for counts.</td>
+              </tr>
+              <tr>
+                <td>The S bridge between them</td>
+                <td>A gently curved ramp (a quadratic), blurred a little to match how the peaks spread</td>
+                <td>Same</td>
+              </tr>
+              <tr>
+                <td>How &ldquo;good&rdquo; a fit is scored</td>
+                <td>Least-squares (a common approximation)</td>
+                <td>The exact count-based measure (Poisson) &mdash; the statistically correct one for
+                  counting data.</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="callout tip">
+            <p class="callout_title">The one real difference &mdash; and it's a good one</p>
+            <p>
+              FlowJo pins down the two humps <em>first</em>, using only the clean outer side of each
+              hump (where S cells aren't leaking in), and only <em>then</em> fits the S bridge. Our
+              older approach fit everything at once, which occasionally let the flexible S bridge
+              &ldquo;swallow&rdquo; a hump on lopsided samples and give a nonsense answer. PhaseFinder
+              now uses FlowJo's peaks-first approach, which fixes that. So the difference we found
+              wasn't a wrong formula &mdash; it was a smarter <em>order</em> of operations, and we
+              adopted it.
+            </p>
+          </div>
+        </section>
+
+        <section id="bottom" class="help_section">
+          <h2>6. The bottom line</h2>
+          <ul>
+            <li><strong>Same method as everyone else.</strong> The way PhaseFinder finds the humps and
+              draws the curve matches the independent open-source programs and FlowJo's own
+              instructions.</li>
+            <li><strong>A little more careful in places.</strong> More exact bell-curve math, the
+              statistically correct count-based fit measure, multi-zoom hump-finding, and honest
+              confidence labels.</li>
+            <li><strong>The one gap we found, we closed.</strong> Fitting the humps first (FlowJo's
+              way) instead of everything at once.</li>
+          </ul>
+          <p class="help_footer">
+            Want the numbers instead of the method? See
+            <a href="./help-cell-cycle-accuracy.html">How accurate is it on real samples?</a> &mdash;
+            where we compare PhaseFinder's answers to FlowJo's and Flowreader's on 45 real samples.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
