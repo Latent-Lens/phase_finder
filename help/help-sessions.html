@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Save and restore analyses, reconnect FCS files, manage storage, resize panels, and reset the app." />
+    <title>Sessions & Layout | PhaseFinder Help</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <a href="./index.html" aria-label="PhaseFinder help home"><img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" /></a>
+      <a class="help_header_title help_header_home" href="./index.html">Help Center</a>
+      <a class="help_back_link" href="../index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">Help topics</p>
+        <nav aria-label="Help topics">
+          <ol>
+            <li><a href="./index.html">Help home</a></li>
+            <li><a href="./help-getting-started.html">Getting Started</a></li>
+            <li><a href="./help-metadata.html">Metadata & Sample Table</a></li>
+            <li><a href="./help-plotting.html">Plotting Events</a></li>
+            <li><a href="./help-modeling.html">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-statistics.html">Summary Statistics</a></li>
+            <li><a href="./help-sessions.html" aria-current="page">Sessions & Layout</a></li>
+            <li><a href="./help-troubleshooting.html">Troubleshooting & Compatibility</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_breadcrumb"><a href="./index.html">Help home</a> / Sessions & Layout</p>
+        <h1>Sessions & Layout</h1>
+        <p class="help_lede">Save and restore analyses, reconnect FCS files, manage storage, resize panels, and reset the app.</p>
+
+<section id="sessions" class="help_section">
+          <h2>8. Saving &amp; Loading Sessions</h2>
+          <p>Because PhaseFinder keeps no server-side state, a <strong>session file</strong> (a human-readable <a href="https://en.wikipedia.org/wiki/TOML" target="_blank" rel="noopener"><code>.toml</code> file</a>) is how you resume work later or share a configured analysis with someone else. Use <span class="ui_label">Save session</span> before closing the tab, refreshing the page, or switching to another dataset.</p>
+          <p><span class="ui_label">Save session</span> writes the analysis state needed to rebuild your workspace:</p>
+          <ul>
+            <li>The list of loaded filenames and per-file reconnect metadata such as size, content digest, modified time, and app-private cache paths.</li>
+            <li>Every metadata column and its values, plus the active filename-splitting template.</li>
+            <li>Table state: which rows are checked, the active sort, and active column filters.</li>
+            <li>Plot settings: channel, color-by, display mode, and bin count. Retired correction keys remain readable only for older-session compatibility.</li>
+            <li>Any summary statistics you've computed (so they're recomputed automatically on load).</li>
+            <li>Layout: sidebar/panel collapsed states, sidebar width, and panel heights.</li>
+          </ul>
+          <div class="callout warn">
+            <p class="callout_title">The session file is not a data archive</p>
+            <p>The <code>.toml</code> file does <strong>not</strong> embed the original FCS event data. It stores enough information to reconnect those FCS files later. Keep the session file near the FCS folder, or avoid renaming/moving the source files after saving.</p>
+          </div>
+          <p><span class="ui_label">Load session</span> reads the TOML file, restores the saved table, filename parsing, plot, statistics, and layout settings, and then tries to reconnect the original FCS files. What you see next depends on browser support and whether the files are still available:</p>
+          <ul>
+            <li><strong>Fast path: local browser cache.</strong> When supported, PhaseFinder keeps app-private working copies of loaded FCS files in persistent browser storage. Before restore, it verifies a bounded-memory SHA-256 chunk-tree digest of the complete file; filename and size are only quick prefilters.</li>
+            <li><strong>Chromium browsers with folder access.</strong> If cached copies are missing, Chrome/Edge can ask you to choose the folder containing the FCS files. PhaseFinder remembers that folder handle in browser storage; future loads may only need you to grant permissions instead of a fresh folder search.</li>
+            <li><strong>Firefox/Safari or fallback mode.</strong> Browsers without persistent folder-handle support ask you to choose the folder or select the missing files manually each time reconnect is needed.</li>
+            <li><strong>Moved, renamed, or replaced files.</strong> A manually selected renamed file is accepted when its content digest matches. A same-name, same-size file with different bytes is rejected. Older sessions without digests require an explicit manual selection; the next save records the verified digest.</li>
+            <li><strong>Continuing without missing files.</strong> The reconnect dialog has <span class="ui_label">Continue without missing</span>. Use it only when you intentionally want to open a partial session; plots and statistics can only be rebuilt for files that were successfully reconnected.</li>
+          </ul>
+          <p>Use the header's <span class="ui_label">Storage</span> control to review quota/use and session ownership, disable automatic caching before loading new files, clear this session, remove orphan candidates, or clear all PhaseFinder local data (including remembered directory access). If storage is unavailable or full, analysis still works from the files already selected, but fast automatic reload is unavailable.</p>
+          <p>When a session is only partially reconnected, the saved metadata and settings still load, but any missing FCS files cannot contribute event data, plots, model fits, or statistics until you reconnect them.</p>
+        </section>
+
+<section id="layout" class="help_section">
+          <h2>9. Layout Controls</h2>
+          <ul>
+            <li><strong>Collapse the sidebar</strong> using the arrow icon <img class="inline_icon" src="../assets/img/sidepanel_close.svg" alt="" aria-hidden="true" /> in its title bar; a slim icon rail remains for uploading files, choosing a channel, and plotting.</li>
+            <li><strong>Resize the sidebar</strong> by dragging the vertical handle between the sidebar and the workspace.</li>
+            <li><strong>Resize the plot vs. table</strong> by dragging the horizontal handle between the plot panel and the metadata table panel (only draggable while both panels are expanded).</li>
+            <li><strong>Collapse the plot panel or the table panel</strong> independently using the minimize icon <img class="inline_icon" src="../assets/img/table_minimize.svg" alt="" aria-hidden="true" /> in each panel's title bar, to focus on the other.</li>
+          </ul>
+          <p>All of the above are captured when you save a session, so a saved layout is restored along with your data.</p>
+        </section>
+
+<section id="resetting" class="help_section">
+          <h2>10. Resetting the App</h2>
+          <p>Click the PhaseFinder logo in the header to reload the page for a clean slate &mdash; this clears every loaded file, annotation, selection, filter, and plot. Save a session first if you want to keep your work.</p>
+        </section>
+
+        <nav class="help_page_nav" aria-label="Previous and next help topics">
+          <a href="./help-statistics.html">&larr; Summary Statistics</a>
+          <a href="./index.html">Help home</a>
+          <a href="./help-troubleshooting.html">Troubleshooting & Compatibility &rarr;</a>
+        </nav>
+
+        <p class="help_footer">PhaseFinder Help &mdash; <a href="./index.html">all help topics</a> &middot; <a href="../index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>

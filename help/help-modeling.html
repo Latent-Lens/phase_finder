@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Run pre-modeling QC, identify peaks, choose a model, and interpret fit results." />
+    <title>Cell-Cycle Modeling | PhaseFinder Help</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <a href="./index.html" aria-label="PhaseFinder help home"><img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" /></a>
+      <a class="help_header_title help_header_home" href="./index.html">Help Center</a>
+      <a class="help_back_link" href="../index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">Help topics</p>
+        <nav aria-label="Help topics">
+          <ol>
+            <li><a href="./index.html">Help home</a></li>
+            <li><a href="./help-getting-started.html">Getting Started</a></li>
+            <li><a href="./help-metadata.html">Metadata & Sample Table</a></li>
+            <li><a href="./help-plotting.html">Plotting Events</a></li>
+            <li><a href="./help-modeling.html" aria-current="page">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-statistics.html">Summary Statistics</a></li>
+            <li><a href="./help-sessions.html">Sessions & Layout</a></li>
+            <li><a href="./help-troubleshooting.html">Troubleshooting & Compatibility</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_breadcrumb"><a href="./index.html">Help home</a> / Cell-Cycle Modeling</p>
+        <h1>Cell-Cycle Modeling</h1>
+        <p class="help_lede">Run pre-modeling QC, identify peaks, choose a model, and interpret fit results.</p>
+
+<section id="djf-modeling" class="help_section">
+          <h2>6. Cell Cycle Modeling</h2>
+          <p>Once a channel is plotted, click <span class="ui_label">Cell Cycle Modeling</span> in the sidebar. The file and channel controls slide away and the sidebar reveals the <span class="ui_label">Pre-modeling QC Filtering</span> box (four filters: Structural, Time, Cell Gate, Singlet Gate &mdash; toggle individually or with <span class="ui_label">Run All</span>), the <span class="ui_label">Identify Peaks</span> panel, and the <span class="ui_label">Model &amp; Fit</span> panel; moving these out of the plot panel also gives the histogram more height. QC is a separate action, applied on its own before peak review. <span class="ui_label">Back</span> returns the sidebar to the file/channel controls without losing any progress.</p>
+          <p>With exactly one sample checked, <span class="ui_label">Identify Peaks</span> reviews that sample; with several checked at once, click a row in the table to choose which one it's reviewing. <span class="ui_label">Detect Peaks</span> runs automatic peak detection and proposes G1 and G2/M regions (when several samples are checked and none is singled out, it detects for all of them); the four numeric fields let you adjust each region's left/right limits directly, with inline validation if an edit breaks their ordering. <span class="ui_label">Reset</span> discards manual edits and restores the automatic proposal; <span class="ui_label">Accept</span> marks the current regions reviewed; <span class="ui_label">Apply to All</span> copies the reviewed sample's regions to every plotted sample.</p>
+          <p>In <span class="ui_label">Model &amp; Fit</span>, pick a model (Dean&ndash;Jett, Dean&ndash;Jett&ndash;Fox, Watson Pragmatic, or Automatic, which chooses between Dean&ndash;Jett and Dean&ndash;Jett&ndash;Fox) &mdash; the dropdown opens on <span class="ui_label">Model Selection&hellip;</span> so the choice is always deliberate. <span class="ui_label">Fit Current</span> fits the reviewed sample; <span class="ui_label">Fit All Samples</span> auto-detects, averages the regions across every plotted sample, and fits each. Fitted G1/S/G2&ndash;M fractions are written to the metadata table (one column group per model in use), alongside the accepted G1/G2 peak-region bounds.</p>
+          <p><strong>Watson Pragmatic</strong> is a <em>pragmatic decomposition</em>, not a likelihood fit: it estimates G1 and G2/M locally from each peak's clean (uncontaminated) flank and then takes S phase as whatever observed signal is left over. That residual S is measured <em>strictly between the two fitted peak centers</em> &mdash; signal below the G1 center (sub-G1 debris) or above the G2/M center (post-G2 aggregates) is never counted as S. Watson models no separate debris/aggregate component, so keep such contaminants outside the G1&ndash;G2/M interval. Because it is a decomposition rather than a generative model, its results are deliberately never ranked against Dean&ndash;Jett or Dean&ndash;Jett&ndash;Fox by AIC/BIC.</p>
+
+          <h3 id="pipeline-filters">Pre-modeling QC filters</h3>
+          <p>Automated preprocessing works best in layers rather than a single step: first remove acquisition artifacts over time, then apply cell-cloud (debris) gating and explicit singlet/doublet discrimination, and only then fit the histogram. Order matters because clogs, flow-rate surges, dynamic-range artifacts, and margin events distort the very populations the model is trying to quantify. PhaseFinder's four QC filters implement that order:</p>
+          <ol>
+            <li><strong>Structural QC</strong> rejects non-finite, negative, and saturated measurements while preserving original event indexes.</li>
+            <li><strong>Time QC</strong> removes unstable acquisition periods. When you switch it on, you choose a method: <strong>Robust summary QC</strong> monitors each acquisition bin's event rate, medians, and IQRs; <strong>Peak-tracking QC</strong> follows the major distribution peaks across overlapping acquisition bins and removes regions where those peaks shift abnormally. The panel then reports the method, events removed, and the acquisition regions it flagged. Use <span class="ui_label">Change&hellip;</span> to switch methods and re-run.</li>
+            <li><strong>Cell Gate</strong> fits an FSC/SSC cell-cloud gate. Drag the teal ellipse or its center marker to reposition it, hold Shift or Ctrl while dragging (or Ctrl plus Left/Right arrow when focused) to rotate it around its center, or change <span class="ui_label">Gate coverage</span> to resize it. Each edit immediately updates the mask and invalidates the histogram and any peak regions so they can be rerun with the edited gate. <span class="ui_label">Reset fitted gate</span> restores the fitted center, coverage, and rotation.</li>
+            <li><strong>Singlet Gate</strong> applies DNA pulse-geometry singlet/doublet discrimination when the required channels exist.</li>
+          </ol>
+          <p>The masked histogram is rebuilt automatically whenever QC changes, and only events within the visible x-axis range are modeled.</p>
+
+          <div class="callout">
+            <p class="callout_title">Works offline</p>
+            <p>Peak detection and nonlinear fitting are implemented in PhaseFinder's own ES modules, and D3 is vendored locally. The complete pipeline requires no runtime CDN connection.</p>
+          </div>
+        </section>
+
+        <nav class="help_page_nav" aria-label="Previous and next help topics">
+          <a href="./help-plotting.html">&larr; Plotting Events</a>
+          <a href="./index.html">Help home</a>
+          <a href="./help-statistics.html">Summary Statistics &rarr;</a>
+        </nav>
+
+        <p class="help_footer">PhaseFinder Help &mdash; <a href="./index.html">all help topics</a> &middot; <a href="../index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>
