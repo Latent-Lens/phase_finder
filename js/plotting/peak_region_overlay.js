@@ -6,14 +6,21 @@
 // constrained to a single axis, and commits straight to modeling_state.js
 // rather than routing through a modal's own gate-edit callback.
 //
-// This module never imports render.js: it dispatches "cell-cycle-regions-changed"
-// after a commit and lets main.js's listener trigger the next full re-render,
-// which is what actually redraws the handles in their committed position.
+// This module never imports render.js. Sidebar edits request a full redraw;
+// overlay edits update these live nodes and notify the rest of the UI without
+// replacing the focused slider.
+//
+// render_peak_region_overlay() draws and wires the handles; boundary_limits()
+// keeps a handle between its neighbors during a drag; get_value() and set_value()
+// read/write a boundary on the live regions.
 
 import * as d3 from "d3";
 import { get_state } from "../analysis/pipeline_state.js";
-import { update_peak_regions } from "../analysis/cell_cycle/modeling_state.js";
-import { active_peak_review_row } from "../analysis/cell_cycle/peak_review_ui.js";
+import {
+  active_peak_review_row,
+  commit_peak_region_draft,
+  current_peak_region_draft,
+} from "../analysis/cell_cycle/peak_review_ui.js";
 
 const G1_COLOR = "#2563eb";
 const G2_COLOR = "#b42318";
@@ -28,14 +35,23 @@ const BOUNDARIES = [
   { key: "g2_right", region: "g2", side: "right", color: G2_COLOR, label: "G2/M right" },
 ];
 
-function notify_regions_changed() {
-  document.dispatchEvent(new CustomEvent("cell-cycle-regions-changed"));
-}
+/*
 
-// The [min, max] a boundary may take given the other three current values,
-// enforcing G1.left < G1.right <= G2.left < G2.right live during the drag --
-// the same rule validatePeakRegions checks on commit, applied continuously so
-// a handle simply can't be dragged past its neighbor in the first place.
+Purpose:
+	The [min, max] a boundary may take given the other three current values,
+	enforcing G1.left < G1.right <= G2.left < G2.right live during the drag -- the
+	same rule validatePeakRegions checks on commit, applied continuously so a handle
+	can't be dragged past its neighbor in the first place.
+
+Input:
+	key [string]: the boundary key (g1_left/g1_right/g2_left/g2_right)
+	live [object]: the live { g1: {left,right}, g2: {left,right} } regions
+	domain [array]: the plot's [min, max] x-domain
+
+Output:
+	limits [array]: the [min, max] this boundary may take
+
+*/
 function boundary_limits(key, live, domain) {
   const [domain_min, domain_max] = domain;
   switch (key) {
@@ -47,23 +63,59 @@ function boundary_limits(key, live, domain) {
   }
 }
 
+/*
+
+Purpose:
+	Writes one boundary's value onto the live regions object.
+
+Input:
+	live [object]: the live regions
+	key [string]: the boundary key
+	value [number]: the new boundary value
+
+Output:
+	(none) [void]: mutates live in place
+
+*/
 function set_value(live, key, value) {
   const [region, side] = [key.startsWith("g1") ? "g1" : "g2", key.endsWith("left") ? "left" : "right"];
   live[region][side] = value;
 }
 
+/*
+
+Purpose:
+	Reads one boundary's current value from the live regions object.
+
+Input:
+	live [object]: the live regions
+	key [string]: the boundary key
+
+Output:
+	value [number]: the boundary's current value
+
+*/
 function get_value(live, key) {
   const region = key.startsWith("g1") ? "g1" : "g2";
   const side = key.endsWith("left") ? "left" : "right";
   return live[region][side];
 }
 
-/**
- * Draws the region handles for the currently reviewed row into `svg`, using
- * the same scales/margins/clip as the rest of the density plot. A no-op if no
- * row is being reviewed, it isn't part of the currently plotted `series`, or
- * it has no detected/edited regions yet.
- */
+/*
+
+Purpose:
+	Draws the region handles for the currently reviewed row into `svg`, using the
+	same scales/margins/clip as the rest of the density plot, and wires their
+	drag/keyboard interaction and commit. A no-op when no row is being reviewed, it
+	isn't part of the currently plotted series, or it has no regions yet.
+
+Input:
+	context [object]: { svg, series, x_scale, y_scale, margin, height, clipId }
+
+Output:
+	(none) [void]: appends the overlay group to svg
+
+*/
 export function render_peak_region_overlay({ svg, series, x_scale, y_scale, margin, height, clipId }) {
   const row = active_peak_review_row();
   if (!row) return;
@@ -71,7 +123,7 @@ export function render_peak_region_overlay({ svg, series, x_scale, y_scale, marg
   if (!entry) return;
 
   const state = get_state(row.name);
-  const regions = state?.modeling?.peakSelection?.regions;
+  const regions = current_peak_region_draft(row) ?? state?.modeling?.peakSelection?.regions;
   if (!regions) return;
 
   const top = margin.top;
@@ -152,14 +204,15 @@ export function render_peak_region_overlay({ svg, series, x_scale, y_scale, marg
         .attr("width", 14)
         .attr("height", Math.max(0, bottom - top))
         .attr("aria-valuenow", get_value(live, key).toFixed(2))
-        .attr("aria-valuetext", `${get_value(live, key).toFixed(2)}`);
+        .attr("aria-valuetext", `${get_value(live, key).toFixed(2)} channel units; allowed ${boundary_limits(key, live, domain)[0].toFixed(2)} to ${boundary_limits(key, live, domain)[1].toFixed(2)}`)
+        .attr("aria-valuemin", boundary_limits(key, live, domain)[0].toFixed(2))
+        .attr("aria-valuemax", boundary_limits(key, live, domain)[1].toFixed(2));
     });
   };
 
   const commit = () => {
     try {
-      update_peak_regions(row, { g1: { ...live.g1 }, g2: { ...live.g2 } }, { source: "manual", minimumGap: -0.01 });
-      notify_regions_changed();
+      if (!commit_peak_region_draft(row, live, { preserveOverlay: true })) throw new Error("Invalid peak regions");
     } catch (_) {
       // A programming error in the live-clamped bounds above would land
       // here; silently re-sync to the last committed regions rather than
@@ -194,10 +247,8 @@ export function render_peak_region_overlay({ svg, series, x_scale, y_scale, marg
       .attr("fill", "transparent")
       .attr("tabindex", 0)
       .attr("role", "slider")
-      .attr("aria-orientation", "vertical")
+      .attr("aria-orientation", "horizontal")
       .attr("aria-label", `${label} peak region boundary for ${row.name}. Use arrow keys for small movements and Shift plus arrow for larger movements.`)
-      .attr("aria-valuemin", domain[0].toFixed(2))
-      .attr("aria-valuemax", domain[1].toFixed(2))
       .style("cursor", "ew-resize");
 
     let drag_offset = 0;

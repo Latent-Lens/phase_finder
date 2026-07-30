@@ -92,7 +92,6 @@ export function init_plot_toolbar() {
     plot_export_modal.querySelector("#plot_export_download").addEventListener("click", submit_plot_export);
     plot_export_modal.addEventListener("keydown", (event) => {
       if (event.key === "Escape") close_plot_export_modal();
-      else if (event.key === "Enter") submit_plot_export();
     });
   }
 }

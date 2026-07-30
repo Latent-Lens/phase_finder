@@ -1,4 +1,4 @@
-// Plot title, staged-DJF fit-summary presentation, and plot initialization.
+// Plot title, DJF fit-summary presentation, and plot initialization.
 
 import {
   plot_title,
@@ -86,7 +86,7 @@ export function render_fit_results_table(fits, placement = {}) {
       .join("");
     // Canonical models (Dean-Jett, DJF, Watson, Auto) carry their fit warnings
     // on the series entry itself (fit.warnings, each {code, severity, message});
-    // the legacy pipeline instead reports through its Stage 8 report below. Show
+    // the legacy pipeline instead reports through its fit report below. Show
     // the actual warning messages here in the top-right overlay so the user sees
     // what a fit flagged, not just a count in the sidebar.
     const model_warnings = !fit.pipelineState?.report && Array.isArray(fit.warnings) ? fit.warnings : [];
