@@ -28,10 +28,11 @@ import {
   metadata_split_steps,
   metadata_add_split_step,
   metadata_column_editor,
+  assert_required_dom,
 } from "./ui/dom.js";
 import { get_file_table, set_file_table } from "./state/app_state.js";
 import { get_file_by_id, get_parsed_files, get_selected_files } from "./state/files.js";
-import { TABLE_COLUMNS, sync_file_annotations, loaded_file_count } from "./data_structs/table_state.js";
+import { TABLE_COLUMNS, sync_file_annotations } from "./data_structs/table_state.js";
 import { add_manual_metadata_column } from "./data_structs/metadata_columns.js";
 import { init_tooltips, Tooltips } from "./ui/hover_text.js";
 import {
@@ -90,9 +91,17 @@ import { get_pipeline } from "./analysis/pipeline_loader.js";
 import { init_stats } from "./analysis/stats.js";
 import { init_panel_resize } from "./ui/panel_resize.js";
 import { init_remove_columns } from "./ui/column_remove.js";
-import { init_session } from "./session/core.js";
+import { init_session, collect_session_toml, get_restore_summary } from "./session/core.js";
+import {
+  get_time_qc_state,
+  time_qc_method_options,
+  reset_time_qc_state,
+} from "./analysis/time_qc_settings.js";
 import { get_modeling_session_state, apply_modeling_session } from "./session/modeling_session.js";
-import { init_unload_guard, suppress_next_unload_warning } from "./session/unload_guard.js";
+import { init_unload_guard } from "./session/unload_guard.js";
+import { init_draggable_modals } from "./ui/draggable_modal.js";
+import { init_modal_focus } from "./ui/modal_focus.js";
+import { init_compatibility } from "./ui/compatibility.js";
 
 /*
 
@@ -144,22 +153,6 @@ function open_file_browser() {
 
 function set_upload_target_dragging(target, is_dragging) {
   target.classList.toggle("dragging", is_dragging);
-}
-
-// The logo reloads the page for a clean start. Unlike a real back/forward/
-// refresh navigation, this is our own JS-triggered action, so we can show our
-// own wording instead of the browser's generic "leave site?" text -- and
-// since window.location.reload() is itself a real navigation, it would
-// trigger the beforeunload guard (see unload_guard.js) a second time right
-// after the user already answered this one, so we suppress that.
-function hard_restart() {
-  if (loaded_file_count() > 0 && !window.confirm(
-    "Reload PhaseFinder? Any unsaved session changes will be lost.",
-  )) {
-    return;
-  }
-  suppress_next_unload_warning();
-  window.location.reload();
 }
 
 // ── Debug hook API surface (window.PhaseFinder.app) ──────────────────────────
@@ -245,7 +238,6 @@ function init_app_bootstrap() {
     });
   });
 
-  document.querySelector("#site_logo").addEventListener("click", hard_restart);
   file_table.addEventListener("input", update_annotation);
   file_table.addEventListener("change", handle_table_change);
   file_table.addEventListener("click", handle_table_click);
@@ -279,7 +271,9 @@ function init_app_bootstrap() {
   // A peak-region edit (sidebar or plot-overlay drag) commits straight to
   // pipeline state without going through the plot; re-render so the overlay
   // (and the sidebar, which also listens for this) reflect it immediately.
-  document.addEventListener("cell-cycle-regions-changed", render_density_plot);
+  document.addEventListener("cell-cycle-regions-changed", (event) => {
+    if (!event.detail?.preserveOverlay) render_density_plot();
+  });
 
   clear_channel_controls();
   render_file_table();
@@ -290,12 +284,13 @@ function init_app_bootstrap() {
 
 // ── Ordered bootstrap (replaces the old <script> load-order contract) ─────────
 
+assert_required_dom();      // fail at startup with the exact missing required bindings
 init_tooltips();            // ui/hover_text.js tooltip runtime
 init_app_bootstrap();       // main.js event wiring + initial render
 init_plot_listeners();      // plotting/axis_modal.js listener block
 init_plot_toolbar();        // plotting/plot_toolbar.js pan/zoom/export icon strip
 init_analysis_listeners();  // analysis/start.js listener block
-init_pipeline_ui();         // analysis/pipeline_ui.js manual stage controls
+init_pipeline_ui();         // analysis/pipeline_ui.js manual pipeline controls
 init_peak_review_ui();      // analysis/cell_cycle/peak_review_ui.js Identify Peaks panel
 init_modeling_ui();         // analysis/cell_cycle/modeling_ui.js Model & Fit panel
 init_bin_settings_sync();   // analysis/cell_cycle/bin_settings_sync.js Bins-change invalidation + hint
@@ -305,8 +300,15 @@ init_panel_resize();        // ui/panel_resize.js drag handlers
 init_remove_columns();      // ui/column_remove.js remove-columns mode
 init_session();             // session/core.js wiring + deferred try_autoload
 init_unload_guard();        // session/unload_guard.js beforeunload wiring
+init_draggable_modals();    // ui/draggable_modal.js drag-to-move for every modal card
+init_modal_focus();         // ui/modal_focus.js focus trap, background inertness, focus return
+init_compatibility();       // ui/compatibility.js required/optional startup capability report
+document.querySelector("#status_diagnostics_copy")?.addEventListener("click", async () => {
+  const text = document.querySelector("#status_diagnostics_log")?.textContent || "";
+  if (text) await navigator.clipboard?.writeText(text).catch(() => {});
+});
 
-// The single documented debug/automation/test hook. The staged pipeline is
+// The single documented debug/automation/test hook. The cell-cycle pipeline is
 // lazy-loaded by its manual controls; `djf` remains a compatibility alias.
 window.PhaseFinder = {
   app: app_api,
@@ -315,5 +317,19 @@ window.PhaseFinder = {
   plot: plot_api,
   // Session modeling persistence (recompute-on-reload): collect the saveable
   // config and re-apply it. Surfaced for the E2E round-trip test.
-  session: { collect_modeling: get_modeling_session_state, apply_modeling: apply_modeling_session },
+  session: {
+    collect_modeling: get_modeling_session_state,
+    apply_modeling: apply_modeling_session,
+    // The serialized session text, so the E2E suite can assert what actually
+    // lands in the file (e.g. the Time QC method and algorithm version).
+    collect_toml: collect_session_toml,
+    restore_summary: get_restore_summary,
+  },
+  // Time QC method selection (robust summary vs peak tracking). Exposed so the
+  // E2E suite can read and reset it without driving the dialog every time.
+  time_qc: {
+    get state() { return get_time_qc_state(); },
+    get options() { return time_qc_method_options(); },
+    reset: reset_time_qc_state,
+  },
 };

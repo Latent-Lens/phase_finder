@@ -17,7 +17,18 @@
         }
       }
     </script>
-    <link rel="modulepreload" href="./js/main.js" />
+    <!--
+      Resource hints ordered by when the app is likely to need each file. There
+      is no build step, so these paths are the exact files the browser fetches.
+      main.js (above) and its static import graph load first. d3 is the single
+      largest dependency (~280 kB) and every render needs it, so preload it up
+      front to fetch it in parallel with main.js instead of after discovery.
+      Workers and the lazily-imported modeling pipeline are pulled in only by
+      later user actions. The last two icons are swapped in by JS on the first
+      panel toggle, so prefetching removes the flash on first collapse/restore.
+    -->
+    <link rel="prefetch" href="./assets/img/sidepanel_open.svg" />
+    <link rel="prefetch" href="./assets/img/table_restore.svg" />
     <link rel="stylesheet" href="./css/base.css" />
     <link rel="stylesheet" href="./css/layout.css" />
     <link rel="stylesheet" href="./css/sidebar.css" />
@@ -26,15 +37,15 @@
     <link rel="stylesheet" href="./css/feedback.css" />
     <link rel="stylesheet" href="./css/responsive.css" />
 
-    <link rel="apple-touch-icon" sizes="180x180" href="/assets/img/favicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/assets/img/favicon/favicon-16x16.png">
-    <link rel="manifest" href="/assets/img/favicon/site.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/img/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/img/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./assets/img/favicon/favicon-16x16.png">
+    <link rel="manifest" href="./assets/img/favicon/site.webmanifest">
   </head>
   <body>
     <header class="page_header">
       <div class="header_brand">
-        <img id="site_logo" class="site_logo" src="./assets/img/logo.png" alt="PhaseFinder" data-title-key="reloadLogo" />
+        <img id="site_logo" class="site_logo" src="./assets/img/logo.png" alt="PhaseFinder" />
       </div>
       <div class="header_actions">
         <fieldset class="session_control_group">
@@ -56,6 +67,13 @@
             Save
           </button>
           <button
+            id="cache_manager_button"
+            class="help_link"
+            type="button"
+          >
+            Storage
+          </button>
+          <button
             id="reset_session_button"
             class="reset_session_button quick_tooltip"
             type="button"
@@ -66,6 +84,28 @@
         </fieldset>
       </div>
     </header>
+
+    <div id="cache_manager_modal" class="stats_modal" hidden role="dialog" aria-modal="true" aria-labelledby="cache_manager_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card cache_manager_card">
+        <div class="stats_modal_header">
+          <h3 id="cache_manager_title" class="stats_modal_title">Local FCS storage</h3>
+          <button id="cache_manager_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="stats_modal_body">
+          <p>PhaseFinder keeps browser-private FCS copies for fast session reload. They are not uploaded. Reloading the logo retains catalogued copies; Reset releases this session's copies.</p>
+          <p>Your browser may grant PhaseFinder persistent storage to reduce automatic eviction. Its current usage and quota appear below.</p>
+          <label><input id="cache_manager_automatic" type="checkbox" /> Automatically cache newly loaded FCS files</label>
+          <p id="cache_manager_summary" aria-live="polite">Checking browser storage…</p>
+          <ul id="cache_manager_list" class="cache_manager_list"></ul>
+          <div class="stats_modal_actions cache_manager_actions">
+            <button id="cache_manager_clear_session" type="button" class="secondary_button">Clear this session</button>
+            <button id="cache_manager_clear_orphans" type="button" class="secondary_button">Clear orphan candidates</button>
+            <button id="cache_manager_clear_all" type="button" class="danger_button">Clear all local data</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <main class="app">
       <aside id="sidebar" class="sidebar panel">
@@ -84,18 +124,19 @@
               <label id="loaded_files_label" for="loaded_files_list">Loaded FCS files (0)</label>
               <textarea id="loaded_files_list" class="loaded_files_list" readonly wrap="off" spellcheck="false"></textarea>
             </div>
-            <div id="drop_zone" class="drop_zone">
+            <button id="drop_zone" class="drop_zone" type="button" aria-controls="file_input" aria-describedby="drop_zone_hint" aria-label="Choose or drop one or more FCS files">
               <div>
                 <strong id="drop_zone_title">Drop FCS files here</strong>
                 <span id="drop_zone_hint">or click to choose files from disk</span>
               </div>
-            </div>
+            </button>
           </section>
 
           <section class="sidebar_section controls">
             <div>
               <label for="channel_select">Select channel</label>
-              <select id="channel_select"></select>
+              <select id="channel_select" aria-describedby="channel_eligibility_status"></select>
+              <p id="channel_eligibility_status" class="channel_eligibility_status" hidden></p>
             </div>
             <p id="status" class="status">No files loaded.</p>
             <div id="channel_aux_panel" class="channel_aux_panel" hidden>
@@ -125,13 +166,22 @@
               <legend>Pre-modeling QC Filtering</legend>
               <div class="qc_gate_grid">
                 <div class="qc_gate_buttons_2x2">
-                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage0" data-tooltip-key="qcStructural" aria-pressed="false">1. Structural</button>
-                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage1" data-tooltip-key="qcTime" aria-pressed="false">2. Time</button>
-                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage2" data-tooltip-key="qcCellGate" aria-pressed="false">3. Cell Gate</button>
-                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_stage3" data-tooltip-key="qcSingletGate" aria-pressed="false">4. Singlet Gate</button>
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_structural" data-tooltip-key="qcStructural" aria-pressed="false">1. Structural</button>
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_time" data-tooltip-key="qcTime" aria-pressed="false">2. Time</button>
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_cellgate" data-tooltip-key="qcCellGate" aria-pressed="false">3. Cell Gate</button>
+                  <button type="button" class="qc_gate_button quick_tooltip" id="qc_singlet" data-tooltip-key="qcSingletGate" aria-pressed="false">4. Singlet Gate</button>
                 </div>
-                <button type="button" class="qc_gate_button qc_gate_run_all quick_tooltip" id="qc_stage_all" data-tooltip-key="qcRunAll" aria-pressed="false">Run All</button>
+                <button type="button" class="qc_gate_button qc_gate_run_all quick_tooltip" id="qc_filter_all" data-tooltip-key="qcRunAll" aria-pressed="false">Run All</button>
               </div>
+              <p id="structural_qc_line" class="time_qc_method_line" hidden>
+                Structural QC: <strong id="structural_qc_summary_name">Default saturation ceilings</strong>
+                <button type="button" id="structural_qc_edit" class="time_qc_method_edit quick_tooltip" data-tooltip-key="structuralQcEdit">Change…</button>
+              </p>
+              <p id="time_qc_method_line" class="time_qc_method_line" hidden>
+                Time QC method: <strong id="time_qc_method_name">Robust summary QC</strong>
+                <button type="button" id="time_qc_method_edit" class="time_qc_method_edit quick_tooltip" data-tooltip-key="timeQcMethodEdit">Change…</button>
+              </p>
+              <div id="time_qc_summary" class="time_qc_summary" hidden></div>
             </fieldset>
             <fieldset class="peak_review_group" id="peak_review_group">
               <legend>Identify Peaks</legend>
@@ -143,22 +193,22 @@
               <div class="peak_region_grid">
                 <label class="peak_region_field">
                   <span>G1 Left</span>
-                  <input type="number" id="peak_region_g1_left" class="peak_region_input" step="any" disabled />
+                  <input type="number" id="peak_region_g1_left" class="peak_region_input" step="any" aria-describedby="peak_region_error" disabled />
                 </label>
                 <label class="peak_region_field">
                   <span>G1 Right</span>
-                  <input type="number" id="peak_region_g1_right" class="peak_region_input" step="any" disabled />
+                  <input type="number" id="peak_region_g1_right" class="peak_region_input" step="any" aria-describedby="peak_region_error" disabled />
                 </label>
                 <label class="peak_region_field">
                   <span>G2/M Left</span>
-                  <input type="number" id="peak_region_g2_left" class="peak_region_input" step="any" disabled />
+                  <input type="number" id="peak_region_g2_left" class="peak_region_input" step="any" aria-describedby="peak_region_error" disabled />
                 </label>
                 <label class="peak_region_field">
                   <span>G2/M Right</span>
-                  <input type="number" id="peak_region_g2_right" class="peak_region_input" step="any" disabled />
+                  <input type="number" id="peak_region_g2_right" class="peak_region_input" step="any" aria-describedby="peak_region_error" disabled />
                 </label>
               </div>
-              <p id="peak_region_error" class="peak_region_error" hidden></p>
+              <p id="peak_region_error" class="peak_region_error" role="alert" hidden></p>
               <div class="peak_review_footer_actions">
                 <button type="button" id="peak_regions_reset_button" class="peak_review_button quick_tooltip" data-tooltip-key="resetPeakRegions" disabled>Reset</button>
                 <button type="button" id="peak_regions_accept_button" class="peak_review_button quick_tooltip" data-tooltip-key="acceptPeakRegions" disabled>Accept</button>
@@ -170,16 +220,29 @@
               <label class="cell_cycle_model_field">
                 <span class="cell_cycle_model_label">Model</span>
                 <select id="cell_cycle_model_select" class="cell_cycle_model_select quick_tooltip" data-tooltip-key="cellCycleModelSelect">
+                  <option value="" selected>Model Selection…</option>
                   <option value="auto_dj_djf">Automatic — Dean–Jett / Dean–Jett–Fox</option>
                   <option value="dean_jett">Dean–Jett</option>
                   <option value="dean_jett_fox">Dean–Jett–Fox</option>
                   <option value="watson_pragmatic">Watson Pragmatic</option>
-                  <option value="cloccs" disabled>CLOCCS (joint time-series — coming soon)</option>
+                  <option value="watson_classic">Watson Classic</option>
+                  <option value="cloccs">CLOCCS (Unverified)</option>
                 </select>
               </label>
+              <div id="cloccs_mapping" class="cloccs_mapping" hidden>
+                <p class="cloccs_mapping_intro">CLOCCS fits each strain's timepoints together. Map the metadata columns that hold each sample's timepoint and (optionally) strain — the same columns the metadata table already shows.</p>
+                <label class="cloccs_mapping_field">
+                  <span>Timepoint column</span>
+                  <select id="cloccs_timepoint_column"></select>
+                </label>
+                <label class="cloccs_mapping_field">
+                  <span>Strain column (optional)</span>
+                  <select id="cloccs_strain_column"></select>
+                </label>
+              </div>
               <div class="peak_review_actions">
                 <button type="button" id="cell_cycle_fit_current_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitCurrentModel" disabled>Fit Current</button>
-                <button type="button" id="cell_cycle_fit_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitAllReviewed" disabled>Auto-Fit All</button>
+                <button type="button" id="cell_cycle_fit_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitAllReviewed" disabled>Fit All Samples</button>
               </div>
               <p id="cell_cycle_fit_status" class="peak_review_status" role="status" hidden></p>
               <div id="cell_cycle_fit_result" class="cell_cycle_fit_result" hidden></div>
@@ -224,7 +287,7 @@
             </button>
           </section>
         </div>
-        <input id="file_input" class="visually_hidden_file" type="file" accept=".fcs" multiple />
+        <input id="file_input" class="visually_hidden_file" type="file" accept=".fcs" multiple aria-label="Choose one or more FCS files" />
         <div class="sidebar_collapsed_actions">
           <button id="collapsed_upload_target" class="sidebar_collapsed_upload_target quick_tooltip" type="button" data-tooltip-key="uploadFiles" aria-label="Drop FCS files here or click to choose files from disk">
             <img class="sidebar_collapsed_upload_icon" src="./assets/img/file_upload.svg" alt="" aria-hidden="true" />
@@ -245,13 +308,35 @@
         </div>
       </aside>
 
-      <div id="sidebar_resizer" class="sidebar_resizer" aria-hidden="true"></div>
+      <div id="sidebar_resizer" class="sidebar_resizer" role="separator" tabindex="0"
+           aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin="150"
+           aria-valuenow="320" aria-keyshortcuts="ArrowLeft ArrowRight PageUp PageDown Home End Enter"></div>
 
       <section class="workspace">
         <section id="plot_panel" class="panel parsed_files_panel plot_panel" hidden>
           <div class="panel_title">
             <div class="metadata_title_row">
               <span class="metadata_title_text" id="plot_title">Histogram of Events</span>
+              <div id="plot_toolbar" class="plot_toolbar" role="toolbar" aria-label="Plot tools">
+                <button id="plot_tool_camera" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolCamera" aria-label="Download plot or analysis report">
+                  <img class="plot_tool_icon" src="./assets/img/plot_icons/camera.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="plot_tool_pan" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolPan" aria-label="Pan" aria-pressed="true">
+                  <img class="plot_tool_icon" src="./assets/img/plot_icons/pan.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="plot_tool_zoom_in" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolZoomIn" aria-label="Zoom in" aria-pressed="false">
+                  <img class="plot_tool_icon" src="./assets/img/plot_icons/zoom_plus.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="plot_tool_zoom_out" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolZoomOut" aria-label="Zoom out" aria-pressed="false">
+                  <img class="plot_tool_icon" src="./assets/img/plot_icons/zoom_minus.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="plot_tool_autoscale" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolAutoscale" aria-label="Autoscale">
+                  <img class="plot_tool_icon" src="./assets/img/plot_icons/autoscale.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="plot_tool_home" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolHome" aria-label="Reset axes">
+                  <img class="plot_tool_icon" src="./assets/img/plot_icons/home.svg" alt="" aria-hidden="true" />
+                </button>
+              </div>
               <button id="plot_panel_toggle" class="panel_icon_toggle quick_tooltip" type="button" aria-expanded="true" aria-controls="plot_panel_body" data-tooltip-key="plotCollapse" aria-label="Collapse plot">
                 <img id="plot_panel_toggle_icon" class="panel_toggle_icon" src="./assets/img/table_minimize.svg" alt="" aria-hidden="true" />
               </button>
@@ -267,14 +352,22 @@
                 </select>
               </label>
               <div class="plot_control plot_bins_control">
-                <span class="plot_bins_control_top">Bins <strong id="plot_bins_value">256</strong></span>
-                <input id="plot_bins" class="plot_bins_slider" type="range" min="0" max="3" step="1" value="1"
-                       aria-label="Histogram bin count" />
-                <div id="plot_bins_ticks" class="plot_bins_ticks" aria-hidden="true">
-                  <span class="plot_bins_tick" data-index="0" style="left:0%">128</span>
-                  <span class="plot_bins_tick" data-index="1" style="left:33.333%">256</span>
-                  <span class="plot_bins_tick" data-index="2" style="left:66.667%">512</span>
-                  <span class="plot_bins_tick" data-index="3" style="left:100%">1024</span>
+                <span class="plot_bins_control_top">Bins: <strong id="plot_bins_value">256</strong></span>
+                <div id="plot_bins_slider_wrap" class="plot_bins_slider_wrap">
+                  <span class="plot_bins_rail" aria-hidden="true"></span>
+                  <span class="plot_bins_rail_fill" aria-hidden="true"></span>
+                  <span class="plot_bins_stop" data-index="0" style="--f:0" aria-hidden="true"></span>
+                  <span class="plot_bins_stop" data-index="1" style="--f:0.33333" aria-hidden="true"></span>
+                  <span class="plot_bins_stop" data-index="2" style="--f:0.66667" aria-hidden="true"></span>
+                  <span class="plot_bins_stop" data-index="3" style="--f:1" aria-hidden="true"></span>
+                  <input id="plot_bins" class="plot_bins_slider" type="range" min="0" max="3" step="1" value="1"
+                         aria-label="Histogram bin count" />
+                  <div id="plot_bins_ticks" class="plot_bins_ticks" aria-hidden="true">
+                    <span class="plot_bins_tick" data-index="0" style="--f:0"><span>128</span></span>
+                    <span class="plot_bins_tick" data-index="1" style="--f:0.33333"><span>256</span></span>
+                    <span class="plot_bins_tick" data-index="2" style="--f:0.66667"><span>512</span></span>
+                    <span class="plot_bins_tick" data-index="3" style="--f:1"><span>1024</span></span>
+                  </div>
                 </div>
               </div>
               <button id="plot_bins_undo" class="plot_bins_undo" type="button" hidden
@@ -293,32 +386,14 @@
                 </select>
               </label>
             </div>
-            <div id="plot_toolbar" class="plot_toolbar" role="toolbar" aria-label="Plot tools">
-              <button id="plot_tool_camera" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolCamera" aria-label="Download plot image">
-                <img src="./assets/img/plot_icons/camera.svg" alt="" aria-hidden="true" />
-              </button>
-              <button id="plot_tool_pan" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolPan" aria-label="Pan" aria-pressed="true">
-                <img src="./assets/img/plot_icons/pan.svg" alt="" aria-hidden="true" />
-              </button>
-              <button id="plot_tool_zoom_in" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolZoomIn" aria-label="Zoom in" aria-pressed="false">
-                <img src="./assets/img/plot_icons/zoom_plus.svg" alt="" aria-hidden="true" />
-              </button>
-              <button id="plot_tool_zoom_out" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolZoomOut" aria-label="Zoom out" aria-pressed="false">
-                <img src="./assets/img/plot_icons/zoom_minus.svg" alt="" aria-hidden="true" />
-              </button>
-              <button id="plot_tool_autoscale" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolAutoscale" aria-label="Autoscale">
-                <img src="./assets/img/plot_icons/autoscale.svg" alt="" aria-hidden="true" />
-              </button>
-              <button id="plot_tool_home" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolHome" aria-label="Reset axes">
-                <img src="./assets/img/plot_icons/home.svg" alt="" aria-hidden="true" />
-              </button>
-            </div>
             <div id="plot_area" class="table_wrap"></div>
             </div>
           </div>
         </section>
 
-        <div id="workspace_resizer" class="workspace_resizer" aria-hidden="true"></div>
+        <div id="workspace_resizer" class="workspace_resizer" role="separator" tabindex="0"
+             aria-label="Resize plot and metadata panels" aria-orientation="horizontal" aria-valuemin="50"
+             aria-keyshortcuts="ArrowUp ArrowDown PageUp PageDown Home End Enter"></div>
 
         <section id="metadata_panel" class="panel parsed_files_panel">
           <div class="panel_title metadata_title">
@@ -514,7 +589,12 @@
               </label>
             </div>
           </div>
-          <p class="axis_range_hint">Leave a field empty to use the current auto-scaled value.</p>
+          <label class="axis_range_hint">
+            <input id="axis_range_analysis_domain" type="checkbox" />
+            Use the X limits as the scientific analysis domain. This excludes events outside the limits and invalidates peak/model results.
+          </label>
+          <p class="axis_range_hint">Leave a field empty to use the current auto-scaled display value. Pan and zoom are always display-only.</p>
+          <p id="axis_range_error" class="axis_range_error" role="alert" hidden></p>
           <div class="stats_modal_actions axis_range_actions">
             <button id="axis_range_reset" type="button" class="secondary_button">Reset</button>
             <button id="axis_range_cancel" type="button" class="secondary_button">Cancel</button>
@@ -524,14 +604,159 @@
       </div>
     </div>
 
+    <div id="time_qc_method_modal" class="stats_modal time_qc_method_modal" hidden role="dialog" aria-modal="true" aria-labelledby="time_qc_method_modal_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card time_qc_method_card">
+        <div class="stats_modal_header">
+          <h3 id="time_qc_method_modal_title" class="stats_modal_title">2. Time QC Method</h3>
+          <button id="time_qc_method_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="stats_modal_body">
+          <fieldset class="time_qc_method_group">
+            <legend>Time QC method</legend>
+            <label class="time_qc_method_option">
+              <input type="radio" name="time_qc_method" value="robust-summary" checked />
+              <span>
+                <strong>Robust summary QC</strong>
+                <em>Tracks event rate, medians, and IQRs in acquisition bins. Fast, and the method PhaseFinder has always used.</em>
+              </span>
+            </label>
+            <label class="time_qc_method_option">
+              <input type="radio" name="time_qc_method" value="peak-tracking" />
+              <span>
+                <strong>Peak-tracking QC</strong>
+                <em>Follows major distribution peaks across overlapping acquisition bins and removes time regions where those peaks shift abnormally. More sensitive to population shifts that barely move a median; slower, and can be aggressive when a channel genuinely changes during acquisition.</em>
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset class="time_qc_method_group">
+            <legend>Channels to evaluate</legend>
+            <div id="time_qc_channels" class="time_qc_channel_row"></div>
+            <label class="time_qc_checkbox">
+              <input type="checkbox" id="time_qc_event_rate" checked />
+              <span>Include event-rate checks for the selected method</span>
+            </label>
+          </fieldset>
+
+          <details id="time_qc_advanced" class="time_qc_advanced">
+            <summary>Advanced settings</summary>
+            <p class="time_qc_advanced_intro">
+              These defaults are tuned for typical acquisitions — you do not need
+              to change them. Adjust only if you know the reason to; each field
+              lists what it does and its default. Use <strong>Reset defaults</strong>
+              to return every value to the shipped setting.
+            </p>
+            <div id="time_qc_robust_settings" class="time_qc_settings_grid">
+              <label class="time_qc_field">
+                <span>Target events per bin</span>
+                <input type="number" id="time_qc_target_bin_size" min="50" step="50" />
+                <small class="time_qc_hint">How many events each acquisition bin holds. Larger bins are smoother and less sensitive to brief blips. Default 500.</small>
+              </label>
+              <label class="time_qc_field">
+                <span>Robust z-score threshold</span>
+                <input type="number" id="time_qc_z_threshold" min="1" max="20" step="0.5" />
+                <small class="time_qc_hint">How far a bin's rate/median/IQR must deviate from the run to be rejected. Lower is stricter. Default 4.</small>
+              </label>
+            </div>
+            <div id="time_qc_peak_settings" class="time_qc_settings_grid" hidden>
+              <label class="time_qc_field">
+                <span>Minimum events per bin</span>
+                <input type="number" id="time_qc_min_events" min="20" step="10" />
+                <small class="time_qc_hint">Smallest bin the peak-density estimate is trusted on. Default 150.</small>
+              </label>
+              <label class="time_qc_field">
+                <span>Maximum number of bins</span>
+                <input type="number" id="time_qc_max_bins" min="10" step="10" />
+                <small class="time_qc_hint">Caps how finely acquisition time is sliced, so very large files stay fast. Default 500.</small>
+              </label>
+              <label class="time_qc_field">
+                <span>Bin overlap</span>
+                <input type="number" id="time_qc_overlap" min="0" max="0.95" step="0.05" />
+                <small class="time_qc_hint">Fraction each bin shares with the next, for smoother peak tracks. 0–0.95. Default 0.5.</small>
+              </label>
+              <label class="time_qc_field">
+                <span>Minimum relative peak height</span>
+                <input type="number" id="time_qc_peak_height" min="0.05" max="0.95" step="0.01" />
+                <small class="time_qc_hint">Density peaks shorter than this fraction of the tallest are ignored as noise. Default 0.33.</small>
+              </label>
+              <label class="time_qc_field">
+                <span>Isolation-tree gain threshold</span>
+                <input type="number" id="time_qc_tree_gain" min="0" max="1" step="0.05" />
+                <small class="time_qc_hint">How strong an anomaly split must be to flag bins. Higher flags fewer. Default 0.6.</small>
+              </label>
+              <label class="time_qc_field">
+                <span>MAD multiplier</span>
+                <input type="number" id="time_qc_mad_multiplier" min="1" max="50" step="0.5" />
+                <small class="time_qc_hint">Bins more than this many robust deviations from the track are rejected. Lower is stricter. Default 6.</small>
+              </label>
+              <label class="time_qc_field">
+                <span>Minimum surviving run (bins)</span>
+                <input type="number" id="time_qc_min_run" min="1" step="1" />
+                <small class="time_qc_hint">Discards isolated kept stretches shorter than this many bins. Default 5.</small>
+              </label>
+              <label class="time_qc_checkbox time_qc_field_wide">
+                <input type="checkbox" id="time_qc_isolation_tree" />
+                <span>Use isolation-tree filtering when there are enough bins</span>
+              </label>
+            </div>
+          </details>
+
+          <p id="time_qc_method_note" class="time_qc_method_note"></p>
+        </div>
+        <div class="stats_modal_actions">
+          <button id="time_qc_method_reset" type="button" class="secondary_button">Reset defaults</button>
+          <button id="time_qc_method_cancel" type="button" class="secondary_button">Cancel</button>
+          <button id="time_qc_method_apply" type="button">Run Time QC</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="structural_qc_modal" class="stats_modal structural_qc_modal" hidden role="dialog" aria-modal="true" aria-labelledby="structural_qc_modal_title">
+      <div class="stats_modal_backdrop"></div>
+      <div class="stats_modal_card structural_qc_card">
+        <div class="stats_modal_header">
+          <h3 id="structural_qc_modal_title" class="stats_modal_title">1. Structural QC Settings</h3>
+          <button id="structural_qc_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="stats_modal_body">
+          <p class="structural_qc_intro">
+            Structural QC always rejects non-finite or negative readings. For the DNA-content channels
+            it also rejects any event at or above a saturation ceiling, normally read straight from the
+            FCS file's own recorded detector range ($PnR) for that channel. If a channel was repurposed
+            as the DNA-content proxy, that recorded range can be stale or simply wrong — low enough to
+            reject an entire real population (e.g. G2/M) as if it had saturated the detector, even when
+            the raw histogram shows a clean, unclipped peak.
+          </p>
+          <fieldset class="structural_qc_ceiling_group time_qc_method_group">
+            <legend>DNA saturation ceiling</legend>
+            <div id="structural_qc_ceiling_rows" class="structural_qc_ceiling_rows"></div>
+          </fieldset>
+          <p id="structural_qc_note" class="time_qc_method_note"></p>
+          <div class="stats_modal_actions">
+            <button id="structural_qc_reset" type="button" class="secondary_button">Reset defaults</button>
+            <button id="structural_qc_cancel" type="button" class="secondary_button">Cancel</button>
+            <button id="structural_qc_apply" type="button">Run Structural QC</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="plot_export_modal" class="stats_modal plot_export_modal" hidden role="dialog" aria-modal="true" aria-labelledby="plot_export_modal_title">
       <div class="stats_modal_backdrop"></div>
       <div class="stats_modal_card plot_export_card">
         <div class="stats_modal_header">
-          <h3 id="plot_export_modal_title" class="stats_modal_title">Download Plot Image</h3>
+          <h3 id="plot_export_modal_title" class="stats_modal_title">Download Plot or Report</h3>
           <button id="plot_export_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
         </div>
         <div class="stats_modal_body">
+          <fieldset class="plot_export_group">
+            <legend>Analysis report</legend>
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="html" />
+              <span><strong>HTML report</strong> — metadata table and the plotted fits, printable to PDF</span>
+            </label>
+          </fieldset>
           <fieldset class="plot_export_group">
             <legend>Vector (scales to any size, editable)</legend>
             <label class="plot_export_option">
@@ -562,7 +787,7 @@
               </select>
             </label>
           </fieldset>
-          <p id="plot_export_error" class="plot_export_error" hidden></p>
+          <p id="plot_export_error" class="plot_export_error" role="alert" aria-live="assertive" hidden></p>
           <div class="stats_modal_actions">
             <button id="plot_export_cancel" type="button" class="secondary_button">Cancel</button>
             <button id="plot_export_download" type="button">Download</button>
@@ -590,7 +815,7 @@
         <div class="stats_modal_body djf_scatter_body">
           <div class="djf_scatter_tools">
             <p id="djf_scatter_instructions" class="djf_scatter_instructions">
-              Drag the teal ellipse or its center marker to move the cell gate; hold Shift or Ctrl while dragging to rotate it around its center. Change coverage to resize it. Edits apply to downstream stages.
+              Drag the teal ellipse or its center marker to move the cell gate; hold Shift or Ctrl while dragging to rotate it around its center. Change coverage to resize it. Edits update the histogram and any peaks or fits.
             </p>
             <div class="djf_scatter_controls">
               <label for="djf_scatter_coverage">Gate coverage</label>
@@ -605,21 +830,28 @@
       </div>
     </div>
 
-    <div id="progress_overlay" class="progress_overlay" hidden aria-live="polite" aria-busy="false">
-      <div class="progress_card" role="status">
-        <div class="progress_track" aria-hidden="true">
+    <div id="progress_overlay" class="progress_overlay" hidden aria-busy="false">
+      <div class="progress_card" tabindex="-1">
+        <div class="progress_track" role="progressbar" aria-labelledby="progress_label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div id="progress_fill" class="progress_fill"></div>
         </div>
         <div class="progress_meta">
-          <span id="progress_label">Loading FCS Metadata</span>
+          <span id="progress_label" role="status" aria-live="polite">Loading FCS Metadata</span>
           <span id="progress_percent">0%</span>
         </div>
         <div id="progress_detail" class="progress_detail"></div>
+        <button id="progress_cancel" class="progress_cancel" type="button" hidden>Cancel</button>
       </div>
     </div>
 
     <footer id="status_bar" class="status_bar">
-      <span id="status_bar_message" class="status_bar_message">Ready.</span>
+      <span id="status_bar_message" class="status_bar_message" role="status" aria-live="polite">Ready.</span>
+      <span id="status_bar_alert" class="visually_hidden" role="alert"></span>
+      <details id="status_diagnostics" class="status_diagnostics" hidden>
+        <summary>Diagnostics</summary>
+        <button id="status_diagnostics_copy" type="button">Copy</button>
+        <pre id="status_diagnostics_log"></pre>
+      </details>
       <span class="status_bar_help">
         <a href="help.html" target="_blank" rel="noopener">Get Help</a>
       </span>
