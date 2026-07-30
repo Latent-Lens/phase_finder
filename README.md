@@ -64,7 +64,7 @@ PhaseFinder is licensed under PolyForm Noncommercial 1.0.0; vendored dependency 
 ```text
 .
 ├── index.html
-├── help.html             # in-app help/feature guide, linked from the header
+├── help/                 # topic-based in-app help center, linked from the footer
 ├── assets/
 │   └── img/
 │       ├── logo.png
@@ -79,7 +79,7 @@ PhaseFinder is licensed under PolyForm Noncommercial 1.0.0; vendored dependency 
 │   ├── plot.css         # plot panel layout, controls bar, DJF readout
 │   ├── feedback.css     # status bar and progress overlay
 │   ├── responsive.css   # @media overrides (loaded last)
-│   └── help.css         # standalone stylesheet for help.html
+│   └── help.css         # standalone stylesheet for the help center
 ├── js/
 │   ├── vendor/          # vendored D3 ESM bundle
 │   ├── state/           # app_state (file_map + frame accessors), file-selection queries
@@ -108,7 +108,7 @@ Note: the file list above is a high-level map, not exhaustive. The app loads as
 native ES modules: `index.html` has a single `<script type="module"
 src="./js/main.js">`, and `js/main.js` imports every layer and runs an ordered
 `init_*()` bootstrap, so the dependency graph lives in the `import` statements
-rather than a hand-maintained list of script tags. `help.html` documents all of
+rather than a hand-maintained list of script tags. `help/index.html` links to topic pages documenting all of
 the features the app adds (the metadata wizard, summary statistics, session
 save/load, and layout controls); see it for an up-to-date feature tour. For the
 module dependency layers and the key event-flow / user-decision paths as mermaid
