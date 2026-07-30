@@ -67,12 +67,24 @@ export const DEFAULT_CONFIG = Object.freeze({
   smoothingSigmaBins: 2,        // matches estimatePeakFromRegion's own default
 });
 
-/**
- * Bin-index window around a local peak, asymmetric per plan step 2: reaches
- * `cleanWindowSigmas` on the uncontaminated flank but only
- * `contaminatedWindowSigmas` on the flank nearer to S-phase, so the area
- * refit below is dominated by the trustworthy side of the peak.
- */
+/*
+
+Purpose:
+	Builds an asymmetric bin-index window around a local peak: it reaches
+	cleanWindowSigmas on the uncontaminated flank but only
+	contaminatedWindowSigmas on the flank nearer S-phase, so the area refit is
+	dominated by the trustworthy side of the peak.
+
+Input:
+	peakIndex [number]: the peak's bin index
+	sigmaBins [number]: the peak width in bins
+	cleanSide [string]: which flank ("left"/"right") is uncontaminated
+	config [object]: window-size config
+
+Output:
+	window [object]: the { start, end } bin-index window
+
+*/
 function build_asymmetric_window(peakIndex, sigmaBins, cleanSide, config, binCount) {
   const cleanReach = Math.max(1, Math.round(config.cleanWindowSigmas * sigmaBins));
   const contaminatedReach = Math.max(1, Math.round(config.contaminatedWindowSigmas * sigmaBins));
@@ -84,11 +96,23 @@ function build_asymmetric_window(peakIndex, sigmaBins, cleanSide, config, binCou
   };
 }
 
-/**
- * N_G1 (or N_G2): the area that makes a unit-area Gaussian template best
- * match the observed counts summed only over the asymmetric window -- a
- * closed-form ratio estimator, not an iterative fit, per "Pragmatic".
- */
+/*
+
+Purpose:
+	Estimates a peak's area N (G1 or G2): the scale that makes a unit-area
+	Gaussian template best match the observed counts summed over the asymmetric
+	window -- a closed-form ratio estimator, not an iterative fit.
+
+Input:
+	counts [array]: per-bin counts
+	window [object]: the asymmetric { start, end } window
+	mean [number]: the peak mean
+	sigma [number]: the peak width
+
+Output:
+	area [number]: the estimated peak area
+
+*/
 function refine_local_area(edges, counts, mean, sigma, window) {
   const unitTemplate = gaussianBinMass(edges, 1, mean, sigma);
   let observedSum = 0;
@@ -100,10 +124,25 @@ function refine_local_area(edges, counts, mean, sigma, window) {
   return templateSum > EPS ? Math.max(0, observedSum / templateSum) : 0;
 }
 
-/** Steps 1-2 (or the mirror-image step 3) for one peak: locate it within its
- * region using only the clean-side flank, then refit its area from the
- * asymmetric window built around that estimate. */
-function fit_local_peak(edges, counts, region, cleanSide, config) {
+/*
+
+Purpose:
+	Locates one peak within its region using only the clean-side flank, then
+	refits its area from the asymmetric window built around that estimate (the
+	G1 procedure, or its mirror image for G2).
+
+Input:
+	edges [array]: histogram bin edges
+	counts [array]: per-bin counts
+	region [object]: the peak's region
+	cleanSide [string]: the uncontaminated flank
+	config [object]: model config
+
+Output:
+	peak [object]: { mean, sigma, area, ... } for the located peak
+
+*/
+export function fit_local_peak(edges, counts, region, cleanSide, config) {
   const local = estimatePeakFromRegion(edges, counts, region, {
     cleanSide,
     heightFraction: config.heightFraction,
@@ -153,9 +192,22 @@ export const watson_pragmatic = {
   capabilities: { contaminants: false, multiplePloidy: false, autoComparison: false },
   defaultConfig: { ...DEFAULT_CONFIG },
 
-  /** context: { histogram: Stage4-shaped (edges + counts/y), peakRegions:
-   * { g1: {left,right}, g2: {left,right} }, config: DEFAULT_CONFIG overrides }.
-   * No optimizer, no multi-start: every step is closed-form. */
+  /*
+
+  Purpose:
+  	Runs the pragmatic decomposition: locate and area-refit G1 and G2, then take
+  	S as the residual between the peaks. No optimizer, no multi-start -- every
+  	step is closed-form.
+
+  Input:
+  	context [object]: { histogram (masked histogram: edges + counts/y),
+  	                  peakRegions { g1:{left,right}, g2:{left,right} },
+  	                  config (DEFAULT_CONFIG overrides) }
+
+  Output:
+  	rawResult [object]: the raw decomposition result for normalizeResult()
+
+  */
   fit(context) {
     const { histogram, peakRegions, config: userConfig = {} } = context;
     // onProgress/shouldCancel (live closures fit_worker.js injects into
@@ -180,28 +232,56 @@ export const watson_pragmatic = {
 
     const g1Counts = gaussianBinMass(edges, g1.area, g1.mean, g1.sigma);
     const g2Counts = gaussianBinMass(edges, g2.area, g2.mean, g2.sigma);
-    // Plan step 4's formula, evaluated at every bin (not just each peak's
-    // own local window).
-    const sCounts = counts.map((y, i) => Math.max(0, y - g1Counts[i] - g2Counts[i]));
+    // Plan step 4's formula (S_i = max(0, y_i - G1_i - G2_i)), but confined to
+    // the S-phase interval strictly between the two fitted peak centers
+    // (audit SCI-01). Residual mass below mu_G1 (sub-G1 debris) or above mu_G2
+    // (post-G2 aggregates) overshoots its own fitted peak, not S phase, and
+    // must not be reclassified as S -- the modeling plan defines residual S over
+    // [mu_G1, mu_G2], not the whole histogram domain. Bins whose center falls at
+    // or outside a peak center contribute zero residual S.
+    const sCounts = counts.map((y, i) => {
+      const center = 0.5 * (edges[i] + edges[i + 1]);
+      if (center <= g1.mean || center >= g2.mean) return 0;
+      return Math.max(0, y - g1Counts[i] - g2Counts[i]);
+    });
 
     return { edges, counts, regions, config, g1, g2, g1Counts, g2Counts, sCounts };
   },
 
-  /** Not implemented, for the same reason as legacy_bridge_v1's: S here is
-   * defined from the *observed* counts at fit time (plan step 4), not from a
-   * standalone function of parameters alone, so there is no
-   * (edges, parameters) => expectedCounts closed form to offer. */
+  /*
+
+  Purpose:
+  	Not implemented, for the same reason as legacy_bridge_v1's: S here is defined
+  	from the OBSERVED counts at fit time, not a standalone function of parameters,
+  	so there is no (edges, parameters) => expectedCounts closed form to offer.
+
+  Input:
+  	(none)
+
+  Output:
+  	value [null]: always null
+
+  */
   expectedCounts() {
     return null;
   },
 
-  /**
-   * Packages fit()'s raw result into the generic §4.5 shape. `kind:
-   * "decomposition"` and `comparisonGroup: null` are what the UI/report/
-   * export layers must check before ever placing Watson next to a DJ/DJF
-   * AIC/BIC comparison (plan §5.5) -- this file does not additionally
-   * enforce that at read time; it is a contract those consumers must honor.
-   */
+  /*
+
+  Purpose:
+  	Packages the raw result into the generic model-neutral shape. kind:
+  	"decomposition" and comparisonGroup: null are what the UI/report/export
+  	layers must check before ever placing Watson next to a Dean-Jett/Dean-Jett-Fox
+  	AIC/BIC comparison -- this file does not enforce that at read time; it is a
+  	contract those consumers must honor.
+
+  Input:
+  	rawResult [object]: the object returned by fit()
+
+  Output:
+  	result [object]: the normalized, model-neutral fit result
+
+  */
   normalizeResult(rawResult) {
     const { counts, g1, g2, g1Counts, g2Counts, sCounts } = rawResult;
 
@@ -250,8 +330,9 @@ export const watson_pragmatic = {
       fitScope: "per_sample",
       comparisonGroup: null,
 
-      converged: true, // closed-form: "succeeds" unless fit() threw (e.g. infeasible regions)
-      convergenceReason: "closed_form",
+      converged: false, // no optimizer ran; completion and scientific validity are separate
+      decompositionCompleted: true,
+      convergenceReason: "not_applicable_closed_form",
       parameters: { g1Area: g1.area, g1Mean: g1.mean, g1CV: g1.cv, g2Area: g2.area, g2Mean: g2.mean, g2CV: g2.cv },
       bounds: {},
       expectedCounts,
