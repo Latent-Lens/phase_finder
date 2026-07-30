@@ -12,12 +12,15 @@ import {
   analysis_collapsed_plot_button,
   cell_cycle_modeling_button,
   collapsed_cell_cycle_modeling_button,
+  sidebar_back_button,
+  set_sidebar_modeling_mode,
   plot_panel,
   metadata_panel_toggle,
   plot_panel_toggle,
   toggle_metadata_panel,
   toggle_plot_panel,
 } from "../ui/panels.js";
+import { set_sidebar_collapsed } from "../ui/table_support.js";
 import { Tooltips } from "../ui/hover_text.js";
 import { get_parsed_files } from "../state/files.js";
 import {
@@ -35,13 +38,14 @@ import { plot_channels } from "../plotting/data.js";
 import { init_plot } from "../plotting/modeling.js";
 import { render_density_plot } from "../plotting/render.js";
 import {
-  ANALYSIS_FILE_CONCURRENCY,
+  analysis_file_concurrency,
   load_analysis_data,
   load_analysis_batch,
   refresh_analysis_after_metadata_change,
 } from "../io/channel_loading.js";
 
 let channel_change_load_id = 0;
+let channel_change_abort_controller = null;
 
 /*
 
@@ -78,9 +82,6 @@ Output:
 
 */
 function enter_plotting_mode() {
-  document.querySelectorAll(".djf_pipeline_buttons .djf_stage_complete").forEach((button) => {
-    button.classList.remove("djf_stage_complete");
-  });
   [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
     if (!btn) return;
     btn.disabled = true;
@@ -112,6 +113,9 @@ async function prepare_selected_channel_for_plotting() {
   }
 
   const request_id = ++channel_change_load_id;
+  channel_change_abort_controller?.abort();
+  const controller = new AbortController();
+  channel_change_abort_controller = controller;
   const rows = get_parsed_files();
 
   enter_plotting_mode();
@@ -137,20 +141,23 @@ async function prepare_selected_channel_for_plotting() {
   const completed = { count: 0 };
   const label = `Loading ${selected.dna_area} Channel FCS Data`;
   set_plot_action_controls_disabled(true);
-  show_progress(label);
-  set_status_bar(`Working: ${label}`);
-  update_progress(0, label, `Preparing ${missing_rows.length} file(s)...`);
+  const progress_operation = show_progress(label);
+  set_status_bar(`Working: ${label}`, false, null, progress_operation);
+  update_progress(0, label, `Preparing ${missing_rows.length} file(s)...`, "", progress_operation);
   await next_frame();
 
   try {
-    for (let start = 0; start < missing_rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
-      const batch = missing_rows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
+    const concurrency = analysis_file_concurrency(missing_rows);
+    for (let start = 0; start < missing_rows.length; start += concurrency) {
+      const batch = missing_rows.slice(start, start + concurrency).map((row, offset) => ({
         row,
         index: start + offset,
       }));
       await load_analysis_batch(batch, selected, completed, missing_rows.length, label, {
         activate: false,
         detail_prefix: "Loading data",
+        signal: controller.signal,
+        operation_id: progress_operation,
       });
     }
 
@@ -162,12 +169,17 @@ async function prepare_selected_channel_for_plotting() {
       // "Plot Channel Events" explicitly switches to the new channel.
       rows.forEach((row) => activate_analysis_data(row, selected));
       render_density_plot();
-      set_status_bar(`Channel ${selected.dna_area} data ready — pre-loaded ${missing_rows.length} file(s).`);
-      update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`);
+      set_status_bar(`Channel ${selected.dna_area} data ready — pre-loaded ${missing_rows.length} file(s).`, false, null, progress_operation);
+      update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`, "", progress_operation);
+    }
+  } catch (error) {
+    if (error?.code !== "FCS_LOAD_CANCELLED") {
+      error.progressOperation = progress_operation;
+      throw error;
     }
   } finally {
     if (request_id === channel_change_load_id) {
-      hide_progress(700);
+      hide_progress(700, progress_operation);
       update_start_button_state();
     }
   }
@@ -199,7 +211,7 @@ function enable_pipeline_action() {
 
 Purpose:
 	Click handler for plot controls. Loads the selected data and reveals the plot;
-	manual DJF stages remain separate controls.
+	manual DJF operations remain separate controls.
 
 Input:
 	(none)
@@ -208,7 +220,7 @@ Output:
 	(none) [Promise<void>]: runs analysis or starts modeling
 
 */
-async function start_analysis() {
+export async function start_analysis() {
   plot_panel.hidden = false;
   document.dispatchEvent(new CustomEvent("pf-plot-started", {
     detail: { channel: get_selected_channels().dna_area },
@@ -221,10 +233,11 @@ async function start_analysis() {
       detail: { channel: get_selected_channels().dna_area },
     }));
   } catch (error) {
+    const progress_operation = error.progressOperation ?? null;
     set_status(error.message, true);
-    set_status_bar("Selected data loading failed.", true);
-    update_progress(100, "Loading Selected FCS Data", error.message);
-    hide_progress(1400);
+    set_status_bar("Selected data loading failed.", true, null, progress_operation, error);
+    update_progress(100, "Loading Selected FCS Data", error.message, "", progress_operation ?? undefined);
+    hide_progress(1400, progress_operation ?? undefined);
   }
 }
 
@@ -249,28 +262,39 @@ export function init_analysis_listeners() {
 
   document.addEventListener("fcs-selection-change", () => {
     refresh_analysis_after_metadata_change({ redraw_if_no_missing: false }).catch((error) => {
+      const progress_operation = error.progressOperation ?? null;
       set_status(error.message, true);
-      set_status_bar("Selected data loading failed.", true);
-      update_progress(100, "Loading Added FCS Data", error.message);
-      hide_progress(1400);
+      set_status_bar("Selected data loading failed.", true, null, progress_operation, error);
+      update_progress(100, "Loading Added FCS Data", error.message, "", progress_operation ?? undefined);
+      hide_progress(1400, progress_operation ?? undefined);
     });
   });
 
   document.addEventListener("fcs-channel-change", () => {
     prepare_selected_channel_for_plotting().catch((error) => {
+      const progress_operation = error.progressOperation ?? null;
       set_status(error.message, true);
-      set_status_bar("Selected channel data loading failed.", true);
-      update_progress(100, "Loading Selected FCS Data", error.message);
-      hide_progress(1400);
+      set_status_bar("Selected channel data loading failed.", true, null, progress_operation, error);
+      update_progress(100, "Loading Selected FCS Data", error.message, "", progress_operation ?? undefined);
+      hide_progress(1400, progress_operation ?? undefined);
       update_start_button_state();
     });
   });
 
-  // The sidebar modeling shortcuts trigger the same explicit Run all action as
-  // the manual pipeline control group.
-  [cell_cycle_modeling_button, collapsed_cell_cycle_modeling_button].forEach((btn) => {
-    if (btn) btn.addEventListener("click", () => {
-      document.querySelector("#djf_run_all")?.click();
+  // The sidebar "Cell Cycle Modeling" buttons switch the sidebar into modeling
+  // mode (they no longer run the pipeline — the relocated Run all / operation
+  // buttons do that once modeling mode is open). The collapsed-rail variant
+  // expands the sidebar first so the modeling controls are actually visible.
+  if (cell_cycle_modeling_button) {
+    cell_cycle_modeling_button.addEventListener("click", () => set_sidebar_modeling_mode(true));
+  }
+  if (collapsed_cell_cycle_modeling_button) {
+    collapsed_cell_cycle_modeling_button.addEventListener("click", () => {
+      set_sidebar_collapsed(false);
+      set_sidebar_modeling_mode(true);
     });
-  });
+  }
+  if (sidebar_back_button) {
+    sidebar_back_button.addEventListener("click", () => set_sidebar_modeling_mode(false));
+  }
 }

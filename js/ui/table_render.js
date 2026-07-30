@@ -15,6 +15,9 @@ import { get_file_map, get_file_table } from "../state/app_state.js";
 import {
   TABLE_COLUMNS,
   selected_file_ids,
+  focused_file_id,
+  set_focused_file_id,
+  prune_focused_file_id,
   column_filters,
   sort_state,
   set_sort_state,
@@ -27,7 +30,11 @@ import {
   sync_file_annotations,
 } from "../data_structs/table_state.js";
 import { unique_metadata_label } from "../data_structs/metadata_columns.js";
-import { DERIVED_COLUMN_GROUPS, TOTAL_EVENTS_COLUMN, TOTAL_EVENTS_HEADER } from "../data_structs/derived_columns.js";
+import {
+  DERIVED_COLUMN_GROUPS, TOTAL_EVENTS_COLUMN, TOTAL_EVENTS_HEADER,
+  CELL_CYCLE_COLUMN_PREFIX, CELL_CYCLE_PHASE_LABELS, CELL_CYCLE_MODEL_LABELS,
+  format_cell_cycle_value,
+} from "../data_structs/derived_columns.js";
 import { decorate_removable_headers, handle_remove_columns_click } from "./column_remove.js";
 import {
   displayed_files,
@@ -36,6 +43,7 @@ import {
   header_label_cell,
   header_filter_cell,
   notify_selection_changed,
+  notify_focus_changed,
 } from "./table_support.js";
 import { update_start_button_state } from "./status_channels.js";
 import { sync_color_by_options, get_row_color, toggle_isolated_color_group } from "../plotting/data.js";
@@ -113,9 +121,11 @@ Output:
 
 */
 export function render_file_table() {
+  const focus_key = file_table.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
   sync_color_by_options();
   const frame = get_file_table();
   if (!frame || frame.length === 0) {
+    file_table.classList.remove("has_file_table");
     file_table.innerHTML = '<p class="empty_note">Load FCS files to initialize the table.</p>';
     return;
   }
@@ -124,7 +134,7 @@ export function render_file_table() {
   // its header so remove-columns mode can span the highlight down to this cell.
   const cell = (row, field) => {
     const value = String(row[field] ?? "");
-    return `<td data-column-key="field:${escape_html(field)}"><input data-file-id="${row.id}" data-field="${field}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
+    return `<td data-column-key="field:${escape_html(field)}"><input data-file-id="${escape_html(row.id)}" data-field="${escape_html(field)}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
   };
 
   const visible_files = displayed_files();
@@ -146,9 +156,33 @@ export function render_file_table() {
   // Stats columns live in the frame as "CHANNEL:metric".
   // Group them by channel to build the two-row stats header.
   const BASE_COLS = table_base_field_set();
+  // Cell-cycle fit fraction columns ("cellCycleFit:<modelId>:<phase>") are
+  // pulled out first: they contain colons but must NOT be treated as
+  // CHANNEL:metric stats columns. Grouped by model so each model in use gets its
+  // own G1/S/G2-M header block.
+  const cell_cycle_model_columns = {};
+  for (const col of frame.columns) {
+    if (col.startsWith(CELL_CYCLE_COLUMN_PREFIX)) {
+      const rest = col.slice(CELL_CYCLE_COLUMN_PREFIX.length);
+      const sep = rest.lastIndexOf(":");
+      if (sep > 0) {
+        const modelId = rest.slice(0, sep);
+        const phase = rest.slice(sep + 1);
+        (cell_cycle_model_columns[modelId] ??= {})[phase] = col;
+      }
+    }
+  }
+  const cell_cycle_groups = Object.entries(cell_cycle_model_columns).map(([modelId, phases]) => ({
+    label: CELL_CYCLE_MODEL_LABELS[modelId] || modelId,
+    columns: ["g1", "s", "g2"]
+      .filter((phase) => phases[phase])
+      .map((phase) => ({ field: phases[phase], label: CELL_CYCLE_PHASE_LABELS[phase] })),
+  })).filter((group) => group.columns.length);
+  const has_cell_cycle = cell_cycle_groups.length > 0;
+
   const channel_groups = {};
   for (const col of frame.columns) {
-    if (!BASE_COLS.has(col)) {
+    if (!BASE_COLS.has(col) && !col.startsWith(CELL_CYCLE_COLUMN_PREFIX)) {
       const sep = col.lastIndexOf(":");
       if (sep > 0) {
         const channel = col.slice(0, sep);
@@ -199,7 +233,7 @@ export function render_file_table() {
   // Any grouped section (or the split total header) forces the two-row header
   // even without stats, so section titles align with the metadata labels and
   // column titles align with the metadata filter dropdowns.
-  const two_row_header = has_stats || derived_groups.length > 0 || has_total_events;
+  const two_row_header = has_stats || derived_groups.length > 0 || has_total_events || has_cell_cycle;
   // Removable derived/stats headers carry data-column-key="col:<frame column>".
   const col_key = (column) =>
     ` data-column-key="col:${escape_html(column)}" data-column-label="${escape_html(column)}"`;
@@ -229,7 +263,7 @@ export function render_file_table() {
   // NaN means "not computed for this file" — show a dash.
   const fmt = (v) => (v != null && !Number.isNaN(v) ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
 
-  const checkbox_th_inner = `<input type="checkbox" id="select_all_files" title="${escape_html(Tooltips.text("selectAllDisplayedFiles"))}" />`;
+  const checkbox_th_inner = `<input type="checkbox" id="select_all_files" data-focus-key="select-all" aria-label="Select all displayed FCS samples" title="${escape_html(Tooltips.text("selectAllDisplayedFiles"))}" />`;
 
   let head_html;
   if (two_row_header) {
@@ -246,17 +280,31 @@ export function render_file_table() {
         return `<th class="stats_sub_th${cls}" data-column-key="${key}" data-column-label="${label}">${STAT_LABELS[m] || m}</th>`;
       }).join("")
     ).join("");
+    // Per-model cell-cycle groups: model label spanning its G1/S/G2-M columns.
+    const cell_cycle_group_headers = cell_cycle_groups.map((g) =>
+      `<th colspan="${g.columns.length}" class="stats_group_th cell_cycle_group_th stats_col_start">${escape_html(g.label)}</th>`
+    ).join("");
+    const cell_cycle_sub_headers = cell_cycle_groups.map((g) =>
+      g.columns.map((c, ci) => {
+        const cls = ci === 0 ? " stats_col_start" : "";
+        const key = `col:${escape_html(c.field)}`;
+        const label = escape_html(`${g.label} ${c.label}`);
+        return `<th class="stats_sub_th cell_cycle_sub_th${cls}" data-column-key="${key}" data-column-label="${label}">${escape_html(c.label)}</th>`;
+      }).join("")
+    ).join("");
     head_html = `
         <tr>
           <th class="checkbox_col stats_checkbox_th" rowspan="2">${checkbox_th_inner}</th>
           ${label_ths}
           ${derived_group_ths}
           ${group_headers}
+          ${cell_cycle_group_headers}
         </tr>
         <tr>
           ${filter_ths}
           ${derived_sub_ths}
           ${sub_headers}
+          ${cell_cycle_sub_headers}
         </tr>`;
   } else {
     const regular_headers = TABLE_COLUMNS.map((col) => header_cell(col)).join("");
@@ -269,7 +317,8 @@ export function render_file_table() {
   }
 
   const total_stat_cols = has_stats ? stats_groups.reduce((sum, g) => sum + g.metrics.length, 0) : 0;
-  const empty_colspan = TABLE_COLUMNS.length + 1 + derived_columns.length + total_stat_cols;
+  const total_cell_cycle_cols = cell_cycle_groups.reduce((sum, g) => sum + g.columns.length, 0);
+  const empty_colspan = TABLE_COLUMNS.length + 1 + derived_columns.length + total_stat_cols + total_cell_cycle_cols;
   const body = visible_files.length
     ? visible_files.map((row) => {
         const is_linked = metadata_row_is_linked(row);
@@ -281,7 +330,7 @@ export function render_file_table() {
             const swatch = color_info
               ? `<span class="filename_color_swatch" data-row-id="${escape_html(row.id)}" data-color-group="${escape_html(color_info.group)}" style="background:${escape_html(color_info.color)}" title="${escape_html(color_info.group)} — double-click to show only this color on the plot"></span>`
               : `<span class="filename_color_swatch filename_color_swatch_empty" data-row-id="${escape_html(row.id)}" title="Not currently plotted"></span>`;
-            return `<td class="${class_name}" title="${escape_html(title)}">${swatch}${escape_html(display_name(row.name || ""))}</td>`;
+            return `<th scope="row" class="${class_name}" title="${escape_html(title)}">${swatch}${escape_html(display_name(row.name || ""))}</th>`;
           }
           return cell(row, column.field);
         }).join("");
@@ -297,27 +346,45 @@ export function render_file_table() {
             return `<td class="stats_td${cls}" data-column-key="${key}">${fmt(row[`${g.channel}:${m}`])}</td>`;
           }).join("")
         ).join("") : "";
+        const cell_cycle_tds = has_cell_cycle ? cell_cycle_groups.map((g) =>
+          g.columns.map((c, ci) => {
+            const cls = ci === 0 ? " stats_col_start" : "";
+            const key = `col:${escape_html(c.field)}`;
+            const value = format_cell_cycle_value(row[c.field]);
+            return `<td class="stats_td cell_cycle_td${cls}" data-column-key="${key}" title="${escape_html(value)}">${escape_html(value)}</td>`;
+          }).join("")
+        ).join("") : "";
+        const focus_class = row.id === focused_file_id ? " metadata_row_focused" : "";
         return `
-        <tr class="${is_linked ? "" : "metadata_row_unlinked"}">
-          <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) && is_linked ? " checked" : ""}${is_linked ? "" : " disabled"} /></td>
+        <tr class="${is_linked ? "" : "metadata_row_unlinked"}${focus_class}" data-file-id="${escape_html(row.id)}">
+          <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${escape_html(row.id)}" data-focus-key="row:${escape_html(row.id)}" aria-label="Select ${escape_html(display_name(row.name || 'unnamed sample'))}"${selected_file_ids.has(row.id) && is_linked ? " checked" : ""}${is_linked ? "" : " disabled"} /></td>
           ${metadata_tds}
           ${derived_tds}
           ${stats_tds}
+          ${cell_cycle_tds}
         </tr>`;
       }).join("")
     : `<tr><td class="empty_note" colspan="${empty_colspan}">No files match the current filters.</td></tr>`;
 
+  const selected_count = visible_files.filter((row) => selected_file_ids.has(row.id)).length;
   file_table.innerHTML = `
-    <table class="file_table">
+    <span id="file_table_status" class="visually_hidden" role="status" aria-live="polite">Showing ${visible_files.length} of ${frame.length} samples; ${selected_count} selected.</span>
+    <table class="file_table" aria-describedby="file_table_status">
+      <caption>Loaded FCS samples and analysis results</caption>
       <thead>${head_html}</thead>
       <tbody>${body}</tbody>
     </table>
   `;
+  file_table.classList.add("has_file_table");
 
   update_select_all_checkbox();
   update_start_button_state();
   sync_file_annotations();
   decorate_removable_headers();
+
+  if (focus_key) {
+    window.requestAnimationFrame(() => file_table.querySelector(`[data-focus-key="${CSS.escape(focus_key)}"]`)?.focus());
+  }
 
   if (pending_header_focus_field) {
     const field = pending_header_focus_field;
@@ -360,6 +427,7 @@ export function update_select_all_checkbox() {
   );
   checkbox.checked = displayed.length > 0 && selected_count === displayed.length;
   checkbox.indeterminate = selected_count > 0 && selected_count < displayed.length;
+  checkbox.setAttribute("aria-checked", checkbox.indeterminate ? "mixed" : String(checkbox.checked));
 }
 
 export function handle_metadata_header_input(event) {
@@ -410,6 +478,14 @@ Output:
 
 */
 export function handle_table_keydown(event) {
+  if (event.key === "Escape" && event.target.closest(".th_filter")) {
+    const field = event.target.closest(".th_filter").querySelector("[data-filter-field]")?.dataset.filterField;
+    event.preventDefault();
+    set_open_filter_field(null);
+    render_file_table();
+    window.requestAnimationFrame(() => file_table.querySelector(`[data-focus-key="filter:${CSS.escape(field || "")}"]`)?.focus());
+    return;
+  }
   if (event.key !== "Enter") return;
   const input = event.target.closest(".metadata_header_input");
   if (!input) return;
@@ -480,6 +556,7 @@ export function handle_table_change(event) {
         selected_file_ids.delete(entry.id);
       }
     });
+    prune_focused_file_id();
     render_file_table();
     update_start_button_state();
     notify_selection_changed();
@@ -496,6 +573,7 @@ export function handle_table_change(event) {
       selected_file_ids.add(file_id);
     } else {
       selected_file_ids.delete(file_id);
+      prune_focused_file_id();
     }
     update_select_all_checkbox();
     update_start_button_state();
@@ -532,6 +610,23 @@ export function handle_table_click(event) {
     const field = filter_toggle.dataset.filterField;
     set_open_filter_field(open_filter_field === field ? null : field);
     render_file_table();
+    return;
+  }
+
+  // Clicking anywhere on a checked sample's row (not its checkbox) brings it
+  // into focus for per-sample review UI (e.g. Identify Peaks) -- only
+  // meaningful when more than one file is checked at once, since with exactly
+  // one checked file that file is unambiguously the one being reviewed.
+  const body_row = event.target.closest("tbody tr[data-file-id]");
+  if (body_row) {
+    const file_id = body_row.dataset.fileId;
+    if (file_id && selected_file_ids.has(file_id) && file_id !== focused_file_id) {
+      set_focused_file_id(file_id);
+      file_table.querySelectorAll("tbody tr[data-file-id]").forEach((row_el) => {
+        row_el.classList.toggle("metadata_row_focused", row_el.dataset.fileId === file_id);
+      });
+      notify_focus_changed();
+    }
     return;
   }
 

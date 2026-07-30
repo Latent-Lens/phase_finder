@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Independent validation of PhaseFinder's Dean-Jett-Fox and Watson cell-cycle models against open-source implementations and FlowJo's published documentation." />
+    <title>PhaseFinder &mdash; Cell-Cycle Model Validation</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" />
+      <span class="help_header_title">Cell-Cycle Model Validation</span>
+      <a class="help_back_link" href="../help/index.html" target="_blank" rel="noopener">Back to Help</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">On this page</p>
+        <nav aria-label="Table of contents">
+          <ol>
+            <li><a href="#purpose">1. Purpose</a></li>
+            <li><a href="#sources">2. Reference implementations</a></li>
+            <li><a href="#flowjo-docs">3. What FlowJo documents</a></li>
+            <li><a href="#formula">4. Model formula, term by term</a></li>
+            <li><a href="#peak-calling">5. Peak calling, step by step</a></li>
+            <li><a href="#empirical">6. Empirical agreement</a></li>
+            <li><a href="#conclusions">7. Conclusions</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_lede">
+          PhaseFinder computes cell-cycle phase fractions (G0/G1, S, G2/M) from a DNA-content
+          histogram using a Dean-Jett-Fox (DJF) model and two Watson variants. Because the
+          reference tools most labs trust &mdash; FlowJo and Flowreader &mdash; are closed source,
+          this page records how PhaseFinder's math was checked against the <em>open</em>
+          implementations that do exist, plus FlowJo's own published description of its algorithm.
+          The short version: PhaseFinder follows the same canonical DJF formulation the field uses,
+          and is more numerically careful on several points.
+        </p>
+
+        <section id="purpose" class="help_section">
+          <h2>1. Purpose</h2>
+          <p>
+            Two questions motivated this review:
+          </p>
+          <ul>
+            <li><strong>Are we modeling DJF the way everyone else does?</strong> A phase-fraction
+              number is only trustworthy if the underlying model matches the accepted definition of
+              the method, not a private reinterpretation of it.</li>
+            <li><strong>Where PhaseFinder disagrees with FlowJo on real data, is that a formula bug
+              or a fitting choice?</strong> The two have very different remedies.</li>
+          </ul>
+          <p>
+            The canonical method comes from Dean &amp; Jett (1974) &mdash; two Gaussian peaks for
+            G1 and G2/M with a broadened polynomial S-phase between them &mdash; and Fox (1980),
+            which adds a Gaussian &ldquo;wave&rdquo; to the S-phase distribution. FlowJo, Flowreader,
+            ModFit, and MultiCycle all descend from this. There is no single reference source
+            code, so the check below triangulates across several independent implementations.
+          </p>
+        </section>
+
+        <section id="sources" class="help_section">
+          <h2>2. Reference implementations</h2>
+          <p>These are the sources PhaseFinder was compared against:</p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Source</th><th>Language</th><th>What it is</th><th>Used for</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><a href="https://docs.flowjo.com/flowjo/experiment-based-platforms/cell-cycle-univariate/" target="_blank" rel="noopener">FlowJo cell-cycle docs</a></td>
+                <td>&mdash;</td>
+                <td>FlowJo's own written description of its DJF algorithm</td>
+                <td>Authoritative behavior of the reference tool; source of the peak-fitting procedure</td>
+              </tr>
+              <tr>
+                <td><a href="https://github.com/Vannier19/Tugas-Besar-KDS-Flow-Cytometry-Dean-Jett-Fox" target="_blank" rel="noopener">Vannier19 &mdash; <code>dean_jett_fox.py</code></a></td>
+                <td>Python</td>
+                <td>Purpose-built DJF model (area-Gaussian peaks + broadened quadratic S)</td>
+                <td>Term-by-term formula comparison</td>
+              </tr>
+              <tr>
+                <td><a href="https://github.com/huang-sh/DeepScience" target="_blank" rel="noopener">huang-sh &mdash; <code>cell_cycle.py</code></a></td>
+                <td>Python</td>
+                <td>DJF fit with <code>scipy.find_peaks</code> initialization</td>
+                <td>Second formula reference; peak-calling comparison</td>
+              </tr>
+              <tr>
+                <td><a href="https://github.com/margothenry/PloidyPeaks" target="_blank" rel="noopener">PloidyPeaks &mdash; <code>flowPeakDetection.R</code></a></td>
+                <td>R</td>
+                <td>Dedicated flow-cytometry peak-detection package (Gaussian NLS fitting)</td>
+                <td>Peak-calling comparison (its whole purpose)</td>
+              </tr>
+              <tr>
+                <td><a href="https://github.com/RGLab/flowCore" target="_blank" rel="noopener">RGLab/flowCore</a></td>
+                <td>R</td>
+                <td>Base flow-cytometry data structures, gating, and FCS I/O</td>
+                <td><strong>Excluded:</strong> contains no cell-cycle model (verified &mdash; a common misconception)</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="callout tip">
+            <p class="callout_title">On flowCore</p>
+            <p>
+              flowCore is frequently assumed to implement DJF because it is the foundational R
+              flow-cytometry package. It does not: a full-text search of the repository finds no
+              Dean-Jett, Fox, S-phase, or cell-cycle code. It provides <code>flowFrame</code>/
+              <code>flowSet</code> data structures, gating, transforms, and FCS reading only. No
+              well-maintained open-source R package implements the full DJF S-phase model; the
+              closest open code is Python (above).
+            </p>
+          </div>
+        </section>
+
+        <section id="flowjo-docs" class="help_section">
+          <h2>3. What FlowJo documents</h2>
+          <p>
+            FlowJo's public documentation describes its univariate cell-cycle algorithm in enough
+            detail to compare directly. The key procedural points:
+          </p>
+          <ul>
+            <li>The <strong>G1 and G2/M peaks are fit first</strong>, as Gaussians, by least squares.</li>
+            <li>Each peak is fit only over its <strong>clean flank</strong> &mdash; roughly
+              &minus;3&sigma; to +1&sigma; about the mean &mdash; so that S-phase counts leaking into
+              the inner shoulder do not distort the peak width.</li>
+            <li>Peak width is characterized at <strong>60% of maximum height</strong>.</li>
+            <li><strong>Only after the peaks are pinned</strong> is the S-phase modeled, as a
+              polynomial with a Fox Gaussian broadening term, over what remains between the peaks.</li>
+          </ul>
+          <p>
+            The important insight is procedural, not formulaic: FlowJo decouples peak estimation
+            from S-phase estimation. That ordering is what keeps a G2-heavy sample from letting the
+            S-phase term swallow the G2 peak. PhaseFinder's <code>clean_flank</code> peak-fit mode
+            reproduces this ordering (see <a href="#empirical">&sect;6</a>).
+          </p>
+        </section>
+
+        <section id="formula" class="help_section">
+          <h2>4. Model formula, term by term</h2>
+          <p>
+            Comparing PhaseFinder's DJF against the two open-source DJF implementations, component
+            by component:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Vannier19 (Python DJF)</th>
+                <th>huang-sh (Python DJF)</th>
+                <th>PhaseFinder</th>
+                <th>Match?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>G1 / G2 peaks</td>
+                <td>Area-normalized Gaussian</td>
+                <td>Amplitude Gaussian</td>
+                <td>Area-parameterized Gaussian, &sigma; = CV&middot;&mu;, <strong>integrated over each bin</strong></td>
+                <td>Yes &mdash; same form; PhaseFinder's bin integration is more correct for histograms</td>
+              </tr>
+              <tr>
+                <td>S-phase shape</td>
+                <td>Non-negative quadratic (B&eacute;zier basis c<sub>0</sub>/c<sub>1</sub>/c<sub>2</sub>)</td>
+                <td>Truncated polynomial with slope</td>
+                <td>Quadratic <code>q(z)=a+bz+cz&sup2;</code>, a = 1&minus;b/2&minus;c/3 (normalized)</td>
+                <td>Yes &mdash; equivalent quadratic representations</td>
+              </tr>
+              <tr>
+                <td>S-phase broadening</td>
+                <td>Gaussian <strong>tied to the G1 CV</strong> (&sigma; = CV<sub>G1</sub>&middot;x), then averaged to a constant &sigma;</td>
+                <td>Fixed kernel</td>
+                <td>Gaussian &sigma; = CV<sub>1</sub>&middot;u(z), <strong>position-dependent</strong>, integrated by Gauss-Legendre quadrature</td>
+                <td>Yes &mdash; same coupling; PhaseFinder keeps &sigma; position-dependent rather than averaging</td>
+              </tr>
+              <tr>
+                <td>Peak CV coupling</td>
+                <td>Regularize &sigma;<sub>2</sub> &rarr; &sigma;<sub>1</sub>&middot;(&mu;<sub>2</sub>/&mu;<sub>1</sub>) (constant CV)</td>
+                <td>&sigma;<sub>2</sub> = 1.2&middot;&sigma;<sub>1</sub></td>
+                <td>&sigma; = CV&middot;&mu; (constant CV by construction)</td>
+                <td>Yes</td>
+              </tr>
+              <tr>
+                <td>G2 : G1 position ratio</td>
+                <td>Regularize toward 2.0</td>
+                <td>Enforce &asymp;2</td>
+                <td>Bounded [1.65, 2.25]</td>
+                <td>Yes &mdash; same DNA-doubling anchor</td>
+              </tr>
+              <tr>
+                <td>Fox wave</td>
+                <td class="warn">Not implemented</td>
+                <td class="warn">Not implemented</td>
+                <td><code>q<sub>F</sub>(z) = (1&minus;w)q(z) + w&middot;T(z)</code>, truncated Gaussian</td>
+                <td>PhaseFinder is <em>more</em> complete &mdash; the others are Dean-Jett despite the name</td>
+              </tr>
+              <tr>
+                <td>Objective function</td>
+                <td>&radic;y-weighted least squares</td>
+                <td><code>curve_fit</code> least squares</td>
+                <td><strong>Poisson deviance</strong></td>
+                <td>Yes &mdash; PhaseFinder uses the proper count likelihood; the others approximate it</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="callout tip">
+            <p class="callout_title">The broadening coupling is standard, not a bug</p>
+            <p>
+              PhaseFinder ties S-phase broadening to the G1 CV. That coupling was initially suspected
+              as a cause of disagreement with FlowJo, but the independent Vannier19 DJF does exactly
+              the same thing. It is the standard Dean-Jett convention. The remaining FlowJo gap is a
+              <em>fitting-procedure</em> difference, not a formula error &mdash; see below.
+            </p>
+          </div>
+        </section>
+
+        <section id="peak-calling" class="help_section">
+          <h2>5. Peak calling, step by step</h2>
+          <p>
+            Every implementation &mdash; including the dedicated R peak-detection package &mdash;
+            follows the same recipe: smooth the histogram, find local maxima above a prominence or
+            height threshold, discard low-channel debris, take the dominant/leftmost peak as G1, and
+            anchor G2 near twice the G1 channel.
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Vannier19</th>
+                <th>huang-sh</th>
+                <th>PloidyPeaks (R)</th>
+                <th>PhaseFinder</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Smooth</td>
+                <td>7-point rolling mean</td>
+                <td>5-point moving average</td>
+                <td><code>scorepeak</code> local maxima (window 3)</td>
+                <td><strong>Multi-scale Gaussian [1, 2, 4] bins</strong></td>
+              </tr>
+              <tr>
+                <td>Find maxima</td>
+                <td>Single <code>argmax</code></td>
+                <td><code>scipy.find_peaks</code> (distance n/8, prominence 5%, height 2%)</td>
+                <td>Local maxima</td>
+                <td>Prominence + half-prominence width + area, per scale</td>
+              </tr>
+              <tr>
+                <td>Debris rejection</td>
+                <td>Restrict to x &isin; (0.05, 0.90)</td>
+                <td>1st&ndash;99th percentile clip</td>
+                <td>Drop x &lt; x<sub>max</sub>/9.5 and below 75th-percentile height</td>
+                <td>Noise floor + edge-support scoring</td>
+              </tr>
+              <tr>
+                <td>Pick G1 / G2</td>
+                <td>argmax = G1</td>
+                <td>Two tallest, sorted by position</td>
+                <td>Leftmost survivor = G1</td>
+                <td><strong>Cross-scale persistence clustering</strong></td>
+              </tr>
+              <tr>
+                <td>G2 anchor</td>
+                <td>Assume &asymp;1.9&times; G1</td>
+                <td>Enforce ratio &isin; [1.5, 2.5], else 2&times;</td>
+                <td>Search a radius around <strong>2&times; G1</strong></td>
+                <td>Ratio-scored &asymp;2&times; plus six other features</td>
+              </tr>
+              <tr>
+                <td>Confidence output</td>
+                <td>None</td>
+                <td>None</td>
+                <td>&ldquo;For review&rdquo; flag + RSE measure</td>
+                <td><strong>detected / low_confidence / inferred_g2</strong> tiers</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            PhaseFinder's peak caller is the most elaborate of the four &mdash; multi-scale detection,
+            multi-feature pair scoring, and explicit confidence tiers &mdash; but it is built on the
+            identical logic the others use, including the universal &asymp;2&times; G2 anchor.
+          </p>
+        </section>
+
+        <section id="empirical" class="help_section">
+          <h2>6. Empirical agreement</h2>
+          <p>
+            Formula agreement was then checked against real data. PhaseFinder was run on an
+            independent validation set of asynchronous yeast samples that carry external
+            phase-fraction references: <strong>30 samples with FlowJo DJF values</strong> and
+            <strong>15 of those also with Flowreader Watson values</strong>. All four model variants
+            were scored against both reference sets.
+          </p>
+
+          <h3>The fitting-procedure fix, on representative samples</h3>
+          <p>
+            The clearest illustration of why fitting order matters. The original DJF
+            <em>joint</em> fit &mdash; peaks and S-phase optimized together &mdash; degenerates on
+            skewed samples, with S-phase either collapsing to 0% or ballooning to swallow a peak.
+            Fitting the peaks from their clean flanks first (<code>clean_flank</code> mode)
+            removes the degeneracy and tracks FlowJo closely. Values are G1 / S / G2 percentages.
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr>
+                <th>Sample</th>
+                <th>FlowJo DJF (reference)</th>
+                <th>DJF joint (old)</th>
+                <th>DJF clean-flank</th>
+                <th>Watson Pragmatic</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1468f</td><td>22 / 27 / 46</td><td class="warn">42 / 18 / 40</td><td>27 / 24 / 49</td><td>28 / 22 / 50</td></tr>
+              <tr><td>191f</td><td>16 / 27 / 48</td><td class="warn">16 / 0 / 84</td><td>20 / 19 / 60</td><td>21 / 18 / 61</td></tr>
+              <tr><td>1982f</td><td>19 / 12 / 64</td><td class="warn">28 / 14 / 58</td><td>22 / 10 / 68</td><td>22 / 9 / 69</td></tr>
+              <tr><td>1691f</td><td>17 / 26 / 49</td><td class="warn">0 / 84 / 16</td><td>21 / 20 / 59</td><td>21 / 18 / 61</td></tr>
+              <tr><td>1693g</td><td>10 / 37 / 46</td><td class="warn">15 / 0 / 85</td><td>17 / 21 / 63</td><td>17 / 20 / 63</td></tr>
+            </tbody>
+          </table>
+          <p>
+            The joint fit produces scientifically implausible results (0% or 84% S-phase, or a
+            30% G1 CV pinned at its bound); clean-flank fitting keeps G1 within a few points of
+            FlowJo with tight, physical CVs.
+          </p>
+
+          <h3>Aggregate agreement across the full set</h3>
+          <p>
+            Mean absolute error (in percentage points) between each PhaseFinder model and the
+            external reference, averaged per phase and overall. Lower is closer.
+          </p>
+          <table class="help_table" id="aggregate-flowjo">
+            <thead>
+              <tr><th>Model vs FlowJo DJF (30 samples)</th><th>|&Delta;G1|</th><th>|&Delta;S|</th><th>|&Delta;G2|</th><th>Mean</th><th>Closest on</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>DJF clean-flank</strong></td><td>3.6</td><td>4.9</td><td>7.0</td><td><strong>5.2</strong></td><td><strong>26 / 30</strong></td></tr>
+              <tr><td>Watson Pragmatic</td><td>4.4</td><td>6.6</td><td>8.8</td><td>6.6</td><td>2 / 30</td></tr>
+              <tr><td>Watson Classic</td><td>6.5</td><td>18.2</td><td>16.8</td><td>13.8</td><td>1 / 30</td></tr>
+              <tr><td>DJF joint (old)</td><td class="warn">11.3</td><td class="warn">18.4</td><td class="warn">15.3</td><td class="warn">15.0</td><td>1 / 30</td></tr>
+            </tbody>
+          </table>
+          <p>
+            Against the FlowJo DJF reference, <strong>DJF clean-flank is closest on 26 of 30
+            samples</strong> and averages ~5 pp per phase &mdash; roughly the run-to-run
+            reproducibility floor of the method. The old joint fit is three times worse. Watson
+            Classic is poor here because it deliberately reproduces the Watson-style S/G2 split, not
+            the DJF split (see below).
+          </p>
+          <table class="help_table" id="aggregate-watson">
+            <thead>
+              <tr><th>Model vs Flowreader Watson (15 samples)</th><th>|&Delta;G1|</th><th>|&Delta;S|</th><th>|&Delta;G2|</th><th>Mean</th><th>Closest on</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Watson Classic</strong></td><td>7.0</td><td>18.3</td><td>12.8</td><td>12.7</td><td><strong>9 / 15</strong></td></tr>
+              <tr><td>DJF clean-flank</td><td>4.6</td><td>18.5</td><td>13.9</td><td>12.3</td><td>5 / 15</td></tr>
+              <tr><td>Watson Pragmatic</td><td>5.2</td><td>20.4</td><td>15.3</td><td>13.6</td><td>0 / 15</td></tr>
+              <tr><td>DJF joint (old)</td><td class="warn">11.1</td><td class="warn">24.2</td><td>13.5</td><td class="warn">16.3</td><td>1 / 15</td></tr>
+            </tbody>
+          </table>
+          <p>
+            Against the Flowreader Watson reference, <strong>Watson Classic is closest on 9 of 15
+            samples</strong> &mdash; it does its job of emulating the Watson method. Note the S-phase
+            errors here (~18&ndash;20 pp) are far larger than in the DJF table, for the reason below.
+          </p>
+          <div class="callout tip">
+            <p class="callout_title">The two reference tools disagree more than our models do</p>
+            <p>
+              On the 15 samples that carry <em>both</em> references, FlowJo DJF and Flowreader
+              Watson disagree with <em>each other</em> by a mean of <strong>14.1 pp in S</strong> and
+              7.6 pp in G2 (they agree on G1 to 1.7 pp). For example 1468f is 22 / 27 / 46 by FlowJo
+              DJF but 22 / 41 / 37 by Flowreader Watson &mdash; the same data, a 14-point difference
+              in S. So the large S-phase &ldquo;errors&rdquo; in the Watson table are mostly the two
+              tools partitioning the S/G2 boundary differently, not a PhaseFinder failure: our models
+              track FlowJo DJF to ~5 pp, and Watson Classic bridges partway toward the Watson split.
+              This is the practical case for offering both model families rather than one.
+            </p>
+          </div>
+        </section>
+
+        <section id="conclusions" class="help_section">
+          <h2>7. Conclusions</h2>
+          <ul>
+            <li><strong>PhaseFinder models DJF the way the field does.</strong> Its peak model
+              (area-normalized Gaussians, constant CV, &asymp;2&times; anchor), its S-phase model
+              (broadened non-negative quadratic with broadening tied to the G1 CV), and its peak
+              caller (smoothed local maxima, prominence threshold, debris rejection, G1-dominant,
+              G2 at 2&times;) all match the independent open-source implementations.</li>
+            <li><strong>On several points PhaseFinder is more careful:</strong> Gaussians integrated
+              over bins rather than sampled at centers, position-dependent S-phase broadening by
+              quadrature rather than a single averaged &sigma;, a proper Poisson deviance objective,
+              multi-scale peak detection with confidence tiers, and the actual Fox wave that the
+              open-source &ldquo;DJF&rdquo; implementations omit.</li>
+            <li><strong>Disagreement with FlowJo was a fitting choice, not a formula error.</strong>
+              FlowJo pins the peaks from their clean flanks before modeling S-phase; PhaseFinder's
+              <code>clean_flank</code> mode reproduces that ordering and removes the joint-fit
+              degeneracy on skewed samples.</li>
+            <li><strong>On real data, DJF clean-flank matches FlowJo DJF to ~5 pp per phase</strong>
+              and is the closest model on 26 of 30 samples, while Watson Classic is the closest to
+              the Flowreader Watson reference on 9 of 15. Because the two reference tools themselves
+              differ by ~14 pp in S, offering both DJF and Watson model families &mdash; rather than
+              forcing one &mdash; is the right design.</li>
+          </ul>
+          <p class="help_footer">
+            References: Dean P.N. &amp; Jett J.H. (1974) <em>J. Cell Biol.</em> 60:523&ndash;527;
+            Fox M.H. (1980) <em>Cytometry</em> 1:71&ndash;77; FlowJo cell-cycle documentation;
+            open-source implementations cited in &sect;2.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -8,49 +8,57 @@
 
 const HoverText = Object.freeze({
   reloadLogo: "Reload PhaseFinder",
-  help: "Open the PhaseFinder help and feature guide in a new tab",
-  saveSession: "Save the current session (files, annotations, settings) to a TOML file",
-  loadSession: "Load a previously saved session from a TOML file",
-  resetSession: "Deletes the current session. All loaded files will be unloaded, and any results, plots and metadata will be removed, enabling a clean start.",
-  sidebarCollapse: "Collapse sidebar",
-  sidebarExpand: "Expand sidebar",
-  uploadFiles: "Drop FCS files here or click to choose files from disk",
-  selectChannel: "Select channel",
+  help: "Open the PhaseFinder help and user guide in a new tab.",
+  saveSession: "Save the current session (files, annotations, settings) to a file for future reload.",
+  loadSession: "Load a previously saved session from a file.",
+  resetSession: "Deletes the current session. All loaded files will be unloaded, and any results, plots, and metadata will be removed, enabling a clean start.",
+  sidebarCollapse: "Collapse the sidebar",
+  sidebarExpand: "Expand the sidebar",
+  uploadFiles: "Drop FCS files here, or click to choose files from disk.",
+  selectChannel: "Select a channel",
   plotChannelEventsRequirements: "Load FCS files and select a channel first. Curves are shown only for checked rows.",
-  plotChannelEvents: "Plot channel events",
-  modeling: "Run DJF Pipeline",
-  cellCycleModeling: "Run all nine Dean-Jett-Fox pipeline stages on the plotted channel",
-  cellCycleModelingDisabled: "Plot a channel first to enable the DJF pipeline",
-  calculateStats: "Calculate statistics for any channel across all loaded files",
-  addMetadataColumn: "Add a blank editable metadata column to the table",
-  removeMetadataColumn: "Remove columns: click column headers to select, then confirm",
-  importMetadataTable: "Import metadata from a CSV or TSV file and match it to loaded FCS files",
-  configureMetadata: "Configure metadata columns by splitting FCS filenames",
-  exportTable: "Export the visible metadata table as a TSV file",
-  tableCollapse: "Collapse table",
-  tableExpand: "Expand table",
-  plotCollapse: "Collapse plot",
-  plotExpand: "Expand plot",
-  sortAscending: "Sort ascending",
-  sortDescending: "Sort descending",
-  selectAllDisplayedFiles: "Select all displayed files",
+  plotChannelEvents: "Plot events for the selected channel",
+  modeling: "Cell Cycle Modeling",
+  cellCycleModeling: "Open Cell Cycle Modeling: moves the QC and cell cycle modeling controls into the sidebar",
+  cellCycleModelingDisabled: "Plot event data for a channel first to enable Cell Cycle Modeling",
+  backToFiles: "Back to the file list and channel selection",
+  calculateStats: "Calculate statistics for any selected channel across all loaded files.",
+  addMetadataColumn: "Add a new, editable column to the metadata table.",
+  removeMetadataColumn: "Remove columns: select column(s) to remove, then confirm",
+  importMetadataTable: "Import metadata from a CSV or TSV file and map it to loaded FCS files",
+  configureMetadata: "Auto-populate columns in the metadata table by splitting FCS filenames into parts.",
+  exportTable: "Export the current metadata table as a TSV file.",
+  tableCollapse: "Collapse the metadata table.",
+  tableExpand: "Expand the metadata table.",
+  plotCollapse: "Collapse the plot",
+  plotExpand: "Expand the plot",
+  sortAscending: "Sort column ascending",
+  sortDescending: "Sort column descending",
+  selectAllDisplayedFiles: "Select all files",
   filterBy(label) {
     return "Filter by " + label;
   },
-  debrisHelp: `Removes low/high DNA-content debris before plotting and fitting.
-
-Method: build a 256-bin positive DNA-area histogram over the 0.2-99.8 percentile range, detect G1/G2 peaks, estimate each peak sigma from FWHM, then keep events within max(q0.1%, G1 - 4 sigma1, 0.45*G1) and min(q99.9%, G2 + 4 sigma2, 2.65*G1).`,
-  doubletHelp: `Removes aggregate/doublet-like events before plotting and fitting when matching DNA-H and/or DNA-W channels are available.
-
-Method: on eligible events, compute log(A/H) for height and/or log(W) for width, estimate a robust median and MAD sigma, and keep singlet-like events within median +/- 4*MAD sigma.`,
-  peakThresholdHelp: `Shows a draggable grey line marking the minimum event count for a histogram peak to be counted when seeding the Dean-Jett-Fox fit.
-
-Drag it up to ignore small/noisy peaks or down to include more; release to re-detect peaks and refit.`,
-  qcStructural: `1. Structural QC: Removes events with invalid readings (non-finite or negative) and off-scale values pinned at a channel's upper range limit, before any gating.`,
-  qcTime: `2. Time QC: Bins events by acquisition time and drops those in unstable intervals, comparing each window's event rate against the run's robust baseline to catch clogs and fluidics disruptions.`,
-  qcCellGate: `3. Cell gate: Fits the main cell population in Forward-Scatter-Area vs Side-Scatter-Area (2-D Gaussian) and removes debris and off-cloud events outside it.`,
-  qcSingletGate: `4. Singlet gate: Compares DNA area against DNA height (or width) along a fitted ridge and keeps single cells, removing doublets and aggregates.`,
-  qcRunAll: `Apply all four Pre-modeling QC filters (Structural, Time, Cell gate, Singlet gate). Click again to clear them.`,
+  qcStructural: `1. Structural QC: Asks about the DNA saturation-ceiling settings when you turn it on. Before other gates, rejects events with non-finite (NaN or infinite) or negative readings in loaded DNA-A, DNA-H, DNA-W, FSC-A, SSC-A, or Time channels. It also rejects saturated DNA readings at or above the configured PnR limit (DNA-A/H/W only); zero remains valid, and no upper-PnR limit is applied to FSC-A, SSC-A, or Time. Scatter saturation is left to the Cell gate, since side/forward scatter maxes out for the largest cells and a ceiling here would preferentially discard the G2/M population.`,
+  qcTime: `2. Time QC: Detects unstable acquisition periods, and asks which method to use when you turn it on. Robust summary QC (the original method) unwraps timer rollovers, splits backward jumps into acquisition segments, forms roughly 500-event bins, and rejects a bin when the robust z-score of its event rate or its DNA-A/FSC-A/SSC-A median or IQR exceeds 4. Peak-tracking QC instead follows the major density peaks of those channels across overlapping bins and removes regions where the peaks shift abnormally.`,
+  timeQcMethodEdit: `Change which Time QC method runs (Robust summary or Peak-tracking) and its settings, then re-run Time QC on every plotted sample.`,
+  structuralQcEdit: `Enable/disable or override the DNA-A/H/W saturation ceiling Structural QC applies, then re-run it on every plotted sample.`,
+  qcCellGate: `3. Cell gate: Fits a two-component, full-covariance Gaussian mixture to FSC-A and SSC-A, then selects a substantial component with the highest mean FSC-A (using SSC-A to break ties). By default it keeps events with squared Mahalanobis distance d² = (x − μ)ᵀΣ⁻¹(x − μ) ≤ 5.991, the nominal 95% ellipse for a 2D Gaussian. The ellipse can be adjusted manually; excluded events are off-cloud candidates, not proven debris.`,
+  qcSingletGate: `4. Singlet gate: Fits an iteratively robust PCA ridge to raw DNA-A versus DNA-H, falling back to DNA-W. For signed orthogonal distances d, it keeps |d − median(d)| ≤ 5 · MAD(d) by default. Off-ridge events are doublet/aggregate candidates; the gate does not prove their biological identity.`,
+  qcRunAll: `Apply all four pre-modeling QC filters (Structural, Time, Cell gate, Singlet gate). Click again to clear them.`,
+  detectPeaks: `Run automatic peak detection against the reviewed sample's current histogram, proposing G1 and G2/M regions you can then adjust.`,
+  resetPeakRegions: `Discard any manual edits and restore the detector's automatic G1/G2 region proposal.`,
+  acceptPeakRegions: `Mark the current G1/G2 regions as reviewed, without changing them.`,
+  applyRegionsToAll: `Copy this sample's exact G1/G2 regions to every plotted sample and fit them all with the selected model. Only valid if the samples share the same DNA-content axis/calibration; each sample can still be adjusted afterward.`,
+  plotToolCamera: `Download the plot as SVG, PDF, PNG, or JPEG, or download a printable HTML analysis report containing the plot and metadata/results table.`,
+  plotToolPan: `Pan (default): drag anywhere in the plot to move it, hold Shift and drag to zoom into a rectangle. Panning and zooming only change the view — they never re-run peak detection or a fit.`,
+  plotToolZoomIn: `Zoom in: click the plot to zoom in about the cursor, or drag a rectangle to zoom into it (hold Shift to pan instead). The mouse wheel zooms in every mode.`,
+  plotToolZoomOut: `Zoom out: click the plot to zoom out about the cursor, or drag a rectangle to zoom into it (hold Shift to pan instead). The mouse wheel zooms in every mode.`,
+  plotToolAutoscale: `Autoscale: fit both axes tightly around the plotted data, ignoring any manual axis limits. View only — the modeling range is unchanged.`,
+  plotToolHome: `Reset axes: return to the ranges the plot was drawn with (your manual axis limits if set, otherwise auto). Double-clicking empty plot space does the same.`,
+  plotViewMode: `Overlay superimposes every plotted sample on one axis. Ridge stacks each sample as its own small histogram (with its fit) for side-by-side multi-sample review; a bulk fit switches to Ridge automatically.`,
+  cellCycleModelSelect: `Choose which cell-cycle model to fit. Automatic independently fits Dean–Jett and Dean–Jett–Fox and conservatively picks Fox only when the evidence for a complex S-phase wave is strong. Watson Pragmatic is a local peak-plus-residual decomposition, never compared against the generative models by AIC/BIC. CLOCCS jointly fits a time-series of samples and is not yet available — it needs per-sample timepoint/replicate metadata.`,
+  fitCurrentModel: `Fit the selected model to the reviewed sample's accepted G1/G2 peak regions.`,
+  fitAllReviewed: `Auto-fit the selected model to every plotted sample: auto-detect each sample's G1/G2 regions, average the four bounds across the batch, apply those shared regions to all samples, then fit each. Per-sample review/adjust afterward overrides them.`,
 });
 
 export { HoverText };
@@ -127,9 +135,12 @@ export function init_tooltips() {
     let tx, ty, placement, arrow_pct;
 
     if (in_sidebar) {
-      // Sidebar tooltips open to the right of the anchor.
-      placement = 'right';
-      tx = ar.right + GAP;
+      // Prefer the inline-end side, then flip when it would leave the viewport.
+      const prefer_left = getComputedStyle(document.documentElement).direction === 'rtl';
+      const right_fits = ar.right + GAP + tw <= vw - VP_PAD;
+      placement = (prefer_left || !right_fits) ? 'left' : 'right';
+      tx = placement === 'right' ? ar.right + GAP : ar.left - tw - GAP;
+      tx = Math.max(VP_PAD, Math.min(tx, vw - tw - VP_PAD));
       ty = ar.top + ar.height / 2 - th / 2;
       // Clamp vertically.
       ty = Math.max(VP_PAD, Math.min(ty, vh - th - VP_PAD));
@@ -156,13 +167,17 @@ export function init_tooltips() {
     tip.style.setProperty('--pf-arrow-offset', `${arrow_pct.toFixed(1)}%`);
     tip.dataset.placement = placement;
     tip.classList.add('pf_tip_visible');
+    tip.setAttribute('aria-hidden', 'false');
+    anchor.setAttribute('aria-describedby', tip.id);
   }
 
   function hide() {
+    if (active?.getAttribute('aria-describedby') === tip.id) active.removeAttribute('aria-describedby');
     clearTimeout(timer);
     timer  = null;
     active = null;
     tip.classList.remove('pf_tip_visible');
+    tip.setAttribute('aria-hidden', 'true');
   }
 
   // ── Mouse events (delegated) ──────────────────────────────────────────────
@@ -194,6 +209,19 @@ export function init_tooltips() {
 
   document.addEventListener('focusout', (e) => {
     if (e.target.closest('.quick_tooltip') === active) hide();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && active) hide();
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') return;
+    const anchor = event.target.closest('.quick_tooltip');
+    if (!anchor || !anchor.dataset.tooltip) return hide();
+    hide();
+    active = anchor;
+    show(anchor);
   });
 
   // ── Hide on scroll / resize so the tooltip doesn't go stale ─────────────

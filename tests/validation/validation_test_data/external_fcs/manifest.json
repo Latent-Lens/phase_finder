@@ -1,0 +1,554 @@
+{
+  "schema_version": 3,
+  "description": "Provenance and integrity metadata for local non-synthetic validation inputs. External datasets, reference images, and phase-call files are excluded from Git; this manifest records how to reacquire and verify them.",
+  "fixtures": [
+    {
+      "id": "fcsparser_miltenyi_pbs_fcs31",
+      "path": "files/fcsparser_miltenyi_pbs_fcs31.fcs",
+      "sha256": "8cfedc08f387a53cd492c98b5150c3a85ad704499aec07190de5bb249897598e",
+      "byte_size": 887613,
+      "upstream": {
+        "repository_url": "https://github.com/eyurtsev/fcsparser",
+        "commit": "da70aaa7ec92ff3bd9ce00aec4eea7c77ee8c096",
+        "source_path": "fcsparser/tests/data/FlowCytometers/MiltenyiBiotec/FCS3.1/EY_2013-07-19_PBS_FCS_3.1_Well_A1.001.fcs",
+        "documentation_url": "https://github.com/eyurtsev/fcsparser/blob/da70aaa7ec92ff3bd9ce00aec4eea7c77ee8c096/fcsparser/tests/data/FlowCytometers/MiltenyiBiotec/FCS3.1/info.txt",
+        "origin_commit": "3538644c040c0bf413a66086daba4ca586ae3421",
+        "producer": "Miltenyi Biotec MACSQuant (embedded serial 3057; MACSQuantify 2.4.1247.1dev)"
+      },
+      "license": {
+        "spdx": "MIT",
+        "evidence_url": "https://github.com/eyurtsev/fcsparser/blob/da70aaa7ec92ff3bd9ce00aec4eea7c77ee8c096/LICENSE",
+        "covers_binary": true,
+        "redistribution_basis": "The repository copyright holder committed this acquisition as test data under the repository-wide MIT license; the required notice is retained in LICENSES/fcsparser-MIT.txt."
+      },
+      "privacy_review": {
+        "reviewed": true,
+        "identifying_metadata": true,
+        "notes": "The public upstream file names Eugene in $EXP and $LAST_MODIFIER, uses admin in $OP, and contains instrument serial 3057. It contains no patient or human-subject identifier; $SRC is well A1 and $CELLS/$PROJ describe PBS_FCS_3.1."
+      },
+      "format": {
+        "fcs_version": "FCS3.1",
+        "datatype": "F",
+        "byte_order": "1,2,3,4",
+        "events": 10000,
+        "parameters": 19
+      },
+      "oracle": {
+        "reader": "FlowIO",
+        "reader_version": "1.4.0",
+        "expected_summary": {
+          "mode": "L",
+          "text_start": 256,
+          "text_stop": 2406,
+          "data_start": 127605,
+          "data_stop": 887605,
+          "first_parameter": "Time",
+          "last_parameter": "FL7-W",
+          "known_reader_note": "FlowIO requires ignore_offset_error=True because the declared DATA stop offset is off by one."
+        }
+      }
+    }
+  ],
+  "published_datasets": [
+    {
+      "id": "rodighiero_2024_fucci",
+      "paper": {
+        "citation": "Rodighiero S, Ceccacci E, Hayatigolkhatmi K, et al. Automated workflow for the cell cycle analysis of (non-)adherent cells using a machine learning approach. eLife. 2024;13:RP94689.",
+        "doi": "10.7554/eLife.94689",
+        "pmcid": "PMC11584176",
+        "url": "https://doi.org/10.7554/eLife.94689"
+      },
+      "interpretation": {
+        "reference_method": "Manual EdU-versus-DAPI and FUCCI fluorescence gates shown in Figure 4 and Figure 4—figure supplement 1.",
+        "not_a_model_fit": true,
+        "note": "The published FCS percentages were obtained by manual gates, not by Dean-Jett, Dean-Jett-Fox, Watson, or another DNA-histogram cell-cycle model. PhaseFinder estimates from DNA alone are therefore expected to differ, especially for S and G2/M; compare direction and broad agreement rather than exact equality."
+      },
+      "phase_call_provenance": {
+        "method": "Published manual gates and upstream event-level labels",
+        "published_percentages": {
+          "method": "Manual EdU-versus-DAPI and FUCCI fluorescence gates",
+          "source": "Figure 4 and Figure 4—figure supplement 1",
+          "paper_url": "https://doi.org/10.7554/eLife.94689"
+        },
+        "event_level_labels": {
+          "artifact_path": "datasets/rodighiero_2024/fucci_phase_tracks.csv.gz",
+          "field": "phase",
+          "source_url": "https://raw.githubusercontent.com/EmanuelSoda/FUCCI_ML/b33845046c85ab8b23fa8a422935263ea43f355a/data/nb4_230422_new_inhibitors_split_cell_cycle_splitted_new_model.csv",
+          "upstream_commit": "b33845046c85ab8b23fa8a422935263ea43f355a"
+        }
+      },
+      "reference_results": [
+        {
+          "sample": "FUCCI(CA)2-Kasumi-1",
+          "method": "EdU/DAPI manual gates",
+          "source": "Figure 4A",
+          "g1_percent": 63.0,
+          "s_percent": 28.41,
+          "g2_m_percent": 7.63,
+          "unclassified_percent": 0.96,
+          "s_components_percent": {"early": 1.86, "mid": 24.8, "late": 1.75}
+        },
+        {
+          "sample": "FUCCI(CA)2-Kasumi-1",
+          "method": "FUCCI manual gates",
+          "source": "Figure 4B",
+          "g1_percent": 65.2,
+          "s_percent": 29.1,
+          "g2_m_percent": 3.67,
+          "unclassified_percent": 2.03
+        },
+        {
+          "sample": "FUCCI(CA)2-MDA-MB-231",
+          "method": "EdU/DAPI manual gates",
+          "source": "Figure 4—figure supplement 1A",
+          "g1_percent": 44.3,
+          "s_percent": 44.91,
+          "g2_m_percent": 9.86,
+          "unclassified_percent": 0.93,
+          "s_components_percent": {"early": 3.25, "mid": 40.5, "late": 1.16}
+        },
+        {
+          "sample": "FUCCI(CA)2-MDA-MB-231",
+          "method": "FUCCI manual gates",
+          "source": "Figure 4—figure supplement 1B",
+          "g1_percent": 43.6,
+          "s_percent": 49.9,
+          "g2_m_percent": 4.77,
+          "unclassified_percent": 1.73
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "datasets/rodighiero_2024/fucci_phase_tracks.csv.gz",
+          "kind": "gzip_csv",
+          "sha256": "7736a41dabf562ace8373c8f5d7896248d5836f9da16e33dc046f2fa9b97531a",
+          "byte_size": 1472014,
+          "source_url": "https://raw.githubusercontent.com/EmanuelSoda/FUCCI_ML/b33845046c85ab8b23fa8a422935263ea43f355a/data/nb4_230422_new_inhibitors_split_cell_cycle_splitted_new_model.csv",
+          "license": {"spdx": "MIT", "evidence_url": "https://github.com/EmanuelSoda/FUCCI_ML/blob/b33845046c85ab8b23fa8a422935263ea43f355a/LICENSE"},
+          "csv_check": {
+            "rows": 47331,
+            "unique": {"field": "Track_Key", "count": 2103},
+            "value_counts": {"field": "phase", "counts": {"G1": 22505, "S": 15762, "G1/S": 4673, "G2/M": 4391}}
+          }
+        },
+        {
+          "path": "datasets/rodighiero_2024/kasumi1_edu_fucci.fcs",
+          "kind": "fcs",
+          "sha256": "8bffd22f520b6287a360e18fc23b1da3e59240b2936c3ab72d3d996453bb3509",
+          "byte_size": 2584916,
+          "source_url": "https://datadryad.org/downloads/file_stream/3554085",
+          "source_archive": "EdU_fcs_files.zip",
+          "source_archive_sha256": "e2894452951b7dc9cb7d0973852196b3508381c8c767b6e9150e99e0eaf180a5",
+          "source_archive_path": "Hayatigolkhatmi043024FucciEdu_-_Kasumi1 Edu Fucci_001.fcs",
+          "published_result_mapping": ["Figure 4A", "Figure 4B"],
+          "license": {"spdx": "CC0-1.0", "evidence_url": "https://doi.org/10.5061/dryad.cvdncjtcx"},
+          "privacy_review": {
+            "reviewed": true,
+            "identifying_metadata": true,
+            "notes": "The public FCS embeds the submitting author's surname in $FIL, the cell-line/sample description, instrument name, acquisition date, and operator 'Administrator'. No patient, donor, email, or clinical identifier was found; this is a Kasumi-1 cell-line acquisition. The corpus filename was sanitized."
+          },
+          "format": {
+            "fcs_version": "FCS3.0",
+            "datatype": "F",
+            "byte_order": "4,3,2,1",
+            "events": 58687,
+            "parameters": 11,
+            "required_markers": ["DAPI", "EdU", "mCherry", "GFP-A"]
+          },
+          "oracle": {
+            "reader": "FlowIO",
+            "reader_version": "1.4.0",
+            "expected_summary": {"mode": "L", "text_start": 256, "text_stop": 2674, "data_start": 2680, "data_stop": 2584907, "first_parameter": "FSC-A", "last_parameter": "Time"}
+          }
+        },
+        {
+          "path": "datasets/rodighiero_2024/kasumi1_negative.fcs",
+          "kind": "fcs",
+          "sha256": "fe70a7c832b227477cca7ca8324fa1dc201a3c3f13ef03f3f15f8e7860666311",
+          "byte_size": 1756305,
+          "source_url": "https://datadryad.org/downloads/file_stream/3554085",
+          "source_archive": "EdU_fcs_files.zip",
+          "source_archive_sha256": "e2894452951b7dc9cb7d0973852196b3508381c8c767b6e9150e99e0eaf180a5",
+          "source_archive_path": "Hayatigolkhatmi043024FucciEdu_-_Kasumi1 NEG_002.fcs",
+          "published_result_mapping": [],
+          "control_for": "FUCCI(CA)2-Kasumi-1 fluorescence acquisition",
+          "license": {"spdx": "CC0-1.0", "evidence_url": "https://doi.org/10.5061/dryad.cvdncjtcx"},
+          "privacy_review": {
+            "reviewed": true,
+            "identifying_metadata": true,
+            "notes": "The public FCS embeds the submitting author's surname in $FIL, the cell-line/control description, instrument name, acquisition date, and operator 'Administrator'. No patient, donor, email, or clinical identifier was found; this is a Kasumi-1 negative control. The corpus filename was sanitized."
+          },
+          "format": {
+            "fcs_version": "FCS3.0",
+            "datatype": "F",
+            "byte_order": "4,3,2,1",
+            "events": 39855,
+            "parameters": 11,
+            "required_markers": ["DAPI", "EdU", "mCherry", "GFP-A"]
+          },
+          "oracle": {
+            "reader": "FlowIO",
+            "reader_version": "1.4.0",
+            "expected_summary": {"mode": "L", "text_start": 256, "text_stop": 2671, "data_start": 2677, "data_stop": 1756296, "first_parameter": "FSC-A", "last_parameter": "Time"}
+          }
+        },
+        {
+          "path": "datasets/rodighiero_2024/mda_mb_231_edu_fucci.fcs",
+          "kind": "fcs",
+          "sha256": "6465813b05916c43a8d644e53db89000f97f9a5712e760c95ac3d59deebbf5f2",
+          "byte_size": 2465107,
+          "source_url": "https://datadryad.org/downloads/file_stream/3554085",
+          "source_archive": "EdU_fcs_files.zip",
+          "source_archive_sha256": "e2894452951b7dc9cb7d0973852196b3508381c8c767b6e9150e99e0eaf180a5",
+          "source_archive_path": "Hayatigolkhatmi043024FucciEdu_-_MDA-MB-231 Edu Fucci_003.fcs",
+          "published_result_mapping": ["Figure 4—figure supplement 1A", "Figure 4—figure supplement 1B"],
+          "license": {"spdx": "CC0-1.0", "evidence_url": "https://doi.org/10.5061/dryad.cvdncjtcx"},
+          "privacy_review": {
+            "reviewed": true,
+            "identifying_metadata": true,
+            "notes": "The public FCS embeds the submitting author's surname in $FIL, the cell-line/sample description, instrument name, acquisition date, and operator 'Administrator'. No patient, donor, email, or clinical identifier was found; this is an MDA-MB-231 cell-line acquisition. The corpus filename was sanitized."
+          },
+          "format": {
+            "fcs_version": "FCS3.0",
+            "datatype": "F",
+            "byte_order": "4,3,2,1",
+            "events": 55964,
+            "parameters": 11,
+            "required_markers": ["DAPI", "EdU", "mCherry", "GFP-A"]
+          },
+          "oracle": {
+            "reader": "FlowIO",
+            "reader_version": "1.4.0",
+            "expected_summary": {"mode": "L", "text_start": 256, "text_stop": 2677, "data_start": 2683, "data_stop": 2465098, "first_parameter": "FSC-A", "last_parameter": "Time"}
+          }
+        },
+        {
+          "path": "datasets/rodighiero_2024/mda_mb_231_negative.fcs",
+          "kind": "fcs",
+          "sha256": "ed957b426730943861fa769e8d8f02e014572b623d571a95312bceef68107d35",
+          "byte_size": 1776193,
+          "source_url": "https://datadryad.org/downloads/file_stream/3554085",
+          "source_archive": "EdU_fcs_files.zip",
+          "source_archive_sha256": "e2894452951b7dc9cb7d0973852196b3508381c8c767b6e9150e99e0eaf180a5",
+          "source_archive_path": "Hayatigolkhatmi043024FucciEdu_-_MDA-MB-231 NEG_004.fcs",
+          "published_result_mapping": [],
+          "control_for": "FUCCI(CA)2-MDA-MB-231 fluorescence acquisition",
+          "license": {"spdx": "CC0-1.0", "evidence_url": "https://doi.org/10.5061/dryad.cvdncjtcx"},
+          "privacy_review": {
+            "reviewed": true,
+            "identifying_metadata": true,
+            "notes": "The public FCS embeds the submitting author's surname in $FIL, the cell-line/control description, instrument name, acquisition date, and operator 'Administrator'. No patient, donor, email, or clinical identifier was found; this is an MDA-MB-231 negative control. The corpus filename was sanitized."
+          },
+          "format": {
+            "fcs_version": "FCS3.0",
+            "datatype": "F",
+            "byte_order": "4,3,2,1",
+            "events": 40307,
+            "parameters": 11,
+            "required_markers": ["DAPI", "EdU", "mCherry", "GFP-A"]
+          },
+          "oracle": {
+            "reader": "FlowIO",
+            "reader_version": "1.4.0",
+            "expected_summary": {"mode": "L", "text_start": 256, "text_stop": 2671, "data_start": 2677, "data_stop": 1776184, "first_parameter": "FSC-A", "last_parameter": "Time"}
+          }
+        },
+        {
+          "path": "results/rodighiero_2024_figure4.jpg",
+          "kind": "published_figure",
+          "sha256": "b3d6a93c90bc866d27333b447cce88e5a6aacad2c7b8ab92d5e164b9a7d9d58e",
+          "byte_size": 162707,
+          "source_url": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/aa49/11584176/9015295ce15e/elife-94689-fig4.jpg",
+          "license": {"spdx": "CC-BY-4.0", "evidence_url": "https://www.ncbi.nlm.nih.gov/pmc/tools/openftlist/"}
+        },
+        {
+          "path": "results/rodighiero_2024_figure4_supplement1.jpg",
+          "kind": "published_figure",
+          "sha256": "2a3f1262089d8db40a1131b30b77e3a0c5022152e6f9218e8e97c53e1b88b072",
+          "byte_size": 144517,
+          "source_url": "https://cdn.ncbi.nlm.nih.gov/pmc/blobs/aa49/11584176/af57e9731a59/elife-94689-fig4-figsupp1.jpg",
+          "license": {"spdx": "CC-BY-4.0", "evidence_url": "https://www.ncbi.nlm.nih.gov/pmc/tools/openftlist/"}
+        }
+      ],
+      "source_archive": {
+        "dataset_doi": "10.5061/dryad.cvdncjtcx",
+        "file": "EdU_fcs_files.zip",
+        "byte_size": 6313022,
+        "sha256": "e2894452951b7dc9cb7d0973852196b3508381c8c767b6e9150e99e0eaf180a5",
+        "license": "CC0-1.0",
+        "status": "acquired_and_unpacked",
+        "artifacts_admitted": 4,
+        "note": "Downloaded interactively from Dryad on 2026-07-25; archive integrity and all four FCS members were verified before admission. The archive itself is not retained in the corpus."
+      }
+    },
+    {
+      "id": "amouzgar_2025_mass_cytometry",
+      "paper": {
+        "citation": "Amouzgar M, et al. A deep single cell mass cytometry approach to capture canonical and noncanonical cell cycle states. Nature Communications. 2025.",
+        "doi": "10.1038/s41467-025-63883-4",
+        "pmcid": "PMC12494979",
+        "url": "https://doi.org/10.1038/s41467-025-63883-4"
+      },
+      "interpretation": {
+        "reference_method": "Multi-marker canonical phase gates using DNA, IdU, phospho-histone H3, cyclins, and other cell-cycle markers.",
+        "note": "This is mass cytometry rather than conventional fluorescence flow cytometry. The labels are valuable external biological truth, but a DNA-only PhaseFinder fit is not expected to reproduce multi-marker gates exactly."
+      },
+      "phase_call_provenance": {
+        "method": "Upstream event-level multi-marker canonical phase gates",
+        "artifact_path": "datasets/amouzgar_2025/cell_cycle_labeled.csv.gz",
+        "field": "gate",
+        "source_url": "https://zenodo.org/api/records/14852934/files/2025_june-scMC_reduced_file_sc_table.csv/content",
+        "record_url": "https://zenodo.org/records/14852934",
+        "paper_url": "https://doi.org/10.1038/s41467-025-63883-4"
+      },
+      "reference_results": [
+        {
+          "sample": "Zenodo reduced single-cell table (all included cell lines and treatments)",
+          "events": 162000,
+          "g0_g1_percent": 51.167901,
+          "s_percent": 33.295062,
+          "g2_percent": 13.761728,
+          "m_percent": 1.775309,
+          "phasefinder_g2_m_percent": 15.537037
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "datasets/amouzgar_2025/cell_cycle_labeled.csv.gz",
+          "kind": "gzip_csv",
+          "sha256": "d393d0b016f453941bb7c97ee4c344f2b6a5fa4105eaa6cd69cf547e6e17ea5c",
+          "byte_size": 30902488,
+          "source_url": "https://zenodo.org/api/records/14852934/files/2025_june-scMC_reduced_file_sc_table.csv/content",
+          "source_md5": "e86b9451b417743a05b3175047c0c0f3",
+          "license": {"spdx": "CC-BY-4.0", "evidence_url": "https://zenodo.org/records/14852934"},
+          "csv_check": {
+            "rows": 162000,
+            "value_counts": {"field": "gate", "counts": {"G0G1": 82892, "S": 53938, "G2": 22294, "M": 2876}}
+          }
+        },
+        {
+          "path": "datasets/amouzgar_2025/primary_tcell_donor2_96h.fcs",
+          "kind": "fcs",
+          "sha256": "764b5ded7dd12d63e4af294886c143fda8ad20ed912996d566668bb4e05c9711",
+          "byte_size": 15236835,
+          "source_url": "https://zenodo.org/api/records/14852934/files/PrimaryHumanTcell_3donor_96hrs.zip/content",
+          "source_archive_md5": "50d1c12673aa49b470a88f7ca36c43f4",
+          "source_archive_path": "PrimaryHumanTcell_3donor_96hrs/BATCH_1_BC_ATUNE1_11_D2_1169_stim_96hrs_cPARP--adjusted.fcs",
+          "license": {"spdx": "CC-BY-4.0", "evidence_url": "https://zenodo.org/records/14852934"},
+          "privacy_review": {
+            "reviewed": true,
+            "identifying_metadata": true,
+            "notes": "The public FCS embeds an upstream local filename containing the submitting author's surname and a donor/sample code D2_1169. No direct patient name, email, or clinical record identifier was found."
+          },
+          "format": {
+            "fcs_version": "FCS3.0",
+            "datatype": "F",
+            "byte_order": "4,3,2,1",
+            "events": 81019,
+            "parameters": 47,
+            "required_markers": ["DNA1", "DNA2", "IdU", "Geminin", "pH3_s10", "CyclinB1", "Ki67", "PCNA"]
+          },
+          "oracle": {
+            "reader": "FlowIO",
+            "reader_version": "1.4.0",
+            "expected_summary": {"mode": "L", "text_start": 58, "text_stop": 5254, "data_start": 5255, "data_stop": 15236826}
+          }
+        }
+      ]
+    },
+    {
+      "id": "li_2026_cloccs",
+      "local_only": true,
+      "paper": {
+        "citation": "Li Y, MacAlpine DM, Hartemink AJ. Comprehensive profiling of chromatin occupancy dynamics through the cell cycle. Nucleic Acids Research. 2026;54(2).",
+        "doi": "10.1093/nar/gkaf1385",
+        "pmcid": "PMC12809599",
+        "url": "https://doi.org/10.1093/nar/gkaf1385"
+      },
+      "upstream": {
+        "repository_url": "https://github.com/HarteminkLab/cell-cycle-deconv",
+        "commit": "6d3b06a265f06c0385102262d839bd9c0c02218b",
+        "data_path": "data/facs/cell_cycle",
+        "reference_path": "data/2019_cloccs_fits",
+        "model_path": "models/yl_cell_cycle"
+      },
+      "license": {
+        "spdx": null,
+        "covers_binary": false,
+        "redistribution_basis": "The public GitHub repository declares no license. FCS files are deliberately gitignored and used only as local validation inputs; this tracked manifest retains citations, source paths, sizes, and hashes."
+      },
+      "interpretation": {
+        "reference_method": "CLOCCS Flow model jointly fitted to each 16-timepoint alpha-factor release series.",
+        "note": "This is the direct external validation corpus for PhaseFinder's joint CLOCCS implementation. Compare fitted timing parameters after mapping the upstream negative mu0 to PhaseFinder's positive recovery delay. The upstream model also includes a halted fraction that PhaseFinder does not currently implement, so exact equality is not expected."
+      },
+      "phase_call_provenance": {
+        "method": "Published CLOCCS Flow model fits",
+        "source_repository": "https://github.com/HarteminkLab/cell-cycle-deconv",
+        "source_commit": "6d3b06a265f06c0385102262d839bd9c0c02218b",
+        "reference_path": "data/2019_cloccs_fits",
+        "paper_url": "https://doi.org/10.1093/nar/gkaf1385",
+        "note": "The reference values are joint model parameters and reported S-phase entry times rather than per-event phase labels."
+      },
+      "format": {
+        "fcs_version": "FCS2.0",
+        "datatype": "I",
+        "byte_order": "4,3,2,1",
+        "events_per_file": 30000,
+        "parameters": 4,
+        "dna_channel": "Alexa Fluor 488-A"
+      },
+      "reference_results": [
+        {
+          "series_id": "replicate_1",
+          "s_phase_entry_minutes_reported_in_paper": 24.0,
+          "parameters": {"mu0": -26.7901, "delta": 8.1805, "sigma0": 10.9885, "sigmaV": 0.1424, "lambda": 68.1914, "gamma1": 0.0041, "gamma2": 0.2547, "halted": 0.2245}
+        },
+        {
+          "series_id": "replicate_2",
+          "s_phase_entry_minutes_reported_in_paper": 17.0,
+          "parameters": {"mu0": -20.1510, "delta": 10.8953, "sigma0": 10.6310, "sigmaV": 0.1297, "lambda": 60.2093, "gamma1": 0.0017, "gamma2": 0.2837, "halted": 0.2906}
+        }
+      ],
+      "artifacts": [],
+      "series": [
+        {
+          "id": "replicate_1",
+          "files": [
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_0 min_001.fcs","time_minutes":0,"byte_size":241550,"sha256":"4e3400c3fa18a831c8b22e3226650ea098d456a20b829ca287e24a6d7f86c45d"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_10 min_002.fcs","time_minutes":10,"byte_size":241552,"sha256":"a50bd76d489f960889df27ec8e3ad3748c22f6920ef3776fe891583243a37589"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_20 min_003.fcs","time_minutes":20,"byte_size":241688,"sha256":"3088829695bcdc448d359aa2f02e84d57c0a5138d6b74872b3443a3e66921026"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_30 min_004.fcs","time_minutes":30,"byte_size":241552,"sha256":"0395ab0048d48299dd1259b81f7e3e3eb6b7c89f3406856e7337a7a93837e311"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_40 min_005.fcs","time_minutes":40,"byte_size":241552,"sha256":"e80323ef7e687a17e69a5e5bc5ab1f2a75fb83942ea6f40680a668735e9f2978"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_50 min_006.fcs","time_minutes":50,"byte_size":241552,"sha256":"6beecacfce281a8cf9765f67f0697228fc4a043ea34667895f798dfb8db82346"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_60 min_007.fcs","time_minutes":60,"byte_size":241552,"sha256":"d9f65f41887149e4af23689550b993bd7053d84ba6fe874fefc57803c435cd6a"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_70 min_008.fcs","time_minutes":70,"byte_size":241552,"sha256":"90de5769489cd863491f0a6aa33835b5b11af842027bb3af0ef076d5814e203a"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_80 min_009.fcs","time_minutes":80,"byte_size":241552,"sha256":"5e43bcf49b99e45942cadc10632408f7bca2b63edd9fe869ecd9f2b0b9214e0a"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_90 min_010.fcs","time_minutes":90,"byte_size":241552,"sha256":"7559473e43b7558c3285775ce50354f401d22cf3ff06455f11e02df10720cee9"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_100 min_011.fcs","time_minutes":100,"byte_size":241554,"sha256":"1afa03ee4f06b70bb91d3094de832b0711e701e73b2b871139c27810ca37e955"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_110 min_012.fcs","time_minutes":110,"byte_size":241554,"sha256":"7a021fffbee0516279d8bdbcd5bc7fc8e2be628b767ea873632144ceebc86713"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_120 min_013.fcs","time_minutes":120,"byte_size":241554,"sha256":"bb18ad5ce38afcceaa286f157664bf4d5a697b76067062214bce9b74ca8d1cdd"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_130 min_014.fcs","time_minutes":130,"byte_size":241554,"sha256":"48482a56a9675cd0840a836ac5bdd0307d9104c978686e55fdfb2a3af14318af"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_140 min_015.fcs","time_minutes":140,"byte_size":241554,"sha256":"0dd4807b7e7446c5fc456511e1687ca9569c2d8c3a9e8a00f8c87bf0074777bb"},
+            {"path":"datasets/li_2026_cloccs/replicate_1/Specimen_001_150 min_016.fcs","time_minutes":150,"byte_size":241554,"sha256":"567bb1948f0d257a6ec53228f1cc33c190db772ed3562f3e8da970deac008d0f"}
+          ]
+        },
+        {
+          "id": "replicate_2",
+          "files": [
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_0 min_001.fcs","time_minutes":0,"byte_size":241478,"sha256":"8c982662bbf89b8ce5395d28e4ca8d9bfdba0c2a5a6165d6a0cf09cfa780abf4"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_10 min_002.fcs","time_minutes":10,"byte_size":241480,"sha256":"9099559d4e6a1dd3f4894550bceecb2d30ec17b5e729f64015ffa74b4919b915"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_20 min_003.fcs","time_minutes":20,"byte_size":241480,"sha256":"322cde1269f1d3b09ccea17330f1f79629be574345ee7e2c61b5c8507c81a0bc"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_30 min_004.fcs","time_minutes":30,"byte_size":241480,"sha256":"f376c47cc247aaca698983ae112f78c89c647b10cc3f0e2c5145247e2d209cd3"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_40 min_005.fcs","time_minutes":40,"byte_size":241480,"sha256":"be5391589ca2acc1c6ae501d75a82761dbcaa0ca398c8114d3469f366aa03a12"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_50 min_006.fcs","time_minutes":50,"byte_size":241480,"sha256":"5f8d392e9f70898c1653feb5176376956bbf73a8509fd5664d870e3fae2a5d6e"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_60 min_007.fcs","time_minutes":60,"byte_size":241480,"sha256":"cc8fc8d849063f1897708b5115289f0b7b97c31c8acbc83a95f802772b4869bb"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_70 min_008.fcs","time_minutes":70,"byte_size":241480,"sha256":"bda38e04ed93b036f1d8481e5d8f1bc9679365a365da1b5cedeb711aee9e33c7"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_80 min_009.fcs","time_minutes":80,"byte_size":241480,"sha256":"f93173bc9d49ae0ad3c7fce02c96318cd0a293a7e82ae6a8306390b2d05fa984"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_90 min_010.fcs","time_minutes":90,"byte_size":241480,"sha256":"3ec6b3665b872b650306307edc3892343beb84ddfeba66d386c3ea929be5ff28"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_100 min_011.fcs","time_minutes":100,"byte_size":241482,"sha256":"a4d0ef0b4e740cb1bf1d09ee4b35aade0f1110ccb9e27001fce1e6a31012eda4"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_110 min_012.fcs","time_minutes":110,"byte_size":241482,"sha256":"3e5825ec3a57e0aba17c883b7b24a20ed72b91770d8850d0c2593b6e350d1118"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_120 min_013.fcs","time_minutes":120,"byte_size":241482,"sha256":"c46816583d6c87571bacdb43d4b33a276f68939ebb121034cc7a9f619fb60033"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_130 min_014.fcs","time_minutes":130,"byte_size":241482,"sha256":"c6b8a7ba6c38ad8ed94348aa1081b6feba0189dc9461321bcd728ca0e06a7ba9"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_140 min_015.fcs","time_minutes":140,"byte_size":241482,"sha256":"415af0e78bbb58b09a670749a4e6bd5cdf0118b3ef22556608949153f652ecb6"},
+            {"path":"datasets/li_2026_cloccs/replicate_2/Specimen_001_150 min_016.fcs","time_minutes":150,"byte_size":241482,"sha256":"7b60185c80284706dc447a39d38a0629f0c48f12f1fc97e753d0c8791829d71e"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flowjo_async_djf",
+      "local_only": true,
+      "source": {
+        "not_published": true,
+        "description": "Internal lab reference data (not a published paper) over 30 asynchronous budding-yeast samples on one FCS acquisition set.",
+        "references_provided": {
+          "flowjo_djf": {
+            "software": "FlowJo",
+            "model": "Dean-Jett-Fox (DJF)",
+            "workbook": "DJF Model_DataCompilation_Flojo_3_26_2026.xlsx",
+            "workbook_sheet": "Async ALL DATA",
+            "sample_count": 30,
+            "fields": ["count", "g1/s/g2 fractions", "g1/g2 mean", "g1/g2 CV", "g2:g1 ratio"]
+          },
+          "flowreader_watson": {
+            "software": "Flowreader",
+            "model": "Watson",
+            "workbook": "DJF Model v. Watson Model.xlsx",
+            "workbook_sheet": "Sheet1",
+            "sample_count": 15,
+            "subset": "mat-a strains only (1468*, 1693*, 1982*)",
+            "fields": ["count", "g1/s/g2 fractions", "fsc-a mean"]
+          }
+        },
+        "compilation_date": "2026-03-26"
+      },
+      "license": {
+        "spdx": null,
+        "covers_binary": false,
+        "redistribution_basis": "Lab-generated FCS and analyst-compiled FlowJo/Flowreader results. The FCS files are local-only (~2.2 GB total) and never committed; only this metadata stub is tracked."
+      },
+      "interpretation": {
+        "flowjo_djf": {
+          "reference_method": "FlowJo Dean-Jett-Fox (DJF) model, fitted per sample (30 samples).",
+          "same_model_family": true,
+          "note": "Same model family (DJF-vs-DJF) run by an established tool, so close agreement is the expectation; residual differences reflect pre-fit gating not captured in the workbook and optimizer/parameterization differences."
+        },
+        "flowreader_watson": {
+          "reference_method": "Flowreader classic Watson model (15 mat-a samples).",
+          "same_model_family": false,
+          "note": "PhaseFinder's 'Watson Pragmatic' restricts residual S to strictly between the fitted peaks (SCI-01), whereas Flowreader's classic Watson S% runs markedly higher than DJF S% (e.g. 1468f 0.41 vs DJF 0.267). PhaseFinder Watson Pragmatic is therefore expected to sit LOWER than this reference; validate broad agreement / direction, not strict equality."
+        }
+      },
+      "phase_call_provenance": {
+        "method": "Analyst-compiled outputs from FlowJo Dean-Jett-Fox and Flowreader Watson fits",
+        "flowjo_workbook": "DJF Model_DataCompilation_Flojo_3_26_2026.xlsx",
+        "flowjo_sheet": "Async ALL DATA",
+        "flowreader_workbook": "DJF Model v. Watson Model.xlsx",
+        "flowreader_sheet": "Sheet1",
+        "compilation_date": "2026-03-26",
+        "not_in_git": true
+      },
+      "validation_weight": {
+        "primary_external_validation": true,
+        "weight": "high",
+        "rationale": "Direct DJF-vs-DJF comparison against an established tool (FlowJo) on real data. This is the authoritative external accuracy check for cell-cycle modeling and is weighted ABOVE synthetic self-consistency tests and above the same-direction-only manual-gate (rodighiero) and mass-cytometry (amouzgar) references. A regression here should be treated as a primary validation failure."
+      },
+      "format": {
+        "fcs_version": "3.1",
+        "datatype": "F",
+        "byte_order": "1,2,3,4",
+        "parameters": 34,
+        "dna_channel_pnn": "FL7-A",
+        "dna_channel_pns": "GFP/FITC-A",
+        "dna_stain": "SYTOX Green",
+        "channel_range_pnr": 1000,
+        "dna_channel_evidence": "Empirically confirmed 2026-07-28: FL7-A percentiles (~160/~396 for strain 1468f) bracket FlowJo G1 mean (~175) and G2 mean (~350); FL8-A (PI) sits far too low (median ~121)."
+      },
+      "acceptance_tolerances": {
+        "_status": "PREDEFINED for the VALID-01 comparison run; provisional until measured against actual PhaseFinder deltas and reviewed by a domain expert before any 'validated' claim.",
+        "flowjo_djf": {
+          "phase_fraction_abs_pp": {"g1": 5.0, "s": 8.0, "g2": 5.0},
+          "peak_mean_rel": 0.03,
+          "peak_cv_abs_pp": 2.0,
+          "g2_g1_ratio_abs": 0.06
+        },
+        "flowreader_watson": {
+          "_note": "Cross-tool AND cross-variant (classic Watson vs PhaseFinder Watson Pragmatic); broad-agreement only. Expect PhaseFinder %S below Flowreader %S.",
+          "phase_fraction_abs_pp": {"g1": 8.0, "s": 20.0, "g2": 12.0},
+          "directional": {"s": "phasefinder_leq_flowreader"}
+        }
+      },
+      "reference_results": [],
+      "artifacts": [],
+      "local_data": {
+        "not_in_git": true,
+        "note": "Special/private dataset: the FCS files AND the compiled FlowJo reference values are never committed. datasets/flowjo_async_djf/ is gitignored; only this metadata stub (provenance, config, tolerances, weight) is tracked.",
+        "repo_root_relative_fcs_directory": "../test_flow_data/Asynchronous_UsedAsFloJoDFJSampleDataset",
+        "reference_json": "datasets/flowjo_async_djf/flowjo_djf_reference.json",
+        "regenerate_with": "tests/validation/driving_code/generate_flowjo_djf_reference.py",
+        "sample_count": 30,
+        "mapping_rule": "Each FCS maps to a reference row by the async_<strain>__ token in its filename (e.g. EDS2026-03-26_async_191f__A1.0001.fcs -> strain 191f). Per-file SHA-256 and sizes are recorded in the local reference JSON."
+      }
+    }
+  ]
+}

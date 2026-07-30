@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhaseFinder synthetic FCS benchmark</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { max-width: 1500px; margin: 0 auto; padding: 1.5rem; line-height: 1.45; }
+    h1, h2 { line-height: 1.15; }
+    .controls { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: 1rem 0; }
+    fieldset { border: 1px solid #8886; border-radius: .4rem; }
+    #model-choices { display: flex; flex-wrap: wrap; gap: .75rem; }
+    button { padding: .55rem .85rem; cursor: pointer; }
+    progress { width: min(42rem, 100%); height: 1.1rem; }
+    .table-wrap { overflow-x: auto; border: 1px solid #8885; border-radius: .4rem; margin-bottom: 2rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+    th, td { padding: .45rem .55rem; border-bottom: 1px solid #8884; text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; background: Canvas; }
+    td.pass { color: #16803b; font-weight: 700; }
+    td.exposed { color: #b65f00; font-weight: 700; }
+    td.fail { color: #c62828; font-weight: 700; }
+    td.skip { color: #666; }
+    #status[data-kind="warning"] { color: #b65f00; }
+    #status[data-kind="error"] { color: #c62828; }
+    #status[data-kind="pass"] { color: #16803b; }
+    code { background: #8882; padding: .1rem .25rem; border-radius: .2rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PhaseFinder synthetic FCS benchmark</h1>
+    <p>
+      These files contain no real samples. Phase/QC truth lives in separate sidecars and is
+      compared with the parser and fitted models only after the FCS has been decoded.
+      <strong>EXPOSED</strong> means a deliberately unsupported or malformed input reached a
+      path the audit says should reject/block it; <strong>DEVIATION</strong> means a fitted phase
+      fraction missed that fixture's predeclared recovery contract; <strong>DIAGNOSTIC</strong>
+      records a fit for a stress case without claiming that model should recover it.
+    </p>
+
+    <fieldset>
+      <legend>Models</legend>
+      <div id="model-choices"></div>
+    </fieldset>
+    <div class="controls">
+      <button id="run-all" type="button">Run all checks</button>
+      <button id="run-models" type="button">Run model benchmarks</button>
+      <button id="run-qc" type="button">Run QC benchmarks</button>
+      <button id="run-parser" type="button">Run parser probes</button>
+      <button id="download-results" type="button" disabled>Download JSON</button>
+    </div>
+    <p id="status" role="status">Loading manifest…</p>
+    <progress id="progress" value="0" max="1" aria-label="Benchmark progress"></progress>
+
+    <h2>Parser and scientific-input contract</h2>
+    <div class="table-wrap">
+      <table id="parser-results">
+        <thead><tr><th>Fixture</th><th>Expected</th><th>Observed</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h2>QC truth and metamorphic checks</h2>
+    <div class="table-wrap">
+      <table id="qc-results">
+        <thead><tr><th>Fixture</th><th>Check</th><th>Good retained</th><th>Bad rejected</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h2>Known phase-fraction recovery</h2>
+    <p>Truth and fit columns are <code>G1 / S / G2/M</code> percentages. Errors are absolute percentage points.</p>
+    <div class="table-wrap">
+      <table id="model-results">
+        <thead>
+          <tr>
+            <th>Fixture</th><th>View</th><th>Model</th><th>Truth %</th><th>Fit %</th>
+            <th>Max error</th><th>Converged</th><th>Status</th><th>Detail</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+  <script type="module" src="benchmark.js"></script>
+</body>
+</html>

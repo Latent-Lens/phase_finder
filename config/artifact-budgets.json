@@ -1,0 +1,8 @@
+{
+  "warningRatio": 0.9,
+  "mainJavaScriptBytes": 800000,
+  "allCssBytes": 250000,
+  "largestImageBytes": 550000,
+  "totalUncompressedBytes": 8000000,
+  "totalGzipBytes": 3000000
+}

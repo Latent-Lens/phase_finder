@@ -1,0 +1,46 @@
+{
+  "name": "phasefinder",
+  "version": "0.7.0",
+  "description": "PhaseFinder is a browser-based tool for inspecting and plotting flow cytometry `.fcs` files. It is designed as a lightweight, local-first workspace: users drop FCS files into the page, the app reads the FCS header and TEXT metadata in the browser, and selected samples can then be loaded into an overlaid DNA-content event histogram with optional Dean–Jett–Fox cell-cycle modeling.",
+  "private": true,
+  "packageManager": "npm@10.9.0",
+  "engines": {
+    "node": "22.x"
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "preflight": "node scripts/preflight.cjs",
+    "dev": "vite",
+    "build": "vite build && npm run provenance",
+    "preview": "vite preview",
+    "test:unit": "python3 tests/unit/driving_code/run_standalone.py --limited-media",
+    "test:e2e": "python3 tests/e2e/driving_code/drive_flow.py",
+    "test:dist": "python3 tests/e2e/driving_code/dist_smoke.py",
+    "test": "npm run test:unit",
+    "check:dist": "node scripts/verify-dist.cjs",
+    "check:dom": "node scripts/check-dom-bindings.mjs",
+    "check:privacy": "git ls-files -z | node scripts/check-privacy.cjs",
+    "check:base": "BASE_PATH=/phasefinder/ vite build --outDir dist-base --emptyOutDir && DIST_DIR=dist-base npm run provenance && BASE_PATH=/phasefinder/ DIST_DIR=dist-base npm run check:dist",
+    "report:size": "node scripts/report-artifact-delta.cjs",
+    "provenance": "node scripts/generate-provenance.cjs",
+    "check": "npm run preflight && npm run check:dom && npm run check:privacy && npm test && npm run build && npm run check:dist && npm run check:privacy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latent-Lens/PhaseFinder.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Latent-Lens/PhaseFinder/issues"
+  },
+  "homepage": "https://github.com/Latent-Lens/PhaseFinder#readme",
+  "devDependencies": {
+    "vite": "^8.1.5"
+  }
+}

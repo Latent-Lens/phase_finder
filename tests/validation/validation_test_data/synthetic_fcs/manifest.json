@@ -1,0 +1,3755 @@
+{
+  "case_count": 59,
+  "cases": [
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 4.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-06"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Reference calibration for the cross-scale bulk-region pair.",
+      "fcs": {
+        "bytes": 144707,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 6000,
+        "sha256": "9d13a2d9760410156e6ebec93e40f339af64080f14e0fa02e7ed07334f0a44b4"
+      },
+      "file": "files/bulk_scale_reference.fcs",
+      "id": "bulk_scale_reference",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "bulk-fit",
+        "scale-pair"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 3000,
+            "g2": 1200,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3000,
+            "g2": 1200,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/bulk_scale_reference.truth.json",
+      "truth_sha256": "87223aba13865a3d04562c8b940c54b6dda7044fdab78ae603d762bb4274a586"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 537600.0,
+            "right": 742400.0
+          },
+          "g2": {
+            "left": 1054720.0,
+            "right": 1505280.0
+          }
+        },
+        "tolerance_percentage_points": 5.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-06",
+        "SCI-07"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Same latent events as bulk_scale_reference but DNA channels are scaled by 10.",
+      "fcs": {
+        "bytes": 144703,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 6000,
+        "sha256": "f43b0949f59a0a99802ea458ab4303af8522f4217c1f1e529d0b2d5fb54def64"
+      },
+      "file": "files/bulk_scale_x10.fcs",
+      "id": "bulk_scale_x10",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "bulk-fit",
+        "scale-pair",
+        "conditioning"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 3000,
+            "g2": 1200,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3000,
+            "g2": 1200,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/bulk_scale_x10.truth.json",
+      "truth_sha256": "ee504899518b1422ac8f187ccb615ca60a7f0d1e4d1f212b296d58ac4c7acf98"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "TEXT DATA offsets point beyond end-of-file and conflict with HEADER offsets.",
+      "fcs": {
+        "bytes": 347,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "d23051444032105502215da142e3c9e251e81ded09f92bd030821d4522b1e0f7"
+      },
+      "file": "files/parser_data_offset_oob.fcs",
+      "id": "parser_data_offset_oob",
+      "parser_expectation": {
+        "code": "FCS_OFFSET_CONFLICT",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "TEXT value contains an escaped literal delimiter.",
+      "fcs": {
+        "bytes": 362,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "6e24d4eb422e9ad036d302c55e54037d0fb13f11fb8cef4e43941068b754e621"
+      },
+      "file": "files/parser_escaped_text_delimiter.fcs",
+      "id": "parser_escaped_text_delimiter",
+      "parser_expectation": {
+        "metadata": {
+          "SAMPLEID": "alpha|beta"
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid big-endian IEEE float32 list-mode data.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/big-endian/list",
+        "events": 4,
+        "sha256": "8bbfbdf185f45b9e43024ec322e7c9ff387894e887618b8e181019d3782bf000"
+      },
+      "file": "files/parser_f32_big_endian.fcs",
+      "id": "parser_f32_big_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1000.25,
+          "Time": 0.0
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid little-endian IEEE float32 list-mode data.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list",
+        "events": 4,
+        "sha256": "af1fa0fd89b033cbe878072ce633119b823b294b3075c85c2442046ccf61f8b7"
+      },
+      "file": "files/parser_f32_little_endian.fcs",
+      "id": "parser_f32_little_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1000.25
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid big-endian IEEE float64 list-mode data.",
+      "fcs": {
+        "bytes": 372,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F64/big-endian/list",
+        "events": 4,
+        "sha256": "8ed36e179847433b9c8b1f0a1f3beccc72b705ef365b29906d16aa1930fdaac2"
+      },
+      "file": "files/parser_f64_big_endian.fcs",
+      "id": "parser_f64_big_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1000.25,
+          "Time": 0.0
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01",
+        "DATA-06"
+      ],
+      "category": "parser_conformance",
+      "description": "FCS 1.0 is outside the supported event-analysis contract.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS1.0/F32/little-endian/list",
+        "events": 4,
+        "sha256": "d15418a6a75c1a626ae4ea30b73f753acd6407bd3f039a1c18ce43aa1770f2d1"
+      },
+      "file": "files/parser_fcs10_unsupported.fcs",
+      "id": "parser_fcs10_unsupported",
+      "parser_expectation": {
+        "code": "FCS_VERSION_UNSUPPORTED",
+        "outcome": "ANALYSIS_BLOCK",
+        "phase": "science_validation"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid FCS 2.0 linear float32 list-mode data.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS2.0/F32/little-endian/list",
+        "events": 4,
+        "sha256": "777b80dfa0265ffbbf81366841709807fd618c47ae6fbdc5deec2a86946c919d"
+      },
+      "file": "files/parser_fcs20_linear.fcs",
+      "id": "parser_fcs20_linear",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1000.25
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid FCS 3.0 linear float32 list-mode data.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.0/F32/little-endian/list",
+        "events": 4,
+        "sha256": "44a6f3baf4c13c149369599bbbf508fb627ef9ddbfa7782e84422941c6a04a6f"
+      },
+      "file": "files/parser_fcs30_linear.fcs",
+      "id": "parser_fcs30_linear",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1000.25
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "HEADER DATA offsets are zero and valid extended offsets live in TEXT.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "47aff81a8e98a7b0668914b7466dec653d6a78165ed05cb51de29f4c926db4c6"
+      },
+      "file": "files/parser_header_zero_data_offsets.fcs",
+      "id": "parser_header_zero_data_offsets",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1000.25
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "A parameter count above the configured limit is rejected before allocation.",
+      "fcs": {
+        "bytes": 343,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "d9909a1718e411d64b49fb9c32415f9d931b0fe7273b938635d946057392a9a0"
+      },
+      "file": "files/parser_huge_par.fcs",
+      "id": "parser_huge_par",
+      "parser_expectation": {
+        "code": "FCS_PARAMETER_LIMIT_EXCEEDED",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Continuously packed 12-bit integer fields; must decode exactly or reject explicitly.",
+      "fcs": {
+        "bytes": 316,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I12/packed/little-endian",
+        "events": 4,
+        "sha256": "370f0783a9a2bac4c2008679fc54258327174044b8a6d880c458b37399259f65"
+      },
+      "file": "files/parser_i12_packed.fcs",
+      "id": "parser_i12_packed",
+      "parser_expectation": {
+        "code": "FCS_PACKED_INTEGER_UNSUPPORTED",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid big-endian unsigned 16-bit integer data.",
+      "fcs": {
+        "bytes": 322,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I16/big-endian/list",
+        "events": 4,
+        "sha256": "c3c7c72dd8c40730f2a213aa1a0d89ab586ec70ff1b1d20224278cc29779af1b"
+      },
+      "file": "files/parser_i16_big_endian.fcs",
+      "id": "parser_i16_big_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 0,
+          "Time": 65535
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid little-endian unsigned 16-bit byte-aligned integer data.",
+      "fcs": {
+        "bytes": 314,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I16/little-endian/list",
+        "events": 2,
+        "sha256": "06d7ef3da41101894613c233e66d4b6031ac769e1b7f2407e9457af3cd3e408d"
+      },
+      "file": "files/parser_i16_little_endian.fcs",
+      "id": "parser_i16_little_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1,
+          "Time": 2
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid little-endian unsigned 24-bit byte-aligned integer data.",
+      "fcs": {
+        "bytes": 324,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I24/little-endian/list",
+        "events": 2,
+        "sha256": "ce90a8a3eba835ff76abe4a4fbe513c2b3a4255b386a2ea0f66def6321c2ab94"
+      },
+      "file": "files/parser_i24_little_endian.fcs",
+      "id": "parser_i24_little_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1,
+          "Time": 2
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid little-endian unsigned 32-bit byte-aligned integer data.",
+      "fcs": {
+        "bytes": 332,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I32/little-endian/list",
+        "events": 2,
+        "sha256": "2ade265ebfa9c1de8be25e63099df01a466b3a68beb29b6b2b7f3db810512c34"
+      },
+      "file": "files/parser_i32_little_endian.fcs",
+      "id": "parser_i32_little_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1,
+          "Time": 2
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid little-endian unsigned 40-bit byte-aligned integer data.",
+      "fcs": {
+        "bytes": 342,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I40/little-endian/list",
+        "events": 2,
+        "sha256": "82ac099c54db897617cf9271f4e272bc1746ccc55851a7f67ec11ddc760909bb"
+      },
+      "file": "files/parser_i40_little_endian.fcs",
+      "id": "parser_i40_little_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1,
+          "Time": 2
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid little-endian unsigned 48-bit byte-aligned integer data.",
+      "fcs": {
+        "bytes": 350,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I48/little-endian/list",
+        "events": 2,
+        "sha256": "0b64bbd05cecc8a478cf6a54719cb1693f54a77aee8783906d3d8c3543782116"
+      },
+      "file": "files/parser_i48_little_endian.fcs",
+      "id": "parser_i48_little_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1,
+          "Time": 2
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Unsigned 64-bit values above JavaScript's exact integer range.",
+      "fcs": {
+        "bytes": 368,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I64/little-endian",
+        "events": 2,
+        "sha256": "739cb29b12a647144e01cf331fa784d0ac4c470be8b0de07dc8b6212f0ae1265"
+      },
+      "file": "files/parser_i64_unsafe.fcs",
+      "id": "parser_i64_unsafe",
+      "parser_expectation": {
+        "code": "FCS_INTEGER_PRECISION_UNSUPPORTED",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Valid little-endian unsigned 8-bit byte-aligned integer data.",
+      "fcs": {
+        "bytes": 304,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/I8/little-endian/list",
+        "events": 2,
+        "sha256": "a4c263c5fd7beb2ea52181ea8f22c597771d26016fe63ed16f2d65dd8aa5a01e"
+      },
+      "file": "files/parser_i8_little_endian.fcs",
+      "id": "parser_i8_little_endian",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1,
+          "Time": 2
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01",
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Selected DNA channel has an invalid zero $PnR.",
+      "fcs": {
+        "bytes": 335,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "4d9d930b883a0bfde6d60b5eeb6f084949d2c3532687e1493c538cef92ac0c9a"
+      },
+      "file": "files/parser_invalid_dna_range.fcs",
+      "id": "parser_invalid_dna_range",
+      "parser_expectation": {
+        "code": "FCS_DNA_RANGE_INVALID",
+        "outcome": "ANALYSIS_BLOCK",
+        "phase": "science_validation"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01"
+      ],
+      "category": "parser_conformance",
+      "description": "Selected DNA parameter declares logarithmic amplification metadata.",
+      "fcs": {
+        "bytes": 338,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "fb9576b24ad9dd552bdf1103e0f1890f08fe0ec08b190db42293499bd91ccf41"
+      },
+      "file": "files/parser_log_amplified_dna.fcs",
+      "id": "parser_log_amplified_dna",
+      "parser_expectation": {
+        "code": "FCS_DNA_TRANSFORM_UNSUPPORTED",
+        "outcome": "ANALYSIS_BLOCK",
+        "phase": "science_validation"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01"
+      ],
+      "category": "parser_conformance",
+      "description": "Nonzero $NEXTDATA points to a second FCS HEADER at byte 4096; chained datasets are unsupported.",
+      "fcs": {
+        "bytes": 4436,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "4ed3979f626c150ef0cb567ecc9d61a96e175611b4c22a01a44aaf98e0497774"
+      },
+      "file": "files/parser_nextdata_nonzero.fcs",
+      "id": "parser_nextdata_nonzero",
+      "parser_expectation": {
+        "code": "FCS_MULTIPLE_DATASETS_UNSUPPORTED",
+        "outcome": "ANALYSIS_BLOCK",
+        "phase": "science_validation"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01"
+      ],
+      "category": "parser_conformance",
+      "description": "Correlated/non-list MODE must not enter list-mode analysis.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "464b8bd2836924afd62710f1f1b941738973e89bb36ade87fbab1a5ccdd2eb89"
+      },
+      "file": "files/parser_non_list_mode.fcs",
+      "id": "parser_non_list_mode",
+      "parser_expectation": {
+        "code": "FCS_MODE_UNSUPPORTED",
+        "outcome": "ANALYSIS_BLOCK",
+        "phase": "science_validation"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01"
+      ],
+      "category": "parser_conformance",
+      "description": "Selected DNA parameter declares non-unit gain.",
+      "fcs": {
+        "bytes": 341,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "ea898aa187e934632ffa334b23fde8feac0149b53a1f8221566d5d4b7bebef6a"
+      },
+      "file": "files/parser_nonunit_gain_dna.fcs",
+      "id": "parser_nonunit_gain_dna",
+      "parser_expectation": {
+        "code": "FCS_DNA_TRANSFORM_UNSUPPORTED",
+        "outcome": "ANALYSIS_BLOCK",
+        "phase": "science_validation"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "A 17-byte pseudo-FCS file cannot contain a fixed HEADER.",
+      "fcs": {
+        "bytes": 17,
+        "channels": [],
+        "encoding": "parser conformance variant",
+        "events": 0,
+        "sha256": "02f534e1b055705fbf5eb5a37279b645dbe18abee4f24886bee097e91ae95d62"
+      },
+      "file": "files/parser_short_header.fcs",
+      "id": "parser_short_header",
+      "parser_expectation": {
+        "code": "FCS_HEADER_TRUNCATED",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01"
+      ],
+      "category": "parser_conformance",
+      "description": "Spillover matrix includes the selected DNA channel.",
+      "fcs": {
+        "bytes": 451,
+        "channels": [
+          "DNA-A",
+          "FSC-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "782be7934bc997a7661af8399e06863eeeaad52ef63be5fcced893e4a71051ea"
+      },
+      "file": "files/parser_spillover_dna.fcs",
+      "id": "parser_spillover_dna",
+      "parser_expectation": {
+        "code": "FCS_COMPENSATION_REQUIRED",
+        "outcome": "ANALYSIS_BLOCK",
+        "phase": "science_validation"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-01"
+      ],
+      "category": "parser_conformance",
+      "description": "A spillover matrix that excludes DNA-A does not block the DNA channel.",
+      "fcs": {
+        "bytes": 429,
+        "channels": [
+          "DNA-A",
+          "FSC-A",
+          "SSC-A"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 2,
+        "sha256": "d62875b85184b5d1359331d697b67a69c884064b05592d678447893d627f3ea2"
+      },
+      "file": "files/parser_spillover_other.fcs",
+      "id": "parser_spillover_other",
+      "parser_expectation": {
+        "first_row": {
+          "DNA-A": 1000.25
+        },
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Supplemental TEXT is rejected explicitly rather than silently ignored.",
+      "fcs": {
+        "bytes": 404,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "a2e36ffa4344a351f05cae1844d9bf01bdd5ebce63c3a4f3bde225499521d9ad"
+      },
+      "file": "files/parser_supplemental_text.fcs",
+      "id": "parser_supplemental_text",
+      "parser_expectation": {
+        "code": "FCS_SUPPLEMENTAL_TEXT_UNSUPPORTED",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Tiny DATA segment declares 100,000 events to test preallocation/length bounds.",
+      "fcs": {
+        "bytes": 345,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 100000,
+        "sha256": "35690356e3ae2466ffd57a19899e9be27f6db7de0ac1584d2a0510bd6a22ff1e"
+      },
+      "file": "files/parser_tot_allocation_mismatch.fcs",
+      "id": "parser_tot_allocation_mismatch",
+      "parser_expectation": {
+        "code": "FCS_DATA_LENGTH_MISMATCH",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "DATA segment is one byte shorter than $TOT times event stride.",
+      "fcs": {
+        "bytes": 339,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "e868b81bbdb38a91fc82e97a10a769ca6befc6e03e1b20cc6366dce5f8e15165"
+      },
+      "file": "files/parser_truncated_data.fcs",
+      "id": "parser_truncated_data",
+      "parser_expectation": {
+        "code": "FCS_DATA_TRUNCATED",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "Unknown byte-order declaration must not silently fall back to big endian.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "647f90f088ad61c27348ca4b1f5e9b4343adbff6514b631a064f2527284ce29b"
+      },
+      "file": "files/parser_unknown_byte_order.fcs",
+      "id": "parser_unknown_byte_order",
+      "parser_expectation": {
+        "code": "FCS_BYTE_ORDER_INVALID",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "parser_conformance",
+      "description": "ASCII $DATATYPE is outside PhaseFinder's supported numeric contract.",
+      "fcs": {
+        "bytes": 340,
+        "channels": [
+          "DNA-A",
+          "Time"
+        ],
+        "encoding": "parser conformance variant",
+        "events": 4,
+        "sha256": "75d88f9a7ca3163f928836ccd5eff4b014d649cc5acf5f5d98994f6ce5d9733f"
+      },
+      "file": "files/parser_unsupported_ascii.fcs",
+      "id": "parser_unsupported_ascii",
+      "parser_expectation": {
+        "code": "FCS_DATATYPE_UNSUPPORTED",
+        "outcome": "IMPORT_REJECT",
+        "phase": "header_import"
+      },
+      "tags": [],
+      "truth_file": null
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "qc_adversarial",
+      "description": "Valid DNA-A with no Time, scatter, height, or width companions.",
+      "fcs": {
+        "bytes": 8395,
+        "channels": [
+          "DNA-A"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 2000,
+        "sha256": "2914ad4a4715db6b0fb7eb690a3259f44ad24be1dbd933a4a5b88e6902084558"
+      },
+      "file": "files/qc_missing_companion_channels.fcs",
+      "id": "qc_missing_companion_channels",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "missing_companions"
+      },
+      "tags": [
+        "missing-companions",
+        "optional-skip"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 1100,
+            "g2": 300,
+            "s": 600
+          },
+          "denominator": 2000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 1100,
+            "g2": 300,
+            "s": 600
+          },
+          "denominator": 2000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/qc_missing_companion_channels.truth.json",
+      "truth_sha256": "1b6fa7127cf87d44c452dcf7a7312b380435d1669b992360749097ccc93e12ff"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-09"
+      ],
+      "category": "qc_adversarial",
+      "description": "Known singlets plus 1,000 wider aggregate/doublet-like pulse events.",
+      "fcs": {
+        "bytes": 216704,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 9000,
+        "sha256": "a47d38587fa16ae1975f4c7ecea632a7b4608b5d2b1072117a83ecab5a818d5f"
+      },
+      "file": "files/qc_pulse_doublets.fcs",
+      "id": "qc_pulse_doublets",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "pulse",
+        "minimum_bad_rejection": 0.9,
+        "minimum_good_retention": 0.98
+      },
+      "tags": [
+        "pulse",
+        "doublet",
+        "oracle-mask"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4400,
+            "g2": 1200,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4400,
+            "g2": 1200,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {
+          "aggregate": 1000
+        }
+      },
+      "truth_file": "files/qc_pulse_doublets.truth.json",
+      "truth_sha256": "825d1b3baf08ce7a82b6ab36621fe91f4d4385af6b6eaad2a2b6ac9a1c481a52"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-09"
+      ],
+      "category": "qc_adversarial",
+      "description": "Reference A/H pulse geometry for the independent-axis scale pair.",
+      "fcs": {
+        "bytes": 144713,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 6000,
+        "sha256": "a7ef6f7a386ced82d81970cc84a07941167624a96acb10203467ce6a8d6d4423"
+      },
+      "file": "files/qc_pulse_h_scale_reference.fcs",
+      "id": "qc_pulse_h_scale_reference",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "pulse",
+        "metamorphic_pair": "qc_pulse_h_scale_x100",
+        "minimum_good_retention": 0.98
+      },
+      "tags": [
+        "pulse",
+        "scale-pair"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 3300,
+            "g2": 900,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3300,
+            "g2": 900,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/qc_pulse_h_scale_reference.truth.json",
+      "truth_sha256": "a3cc68c03205cfdf61d2be353a1bc586f038ac37648e3523fb157cc84ed19a8a"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-09"
+      ],
+      "category": "qc_adversarial",
+      "description": "Same A values/truth as the pulse reference with only DNA-H scaled by 100.",
+      "fcs": {
+        "bytes": 144710,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 6000,
+        "sha256": "d84caf22882de8466c9811a6417ac22479236e2d797ed76806e6efc04fa02609"
+      },
+      "file": "files/qc_pulse_h_scale_x100.fcs",
+      "id": "qc_pulse_h_scale_x100",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "pulse",
+        "metamorphic_pair": "qc_pulse_h_scale_reference",
+        "minimum_good_retention": 0.98
+      },
+      "tags": [
+        "pulse",
+        "scale-pair",
+        "raw-units"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 3300,
+            "g2": 900,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3300,
+            "g2": 900,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/qc_pulse_h_scale_x100.truth.json",
+      "truth_sha256": "623be56585947c5bb7727d80d53a39533bb75de1c1201d270d8781443d354173"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw",
+          "oracle_qc"
+        ]
+      },
+      "audit_findings": [
+        "SCI-09"
+      ],
+      "category": "qc_adversarial",
+      "description": "Compact high-FSC artifact minority challenges the greatest-FSC cloud heuristic.",
+      "fcs": {
+        "bytes": 228715,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 9500,
+        "sha256": "238e6012abe1f4016e64bd5425c4b4a62013402de424b11a0e44e0d02ccafb03"
+      },
+      "file": "files/qc_scatter_high_fsc_artifact.fcs",
+      "id": "qc_scatter_high_fsc_artifact",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "scatter",
+        "minimum_bad_rejection": 0.9,
+        "minimum_good_retention": 0.9,
+        "require_review_for_adversary": true
+      },
+      "tags": [
+        "scatter",
+        "gmm",
+        "review-required"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4400,
+            "g2": 1200,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4400,
+            "g2": 1200,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {
+          "high_fsc_artifact": 1500
+        }
+      },
+      "truth_file": "files/qc_scatter_high_fsc_artifact.truth.json",
+      "truth_sha256": "a57b5b065f112bd773341e19d86ee2dceb0e0fc8cdfd5b7d5e676135a5e86188"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "DATA-02"
+      ],
+      "category": "qc_adversarial",
+      "description": "Known NaN, infinities, negative DNA, and PnR-boundary event indexes.",
+      "fcs": {
+        "bytes": 5516,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 200,
+        "sha256": "73a196f94496db7398c8f4b0173c8113fb00be076715cd099c0f8386a95ed059"
+      },
+      "file": "files/qc_structural_nonfinite_negative.fcs",
+      "id": "qc_structural_nonfinite_negative",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "structural_exact"
+      },
+      "tags": [
+        "stage-0",
+        "nonfinite",
+        "bounds"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 108,
+            "g2": 29,
+            "s": 58
+          },
+          "denominator": 195,
+          "fractions": {
+            "g1": 0.5538461538461539,
+            "g2": 0.14871794871794872,
+            "s": 0.29743589743589743
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 110,
+            "g2": 30,
+            "s": 60
+          },
+          "denominator": 200,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/qc_structural_nonfinite_negative.truth.json",
+      "truth_sha256": "f19df315f8f86effe1edf7403c5acfcaaf2f16f8be082213cc8943030f21916b"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-09"
+      ],
+      "category": "qc_adversarial",
+      "description": "Middle 20% has a planted 16% DNA gain shift.",
+      "fcs": {
+        "bytes": 144705,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 6000,
+        "sha256": "daaedf465663c15a1d00b885e30cb60b9a41be6857ba7b9d6dd2af3c9fe1f310"
+      },
+      "file": "files/qc_time_gain_drift.fcs",
+      "id": "qc_time_gain_drift",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "time_peak_tracking",
+        "minimum_bad_rejection": 0.7,
+        "minimum_good_retention": 0.9
+      },
+      "tags": [
+        "time-qc",
+        "gain-drift"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 2644,
+            "g2": 712,
+            "s": 1444
+          },
+          "denominator": 4800,
+          "fractions": {
+            "g1": 0.5508333333333333,
+            "g2": 0.14833333333333334,
+            "s": 0.30083333333333334
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3300,
+            "g2": 900,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/qc_time_gain_drift.truth.json",
+      "truth_sha256": "63a0a45bf9e84e62740e22a1048fb2b50d169e30bcd0b9230f182386768887bf"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-09"
+      ],
+      "category": "qc_adversarial",
+      "description": "G2 measurements collapse onto G1 in the middle 20%, removing one observed mode.",
+      "fcs": {
+        "bytes": 144713,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 6000,
+        "sha256": "171e401f23c6e8b74c24009d6956fddc37f1fb4559bd8e7de8af533beaae8fd2"
+      },
+      "file": "files/qc_time_peak_disappearance.fcs",
+      "id": "qc_time_peak_disappearance",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "time_peak_tracking",
+        "minimum_bad_rejection": 0.7,
+        "minimum_good_retention": 0.9
+      },
+      "tags": [
+        "time-qc",
+        "missing-mode",
+        "peak-tracking"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 2637,
+            "g2": 715,
+            "s": 1448
+          },
+          "denominator": 4800,
+          "fractions": {
+            "g1": 0.549375,
+            "g2": 0.14895833333333333,
+            "s": 0.3016666666666667
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3300,
+            "g2": 900,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/qc_time_peak_disappearance.truth.json",
+      "truth_sha256": "7b479f0533867e890be1dfe93cfa1179b06f9df39e87e193ef3dcc841c74acd9"
+    },
+    {
+      "analysis": {
+        "benchmark_models": false,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-09",
+        "SCI-12"
+      ],
+      "category": "qc_adversarial",
+      "description": "Middle 20% has fivefold slower event arrival with otherwise stable biology.",
+      "fcs": {
+        "bytes": 144704,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 6000,
+        "sha256": "6bb73d4e451eac5aeb9e3a61dac5856af12e694854692747e6c23cd18d1610ac"
+      },
+      "file": "files/qc_time_rate_drop.fcs",
+      "id": "qc_time_rate_drop",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": {
+        "kind": "time_robust",
+        "minimum_bad_rejection": 0.8,
+        "minimum_good_retention": 0.95
+      },
+      "tags": [
+        "time-qc",
+        "rate-drop"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 2631,
+            "g2": 731,
+            "s": 1438
+          },
+          "denominator": 4800,
+          "fractions": {
+            "g1": 0.548125,
+            "g2": 0.15229166666666666,
+            "s": 0.2995833333333333
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3300,
+            "g2": 900,
+            "s": 1800
+          },
+          "denominator": 6000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/qc_time_rate_drop.truth.json",
+      "truth_sha256": "258fc5a00c4888188fb319cf27f308510ec5d7d056d97563d8979d2b6b7716cc"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 79104.0,
+            "right": 112896.0
+          }
+        },
+        "tolerance_percentage_points": 8.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-02"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Peak ratio 1.50 lies outside the default bounded diploid interval.",
+      "fcs": {
+        "bytes": 192708,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 8000,
+        "sha256": "6ad93400069d703ef47bffa39c0d745af4161fb7f442d654ccffdd207706de08"
+      },
+      "file": "files/ratio_nondiploid_1p50.fcs",
+      "id": "ratio_nondiploid_1p50",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "ratio",
+        "aneuploid",
+        "constraint"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/ratio_nondiploid_1p50.truth.json",
+      "truth_sha256": "02628d1b3b48a51ad8c9dc2f518069fc17d78475b08bfb8b2c2be220a90cff5a"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": [
+          0.0,
+          22.0
+        ],
+        "peak_regions": {
+          "g1": {
+            "left": 1.0,
+            "right": 10.0
+          },
+          "g2": {
+            "left": 18.0,
+            "right": 20.0
+          }
+        },
+        "tolerance_percentage_points": 20.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-02"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Exact audit counterexample: feasible ratio bounds exist in the regions, but the observed peaks start near 2 and 18.",
+      "fcs": {
+        "bytes": 192721,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 8000,
+        "sha256": "0633408c0a811bc637d6f42c208513ae9d98153ac04f30b70f137492738db111"
+      },
+      "file": "files/ratio_projector_regions_1_10_18_20.fcs",
+      "id": "ratio_projector_regions_1_10_18_20",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "ratio",
+        "projection",
+        "exact-counterexample"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/ratio_projector_regions_1_10_18_20.truth.json",
+      "truth_sha256": "b89bd4141ff5479d4d7450075d283569da44a85e7d446f05e39635b4ca7e7ac1"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": [
+          57600,
+          134400
+        ],
+        "peak_regions": {
+          "g1": {
+            "left": 57600,
+            "right": 76800
+          },
+          "g2": {
+            "left": 108800,
+            "right": 134400
+          }
+        },
+        "tolerance_percentage_points": 8.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-05"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Explicitly clipped histogram leaves fitted component tails outside the visible domain.",
+      "fcs": {
+        "bytes": 192711,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 8000,
+        "sha256": "e69aa0f34287ebc7e9d6bafd3126f564b264352450812473f6e976c1c214939c"
+      },
+      "file": "files/tail_mass_clipped_domain.fcs",
+      "id": "tail_mass_clipped_domain",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "tail-mass",
+        "visible-domain",
+        "reporting"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/tail_mass_clipped_domain.truth.json",
+      "truth_sha256": "fdf44e10384434d91a23f35a0685f221d8e717093f40e78c7dc0dfd0d8c983fa"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Clean balanced diploid sample with exact 50/30/20 phase counts.",
+      "fcs": {
+        "bytes": 288708,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "b9971c173469d3c08a07db2486546f103dd02631cdb37f826f6f37f03093057d"
+      },
+      "file": "files/truth_clean_50_30_20.fcs",
+      "id": "truth_clean_50_30_20",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "clean",
+        "diploid",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 6000,
+            "g2": 2400,
+            "s": 3600
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 6000,
+            "g2": 2400,
+            "s": 3600
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_clean_50_30_20.truth.json",
+      "truth_sha256": "89e2be6d58c5c67adffd224aa45bfbc7d256e9463a7cc2156289ff232cd39673"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Clean G1-dominant diploid sample with exact 70/20/10 phase counts.",
+      "fcs": {
+        "bytes": 288708,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "d3ae57fd970c49a1c1433402ac66d2915a15f97a6d6e0244f3f2d05bd194a9f5"
+      },
+      "file": "files/truth_clean_70_20_10.fcs",
+      "id": "truth_clean_70_20_10",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "clean",
+        "diploid",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 8400,
+            "g2": 1200,
+            "s": 2400
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.7,
+            "g2": 0.1,
+            "s": 0.2
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 8400,
+            "g2": 1200,
+            "s": 2400
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.7,
+            "g2": 0.1,
+            "s": 0.2
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_clean_70_20_10.truth.json",
+      "truth_sha256": "84202c7285f9ea3487263757145ba9829e5561d65690eb1863c50da9ed849d8a"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Early-S-enriched quadratic residence profile with exact 40/40/20 phases.",
+      "fcs": {
+        "bytes": 288711,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "4290747927aed72b895e34de06a82668197fb889a5a690bd3747c98f2dfc4789"
+      },
+      "file": "files/truth_dj_early_40_40_20.fcs",
+      "id": "truth_dj_early_40_40_20",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "dean-jett",
+        "shaped-s",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4800,
+            "g2": 2400,
+            "s": 4800
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.4,
+            "g2": 0.2,
+            "s": 0.4
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4800,
+            "g2": 2400,
+            "s": 4800
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.4,
+            "g2": 0.2,
+            "s": 0.4
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_dj_early_40_40_20.truth.json",
+      "truth_sha256": "5c66fbb7bcb065fb7766c9dd3a8ceace77518f3a0f50af609f06042efcf4fb64"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "expected_selected_model": "dean_jett_fox",
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery",
+            "minimum_wave_weight": 0.1
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.5,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Strong early-S Fox-like wave while retaining exact 45/40/15 phase truth.",
+      "fcs": {
+        "bytes": 1200718,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 50000,
+        "sha256": "8287811c3d6907d02ccc27e869bc8f9d493ccfb324c4147d09f74e56b2bd70c7"
+      },
+      "file": "files/truth_djf_early_wave_45_40_15.fcs",
+      "id": "truth_djf_early_wave_45_40_15",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "dean-jett-fox",
+        "wave",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 22500,
+            "g2": 7500,
+            "s": 20000
+          },
+          "denominator": 50000,
+          "fractions": {
+            "g1": 0.45,
+            "g2": 0.15,
+            "s": 0.4
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 22500,
+            "g2": 7500,
+            "s": 20000
+          },
+          "denominator": 50000,
+          "fractions": {
+            "g1": 0.45,
+            "g2": 0.15,
+            "s": 0.4
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_djf_early_wave_45_40_15.truth.json",
+      "truth_sha256": "6af4d7a74986ef6579f7765f15ba31feb187da6e50c23697b0f0eeb756ba66c8"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "expected_selected_model": "dean_jett_fox",
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery",
+            "minimum_wave_weight": 0.1
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.5,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Strong late-S Fox-like wave while retaining exact 45/40/15 phase truth.",
+      "fcs": {
+        "bytes": 288716,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "c121b26b2819c9999c0f2bee13b7ad4388e8bf96099f60ff01ce7d3366d7c6aa"
+      },
+      "file": "files/truth_djf_late_wave_45_40_15.fcs",
+      "id": "truth_djf_late_wave_45_40_15",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "dean-jett-fox",
+        "wave",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 5400,
+            "g2": 1800,
+            "s": 4800
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.45,
+            "g2": 0.15,
+            "s": 0.4
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 5400,
+            "g2": 1800,
+            "s": 4800
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.45,
+            "g2": 0.15,
+            "s": 0.4
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_djf_late_wave_45_40_15.truth.json",
+      "truth_sha256": "1dc9124a203f3ff944b1c78e802986ad7380c7e22a6cfcceaf8c5db703f3b89d"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.5,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Clean G2/M-rich sample with exact 20/20/60 phase counts.",
+      "fcs": {
+        "bytes": 288710,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "01adffb5bbec727ffddd021c263dcff05b6c448a3bcc978b7e7faf8be76aeebd"
+      },
+      "file": "files/truth_g2_rich_20_20_60.fcs",
+      "id": "truth_g2_rich_20_20_60",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "clean",
+        "g2-rich",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 2400,
+            "g2": 7200,
+            "s": 2400
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.2,
+            "g2": 0.6,
+            "s": 0.2
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 2400,
+            "g2": 7200,
+            "s": 2400
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.2,
+            "g2": 0.6,
+            "s": 0.2
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_g2_rich_20_20_60.truth.json",
+      "truth_sha256": "1d9d022e359b83e5f6feb820c56c9b6d068da408e1ad61dffc62ecfb77433dd9"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 44800,
+            "right": 89600
+          },
+          "g2": {
+            "left": 102400,
+            "right": 179200
+          }
+        },
+        "tolerance_percentage_points": 6.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Broad, overlapping peaks challenge identifiability without changing exact truth.",
+      "fcs": {
+        "bytes": 288718,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "ef5349adde3dc87b434e94146411fb47e4512fe850730a93055978ad4a78d812"
+      },
+      "file": "files/truth_high_cv_overlap_35_45_20.fcs",
+      "id": "truth_high_cv_overlap_35_45_20",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "overlap",
+        "high-cv",
+        "known-truth",
+        "conditioning"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4200,
+            "g2": 2400,
+            "s": 5400
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.35,
+            "g2": 0.2,
+            "s": 0.45
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4200,
+            "g2": 2400,
+            "s": 5400
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.35,
+            "g2": 0.2,
+            "s": 0.45
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_high_cv_overlap_35_45_20.truth.json",
+      "truth_sha256": "544709d02e5a3572da87f1751e31432e48bbbb502c33d0a76c37c8abedbb0979"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 6.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Low-count clean sample for precision and convergence behavior.",
+      "fcs": {
+        "bytes": 48710,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 2000,
+        "sha256": "c332df2ecdb27e57a3f531b12295e5b1734dd1fd57a4ca6330deb7e3e92b4517"
+      },
+      "file": "files/truth_low_count_55_30_15.fcs",
+      "id": "truth_low_count_55_30_15",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "low-count",
+        "known-truth",
+        "convergence"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 1100,
+            "g2": 300,
+            "s": 600
+          },
+          "denominator": 2000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 1100,
+            "g2": 300,
+            "s": 600
+          },
+          "denominator": 2000,
+          "fractions": {
+            "g1": 0.55,
+            "g2": 0.15,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_low_count_55_30_15.truth.json",
+      "truth_sha256": "781bf6525cff1e929dd08159efea00793296de1ffc2582223e782c9ecc06d2e0"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Low-S stress case with exact 48/4/48 phase counts.",
+      "fcs": {
+        "bytes": 288708,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "3f81b2dd1d17af57c4bba16cdc98f807ec11c42b94d8bfd215aa141a305efd4c"
+      },
+      "file": "files/truth_low_s_48_04_48.fcs",
+      "id": "truth_low_s_48_04_48",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "low-s",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 5760,
+            "g2": 5760,
+            "s": 480
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.48,
+            "g2": 0.48,
+            "s": 0.04
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 5760,
+            "g2": 5760,
+            "s": 480
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.48,
+            "g2": 0.48,
+            "s": 0.04
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_low_s_48_04_48.truth.json",
+      "truth_sha256": "8051046d7b4f3e5432ba2d861ee5b0c6c98bd8cf917e2be4d13541e0c15a3adf"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "recovery"
+          },
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "known_phase_truth",
+      "description": "Clean S-rich sample with exact 25/55/20 phase counts.",
+      "fcs": {
+        "bytes": 288709,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "cfe81c0d496edf335e7776571ec78cad1a57aec6c8c8ea0655d84df626b6928e"
+      },
+      "file": "files/truth_s_rich_25_55_20.fcs",
+      "id": "truth_s_rich_25_55_20",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "clean",
+        "s-rich",
+        "known-truth"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 3000,
+            "g2": 2400,
+            "s": 6600
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.25,
+            "g2": 0.2,
+            "s": 0.55
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 3000,
+            "g2": 2400,
+            "s": 6600
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.25,
+            "g2": 0.2,
+            "s": 0.55
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_s_rich_25_55_20.truth.json",
+      "truth_sha256": "dfd5e3d1c13cad07257e7c5c5f6a284be480d43ed51a34c99251bd6fe3320302"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 6.0,
+        "views": [
+          "raw",
+          "oracle_qc"
+        ]
+      },
+      "audit_findings": [
+        "SCI-01",
+        "SCI-09"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Sub-G1, post-G2, and aggregate mixture with known biological denominator.",
+      "fcs": {
+        "bytes": 264714,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 11000,
+        "sha256": "8f239be924eb1994002139acd3d1c952d1531ea76ab8d062932badeb8b90608b"
+      },
+      "file": "files/watson_mixed_contamination.fcs",
+      "id": "watson_mixed_contamination",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "watson",
+        "mixed-contamination"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {
+          "aggregate": 1000,
+          "post_g2": 1000,
+          "sub_g1": 1000
+        }
+      },
+      "truth_file": "files/watson_mixed_contamination.truth.json",
+      "truth_sha256": "63f31f4e317c8ead4e34e231521295a12f8a901d981015beff2ce6680301c1e7"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 5.0,
+        "views": [
+          "raw",
+          "oracle_qc"
+        ]
+      },
+      "audit_findings": [
+        "SCI-01"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Known 50/30/20 biology plus 2,000 post-G2 events; exposes residual-S leakage.",
+      "fcs": {
+        "bytes": 240715,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 10000,
+        "sha256": "febd6c0d8413ebee16ab2ad4281c58a672d1bd86180d56e1f22657c1050b7cd0"
+      },
+      "file": "files/watson_postg2_contamination.fcs",
+      "id": "watson_postg2_contamination",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "watson",
+        "post-g2",
+        "contamination"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {
+          "post_g2": 2000
+        }
+      },
+      "truth_file": "files/watson_postg2_contamination.truth.json",
+      "truth_sha256": "1658725dfb87c9d6d9c9a86d3a1c6312f0a4546848d976ea88b6769380906dfe"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 5.0,
+        "views": [
+          "raw",
+          "oracle_qc"
+        ]
+      },
+      "audit_findings": [
+        "SCI-01"
+      ],
+      "category": "scientific_adversarial",
+      "description": "Known 50/30/20 biology plus 2,000 sub-G1 debris events; exposes residual-S leakage.",
+      "fcs": {
+        "bytes": 240714,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 10000,
+        "sha256": "88c05ea1d84ac013e695b75851dad81b34f024ab2697771918f7422f51956bd2"
+      },
+      "file": "files/watson_subg1_contamination.fcs",
+      "id": "watson_subg1_contamination",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "watson",
+        "sub-g1",
+        "contamination"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 4000,
+            "g2": 1600,
+            "s": 2400
+          },
+          "denominator": 8000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {
+          "sub_g1": 2000
+        }
+      },
+      "truth_file": "files/watson_subg1_contamination.truth.json",
+      "truth_sha256": "2bc3c9bcf923f02536ff89bb60658b4edc13911709ae6eb27c9352d894403322"
+    }
+  ],
+  "contains_real_data": false,
+  "coverage": {
+    "fcs_triggerable": {
+      "DATA-01": [
+        "parser_log_amplified_dna",
+        "parser_nonunit_gain_dna",
+        "parser_spillover_dna",
+        "parser_non_list_mode",
+        "parser_nextdata_nonzero"
+      ],
+      "DATA-02": [
+        "parser_f64_big_endian",
+        "parser_f32_big_endian",
+        "parser_i16_big_endian",
+        "parser_i12_packed",
+        "parser_i64_unsafe",
+        "parser_truncated_data",
+        "parser_data_offset_oob",
+        "parser_tot_allocation_mismatch",
+        "parser_supplemental_text",
+        "parser_unknown_byte_order"
+      ],
+      "SCI-01": [
+        "watson_subg1_contamination",
+        "watson_postg2_contamination",
+        "watson_mixed_contamination"
+      ],
+      "SCI-02": [
+        "ratio_nondiploid_1p50",
+        "ratio_projector_regions_1_10_18_20"
+      ],
+      "SCI-07": [
+        "truth_high_cv_overlap_35_45_20",
+        "bulk_scale_x10"
+      ],
+      "SCI-09": [
+        "qc_scatter_high_fsc_artifact",
+        "qc_pulse_h_scale_reference",
+        "qc_pulse_h_scale_x100",
+        "qc_pulse_doublets",
+        "qc_time_rate_drop",
+        "qc_time_gain_drift",
+        "qc_time_peak_disappearance"
+      ],
+      "SCI-12": [
+        "qc_time_rate_drop"
+      ]
+    },
+    "hybrid_fcs_plus_non_fcs_assertion": {
+      "SCI-03": {
+        "also_requires": "Direct solver termination-reason/gradient/step assertions.",
+        "fixtures": [
+          "truth_low_count_55_30_15",
+          "truth_high_cv_overlap_35_45_20",
+          "bulk_scale_x10"
+        ]
+      },
+      "SCI-04": {
+        "also_requires": "Forced candidate convergence states or hand-built candidate results.",
+        "fixtures": [
+          "truth_low_count_55_30_15",
+          "truth_djf_late_wave_45_40_15"
+        ]
+      },
+      "SCI-05": {
+        "also_requires": "Render/table/sidebar/export consumer comparison.",
+        "fixtures": [
+          "tail_mass_clipped_domain"
+        ]
+      },
+      "SCI-06": {
+        "also_requires": "Auto-Fit-All UI/orchestration driver.",
+        "fixtures": [
+          "bulk_scale_reference",
+          "bulk_scale_x10"
+        ]
+      },
+      "SCI-08": {
+        "also_requires": "Direct invalid-profile projection assertions.",
+        "fixtures": [
+          "truth_dj_early_40_40_20",
+          "truth_djf_early_wave_45_40_15",
+          "truth_djf_late_wave_45_40_15"
+        ]
+      }
+    },
+    "requires_non_fcs_tests": {
+      "CI-01/02": "Workflow execution and runner-exit-code tests.",
+      "DATA-03": "Instrumented File.slice/worker transfer and heap tests, not committed large FCS bytes.",
+      "DATA-04": "Injected companion-worker/OPFS/read failure under a user-required gate; the DNA-only fixture verifies only legitimate optional-skip behavior.",
+      "DATA-05 and SEC-02": "CSV/TSV import/export fixtures.",
+      "REL-01/02/03": "Build artifacts, workflows, and dependency/runtime tests.",
+      "SCI-03/04/08/10": "Direct solver, candidate-selection, profile-projection, and information-metric reference tests; FCS stress alone cannot establish these implementation contracts.",
+      "SES-01/02 and SEC-01": "OPFS/session identity, cleanup, and malicious TOML tests.",
+      "UI-01/02/03/04/05": "DOM, modal-state, viewport, accessibility, and injected-error tests."
+    }
+  },
+  "generator": {
+    "command": "python3 tests/validation/validation_test_data/synthetic_fcs/generate_fixtures.py",
+    "name": "phasefinder-synthetic-fcs",
+    "randomness": "Named SHA-256-derived Python Random streams; committed artifacts are hash-pinned.",
+    "version": "1.0.0"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0 (same as repository)",
+  "name": "PhaseFinder deterministic synthetic FCS audit corpus",
+  "phase_fraction_definition": "Underlying truth uses exact empirical G1+S+G2/M labels; phase-less contaminants are excluded. Post-oracle truth additionally removes planted structural-invalid, time-excluded, and non-biological events.",
+  "schema_version": 1
+}
