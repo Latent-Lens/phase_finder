@@ -67,13 +67,22 @@ import {
   convolvedSPhaseWithProfile,
   quadraticProfile,
   projectQuadraticProfile,
+  projectMeansToFeasible,
   DEFAULT_S_QUADRATURE_NODES,
 } from "./shared.js";
 import { normalCdf, normalPdf } from "../../math/gaussian_bin_mass.js";
-import { fitPoissonModel } from "../fit_engine.js";
+import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
 import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning, boundaryHitWarnings } from "../diagnostics.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
 import { clamp } from "../../math/stats.js";
+// FlowJo fits each G1/G2 Gaussian by least squares over a -3sigma..+1sigma window
+// about the mean -- i.e. from the peak's UNCONTAMINATED flank -- and only then
+// models S (docs.flowjo.com cell-cycle univariate). The "clean_flank" peak-fit
+// mode reuses Watson Pragmatic's clean-flank local peak fit for exactly this, so
+// DJF's peaks are established (tight CV, honest area) before the S phase is fit,
+// instead of the joint fit letting a broad peak or the flexible S phase absorb
+// each other on real, overlapping DNA peaks (VALID-01).
+import { fit_local_peak, DEFAULT_CONFIG as WATSON_LOCAL_PEAK_CONFIG } from "./watson_pragmatic.js";
 
 const EPS = 1e-12;
 
@@ -88,6 +97,10 @@ const PARAMETER_INDEX = Object.freeze({
 });
 
 export const DEFAULT_CONFIG = Object.freeze({
+  // "joint": fit every parameter (peaks + S) together (the generative default).
+  // "clean_flank": fit G1/G2 from their clean flanks and hold them fixed, then
+  // fit only the S phase to the residual -- the FlowJo-style peaks-first approach.
+  peakFitMode: "joint",
   ratioMode: "bounded",
   fitRatioRange: [1.65, 2.25],
   lockedRatio: 2,
@@ -125,10 +138,23 @@ function paramsToNamed(parameters) {
   };
 }
 
-/** T(z; m_W, s_W): a normal density renormalized so its own mass over [0,1]
- * integrates to exactly 1 -- the wave term of q_F(z) above. Returns 0 (not
- * NaN) when waveSigma places essentially all mass outside [0,1], since that
- * degenerate placement should contribute nothing rather than blow up. */
+/*
+
+Purpose:
+	T(z; m_W, s_W): a normal density renormalized so its own mass over [0, 1]
+	integrates to exactly 1 -- the wave term of q_F(z). Returns 0 (not NaN) when
+	waveSigma places essentially all mass outside [0, 1], since that degenerate
+	placement should contribute nothing rather than blow up.
+
+Input:
+	z [number]: latent position in [0, 1]
+	waveMean [number]: wave center m_W
+	waveSigma [number]: wave width s_W
+
+Output:
+	density [number]: the renormalized wave density at z
+
+*/
 function wave_profile(z, waveMean, waveSigma) {
   const sigma = Math.max(Math.abs(waveSigma), EPS);
   const normalization = normalCdf(1, waveMean, sigma) - normalCdf(0, waveMean, sigma);
@@ -136,19 +162,43 @@ function wave_profile(z, waveMean, waveSigma) {
   return normalPdf(z, waveMean, sigma) / normalization;
 }
 
-/** q_F(z) = (1-w)*q(z) + w*T(z; m_W, s_W) -- the formula block's blended profile. */
+/*
+
+Purpose:
+	The blended S-phase profile q_F(z) = (1-w)*q(z) + w*T(z; m_W, s_W). Skips
+	evaluating T(z) entirely when w = 0, preserving exact nesting with Dean-Jett.
+
+Input:
+	z [number]: latent position in [0, 1]
+	named [object]: named parameters (b, c, w, waveMean, waveSigma)
+
+Output:
+	profile [number]: q_F(z)
+
+*/
 function combined_profile(z, named) {
   const base = (1 - named.w) * quadraticProfile(z, named.b, named.c);
   if (!(named.w > 0)) return base; // w=0 nesting: skip evaluating T(z) entirely, not just multiply by 0
   return base + named.w * wave_profile(z, named.waveMean, named.waveSigma);
 }
 
-/**
- * lambda_i(theta_F) = G1_i + S_i + G2_i, with S_i using q_F(z). The only
- * place this file evaluates the full expected-count model; G1_i/G2_i and the
- * broadening integral itself are delegated to shared.js exactly as in
- * Dean-Jett.
- */
+/*
+
+Purpose:
+	Evaluates lambda_i(theta_F) = G1_i + S_i + G2_i, with S_i using the blended
+	profile q_F(z). The only place this file assembles the full expected-count
+	model; G1_i/G2_i and the broadening integral are delegated to shared.js
+	exactly as in Dean-Jett.
+
+Input:
+	edges [array]: histogram bin edges
+	parameters [array]: the theta_F parameter vector
+	quadratureNodes [number]: Gauss-Legendre node count
+
+Output:
+	expected [array]: expected count per bin
+
+*/
 function expected_counts_from_parameters(edges, parameters, quadratureNodes) {
   const named = paramsToNamed(parameters);
   const peaks = peakComponents(edges, named);
@@ -171,27 +221,22 @@ function expected_counts_from_parameters(edges, parameters, quadratureNodes) {
 // each model owning its own projection, not sharing a projection module that
 // doesn't exist yet in the plan's file layout). ---------------------------
 
-function project_means(g1Mean, g2Mean, regions, config) {
-  if (config.ratioMode === "locked") {
-    const ratio = config.lockedRatio;
-    const lo = Math.max(regions.g1.left, regions.g2.left / ratio);
-    const hi = Math.min(regions.g1.right, regions.g2.right / ratio);
-    const mu1 = clamp(g1Mean, lo, hi);
-    return { g1Mean: mu1, g2Mean: ratio * mu1 };
-  }
+// Identical joint (mu1, mu2) projection as Dean-Jett, shared verbatim through
+// shared.js (audit SCI-02) so DJ and DJF cannot diverge on constraint handling.
+const project_means = projectMeansToFeasible;
 
-  const mu1 = clamp(g1Mean, regions.g1.left, regions.g1.right);
-  let mu2 = clamp(g2Mean, regions.g2.left, regions.g2.right);
-  if (config.ratioMode === "bounded") {
-    const [ratioMin, ratioMax] = config.fitRatioRange;
-    const ratio = mu2 / mu1;
-    if (ratio < ratioMin) mu2 = clamp(ratioMin * mu1, regions.g2.left, regions.g2.right);
-    else if (ratio > ratioMax) mu2 = clamp(ratioMax * mu1, regions.g2.left, regions.g2.right);
-  }
-  return { g1Mean: mu1, g2Mean: mu2 };
+// FlowJo-style clean-flank peak fits (G1 from its left flank, G2 from its right),
+// returned as the fixed peak parameters the clean_flank fit holds constant.
+function clean_flank_fixed_peaks(edges, counts, regions) {
+  const g1 = fit_local_peak(edges, counts, regions.g1, "left", WATSON_LOCAL_PEAK_CONFIG);
+  const g2 = fit_local_peak(edges, counts, regions.g2, "right", WATSON_LOCAL_PEAK_CONFIG);
+  return {
+    g1Area: Math.max(1, g1.area), g1Mean: g1.mean, g1CV: Math.max(EPS, g1.cv),
+    g2Area: Math.max(1, g2.area), g2Mean: g2.mean, g2CV: Math.max(EPS, g2.cv),
+  };
 }
 
-function make_project_fn(regions, config) {
+function make_project_fn(regions, config, fixedPeaks = null) {
   return function project(parameters) {
     const projected = [...parameters];
     projected[PARAMETER_INDEX.G1_AREA] = Math.max(0, projected[PARAMETER_INDEX.G1_AREA]);
@@ -225,11 +270,30 @@ function make_project_fn(regions, config) {
     projected[PARAMETER_INDEX.WAVE_MEAN] = clamp(projected[PARAMETER_INDEX.WAVE_MEAN], config.waveMeanMin, config.waveMeanMax);
     projected[PARAMETER_INDEX.WAVE_SIGMA] = clamp(Math.abs(projected[PARAMETER_INDEX.WAVE_SIGMA]), config.waveSigmaMin, config.waveSigmaMax);
 
+    // clean_flank: the peaks are pinned to their clean-flank fit and never moved,
+    // so only the S phase (S_AREA, b, c, wave) is optimized. Overriding here (after
+    // the generic peak projections above) keeps the projection a single code path.
+    if (fixedPeaks) {
+      projected[PARAMETER_INDEX.G1_AREA] = fixedPeaks.g1Area;
+      projected[PARAMETER_INDEX.G1_MEAN] = fixedPeaks.g1Mean;
+      projected[PARAMETER_INDEX.G1_CV] = fixedPeaks.g1CV;
+      projected[PARAMETER_INDEX.G2_AREA] = fixedPeaks.g2Area;
+      projected[PARAMETER_INDEX.G2_MEAN] = fixedPeaks.g2Mean;
+      projected[PARAMETER_INDEX.G2_CV] = fixedPeaks.g2CV;
+    }
+
     return projected;
   };
 }
 
 function free_indices(config) {
+  // clean_flank fixes the peaks; only the S phase is optimized.
+  if (config.peakFitMode === "clean_flank") {
+    return [
+      PARAMETER_INDEX.S_AREA, PARAMETER_INDEX.B, PARAMETER_INDEX.C,
+      PARAMETER_INDEX.W, PARAMETER_INDEX.WAVE_MEAN, PARAMETER_INDEX.WAVE_SIGMA,
+    ];
+  }
   const indices = [
     PARAMETER_INDEX.G1_AREA, PARAMETER_INDEX.G1_MEAN, PARAMETER_INDEX.G1_CV,
     PARAMETER_INDEX.G2_AREA, PARAMETER_INDEX.S_AREA,
@@ -241,6 +305,25 @@ function free_indices(config) {
   return indices;
 }
 
+function make_parameter_transform(regions, config) {
+  const scaled = (region) => ({
+    type: "scaled",
+    center: 0.5 * (region.left + region.right),
+    scale: Math.max(region.right - region.left, Number.EPSILON),
+  });
+  return createParameterTransform([
+    { type: "log" }, scaled(regions.g1), { type: "bounded", min: config.cvMin, max: config.cvMax },
+    { type: "log" }, scaled(regions.g2), { type: "bounded", min: config.cvMin, max: config.cvMax },
+    { type: "log" }, { type: "identity" }, { type: "identity" },
+    // w remains projected in physical space so the exact w=0 DJ nesting start
+    // remains representable; the two strictly interior wave parameters use
+    // smooth bounded coordinates.
+    { type: "identity" },
+    { type: "bounded", min: config.waveMeanMin, max: config.waveMeanMax },
+    { type: "bounded", min: config.waveSigmaMin, max: config.waveSigmaMax },
+  ]);
+}
+
 function estimate_between_peaks_area(edges, counts, regions) {
   let total = 0;
   for (let i = 0; i < counts.length; i += 1) {
@@ -248,29 +331,6 @@ function estimate_between_peaks_area(edges, counts, regions) {
     if (center > regions.g1.right && center < regions.g2.left) total += counts[i];
   }
   return Math.max(1, total);
-}
-
-function assert_ratio_feasible(regions, config) {
-  if (config.ratioMode === "locked") {
-    const ratio = config.lockedRatio;
-    const lo = Math.max(regions.g1.left, regions.g2.left / ratio);
-    const hi = Math.min(regions.g1.right, regions.g2.right / ratio);
-    if (!(lo <= hi)) {
-      throw new Error(`The locked G2:G1 ratio (${ratio}) is infeasible for the current peak regions.`);
-    }
-    return;
-  }
-  if (config.ratioMode === "bounded") {
-    const achievableLow = regions.g2.left / regions.g1.right;
-    const achievableHigh = regions.g2.right / regions.g1.left;
-    const [ratioMin, ratioMax] = config.fitRatioRange;
-    if (!(achievableLow <= ratioMax && achievableHigh >= ratioMin)) {
-      throw new Error(
-        `No G2:G1 ratio in [${ratioMin}, ${ratioMax}] is achievable from the current peak regions ` +
-          `(achievable range [${achievableLow.toFixed(3)}, ${achievableHigh.toFixed(3)}]).`,
-      );
-    }
-  }
 }
 
 // A small deterministic grid of wave placements (waveMean x waveSigma) used
@@ -286,26 +346,30 @@ const WAVE_PLACEMENT_GRID = [
   [0.3, 0.15], [0.5, 0.15], [0.7, 0.15],
 ];
 
-/**
- * Deterministic theta_F,0 candidates (plan §5.7: "run deterministic multiple
- * starts for DJF ... from comparable starts"). Region-based starts 1-3 mirror
- * Dean-Jett's own starts exactly with w=0; the WAVE_PLACEMENT_GRID starts
- * activate a modest wave at each grid placement from the outset so a real
- * wave isn't only reachable by climbing out of the w=0 plateau -- and isn't
- * missed just because it doesn't happen to sit near one single guessed
- * placement.
- *
- * When `djHint` (Dean-Jett's own *converged, fitted* named parameters) is
- * supplied, it seeds an additional w=0 start built from DJ's actual optimum
- * rather than a fresh region-only estimate, plus the same wave-placement
- * grid built around it. The w=0 djHint start is a correctness property, not
- * just a quality tweak: since q_F(z)|_{w=0} = q(z) exactly (see this file's
- * formula block), DJF's feasible parameter space always *contains* DJ's
- * exact solution -- without this start, DJF's independently-derived region
- * estimate can converge to a worse local optimum than DJ reached, which
- * should never happen given the nesting. Passing this hint is how
- * "comparable starts" is satisfied instead of merely asserted.
- */
+/*
+
+Purpose:
+	Builds the deterministic theta_F,0 start candidates. Region-based starts
+	mirror Dean-Jett's own with w=0; the wave-placement-grid starts activate a
+	modest wave at each grid placement from the outset, so a real wave is
+	reachable without climbing out of the w=0 plateau and isn't missed for
+	sitting away from one guessed placement. When djHint (Dean-Jett's converged,
+	fitted parameters) is supplied it seeds an additional w=0 start from DJ's
+	actual optimum plus a grid around it -- a correctness property, since
+	q_F(z)|_{w=0} = q(z) exactly, so DJF's feasible space always contains DJ's
+	solution and must never converge worse than DJ.
+
+Input:
+	edges [array]: histogram bin edges
+	counts [array]: per-bin counts
+	regions [object]: the accepted { g1, g2 } peak regions
+	config [object]: model config
+	djHint [object|null]: Dean-Jett's fitted named parameters, or null
+
+Output:
+	starts [array]: an array of theta_F start vectors
+
+*/
 function build_parameter_starts(edges, counts, regions, config, djHint = null) {
   const g1Init = estimatePeakFromRegion(edges, counts, regions.g1, { label: "G1" });
   const g2Init = estimatePeakFromRegion(edges, counts, regions.g2, { label: "G2/M" });
@@ -347,9 +411,29 @@ function build_parameter_starts(edges, counts, regions, config, djHint = null) {
   return starts;
 }
 
+// Start vectors for the clean_flank fit: peaks pinned to their clean-flank fit,
+// only the S phase varied (flat/quadratic + a grid of wave placements, plus a
+// larger-S start since the residual S can be substantial on real data).
+function build_clean_flank_starts(edges, counts, regions, peaks) {
+  const sAreaGuess = estimate_between_peaks_area(edges, counts, regions);
+  const base = [
+    peaks.g1Area, peaks.g1Mean, peaks.g1CV,
+    peaks.g2Area, peaks.g2Mean, peaks.g2CV,
+    sAreaGuess, 0, 0, 0, 0.5, 0.15,
+  ];
+  const withS = (sArea, tail) => [...base.slice(0, PARAMETER_INDEX.S_AREA), sArea, ...tail];
+  return [
+    base,
+    withS(sAreaGuess, [0.8, -0.5, 0, 0.5, 0.15]),
+    withS(sAreaGuess, [-0.8, -0.5, 0, 0.5, 0.15]),
+    withS(sAreaGuess * 2, [0, 0, 0, 0.5, 0.15]),
+    ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => withS(sAreaGuess, [0, 0, 0.25, waveMean, waveSigma])),
+  ];
+}
+
 function convergence_reason(fit) {
   if (fit.cancelled) return "cancelled";
-  if (fit.converged) return "relative_deviance_and_step";
+  if (fit.converged) return fit.terminationReason ?? "converged";
   return fit.maxIterationsReached ? "max_iterations" : "unknown";
 }
 
@@ -374,14 +458,22 @@ export const dean_jett_fox = {
   capabilities: { contaminants: false, multiplePloidy: false, autoComparison: true },
   defaultConfig: { ...DEFAULT_CONFIG },
 
-  /**
-   * context: same shape as dean_jett's fit(), plus an optional
-   * context.config.djHint -- Dean-Jett's own normalized `parameters` object
-   * (fitted, not the default config) -- that seeds an additional,
-   * nesting-guaranteed start. See build_parameter_starts() for why. Callers
-   * fitting DJF standalone (not through auto_dj_djf) may simply omit it;
-   * model_selection.js's auto_dj_djf always supplies it.
-   */
+  /*
+
+  Purpose:
+  	Fits Dean-Jett-Fox: same flow as dean_jett's fit(), plus an optional
+  	config.djHint (Dean-Jett's fitted named parameters) that seeds an additional
+  	nesting-guaranteed start -- see build_parameter_starts() for why. Callers
+  	fitting DJF standalone may omit it; auto_dj_djf always supplies it.
+
+  Input:
+  	context [object]: { histogram (masked histogram), peakRegions, config
+  	                  (DEFAULT_CONFIG overrides, optional djHint) }
+
+  Output:
+  	rawResult [object]: the raw fit result for normalizeResult()
+
+  */
   fit(context) {
     const { histogram, peakRegions, config: userConfig = {} } = context;
     // onProgress/shouldCancel excluded from the merged `config` for the same
@@ -391,7 +483,7 @@ export const dean_jett_fox = {
     const { djHint = null, onProgress, shouldCancel, ...restConfig } = userConfig;
     const config = { ...DEFAULT_CONFIG, ...restConfig };
     const regions = validatePeakRegions(peakRegions);
-    assert_ratio_feasible(regions, config);
+    projectMeansToFeasible(0.5 * (regions.g1.left + regions.g1.right), 0.5 * (regions.g2.left + regions.g2.right), regions, config);
 
     const edges = histogram.edges;
     const counts = Array.from(histogram.counts ?? histogram.y);
@@ -399,8 +491,14 @@ export const dean_jett_fox = {
       throw new Error("histogram.edges must have exactly one more entry than histogram.counts.");
     }
 
-    const parameterStarts = build_parameter_starts(edges, counts, regions, config, djHint);
-    const projectFn = make_project_fn(regions, config);
+    const fixedPeaks = config.peakFitMode === "clean_flank"
+      ? clean_flank_fixed_peaks(edges, counts, regions)
+      : null;
+    const parameterStarts = fixedPeaks
+      ? build_clean_flank_starts(edges, counts, regions, fixedPeaks)
+      : build_parameter_starts(edges, counts, regions, config, djHint);
+    const projectFn = make_project_fn(regions, config, fixedPeaks);
+    const parameterTransform = make_parameter_transform(regions, config);
     const freeIndices = free_indices(config);
 
     const fit = fitPoissonModel({
@@ -409,6 +507,7 @@ export const dean_jett_fox = {
       freeIndices,
       expectedCountsFn: (parameters) => expected_counts_from_parameters(edges, parameters, config.sQuadratureNodes),
       projectFn,
+      parameterTransform,
       options: {
         maxIterations: config.maxIterations,
         tolerance: config.tolerance,
@@ -426,8 +525,20 @@ export const dean_jett_fox = {
     };
   },
 
-  /** lambda_i(theta_F) at arbitrary edges -- see dean_jett.js's expectedCounts
-   * for why this takes the named-parameter shape, not the raw fit array. */
+  /*
+
+  Purpose:
+  	Evaluates lambda_i(theta_F) at arbitrary edges (see dean_jett's expectedCounts
+  	for why it takes the named-parameter shape, not the raw fit array).
+
+  Input:
+  	edges [array]: the edges to evaluate at
+  	parameters [object]: the named Dean-Jett-Fox parameters
+
+  Output:
+  	counts [array]: expected count per bin at the given edges
+
+  */
   expectedCounts(edges, parameters) {
     const array = [
       parameters.g1Area, parameters.g1Mean, parameters.g1CV,
@@ -438,13 +549,21 @@ export const dean_jett_fox = {
     return expected_counts_from_parameters(edges, array, parameters.sQuadratureNodes ?? DEFAULT_S_QUADRATURE_NODES);
   },
 
-  /**
-   * Packages fit()'s raw result into the generic §4.5 shape -- structurally
-   * identical to dean_jett.js's normalizeResult(), with waveFraction/
-   * waveArea/waveMean/waveSigma added to parameters/diagnostics so
-   * model_selection.js can read them without re-deriving anything from the
-   * raw fit.
-   */
+  /*
+
+  Purpose:
+  	Packages the raw fit result into the generic model-neutral shape --
+  	structurally identical to dean_jett's normalizeResult(), with waveFraction/
+  	waveArea/waveMean/waveSigma added so auto_dj_djf can read them without
+  	re-deriving anything from the raw fit.
+
+  Input:
+  	rawResult [object]: the object returned by fit()
+
+  Output:
+  	result [object]: the normalized, model-neutral fit result
+
+  */
   normalizeResult(rawResult) {
     const { fit, edges, counts, regions, config, initialCenters } = rawResult;
     const named = paramsToNamed(fit.parameters);
@@ -466,11 +585,14 @@ export const dean_jett_fox = {
       ? { g1: named.g1Area / biologicalTotal, s: named.sArea / biologicalTotal, g2: named.g2Area / biologicalTotal }
       : { g1: 0, s: 0, g2: 0 };
 
-    const diagnostics = buildPoissonFitDiagnostics({
-      observedCounts: counts,
-      expectedCounts: fit.expectedCounts,
-      parameterCount: free_indices(config).length,
-    });
+    const diagnostics = {
+      ...buildPoissonFitDiagnostics({
+        observedCounts: counts,
+        expectedCounts: fit.expectedCounts,
+        parameterCount: free_indices(config).length,
+      }),
+      optimizer: fit.optimizerDiagnostics,
+    };
 
     const waveArea = named.w * named.sArea;
     const warnings = [
