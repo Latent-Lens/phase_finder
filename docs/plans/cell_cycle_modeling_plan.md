@@ -950,9 +950,9 @@ workflow.
 Files:
 
 - `js/analysis/math/lm_solver.js`
-- `tests/unit/unit_tests_djf_shared.py`
-- `tests/e2e/tests_reset.py`
-- `tests/e2e/tests_modeling.py`
+- `tests/unit/driving_code/unit_tests_djf_shared.py`
+- `tests/e2e/driving_code/tests_reset.py`
+- `tests/e2e/driving_code/tests_modeling.py`
 - `js/analysis/pipeline_ui.js`
 
 Tasks:
