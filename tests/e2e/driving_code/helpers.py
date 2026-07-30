@@ -2,7 +2,7 @@
 """Shared test infrastructure for the PhaseFinder test suite.
 
 Provides TestContext, TestResult, all DOM/action helpers, synthetic FCS
-generation, video-clip extraction, and combined HTML+Markdown report writers.
+generation, video-clip extraction, and the self-contained HTML report writer.
 """
 
 import base64
@@ -14,13 +14,13 @@ import shutil
 import struct
 import subprocess
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
 from playwright.sync_api import Page
+from safe_detail import safe_detail
 
 STATUS_PASS = "PASS"
 STATUS_FAIL = "FAIL"
@@ -56,6 +56,8 @@ class TestContext:
     page_errors: List[str] = field(default_factory=list)
     video_record_start: float = 0.0
     number_offset: int = 0
+    all_media: bool = True
+    capture_media: bool = True
 
     def __post_init__(self):
         self._last_test_end = self.video_record_start
@@ -69,8 +71,10 @@ class TestContext:
         number = len(self.results) + 1 + self.number_offset
         shot_rel = ""
 
-        # Always screenshot on FAIL; respect caller flag for PASS/WARN
-        if screenshot or status == STATUS_FAIL:
+        # Limited-media mode keeps one representative image per group.
+        # Failures always get evidence in either mode.
+        group_has_image = any(r.group == group and r.screenshot for r in self.results)
+        if self.capture_media and (status == STATUS_FAIL or self.all_media or (screenshot and not group_has_image)):
             img_dir, _ = results_asset_dirs(self.results_dir)
             img_dir.mkdir(parents=True, exist_ok=True)
             shot_name = f"{self.report_stem}_{number:03d}.png"
@@ -88,7 +92,7 @@ class TestContext:
             group=group,
             name=name,
             status=status,
-            detail=detail,
+            detail=safe_detail(detail),
             screenshot=shot_rel,
             video_start_sec=start_sec,
             video_end_sec=end_sec,
@@ -112,8 +116,11 @@ def join_detail(*parts):
     return " | ".join(str(p) for p in parts if p)
 
 
-def wait_briefly(seconds=0.25):
-    time.sleep(seconds)
+def wait_for_render(page):
+    """Wait for pending DOM work to paint without a fixed wall-clock sleep."""
+    page.evaluate(
+        "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    )
 
 
 def strip_fcs(path):
@@ -138,7 +145,7 @@ def prepare_results_dir(results_dir: Path):
             else:
                 path.unlink()
 
-    for pattern in ("*.html", "*.md", "*.png", "flow_e2e_*.webm", "page@*.webm"):
+    for pattern in ("*.html", "*.md", "*.png", "flow_e2e_*.jpg", "flow_e2e_*.pdf", "flow_e2e_*.svg", "flow_e2e_*.tsv", "flow_e2e_*.webm", "page@*.webm"):
         for path in results_dir.glob(pattern):
             if path.is_file() or path.is_symlink():
                 path.unlink()
@@ -149,31 +156,6 @@ def prepare_results_dir(results_dir: Path):
                 shutil.rmtree(path)
 
     return img_dir, vid_dir
-
-
-@contextmanager
-def suspended_local_autoload_config(repo_root: Path):
-    """Temporarily move sessions/phasefinder_local.json out of the way for a test run.
-
-    phasefinder_local.json is a personal, uncommitted dev-convenience file
-    (see phasefinder_local.example.json) that can point js/session/core.js startup
-    auto-load at an arbitrary session file + data directory on every page
-    load. When the local test server serves the repo root, the app under
-    test picks it up exactly like a real user's browser would — silently
-    loading extra files that desync every row-count assertion in this suite.
-    Move it aside before the run and restore it (unmodified) afterward.
-    """
-    config_path = repo_root / "sessions" / "phasefinder_local.json"
-    backup_path = repo_root / "sessions" / "phasefinder_local.json.e2e_suspended"
-    moved = False
-    if config_path.exists():
-        config_path.rename(backup_path)
-        moved = True
-    try:
-        yield
-    finally:
-        if moved:
-            backup_path.rename(config_path)
 
 
 def prepare_test_data_dir(test_data_dir: Path):
@@ -424,7 +406,7 @@ def dismiss_metadata_wizard_if_open(page, timeout_ms=1500):
     except Exception:
         return False
     page.click("#metadata_wizard_cancel")
-    wait_briefly(0.2)
+    wait_for_render(page)
     return True
 
 
@@ -471,7 +453,7 @@ def configure_default_metadata_wizard_columns(page, timeout_ms=3000):
     page.check("#metadata_column_editor .metadata_leaf_hide input")
 
     page.click("#metadata_wizard_apply")
-    wait_briefly(0.3)
+    page.wait_for_selector("#metadata_wizard_modal", state="hidden", timeout=3000)
     return True
 
 
@@ -537,19 +519,44 @@ def set_files_via_drag_drop(page, target_selector, files):
 
 def select_channel(page, channel):
     page.select_option("#channel_select", channel)
-    wait_briefly(0.2)
+    wait_for_render(page)
 
 
 def click_plot_events(page):
     page.click("#start_analysis_button")
     page.wait_for_selector("#plot_area svg", timeout=120000)
-    wait_briefly(0.4)
+    wait_for_render(page)
+
+
+def confirm_time_qc_method(page, method=None, timeout_ms=4000):
+    """Answer the Time QC method dialog and wait for it to close.
+
+    Switching the "2. Time" QC filter ON opens #time_qc_method_modal so the user
+    can pick between Robust summary QC and Peak-tracking QC (see
+    docs/plans/peak_tracking_time_qc_implementation_spec.md). Every test that
+    turns that filter on has to answer it. Pass ``method`` ("robust-summary" or
+    "peak-tracking") to choose one, or leave it None to accept whatever is
+    already selected — which is the pre-existing robust-summary default, so the
+    stage behaves exactly as it did before this dialog existed.
+
+    Returns True when a dialog was answered, False when none was showing
+    (turning the filter off never prompts).
+    """
+    try:
+        page.wait_for_selector("#time_qc_method_modal:not([hidden])", timeout=timeout_ms)
+    except Exception:
+        return False
+    if method:
+        page.check(f"input[name='time_qc_method'][value='{method}']")
+    page.click("#time_qc_method_apply")
+    page.wait_for_selector("#time_qc_method_modal", state="hidden", timeout=timeout_ms)
+    return True
 
 
 def enter_modeling_mode(page):
     """Open the sidebar's Cell Cycle Modeling mode.
 
-    The Pre-modeling QC filters (#qc_stage*) and the Identify Peaks panel
+    The Pre-modeling QC filters (#qc_filter*) and the Identify Peaks panel
     (#detect_peaks_button, #peak_region_*, etc.) now live in
     #sidebar_modeling_section, which is hidden until Cell Cycle Modeling is
     opened. Call this once after plotting, before interacting with those
@@ -559,7 +566,7 @@ def enter_modeling_mode(page):
         return
     page.click("#cell_cycle_modeling_button")
     page.wait_for_selector("#sidebar_modeling_section", state="visible", timeout=5000)
-    wait_briefly(0.4)  # let the cross-fade settle
+    wait_for_render(page)
 
 
 def exit_modeling_mode(page):
@@ -571,7 +578,7 @@ def exit_modeling_mode(page):
         return
     page.click("#sidebar_back_button")
     page.wait_for_selector("#sidebar_modeling_section", state="hidden", timeout=5000)
-    wait_briefly(0.4)
+    wait_for_render(page)
 
 
 def select_all_visible_rows(page):
@@ -579,7 +586,9 @@ def select_all_visible_rows(page):
         return
     if not page.eval_on_selector("#select_all_files", "e => e.checked && !e.indeterminate"):
         page.click("#select_all_files")
-        wait_briefly(0.3)
+        page.wait_for_function(
+            "() => [...document.querySelectorAll('.file_table tbody .row_select')].every(e => e.checked)"
+        )
 
 
 def isolate_first_plotted_sample(page):
@@ -693,7 +702,7 @@ def close_filter(page):
         )
     except Exception:
         pass
-    wait_briefly(0.2)
+    wait_for_render(page)
 
 
 # ---------------------------------------------------------------------------
@@ -707,8 +716,12 @@ def extract_video_clips(ctx: TestContext, full_video_path: str, results_dir: Pat
         return
 
     for result in ctx.results:
-        start = max(0.0, result.video_start_sec - 0.3)
-        duration = max(0.5, (result.video_end_sec - result.video_start_sec) + 0.6)
+        if not ctx.all_media and not result.screenshot and result.status != STATUS_FAIL:
+            continue
+        # Several result cards can assert different effects of one preceding
+        # action. Include enough lead-in for each card to show that action.
+        start = max(0.0, result.video_start_sec - 2.0)
+        duration = max(0.5, result.video_end_sec - start + 0.6)
         clip_name = f"{stem}_{result.number:03d}.webm"
         _, vid_dir = results_asset_dirs(results_dir)
         vid_dir.mkdir(parents=True, exist_ok=True)
@@ -758,18 +771,32 @@ def _badge_html(status):
     return f"<span class='badge {status.lower()}'>{status}</span>"
 
 
-def _test_card_html(result: TestResult):
+def _asset_data_url(results_dir: Path, relative_path: str) -> str:
+    if not relative_path:
+        return ""
+    path = results_dir / relative_path
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    mime = "video/webm" if path.suffix.lower() == ".webm" else "image/png"
+    return f"data:{mime};base64,{encoded}"
+
+
+def _test_card_html(result: TestResult, results_dir: Path):
     media = ""
-    if result.video_clip:
-        fallback = f"<img src='{html.escape(result.screenshot)}' />" if result.screenshot else ""
+    video = _asset_data_url(results_dir, result.video_clip)
+    screenshot = _asset_data_url(results_dir, result.screenshot)
+    if video:
+        fallback = f"<img src='{screenshot}' alt='screenshot' />" if screenshot else ""
         media = (
             f"<div class='video-wrap'>"
-            f"<video src='{html.escape(result.video_clip)}' controls preload='metadata'>"
+            f"<video src='{video}' controls preload='none'>"
             f"{fallback}"
             f"</video></div>"
         )
-    elif result.screenshot:
-        media = f"<img src='{html.escape(result.screenshot)}' alt='screenshot' />"
+    elif screenshot:
+        media = f"<img src='{screenshot}' alt='screenshot' />"
 
     detail_html = f"<p class='detail'>{html.escape(result.detail)}</p>" if result.detail else ""
 
@@ -803,7 +830,7 @@ def write_combined_report(
     results_dir: Path,
     stem: str,
 ):
-    """Write combined HTML and Markdown reports covering e2e and unit test results."""
+    """Write one self-contained HTML report covering E2E and unit results."""
     all_results = list(e2e_ctx.results) + (list(unit_ctx.results) if unit_ctx else [])
     total = len(all_results)
     passed = sum(1 for r in all_results if r.status == STATUS_PASS)
@@ -817,11 +844,18 @@ def write_combined_report(
         e2e_ctx, unit_ctx, e2e_groups, e2e_counts, unit_groups, unit_counts,
         total, passed, warned, failed, results_dir, stem,
     )
-    _write_md_report(
-        e2e_ctx, unit_ctx, e2e_groups, e2e_counts, unit_groups, unit_counts,
-        total, passed, warned, failed, results_dir, stem,
-    )
-    return results_dir / f"{stem}.md", results_dir / f"{stem}.html"
+
+    for asset_dir in results_asset_dirs(results_dir):
+        for path in asset_dir.iterdir():
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
+    for pattern in ("flow_e2e_*.jpg", "flow_e2e_*.pdf", "flow_e2e_*.png", "flow_e2e_*.svg", "flow_e2e_*.tsv"):
+        for path in results_dir.glob(pattern):
+            path.unlink()
+    for path in results_dir.glob("flow_e2e_*_fixtures"):
+        if path.is_dir():
+            shutil.rmtree(path)
+
+    return results_dir / f"{stem}.html"
 
 
 def _write_html_report(
@@ -837,13 +871,59 @@ def _write_html_report(
         out = []
         for g in groups:
             cards = "".join(
-                _test_card_html(r) for r in ctx.results if r.group == g
+                _test_card_html(r, results_dir) for r in ctx.results if r.group == g
             )
             out.append(f"<h3>{html.escape(g)}</h3>{cards}")
         return "".join(out)
 
+    def unit_sections_html(ctx, groups):
+        out = []
+        for group in groups:
+            rows = []
+            for result in (r for r in ctx.results if r.group == group):
+                title, separator, expectation = result.name.partition(": ")
+                if not separator:
+                    title, expectation = result.name, "Expected behavior is satisfied."
+                outcome = result.detail or "Observed expected behavior."
+                rows.append(
+                    f"<tr><td>{result.number}. {html.escape(title)}</td>"
+                    f"<td>{_badge_html(result.status)}</td>"
+                    f"<td>{html.escape(expectation)}</td>"
+                    f"<td>{html.escape(outcome)}</td>"
+                    "</tr>"
+                )
+            out.append(
+                f"<h3>{html.escape(group)}</h3><table class='unit-results'>"
+                "<thead><tr><th>Test</th><th>PASS/FAIL</th><th>Expectation</th><th>Outcome</th></tr></thead>"
+                f"<tbody>{''.join(rows)}</tbody></table>"
+            )
+        return "".join(out)
+
     e2e_sections = sections_html(e2e_ctx, e2e_groups)
-    unit_sections = sections_html(unit_ctx, unit_groups) if unit_ctx else ""
+    unit_sections = unit_sections_html(unit_ctx, unit_groups) if unit_ctx else ""
+    active_tab = "e2e" if e2e_groups else "unit"
+    tabs = []
+    panels = []
+    if e2e_groups:
+        tabs.append(
+            f"<button type='button' role='tab' id='tab-e2e' aria-controls='panel-e2e' "
+            f"aria-selected='{'true' if active_tab == 'e2e' else 'false'}'>E2E</button>"
+        )
+        panels.append(
+            f"<section role='tabpanel' id='panel-e2e' aria-labelledby='tab-e2e' "
+            f"{'hidden' if active_tab != 'e2e' else ''}>"
+            f"<h2>E2E Test Summary</h2>{e2e_summary}<h2>E2E Tests</h2>{e2e_sections}</section>"
+        )
+    if unit_groups:
+        tabs.append(
+            f"<button type='button' role='tab' id='tab-unit' aria-controls='panel-unit' "
+            f"aria-selected='{'true' if active_tab == 'unit' else 'false'}'>Unit</button>"
+        )
+        panels.append(
+            f"<section role='tabpanel' id='panel-unit' aria-labelledby='tab-unit' "
+            f"{'hidden' if active_tab != 'unit' else ''}>"
+            f"<h2>Unit Test Summary</h2>{unit_summary}<h2>Unit Tests</h2>{unit_sections}</section>"
+        )
 
     html_out = f"""<!doctype html>
 <html lang="en">
@@ -858,11 +938,13 @@ def _write_html_report(
     th, td {{ border: 1px solid #d7deea; padding: 8px 10px; text-align: right; }}
     th:first-child, td:first-child {{ text-align: left; }}
     th {{ background: #eef1f8; }}
+    .unit-results th, .unit-results td {{ text-align: left; vertical-align: top; }}
+    .unit-results th:nth-child(2), .unit-results td:nth-child(2) {{ text-align: center; width: 90px; }}
     hr {{ border: 0; border-top: 1px solid #d7deea; margin: 20px 0; }}
-    .test_card {{ margin: 12px 0 4px; }}
-    .test_header {{ display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    .test-card {{ margin: 12px 0 4px; }}
+    .test-header {{ display: flex; justify-content: space-between; align-items: center; gap: 16px;
                     font-size: 1.05rem; font-weight: 600; padding: 6px 0; }}
-    .test_label {{ flex: 1; }}
+    .test-label {{ flex: 1; }}
     .badge {{ border-radius: 4px; color: white; font-weight: 800; padding: 4px 12px;
               min-width: 60px; text-align: center; flex-shrink: 0; }}
     .pass {{ background: #16803c; }}
@@ -870,13 +952,19 @@ def _write_html_report(
     .warn {{ background: #b7791f; }}
     .detail {{ color: #444; font-size: 0.9rem; margin: 4px 0 8px; white-space: pre-wrap; }}
     img {{ max-width: 100%; border: 1px solid #d7deea; display: block; margin: 8px auto; }}
-    .video_wrap {{ display: flex; justify-content: center; margin: 12px 0; }}
-    .video_wrap video {{ width: 960px; max-width: 100%; border: 1px solid #d7deea; }}
+    .video-wrap {{ display: flex; justify-content: center; margin: 12px 0; }}
+    .video-wrap video {{ width: 960px; max-width: 100%; border: 1px solid #d7deea; }}
     .overall {{ background: #f4f6fb; border: 1px solid #d7deea; border-radius: 6px; padding: 12px 16px; margin: 16px 0; }}
     .overall span {{ margin-right: 20px; font-weight: 600; }}
     .overall .p {{ color: #16803c; }}
     .overall .w {{ color: #b7791f; }}
     .overall .f {{ color: #c81e1e; }}
+    [role='tablist'] {{ display: flex; gap: 8px; margin: 24px 0 16px; }}
+    [role='tab'] {{ border: 1px solid #9aa8bd; border-radius: 5px; background: #eef1f8;
+                    color: #072c67; cursor: pointer; font: inherit; font-weight: 700; padding: 9px 20px; }}
+    [role='tab'][aria-selected='true'] {{ background: #072c67; color: white; }}
+    [role='tab']:focus-visible {{ outline: 3px solid #76a9fa; outline-offset: 2px; }}
+    [role='tabpanel'][hidden] {{ display: none; }}
   </style>
 </head>
 <body>
@@ -889,87 +977,29 @@ def _write_html_report(
     <span class='f'>&#10007; FAIL: {failed}</span>
   </div>
 
-  <h2>E2E Test Summary</h2>
-  {e2e_summary}
-
-  {"<h2>Unit Test Summary</h2>" + unit_summary if unit_summary else ""}
-
-  <hr />
-
-  <h2>E2E Tests</h2>
-  {e2e_sections}
-
-  {"<h2>Unit Tests</h2>" + unit_sections if unit_sections else ""}
+  <div role='tablist' aria-label='Test result type'>{''.join(tabs)}</div>
+  {''.join(panels)}
+  <script>
+    const tabs = [...document.querySelectorAll("[role='tab']")];
+    function activate(tab) {{
+      for (const item of tabs) {{
+        const selected = item === tab;
+        item.setAttribute('aria-selected', String(selected));
+        document.getElementById(item.getAttribute('aria-controls')).hidden = !selected;
+      }}
+      tab.focus();
+    }}
+    tabs.forEach((tab, index) => {{
+      tab.addEventListener('click', () => activate(tab));
+      tab.addEventListener('keydown', event => {{
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const step = event.key === 'ArrowRight' ? 1 : -1;
+        activate(tabs[(index + step + tabs.length) % tabs.length]);
+      }});
+    }});
+  </script>
 </body>
 </html>
 """
     (results_dir / f"{stem}.html").write_text(html_out, encoding="utf-8")
-
-
-def _md_badge(status):
-    colors = {STATUS_PASS: "green", STATUS_FAIL: "red", STATUS_WARN: "goldenrod"}
-    return f"<span style='float:right;color:{colors[status]};font-weight:bold'>{status}</span>"
-
-
-def _write_md_report(
-    e2e_ctx, unit_ctx, e2e_groups, e2e_counts, unit_groups, unit_counts,
-    total, passed, warned, failed, results_dir, stem,
-):
-    ts = datetime.now().isoformat(timespec="seconds")
-    lines = [
-        "# PhaseFinder Test Report",
-        "",
-        f"Generated: {ts}",
-        "",
-        f"**Total: {total}** &nbsp; ✓ PASS: {passed} &nbsp; ⚠ WARN: {warned} &nbsp; ✗ FAIL: {failed}",
-        "",
-        "## E2E Test Summary",
-        "",
-        "| Group | PASS | WARN | FAIL |",
-        "|---|---:|---:|---:|",
-    ]
-    for g in e2e_groups:
-        lines.append(f"| {g} | {e2e_counts[g][STATUS_PASS]} | {e2e_counts[g][STATUS_WARN]} | {e2e_counts[g][STATUS_FAIL]} |")
-
-    if unit_groups:
-        lines += [
-            "",
-            "## Unit Test Summary",
-            "",
-            "| Group | PASS | WARN | FAIL |",
-            "|---|---:|---:|---:|",
-        ]
-        for g in unit_groups:
-            lines.append(f"| {g} | {unit_counts[g][STATUS_PASS]} | {unit_counts[g][STATUS_WARN]} | {unit_counts[g][STATUS_FAIL]} |")
-
-    lines += ["", "---", "", "## E2E Tests"]
-
-    for g in e2e_groups:
-        lines += ["", f"### {html.escape(g)}", ""]
-        for r in [x for x in e2e_ctx.results if x.group == g]:
-            lines.append(
-                f"**{r.number}. {html.escape(r.name)}** {_md_badge(r.status)}"
-            )
-            if r.detail:
-                lines += ["", html.escape(r.detail)]
-            if r.video_clip:
-                lines += ["", f"<video src='{r.video_clip}' controls width='960' style='display:block;margin:8px auto'></video>"]
-            elif r.screenshot:
-                lines += ["", f"![{r.number}. {r.name}]({r.screenshot})"]
-            lines += ["", "---", ""]
-
-    if unit_ctx and unit_groups:
-        lines += ["## Unit Tests"]
-        for g in unit_groups:
-            lines += ["", f"### {html.escape(g)}", ""]
-            for r in [x for x in unit_ctx.results if x.group == g]:
-                lines.append(
-                    f"**{r.number}. {html.escape(r.name)}** {_md_badge(r.status)}"
-                )
-                if r.detail:
-                    lines += ["", html.escape(r.detail)]
-                if r.screenshot:
-                    lines += ["", f"![{r.number}. {r.name}]({r.screenshot})"]
-                lines += ["", "---", ""]
-
-    (results_dir / f"{stem}.md").write_text("\n".join(lines), encoding="utf-8")

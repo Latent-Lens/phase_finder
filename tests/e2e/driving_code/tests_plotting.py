@@ -15,7 +15,7 @@ from helpers import (
     status_bar_text,
     table_row_count,
     try_catch_progress,
-    wait_briefly,
+    wait_for_render,
     wait_for_curves,
     wait_for_overlay_hidden,
 )
@@ -50,7 +50,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
             cb.check()
         else:
             cb.uncheck()
-    wait_briefly(0.3)
+    wait_for_render(page)
 
     page.click("#start_analysis_button")
     # Catch progress overlay during plot
@@ -64,10 +64,34 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     ctx.check(group, "Progress overlay appears during Plot Channel Events",
               progress_during_plot,
               "overlay caught" if progress_during_plot else "loaded too fast to observe")
+    progress_a11y = page.evaluate("""() => {
+      const bar = document.querySelector('#progress_overlay [role=progressbar]');
+      return { min: bar?.getAttribute('aria-valuemin'), max: bar?.getAttribute('aria-valuemax'), now: bar?.getAttribute('aria-valuenow') };
+    }""")
+    ctx.check(group, "UI-10: determinate progress exposes progressbar semantics",
+              progress_a11y["min"] == "0" and progress_a11y["max"] == "100"
+              and progress_a11y["now"] is not None, str(progress_a11y))
     wait_for_overlay_hidden(page)
     overlay_hidden = page.eval_on_selector("#progress_overlay", "e => e.hidden")
     ctx.check(group, "Progress overlay hides after plot completes",
               overlay_hidden, "hidden" if overlay_hidden else "still visible")
+
+    operation_ownership = page.evaluate("""async () => {
+      const progress = await import('./js/ui/status_channels.js');
+      const oldId = progress.show_progress('Old operation');
+      const newId = progress.show_progress('New operation');
+      const staleUpdateRejected = progress.update_progress(99, 'Stale update', '', '', oldId) === false;
+      const staleStatusRejected = progress.set_status_bar('Stale status', false, null, oldId) === false;
+      progress.hide_progress(0, oldId);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const staleHideRejected = !document.querySelector('#progress_overlay').hidden;
+      progress.hide_progress(0, newId);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      return { staleUpdateRejected, staleStatusRejected, staleHideRejected,
+        finalHidden: document.querySelector('#progress_overlay').hidden };
+    }""")
+    ctx.check(group, "UI-10: superseded progress/status/hide updates cannot overwrite the current operation",
+              all(operation_ownership.values()), str(operation_ownership))
 
     bar_after_plot = status_bar_text(page)
     ctx.check(group, "Status bar shows completion message after plotting",
@@ -100,7 +124,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
 
     # --- re-select all rows and plot all ---
     select_all_visible_rows(page)
-    wait_briefly(0.2)
+    wait_for_render(page)
 
     click_plot_events(page)
     wait_for_curves(page, total_rows)
@@ -119,11 +143,35 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     ctx.check(group, "Run DJF Pipeline button becomes enabled after plotting",
               not page.eval_on_selector("#cell_cycle_modeling_button", "e => e.disabled"))
 
+    accessible_plot = page.evaluate(
+        """() => {
+            const svg = document.querySelector('#plot_area svg');
+            const details = document.querySelector('.plot_accessibility_summary');
+            return {
+                role: svg?.getAttribute('role'),
+                title: svg?.querySelector('title')?.textContent || '',
+                desc: svg?.querySelector('desc')?.textContent || '',
+                labelled: (svg?.getAttribute('aria-labelledby') || '').split(' ').every(id => document.getElementById(id)),
+                rows: details?.querySelectorAll('tbody tr').length || 0,
+                text: details?.textContent || '',
+                decorativeHidden: [...(svg?.children || [])].filter(el => ['g', 'defs'].includes(el.localName)).every(el => el.getAttribute('aria-hidden') === 'true'),
+            };
+        }""")
+    ctx.check(group, "Plot has a current SVG name, description, and structured text alternative",
+              accessible_plot["role"] == "img"
+              and f"{total_rows} samples" in accessible_plot["title"].lower()
+              and "x axis" in accessible_plot["desc"].lower()
+              and accessible_plot["labelled"]
+              and accessible_plot["rows"] == total_rows
+              and "events" in accessible_plot["text"].lower()
+              and accessible_plot["decorativeHidden"],
+              str(accessible_plot))
+
     # --- turn rows off, verify curves decrease ---
     checkboxes = page.query_selector_all(".file_table tbody .row_select")
     checkboxes[0].uncheck()
     checkboxes[1].uncheck()
-    wait_briefly(0.4)
+    wait_for_render(page)
     ctx.check(group, "Turning rows off removes plot lines",
               density_curve_count(page) == total_rows - 2,
               f"curves={density_curve_count(page)}")
@@ -136,7 +184,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     # Re-check one row
     checkboxes = page.query_selector_all(".file_table tbody .row_select")
     checkboxes[0].check()
-    wait_briefly(0.4)
+    wait_for_render(page)
     ctx.check(group, "Turning a row back on restores its plot line",
               density_curve_count(page) == total_rows - 1,
               f"curves={density_curve_count(page)}")
@@ -144,7 +192,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     # Re-check the second row
     checkboxes = page.query_selector_all(".file_table tbody .row_select")
     checkboxes[1].check()
-    wait_briefly(0.4)
+    wait_for_render(page)
     ctx.check(group, "All rows back on restores all plot lines",
               density_curve_count(page) == total_rows,
               f"curves={density_curve_count(page)}")
@@ -158,7 +206,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
                 "() => document.querySelector('#start_analysis_button').textContent.trim() === 'Plot Channel Events'",
                 timeout=60000,
             )
-            wait_briefly(0.8)
+            wait_for_render(page)
             btn = page.eval_on_selector("#start_analysis_button", "e => e.textContent.trim()")
             ctx.check(group, "Changing channel restores Plot Channel Events button",
                       btn == "Plot Channel Events", btn)
@@ -211,6 +259,7 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
 # It must never write axis_range_override (the modeling range), because that
 # would silently re-run peak detection and every fit just from looking around.
 BLANK_OVERRIDE = {"x_min": None, "x_max": None, "y_min": None, "y_max": None}
+BLANK_ANALYSIS_DOMAIN = {"x_min": None, "x_max": None}
 
 
 def _viewport(page):
@@ -219,6 +268,10 @@ def _viewport(page):
 
 def _override(page):
     return page.evaluate("() => window.PhaseFinder.plot.axis_range_override")
+
+
+def _analysis_domain(page):
+    return page.evaluate("() => window.PhaseFinder.plot.analysis_domain")
 
 
 def _span(domain):
@@ -231,7 +284,7 @@ def _plot_box(page):
 
 def _reset_view(page):
     page.click("#plot_tool_home")
-    wait_briefly(0.4)
+    wait_for_render(page)
 
 
 def test_plot_toolbar(ctx: TestContext):
@@ -278,16 +331,18 @@ def test_plot_toolbar(ctx: TestContext):
     # --- wheel zoom -------------------------------------------------------
     page.mouse.move(cx, cy)
     page.mouse.wheel(0, -400)
-    wait_briefly(0.5)
+    wait_for_render(page)
     wheeled = _viewport(page)
     ctx.check(group, "Mouse wheel zooms the view about the cursor",
               wheeled["x"] is not None and wheeled["y"] is not None,
               str(wheeled))
     ctx.check(group, "Wheel zoom leaves the modeling axis range untouched",
-              _override(page) == BLANK_OVERRIDE, str(_override(page)))
+              _override(page) == BLANK_OVERRIDE
+              and _analysis_domain(page) == BLANK_ANALYSIS_DOMAIN,
+              str({"display": _override(page), "analysis": _analysis_domain(page)}))
 
     page.mouse.wheel(0, 800)
-    wait_briefly(0.5)
+    wait_for_render(page)
     zoomed_out = _viewport(page)
     ctx.check(group, "Wheeling back out widens the view again",
               zoomed_out["x"] is None or _span(zoomed_out["x"]) > _span(wheeled["x"]),
@@ -305,7 +360,7 @@ def test_plot_toolbar(ctx: TestContext):
     page.mouse.move(cx + 60, cy + 90, steps=10)
     page.mouse.up()
     page.keyboard.up("Shift")
-    wait_briefly(0.5)
+    wait_for_render(page)
     boxed = _viewport(page)
     ctx.check(group, "Shift-drag zooms into the painted rectangle on both axes",
               boxed["x"] is not None and boxed["y"] is not None
@@ -316,7 +371,7 @@ def test_plot_toolbar(ctx: TestContext):
 
     # --- double-click resets ---------------------------------------------
     page.mouse.dblclick(box["x"] + box["width"] * 0.35, box["y"] + 25)
-    wait_briefly(0.5)
+    wait_for_render(page)
     ctx.check(group, "Double-clicking empty plot space resets the view",
               _viewport(page) == {"x": None, "y": None}, str(_viewport(page)))
 
@@ -325,18 +380,20 @@ def test_plot_toolbar(ctx: TestContext):
     page.mouse.down()
     page.mouse.move(cx - 130, cy, steps=12)
     page.mouse.up()
-    wait_briefly(0.5)
+    wait_for_render(page)
     panned = _viewport(page)
     ctx.check(group, "Dragging pans the view without changing its width",
               panned["x"] is not None and _span(panned["x"]) > 0,
               str(panned))
     ctx.check(group, "Panning leaves the modeling axis range untouched",
-              _override(page) == BLANK_OVERRIDE, str(_override(page)))
+              _override(page) == BLANK_OVERRIDE
+              and _analysis_domain(page) == BLANK_ANALYSIS_DOMAIN,
+              str({"display": _override(page), "analysis": _analysis_domain(page)}))
     _reset_view(page)
 
     # --- zoom modes -------------------------------------------------------
     page.click("#plot_tool_zoom_out")
-    wait_briefly(0.3)
+    wait_for_render(page)
     ctx.check(group, "Selecting a zoom mode moves the pressed state off Pan",
               page.get_attribute("#plot_tool_zoom_out", "aria-pressed") == "true"
               and page.get_attribute("#plot_tool_pan", "aria-pressed") == "false"
@@ -344,7 +401,10 @@ def test_plot_toolbar(ctx: TestContext):
               page.evaluate("() => window.PhaseFinder.plot.interaction_mode"))
 
     page.mouse.click(cx, cy)
-    wait_briefly(0.7)
+    page.wait_for_function(
+        "() => window.PhaseFinder.plot.viewport.x !== null && window.PhaseFinder.plot.viewport.y !== null",
+        timeout=2000,
+    )
     clicked_out = _viewport(page)
     ctx.check(group, "Clicking in zoom-out mode zooms the view out about the cursor",
               clicked_out["x"] is not None and clicked_out["y"] is not None,
@@ -354,7 +414,10 @@ def test_plot_toolbar(ctx: TestContext):
 
     # --- autoscale --------------------------------------------------------
     page.click("#plot_tool_autoscale")
-    wait_briefly(0.5)
+    page.wait_for_function(
+        "() => window.PhaseFinder.plot.viewport.y?.[0] === 0",
+        timeout=2000,
+    )
     autoscaled = _viewport(page)
     ctx.check(group, "Autoscale fits the axes to the plotted data",
               autoscaled["x"] is not None and autoscaled["y"] is not None
@@ -364,15 +427,61 @@ def test_plot_toolbar(ctx: TestContext):
               _override(page) == BLANK_OVERRIDE, str(_override(page)))
     _reset_view(page)
 
+    # Collapsing the table must release its height to the plot and dock the
+    # remaining table title bar at the bottom of the workspace.
+    page.click("#metadata_panel_toggle")
+    page.wait_for_timeout(300)
+    collapsed_layout = page.evaluate("""() => {
+      const workspace = document.querySelector('.workspace').getBoundingClientRect();
+      const plot = document.querySelector('#plot_panel').getBoundingClientRect();
+      const table = document.querySelector('#metadata_panel').getBoundingClientRect();
+      return { bottomGap: Math.round(workspace.bottom - table.bottom), plotHeight: plot.height, ordered: plot.bottom <= table.top };
+    }""")
+    ctx.check(group, "Collapsed table docks at the bottom and releases space to the plot",
+              abs(collapsed_layout["bottomGap"]) <= 1 and collapsed_layout["ordered"] and collapsed_layout["plotHeight"] > 460,
+              str(collapsed_layout))
+    page.click("#metadata_panel_toggle")
+    page.wait_for_timeout(300)
+
     # --- image export -----------------------------------------------------
     # Each format is downloaded for real and checked by its file signature, so
     # a silently corrupt encoder can't pass on file size alone.
     signatures = {
+        "html": (b"<!doctype", ".html"),
         "svg": (b"<?xml", ".svg"),
         "pdf": (b"%PDF-", ".pdf"),
         "png": (b"\x89PNG", ".png"),
         "jpeg": (b"\xff\xd8\xff", ".jpg"),
     }
+    page.focus("#plot_tool_camera")
+    page.press("#plot_tool_camera", "Enter")
+    page.wait_for_selector("#plot_export_modal:not([hidden])", timeout=5000)
+    page.focus("#plot_export_download")
+    page.keyboard.press("Tab")
+    wrapped_forward = page.locator("#plot_export_close").is_focused()
+    page.keyboard.press("Shift+Tab")
+    wrapped_backward = page.locator("#plot_export_download").is_focused()
+    background_inert = page.eval_on_selector("main.app", "element => element.inert")
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#plot_export_modal", state="hidden", timeout=5000)
+    ctx.check(group, "UI-05E: modal traps focus, makes the background inert, and restores its trigger",
+              wrapped_forward and wrapped_backward and background_inert
+              and page.locator("#plot_tool_camera").is_focused(),
+              f"forward={wrapped_forward}, backward={wrapped_backward}, inert={background_inert}")
+    export_guards = page.evaluate("""async () => {
+      const exports = await import('./js/plotting/plot_export.js');
+      const cancelled = new AbortController();
+      cancelled.abort();
+      let cancelName = '', sizeMessage = '';
+      try { await exports.export_plot_image('png', 2, cancelled.signal); }
+      catch (error) { cancelName = error.name; }
+      try { await exports.export_plot_image('png', 1000); }
+      catch (error) { sizeMessage = error.message; }
+      return { cancelName, sizeMessage };
+    }""")
+    ctx.check(group, "UI-14: export cancellation and raster memory bounds fail safely before download",
+              export_guards["cancelName"] == "AbortError"
+              and "too large" in export_guards["sizeMessage"].lower(), str(export_guards))
     for fmt, (magic, extension) in signatures.items():
         try:
             page.click("#plot_tool_camera")
@@ -381,19 +490,53 @@ def test_plot_toolbar(ctx: TestContext):
             with page.expect_download(timeout=25000) as download_info:
                 page.click("#plot_export_download")
             download = download_info.value
+            # The browser exposes the download before the async click handler
+            # resumes and closes the picker.  Wait for that success state
+            # instead of racing it in the assertion below.
+            page.wait_for_selector("#plot_export_modal", state="hidden", timeout=5000)
             saved = ctx.results_dir / f"{ctx.report_stem}_plot_export{extension}"
             download.save_as(str(saved))
-            head = saved.read_bytes()[:8]
+            head = saved.read_bytes()[:16]
+            report_ok = fmt != "html" or (
+                "Metadata and results" in saved.read_text(encoding="utf-8")
+                and "Plots and modeled areas" in saved.read_text(encoding="utf-8")
+                and "<svg" in saved.read_text(encoding="utf-8")
+                and "<table" in saved.read_text(encoding="utf-8")
+            )
             ctx.check(group, f"Camera exports a valid {fmt.upper()} file",
                       download.suggested_filename.endswith(extension)
                       and head.startswith(magic)
                       and saved.stat().st_size > 1000
-                      and page.is_hidden("#plot_export_modal"),
+                      and report_ok,
                       f"{download.suggested_filename}, {saved.stat().st_size} bytes, head={head!r}")
         except Exception as error:
             ctx.check(group, f"Camera exports a valid {fmt.upper()} file", False, str(error))
             if page.is_visible("#plot_export_modal"):
                 page.click("#plot_export_cancel")
+
+    # Ridge exports must contain the complete stacked plot, not the first SVG.
+    page.select_option("#plot_view_mode", "ridge")
+    page.wait_for_function("document.querySelectorAll('.ridge_row').length >= 3")
+    ridge_names = page.eval_on_selector_all(".ridge_row_name", "nodes => nodes.map(node => node.textContent.trim())")
+    for fmt in ("svg", "pdf", "png", "jpeg"):
+        extension = {"svg": ".svg", "pdf": ".pdf", "png": ".png", "jpeg": ".jpg"}[fmt]
+        try:
+            page.click("#plot_tool_camera")
+            page.check(f"input[name='plot_export_format'][value='{fmt}']")
+            with page.expect_download(timeout=25000) as download_info:
+                page.click("#plot_export_download")
+            saved = ctx.results_dir / f"{ctx.report_stem}_ridge_export{extension}"
+            download_info.value.save_as(str(saved))
+            page.wait_for_selector("#plot_export_modal", state="hidden", timeout=5000)
+            svg_has_every_name = fmt != "svg" or all(name in saved.read_text(encoding="utf-8") for name in ridge_names)
+            ctx.check(group, f"UI-04: {fmt.upper()} exports all {len(ridge_names)} ridge rows",
+                      saved.stat().st_size > 1000 and svg_has_every_name,
+                      f"rows={len(ridge_names)}, bytes={saved.stat().st_size}")
+        except Exception as error:
+            ctx.check(group, f"UI-04: {fmt.upper()} exports every ridge row", False, str(error))
+            if page.is_visible("#plot_export_modal"):
+                page.click("#plot_export_cancel")
+    page.select_option("#plot_view_mode", "overlay")
 
     # Leave the plot exactly as the next test module expects to find it.
     _reset_view(page)

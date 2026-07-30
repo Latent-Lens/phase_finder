@@ -8,7 +8,7 @@ from helpers import (
     set_filter_option,
     table_row_count,
     table_values,
-    wait_briefly,
+    wait_for_render,
 )
 
 
@@ -53,15 +53,15 @@ def _sort_test(ctx: TestContext, field: str, label: str, col_index: int):
     # hitting the sort-direction arrows on the right, which set rather than toggle.
     btn = page.locator(f".th_sort[data-sort-field='{field}']").first
     btn.click(position={"x": 4, "y": 8})
-    wait_briefly(0.25)
+    wait_for_render(page)
     first = _read_col(page, field, col_index)
 
     btn.click(position={"x": 4, "y": 8})
-    wait_briefly(0.25)
+    wait_for_render(page)
     second = _read_col(page, field, col_index)
 
     btn.click(position={"x": 4, "y": 8})
-    wait_briefly(0.25)
+    wait_for_render(page)
     third = _read_col(page, field, col_index)
 
     # Sort toggles: first click gave one order, second click reversed it,
@@ -87,7 +87,7 @@ def _filter_test(ctx: TestContext, field: str, label: str, col_index: int):
 
     try:
         open_filter(page, label)
-        wait_briefly(0.2)
+        wait_for_render(page)
         options = page.query_selector_all(f".th_filter_option[data-filter-field='{field}']")
 
         if not options:
@@ -98,7 +98,7 @@ def _filter_test(ctx: TestContext, field: str, label: str, col_index: int):
 
         first_value = options[0].get_attribute("value")
         set_filter_option(page, field, first_value, True)
-        wait_briefly(0.3)
+        wait_for_render(page)
 
         visible_filtered = table_row_count(page)
 
@@ -113,7 +113,7 @@ def _filter_test(ctx: TestContext, field: str, label: str, col_index: int):
 
         # Clear the filter and verify row count restores
         set_filter_option(page, field, first_value, False)
-        wait_briefly(0.3)
+        wait_for_render(page)
         ctx.check(group, f"Clearing {label} filter restores rows",
                   table_row_count(page) == visible_before,
                   f"rows={table_row_count(page)}")
@@ -138,15 +138,15 @@ def test_table_filtering_sorting(ctx: TestContext):
         # Ensure none are checked, then select-all
         page.eval_on_selector("#select_all_files",
                                "e => { e.checked = false; e.dispatchEvent(new Event('change', { bubbles: true })); }")
-        wait_briefly(0.2)
+        wait_for_render(page)
         page.click("#select_all_files")
-        wait_briefly(0.3)
+        wait_for_render(page)
         all_selected = page.eval_on_selector_all(".file_table tbody .row_select",
                                                   "els => els.every(e => e.checked)")
         ctx.check(group, "Select-all checkbox selects all rows", all_selected, f"total={total}")
 
         page.click("#select_all_files")
-        wait_briefly(0.2)
+        wait_for_render(page)
         none_selected = page.eval_on_selector_all(".file_table tbody .row_select",
                                                    "els => els.every(e => !e.checked)")
         ctx.check(group, "Deselect-all checkbox clears all rows", none_selected)
