@@ -15,8 +15,10 @@ import { plottable_rows } from "../plotting/data.js";
 import { get_state, get_active_model_result } from "../analysis/pipeline_state.js";
 import { get_file_table } from "../state/app_state.js";
 import { render_file_table } from "./table_render.js";
+import { result_reporting_summary } from "../analysis/cell_cycle/result_contract.js";
 import {
   CELL_CYCLE_COLUMN_PREFIX,
+  CELL_CYCLE_STATUS_COLUMN,
   CELL_CYCLE_PHASES,
   PEAK_REGION_COLUMNS,
   format_cell_cycle_value,
@@ -136,9 +138,29 @@ export function update_cell_cycle_fraction_columns() {
       desired.set(`${CELL_CYCLE_COLUMN_PREFIX}${modelId}:${phase}`, values);
     }
   }
+  const statusByName = new Map();
+  for (const row of plottable_rows()) {
+    const modeling = get_state(row.name)?.modeling;
+    const active = modeling?.activeResultKey ? modeling.resultsByKey?.[modeling.activeResultKey] : null;
+    const diagnostic = modeling?.lastDiagnosticResultKey
+      ? modeling.resultsByKey?.[modeling.lastDiagnosticResultKey]
+      : null;
+    const result = active ?? diagnostic;
+    if (result) {
+      const reporting = result_reporting_summary(result);
+      statusByName.set(row.name, `${reporting.status} (${reporting.reason})`);
+    }
+    else if (modeling?.lastFitError) statusByName.set(row.name, `Fit failed (${modeling.lastFitError.message ?? modeling.lastFitError})`);
+  }
+  if (statusByName.size) {
+    desired.set(CELL_CYCLE_STATUS_COLUMN, names.map((name) => statusByName.get(name) ?? ""));
+  }
   for (const [label, values] of peak_region_columns(names)) desired.set(label, values);
 
-  const region_labels = new Set(PEAK_REGION_COLUMNS.map((column) => column.label));
+  const region_labels = new Set([
+    ...PEAK_REGION_COLUMNS.map((column) => column.label),
+    CELL_CYCLE_STATUS_COLUMN,
+  ]);
   const current = frame.columns.filter(
     (col) => col.startsWith(CELL_CYCLE_COLUMN_PREFIX) || region_labels.has(col),
   );

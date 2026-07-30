@@ -138,6 +138,22 @@ _TESTS = r"""() => {
     };
   });
 
+  run('SCI-03: reporting consumers withhold fractions and retain the nonconvergence reason', () => {
+    const summary = window.CellCycleResultContract.result_reporting_summary({
+      validForReporting: false,
+      converged: false,
+      convergenceReason: 'boundary_stall',
+      phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
+    });
+    return {
+      pass: summary.reportable === false
+        && summary.status === 'Not converged'
+        && summary.reason === 'boundary_stall'
+        && summary.phaseFractions === null,
+      detail: JSON.stringify(summary),
+    };
+  });
+
   run('SCI-03/GATE-01: a peak CV pinned at its upper bound is limited-reliability and NOT valid for reporting', () => {
     // The VALID-01 DJF S-overfit signature: converged, fractions sum to 1, but a
     // G2 "peak" driven to the 0.30 CV ceiling let S absorb G2 (g1=0, s=0.86).
