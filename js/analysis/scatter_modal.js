@@ -1,4 +1,4 @@
-// Stage 2 scatter-gate editor. The fitted FSC-A × SSC-A ellipse can be moved
+// Cell Gate scatter-gate editor. The fitted FSC-A × SSC-A ellipse can be moved
 // and its coverage resized interactively; committing either edit delegates to
 // the pipeline so the raw-index mask becomes authoritative downstream.
 
@@ -111,8 +111,14 @@ function set_caption({
 }) {
   if (!djf_scatter_caption) return;
   const retained = count_retained(mask);
+  const metrics = result.componentMetrics || [];
   const weights = (result.components || [])
-    .map((candidate, index) => `component ${index + 1}: ${(100 * candidate.weight).toFixed(1)}%`)
+    .map((candidate, index) => {
+      const quality = metrics[index];
+      return `component ${index + 1}${index === result.mainComponentIndex ? " (selected)" : ""}: `
+        + `${(100 * candidate.weight).toFixed(1)}%`
+        + (quality ? `, condition ${quality.covarianceCondition.toFixed(1)}, compactness ${quality.compactness.toFixed(3)}, score ${quality.selectionScore.toFixed(3)}` : "");
+    })
     .join(" · ");
   const source = preview
     ? "Preview — release to apply"
@@ -124,10 +130,17 @@ function set_caption({
     source,
     `${retained.toLocaleString()} of ${points.length.toLocaleString()} eligible events retained`,
     `center (${component.mean[0].toFixed(2)}, ${component.mean[1].toFixed(2)})`,
+    `covariance [[${component.covariance[0][0].toFixed(3)}, ${component.covariance[0][1].toFixed(3)}], [${component.covariance[1][0].toFixed(3)}, ${component.covariance[1][1].toFixed(3)}]]`,
     `coverage ${(100 * coverage_for_threshold(threshold)).toFixed(1)}%`,
     `Mahalanobis d² ≤ ${Number(threshold).toFixed(3)}`,
     Math.abs(rotation) > 1e-9 ? `rotation ${(rotation * 180 / Math.PI).toFixed(1)}°` : "",
     `GMM ${result.converged ? "converged" : "did not converge"}`,
+    metrics[0] && Number.isFinite(metrics[0].separation)
+      ? `component separation ${metrics[0].separation.toFixed(2)}`
+      : "",
+    result.reviewRequired
+      ? `REVIEW REQUIRED — ${(result.reviewReasons || []).join("; ")}; fitted mask is not applied until edited`
+      : "",
     weights,
     sampled.length < points.length ? `displayed ${sampled.length.toLocaleString()} downsampled points` : "",
   ].filter(Boolean).join(" · ");
@@ -176,7 +189,7 @@ export function render_scatter_gate(
   );
   const stride = Math.max(1, Math.ceil(points.length / MAX_SCATTER_POINTS));
   const sampled = points.filter((_, index) => index % stride === 0);
-  const width = Math.max(620, djf_scatter_plot.clientWidth || 800);
+  const width = Math.max(280, djf_scatter_plot.clientWidth || 800);
   const height = 390;
   const margin = { top: 14, right: 24, bottom: 48, left: 66 };
   const x = d3.scaleLinear()
@@ -190,7 +203,8 @@ export function render_scatter_gate(
 
   const svg = d3.select(djf_scatter_plot).append("svg")
     .attr("viewBox", `0 0 ${width} ${height}`)
-    .attr("role", "img")
+    .attr("role", "group")
+    .attr("aria-describedby", "djf_scatter_instructions djf_scatter_caption")
     .attr("aria-label", `${row?.name || "Sample"} interactive FSC-A by SSC-A cell gate`);
 
   svg.append("g")
@@ -241,7 +255,7 @@ export function render_scatter_gate(
   let selected_rotation = Number(result.rotation ?? 0);
   // Rotation is always computed from the fitted covariance plus the current
   // absolute angle (never compounded onto an already-rotated matrix), the
-  // same pattern update_stage2_gate uses server-side -- see its docstring.
+  // same pattern update_cell_gate uses server-side -- see its docstring.
   const fitted_covariance = clone_component(result.fittedMainComponent ?? result.mainComponent).covariance;
   let preview_gate = {
     mask: result.scatterMask || result.mask,
@@ -266,7 +280,7 @@ export function render_scatter_gate(
     .attr("pointer-events", "stroke")
     .attr("tabindex", 0)
     .attr("role", "button")
-    .attr("aria-label", "Move or rotate the Stage 2 cell gate. Drag to move it, or hold Shift or Ctrl and drag to rotate it around its center. Arrow keys move it in small steps (Shift plus arrow for larger steps); Ctrl plus Left/Right arrow rotates it (Ctrl plus Shift for a larger step).");
+    .attr("aria-label", "Move or rotate the cell gate. Drag to move it, or hold Shift or Ctrl and drag to rotate it around its center. Arrow keys move it in small steps (Shift plus arrow for larger steps); Ctrl plus Left/Right arrow rotates it (Ctrl plus Shift for a larger step).");
   const center_handle = svg.append("circle")
     .attr("class", "djf_scatter_gate_center")
     .attr("r", 5.5)
