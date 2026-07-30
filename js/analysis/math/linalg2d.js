@@ -1,6 +1,24 @@
-// Shared two-dimensional linear algebra for scatter and pulse gates.
+// Shared two-dimensional linear algebra for the FSC/SSC cell gate and the
+// DNA-A/H pulse-geometry singlet gate. Provides covariance construction
+// (calculateGlobalCovariance, regularizeCovariance, and the weighted variants
+// calculateWeightedCenter / calculateWeightedCovariance), matrix operations
+// (invertCovariance2D, eigenDecomposition2D, principalDirection2D,
+// rotateCovariance2D), and distance measures (mahalanobisSquared,
+// signedOrthogonalDistance) used to fit and score those gates' ellipses/ridges.
 
-/** Population covariance of an array of [x, y] points. */
+/*
+
+Purpose:
+	Population covariance of an array of [x, y] points.
+
+Input:
+	points [array]: array of [x, y] pairs
+
+Output:
+	covariance [array]: the 2x2 covariance [[varX, covXY], [covXY, varY]]
+	                    (all zeros for an empty input)
+
+*/
 export function calculateGlobalCovariance(points) {
   if (!points || points.length === 0) {
     return [[0, 0], [0, 0]];
@@ -35,7 +53,20 @@ export function calculateGlobalCovariance(points) {
   ];
 }
 
-/** Add a small scale-aware value to the covariance diagonal. */
+/*
+
+Purpose:
+	Adds a small, scale-aware value to a covariance's diagonal so it stays
+	positive-definite (invertible) even for a near-degenerate point cloud.
+
+Input:
+	covariance [array]: the 2x2 covariance to regularize
+	regularizationFraction [number]: fraction of the average variance to add
+
+Output:
+	regularized [array]: a new 2x2 covariance with the diagonal nudged up
+
+*/
 export function regularizeCovariance(
   covariance,
   regularizationFraction = 1e-6,
@@ -52,7 +83,19 @@ export function regularizeCovariance(
   ];
 }
 
-/** Invert a positive-definite 2 x 2 covariance matrix. */
+/*
+
+Purpose:
+	Inverts a positive-definite 2x2 covariance matrix.
+
+Input:
+	covariance [array]: the 2x2 matrix to invert
+
+Output:
+	result [object|null]: { determinant, inverse } (inverse as a 2x2 array), or
+	                      null when the matrix is malformed or not positive-definite
+
+*/
 export function invertCovariance2D(covariance) {
   if (!covariance || covariance.length !== 2) return null;
 
@@ -73,7 +116,18 @@ export function invertCovariance2D(covariance) {
   };
 }
 
-/** Unit vector along the major principal axis of a symmetric covariance. */
+/*
+
+Purpose:
+	Unit vector along the major principal axis of a symmetric covariance.
+
+Input:
+	covariance [array]: the 2x2 symmetric covariance
+
+Output:
+	direction [array]: the [cos, sin] unit vector of the major axis
+
+*/
 export function principalDirection2D(covariance) {
   const varianceX = covariance[0][0];
   const covarianceXY = 0.5 * (covariance[0][1] + covariance[1][0]);
@@ -86,10 +140,19 @@ export function principalDirection2D(covariance) {
   return [Math.cos(angle), Math.sin(angle)];
 }
 
-/**
- * Eigenvalues/eigenvectors of a symmetric 2 x 2 matrix, ordered major first.
- * Vectors are returned as matching unit-vector pairs in `vectors`.
- */
+/*
+
+Purpose:
+	Eigenvalues and eigenvectors of a symmetric 2x2 matrix, ordered major axis
+	first, with the eigenvectors returned as matching unit-vector pairs.
+
+Input:
+	covariance [array]: the 2x2 symmetric matrix
+
+Output:
+	result [object]: { values: [major, minor], vectors: [majorVec, minorVec] }
+
+*/
 export function eigenDecomposition2D(covariance) {
   const a = covariance[0][0];
   const b = 0.5 * (covariance[0][1] + covariance[1][0]);
@@ -107,12 +170,22 @@ export function eigenDecomposition2D(covariance) {
   };
 }
 
-/**
- * Rotates a symmetric 2 x 2 covariance matrix's principal axes by an angle
- * (radians, counter-clockwise) while preserving its eigenvalues -- used to
- * let a user manually reorient a fitted gate ellipse around its center
- * without changing its shape (axis ratio) or size (coverage).
- */
+/*
+
+Purpose:
+	Rotates a symmetric 2x2 covariance's principal axes by an angle while
+	preserving its eigenvalues -- lets the user manually reorient a fitted gate
+	ellipse around its center without changing its shape (axis ratio) or size
+	(coverage).
+
+Input:
+	covariance [array]: the 2x2 symmetric covariance
+	angleRadians [number]: rotation angle, radians, counter-clockwise
+
+Output:
+	rotated [array]: the rotated 2x2 covariance
+
+*/
 export function rotateCovariance2D(covariance, angleRadians) {
   const { values, vectors } = eigenDecomposition2D(covariance);
   const [majorValue, minorValue] = values;
@@ -128,7 +201,23 @@ export function rotateCovariance2D(covariance, angleRadians) {
   ];
 }
 
-/** Squared Mahalanobis distance from a GMM component or mean/covariance pair. */
+/*
+
+Purpose:
+	Squared Mahalanobis distance of a point from a Gaussian, accepting either a
+	GMM component ({ mean, covariance }) or an explicit mean + covariance pair.
+
+Input:
+	point [array]: the [x, y] observation
+	componentOrMean [object|array]: a { mean, covariance } component, or the mean
+	                                [x, y] when `covariance` is also given
+	covariance [array|null]: the 2x2 covariance when the second arg is a mean
+
+Output:
+	distanceSquared [number]: the squared Mahalanobis distance, or Infinity when
+	                          the covariance is singular or the mean is missing
+
+*/
 export function mahalanobisSquared(
   point,
   componentOrMean,
@@ -149,7 +238,20 @@ export function mahalanobisSquared(
   );
 }
 
-/** Weighted center of [x, y] points. */
+/*
+
+Purpose:
+	Weighted center (centroid) of [x, y] points.
+
+Input:
+	points [array]: array of [x, y] pairs
+	weights [array]: per-point weights, same length as points
+
+Output:
+	center [array]: the weighted [x, y] center (throws when the lengths differ
+	                or the total weight is zero)
+
+*/
 export function calculateWeightedCenter(points, weights) {
   if (!points || points.length !== weights?.length) {
     throw new Error("Points and weights must have the same length.");
@@ -173,7 +275,23 @@ export function calculateWeightedCenter(points, weights) {
   return [weightedX / totalWeight, weightedY / totalWeight];
 }
 
-/** Weighted population covariance with a small absolute regularizer. */
+/*
+
+Purpose:
+	Weighted population covariance about a given center, with a small absolute
+	regularizer added to the diagonal so the result stays invertible.
+
+Input:
+	points [array]: array of [x, y] pairs
+	weights [array]: per-point weights, same length as points
+	center [array]: the [x, y] center to deviate about
+	regularization [number]: absolute value added to each diagonal term
+
+Output:
+	covariance [array]: the weighted 2x2 covariance (throws when the lengths
+	                    differ or the total weight is zero)
+
+*/
 export function calculateWeightedCovariance(
   points,
   weights,
@@ -210,7 +328,21 @@ export function calculateWeightedCovariance(
   ];
 }
 
-/** Signed distance perpendicular to a ridge line. */
+/*
+
+Purpose:
+	Signed distance of a point perpendicular to a ridge line -- positive on one
+	side of the ridge, negative on the other -- as scored by the singlet gate.
+
+Input:
+	point [array]: the [x, y] observation
+	center [array]: a point on the ridge line
+	direction [array]: the ridge's unit direction vector
+
+Output:
+	distance [number]: the signed orthogonal distance from the ridge
+
+*/
 export function signedOrthogonalDistance(point, center, direction) {
   const normalX = -direction[1];
   const normalY = direction[0];

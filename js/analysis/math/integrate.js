@@ -1,13 +1,24 @@
-// Shared numerical integration helpers for cell-cycle reporting.
+// Shared numerical integration helpers for cell-cycle reporting. Currently a
+// single primitive, integrateTrapezoidal, which the reporting code uses to turn
+// sampled component curves into areas (phase totals). Kept dependency-free and
+// validation-light so it stays useful in isolation; range/value validation is
+// the caller's responsibility.
 
-/**
- * Integrate samples with the trapezoidal rule.
- *
- * Arrays and typed arrays are both supported.  As in the source DJF
- * implementation, mismatched inputs (or fewer than two samples) have zero
- * area; value/range validation belongs to the reporting stage so this helper
- * remains useful in isolation.
- */
+/*
+
+Purpose:
+	Integrates sampled (x, y) points with the trapezoidal rule. Mismatched
+	inputs, or fewer than two samples, integrate to zero rather than throwing,
+	so the reporting code can call it without pre-checking every series.
+
+Input:
+	x [array|TypedArray]: sample abscissae (bin centers/edges)
+	y [array|TypedArray]: sample values at each x (same length as x)
+
+Output:
+	area [number]: the trapezoidal area, or 0 for invalid/degenerate input
+
+*/
 function integrateTrapezoidal(x, y) {
   if (
     x == null ||
