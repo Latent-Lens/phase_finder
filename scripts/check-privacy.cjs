@@ -7,7 +7,8 @@ const forbiddenTracked = tracked.filter((file) => fs.existsSync(file) && (
   /^(?:\.codex|\.claude)(?:\/|$)/.test(file)
   || /^sessions\/(?![^/]+\.example\.(?:json|toml)$)/.test(file)
   || /^release-notes-preview\.html$/.test(file)
-  || /^(?:playwright-report|coverage|tests\/(?:e2e|validation)\/results)(?:\/|$)/.test(file)
+  || /^(?:playwright-report|coverage)(?:\/|$)/.test(file)
+  || /^tests\/(?:e2e|validation)\/results\/(?!\.gitignore$)/.test(file)
 ));
 if (forbiddenTracked.length) throw new Error(`Private/generated files are tracked:\n${forbiddenTracked.join("\n")}`);
 
