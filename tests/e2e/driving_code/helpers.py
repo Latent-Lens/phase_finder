@@ -1,0 +1,1005 @@
+#!/usr/bin/env python3
+"""Shared test infrastructure for the PhaseFinder test suite.
+
+Provides TestContext, TestResult, all DOM/action helpers, synthetic FCS
+generation, video-clip extraction, and the self-contained HTML report writer.
+"""
+
+import base64
+import glob
+import html
+import os
+import random
+import shutil
+import struct
+import subprocess
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+
+from playwright.sync_api import Page
+from safe_detail import safe_detail
+
+STATUS_PASS = "PASS"
+STATUS_FAIL = "FAIL"
+STATUS_WARN = "WARN"
+
+DEFAULT_DATA = "/fast/mike/latentlens/projects/flow_plotter/flow_data"
+
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TestResult:
+    number: int
+    group: str
+    name: str
+    status: str
+    detail: str = ""
+    screenshot: str = ""
+    video_clip: str = ""
+    video_start_sec: float = 0.0
+    video_end_sec: float = 0.0
+    duration_ms: int = 0
+
+
+@dataclass
+class TestContext:
+    page: Page
+    results_dir: Path
+    report_stem: str
+    results: List[TestResult] = field(default_factory=list)
+    page_errors: List[str] = field(default_factory=list)
+    video_record_start: float = 0.0
+    number_offset: int = 0
+    all_media: bool = True
+    capture_media: bool = True
+
+    def __post_init__(self):
+        self._last_test_end = self.video_record_start
+
+    def record(self, group: str, name: str, status: str, detail: str = "", screenshot: bool = True):
+        now = time.monotonic()
+        start_sec = self._last_test_end - self.video_record_start
+        end_sec = now - self.video_record_start
+        self._last_test_end = now
+
+        number = len(self.results) + 1 + self.number_offset
+        shot_rel = ""
+
+        # Limited-media mode keeps one representative image per group.
+        # Failures always get evidence in either mode.
+        group_has_image = any(r.group == group and r.screenshot for r in self.results)
+        if self.capture_media and (status == STATUS_FAIL or self.all_media or (screenshot and not group_has_image)):
+            img_dir, _ = results_asset_dirs(self.results_dir)
+            img_dir.mkdir(parents=True, exist_ok=True)
+            shot_name = f"{self.report_stem}_{number:03d}.png"
+            shot_path = img_dir / shot_name
+            try:
+                self.page.screenshot(path=str(shot_path), full_page=False)
+                shot_rel = f"assets/img/{shot_name}"
+            except Exception as error:
+                if status == STATUS_PASS:
+                    status = STATUS_WARN
+                detail = join_detail(detail, f"screenshot failed: {error}")
+
+        result = TestResult(
+            number=number,
+            group=group,
+            name=name,
+            status=status,
+            detail=safe_detail(detail),
+            screenshot=shot_rel,
+            video_start_sec=start_sec,
+            video_end_sec=end_sec,
+            duration_ms=int((end_sec - start_sec) * 1000),
+        )
+        self.results.append(result)
+        return result
+
+    def check(self, group: str, name: str, ok: bool, detail: str = "", screenshot: bool = True):
+        self.record(group, name, STATUS_PASS if ok else STATUS_FAIL, detail, screenshot)
+
+    def warn(self, group: str, name: str, detail: str, screenshot: bool = True):
+        self.record(group, name, STATUS_WARN, detail, screenshot)
+
+
+# ---------------------------------------------------------------------------
+# Small utilities
+# ---------------------------------------------------------------------------
+
+def join_detail(*parts):
+    return " | ".join(str(p) for p in parts if p)
+
+
+def wait_for_render(page):
+    """Wait for pending DOM work to paint without a fixed wall-clock sleep."""
+    page.evaluate(
+        "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    )
+
+
+def strip_fcs(path):
+    return Path(path).name.replace(".fcs", "")
+
+
+def results_asset_dirs(results_dir: Path):
+    assets_dir = results_dir / "assets"
+    return assets_dir / "img", assets_dir / "vid"
+
+
+def prepare_results_dir(results_dir: Path):
+    """Create result asset directories and clear generated media/reports."""
+    results_dir.mkdir(parents=True, exist_ok=True)
+    img_dir, vid_dir = results_asset_dirs(results_dir)
+
+    for asset_dir in (img_dir, vid_dir):
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        for path in asset_dir.iterdir():
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+
+    for pattern in ("*.html", "*.md", "*.png", "flow_e2e_*.jpg", "flow_e2e_*.pdf", "flow_e2e_*.svg", "flow_e2e_*.tsv", "flow_e2e_*.webm", "page@*.webm"):
+        for path in results_dir.glob(pattern):
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+
+    for pattern in ("flow_e2e_*_fixtures", "flow_e2e_*_synthetic_pool"):
+        for path in results_dir.glob(pattern):
+            if path.is_dir():
+                shutil.rmtree(path)
+
+    return img_dir, vid_dir
+
+
+def prepare_test_data_dir(test_data_dir: Path):
+    """Create the synthetic test data directory and clear prior generated files."""
+    test_data_dir.mkdir(parents=True, exist_ok=True)
+    for path in test_data_dir.iterdir():
+        if path.name == ".gitkeep":
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    return test_data_dir
+
+
+# ---------------------------------------------------------------------------
+# FCS file helpers
+# ---------------------------------------------------------------------------
+
+def fcs_files(data_dir, count):
+    files = sorted(glob.glob(os.path.join(data_dir, "*.fcs")))
+    if len(files) < count:
+        raise RuntimeError(f"Need at least {count} .fcs files under {data_dir}; found {len(files)}")
+    return files[:count]
+
+
+SYNTHETIC_ANNOTATION_CYCLE = (
+    ("a", "N"),
+    ("b", "Y"),
+    ("c", "N"),
+    ("a", "Y"),
+    ("b", "N"),
+    ("c", "Y"),
+)
+
+
+def synthetic_annotation(seed):
+    return SYNTHETIC_ANNOTATION_CYCLE[(seed - 1) % len(SYNTHETIC_ANNOTATION_CYCLE)]
+
+
+def write_synthetic_fcs(path, seed, strain, timepoint, events=6000, replicate=None, nocodazole_arrest=None):
+    if replicate is None or nocodazole_arrest is None:
+        default_replicate, default_arrest = synthetic_annotation(seed)
+        replicate = replicate or default_replicate
+        nocodazole_arrest = nocodazole_arrest or default_arrest
+
+    rng = random.Random(seed)
+    rows = []
+    for index in range(events):
+        if index % 10 == 0:
+            area = rng.gauss(64000, 4500)
+        elif index % 10 in (1, 2):
+            area = rng.gauss(128000, 7000)
+        else:
+            area = rng.uniform(68000, 122000)
+        area = max(1000, area)
+        height = max(500, area / rng.uniform(1.8, 2.2))
+        width = max(100, rng.gauss(2.0, 0.12))
+        secondary_area = max(1000, area * rng.uniform(0.55, 0.85) + rng.gauss(0, 3500))
+        secondary_height = max(500, secondary_area / rng.uniform(1.8, 2.2))
+        secondary_width = max(100, rng.gauss(2.0, 0.12))
+        # Keep the main biological population well separated from a smaller
+        # low-scatter population.  The deterministic mixture gives Stage 2 a
+        # real (non-skip) two-component FSC-A/SSC-A gate without making the
+        # fixture large or numerically fragile.
+        if index % 20 < 3:
+            scatter_latent = rng.gauss(0, 1)
+            fsc_area = 23000 + 3500 * scatter_latent + rng.gauss(0, 1200)
+            ssc_area = 14000 + 2200 * scatter_latent + rng.gauss(0, 900)
+        else:
+            scatter_latent = rng.gauss(0, 1)
+            fsc_area = 95000 + 10500 * scatter_latent + rng.gauss(0, 2600)
+            ssc_area = 56000 + 6800 * scatter_latent + rng.gauss(0, 2100)
+        fsc_area = max(500, fsc_area)
+        ssc_area = max(500, ssc_area)
+
+        # A steady acquisition clock yields twelve ~500-event bins at the
+        # default fixture size.  That is enough for Stage 1's robust metrics
+        # while keeping the entire E2E run quick and repeatable.
+        event_time = index * 0.01
+        rows.append((
+            area,
+            height,
+            width,
+            secondary_area,
+            secondary_height,
+            secondary_width,
+            fsc_area,
+            ssc_area,
+            event_time,
+        ))
+
+    data = b"".join(struct.pack("<fffffffff", *row) for row in rows)
+    text_begin = 58
+    data_begin = 0
+    data_end = 0
+
+    pairs = [
+        "$BEGINANALYSIS", "0", "$ENDANALYSIS", "0",
+        "$BYTEORD", "1,2,3,4", "$DATATYPE", "F", "$MODE", "L", "$NEXTDATA", "0",
+        "$PAR", "9", "$TOT", str(events), "$TIMESTEP", "0.01",
+        "$P1B", "32", "$P1E", "0,0", "$P1N", "GFP/FITC-A", "$P1R", "262144", "$P1S", "GFP/FITC-A",
+        "$P2B", "32", "$P2E", "0,0", "$P2N", "GFP/FITC-H", "$P2R", "262144", "$P2S", "GFP/FITC-H",
+        "$P3B", "32", "$P3E", "0,0", "$P3N", "GFP/FITC-W", "$P3R", "262144", "$P3S", "GFP/FITC-W",
+        "$P4B", "32", "$P4E", "0,0", "$P4N", "mCherry/PE-A", "$P4R", "262144", "$P4S", "mCherry/PE-A",
+        "$P5B", "32", "$P5E", "0,0", "$P5N", "mCherry/PE-H", "$P5R", "262144", "$P5S", "mCherry/PE-H",
+        "$P6B", "32", "$P6E", "0,0", "$P6N", "mCherry/PE-W", "$P6R", "262144", "$P6S", "mCherry/PE-W",
+        "$P7B", "32", "$P7E", "0,0", "$P7N", "FSC-A", "$P7R", "262144", "$P7S", "Forward Scatter Area",
+        "$P8B", "32", "$P8E", "0,0", "$P8N", "SSC-A", "$P8R", "262144", "$P8S", "Side Scatter Area",
+        "$P9B", "32", "$P9E", "0,0", "$P9N", "Time", "$P9R", "65536", "$P9S", "HDR-T",
+    ]
+
+    while True:
+        dynamic = ["$BEGINDATA", str(data_begin), "$ENDDATA", str(data_end)]
+        tokens = pairs + dynamic
+        text = "|" + "|".join(tokens) + "|"
+        text_bytes = text.encode("ascii")
+        text_end = text_begin + len(text_bytes) - 1
+        next_data_begin = text_end + 1
+        next_data_end = next_data_begin + len(data) - 1
+        if next_data_begin == data_begin and next_data_end == data_end:
+            break
+        data_begin = next_data_begin
+        data_end = next_data_end
+
+    header = f"FCS3.1    {text_begin:>8}{text_end:>8}{data_begin:>8}{data_end:>8}{0:>8}{0:>8}".encode("ascii")
+    if len(header) != 58:
+        raise RuntimeError(f"Invalid synthetic FCS header length: {len(header)}")
+
+    filename = f"EDS2026-03-06_{strain}{replicate}{nocodazole_arrest} t{timepoint}__E2E{seed}.0001.fcs"
+    out = path / filename
+    out.write_bytes(header + text_bytes + data)
+    return str(out)
+
+
+def make_drag_drop_fixtures(results_dir, report_stem, count=2):
+    fixture_dir = results_dir / f"{report_stem}_fixtures"
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    return [
+        write_synthetic_fcs(fixture_dir, seed=idx + 1, strain=900 + idx, timepoint=35 + idx * 10)
+        for idx in range(count)
+    ]
+
+
+def make_synthetic_fcs_pool(results_dir, report_stem, count):
+    fixture_dir = results_dir / f"{report_stem}_synthetic_pool"
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    return [
+        write_synthetic_fcs(
+            fixture_dir,
+            seed=idx + 101,
+            strain=800 + idx,
+            timepoint=20 + idx * 5,
+        )
+        for idx in range(count)
+    ]
+
+
+# ---------------------------------------------------------------------------
+# DOM query helpers
+# ---------------------------------------------------------------------------
+
+def density_curve_count(page):
+    return page.eval_on_selector_all(
+        "#plot_area svg path",
+        "els => els.filter(p => (p.getAttribute('stroke')||'').startsWith('hsl')).length",
+    )
+
+
+def fit_curve_count(page):
+    return page.eval_on_selector_all(
+        "#plot_area svg path",
+        "els => els.filter(p => p.getAttribute('stroke') === '#111827' && p.getAttribute('stroke-width') === '2').length",
+    )
+
+
+def table_row_count(page):
+    return page.eval_on_selector_all(".file_table tbody tr", "rows => rows.length")
+
+
+def selected_row_count(page):
+    return page.eval_on_selector_all(".file_table tbody .row_select", "els => els.filter(e => e.checked).length")
+
+
+def status_bar_text(page):
+    return page.eval_on_selector("#status_bar_message", "e => e.textContent.trim()")
+
+
+def progress_visible(page):
+    return page.eval_on_selector("#progress_overlay", "e => !e.hidden")
+
+
+def progress_label(page):
+    return page.eval_on_selector("#progress_label", "e => e.textContent.trim()")
+
+
+def plot_title(page):
+    return page.eval_on_selector("#plot_title", "e => e.textContent.trim()")
+
+
+def table_values(page, column_index):
+    """Return one value per visible table row for the given column index (1-based).
+    Prefers the <input> value if the cell contains an input, otherwise uses textContent."""
+    return page.eval_on_selector_all(
+        ".file_table tbody tr",
+        f"""rows => rows.map(r => {{
+            const inp = r.querySelector('td:nth-child({column_index}) input');
+            if (inp) return inp.value;
+            const td = r.querySelector('td:nth-child({column_index})');
+            return td ? td.textContent.trim() : '';
+        }}
+        )""",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wait helpers
+# ---------------------------------------------------------------------------
+
+def wait_for_rows(page, count, timeout=60000):
+    page.wait_for_function(
+        "(count) => document.querySelectorAll('.file_table tbody .row_select').length === count",
+        arg=count,
+        timeout=timeout,
+    )
+
+
+def wait_for_curves(page, count, timeout=120000):
+    page.wait_for_function(
+        """(count) => [...document.querySelectorAll('#plot_area svg path')]
+          .filter(p => (p.getAttribute('stroke')||'').startsWith('hsl')).length === count""",
+        arg=count,
+        timeout=timeout,
+    )
+
+
+def dismiss_metadata_wizard_if_open(page, timeout_ms=1500):
+    """Close the filename metadata wizard if it auto-opened after a file load.
+
+    The wizard opens ~750ms after the *first* successful file load in a
+    session (see schedule_metadata_wizard_after_file_load in js/ui/metadata_wizard.js)
+    and never again afterward. Left open, its modal backdrop blocks clicks on
+    everything behind it, so callers should invoke this once, right after the
+    very first file load of a run, before doing anything else.
+    """
+    try:
+        page.wait_for_selector("#metadata_wizard_modal:not([hidden])", timeout=timeout_ms)
+    except Exception:
+        return False
+    page.click("#metadata_wizard_cancel")
+    wait_for_render(page)
+    return True
+
+
+def configure_default_metadata_wizard_columns(page, timeout_ms=3000):
+    """Configure and apply the filename metadata wizard's default Strain /
+    Replicate / Nocodazole Arrest / Timepoint columns, matching the naming
+    convention used by write_synthetic_fcs() (and the app's own sample
+    session): "<strain digits><replicate letter><arrest letter> t<timepoint>".
+
+    Annotation guessing from filenames is no longer automatic (that logic is
+    dead code kept in js/ui/table_support.js) — the wizard is now the only way these
+    columns get populated. Downstream tests (sorting/filtering by
+    strain/replicate/timepoint, coloring plots by strain, per-sample
+    annotations in the DJF fit table) all depend on these columns existing,
+    so this is called once, right after the very first file load of a run.
+
+    Returns True if the wizard was found and configured, False if it never
+    auto-opened (callers should treat that as a soft failure).
+    """
+    try:
+        page.wait_for_selector("#metadata_wizard_modal:not([hidden])", timeout=timeout_ms)
+    except Exception:
+        return False
+
+    # Step 0 (pre-existing default delimiter "_" step): the date-ish prefix.
+    page.fill('.metadata_split_step[data-step-index="0"] .metadata_step_column_name', "Date")
+    page.check('.metadata_split_step[data-step-index="0"] .metadata_step_hide')
+
+    regex_steps = [
+        (r"^(\d+)", "Strain"),
+        (r"^([A-Za-z])", "Replicate"),
+        (r"^([A-Za-z])", "Nocodazole Arrest"),
+        (r"t(\d+)", "Timepoint"),
+    ]
+    for offset, (pattern, label) in enumerate(regex_steps, start=1):
+        page.click("#metadata_add_split_step")
+        row = f'.metadata_split_step[data-step-index="{offset}"]'
+        page.select_option(f"{row} .metadata_split_type", "regex")
+        page.fill(f"{row} .metadata_step_regex", pattern)
+        page.fill(f"{row} .metadata_step_column_name", label)
+
+    # Remainder (whatever text is left after all steps): hide it.
+    page.fill("#metadata_column_editor .metadata_column_name", "Well")
+    page.check("#metadata_column_editor .metadata_leaf_hide input")
+
+    page.click("#metadata_wizard_apply")
+    page.wait_for_selector("#metadata_wizard_modal", state="hidden", timeout=3000)
+    return True
+
+
+def try_catch_progress(page, timeout_ms=8000):
+    """Return True if the progress overlay was observed as visible within timeout_ms."""
+    try:
+        page.wait_for_selector("#progress_overlay:not([hidden])", timeout=timeout_ms)
+        return True
+    except Exception:
+        return False
+
+
+def wait_for_overlay_hidden(page, timeout_ms=20000):
+    """Block until the progress overlay is hidden (state='hidden' — not visible in the DOM)."""
+    try:
+        # state="hidden" waits until the element is not visible (display:none / [hidden] attr)
+        page.wait_for_selector("#progress_overlay", state="hidden", timeout=timeout_ms)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Action helpers
+# ---------------------------------------------------------------------------
+
+def set_files_via_file_browser(page, click_selector, files):
+    with page.expect_file_chooser() as chooser_info:
+        page.click(click_selector)
+    chooser_info.value.set_files(files)
+
+
+def set_files_via_drag_drop(page, target_selector, files):
+    payload = []
+    for path in files:
+        data = Path(path).read_bytes()
+        payload.append({
+            "name": Path(path).name,
+            "mime": "application/octet-stream",
+            "b64": base64.b64encode(data).decode("ascii"),
+        })
+
+    page.evaluate(
+        """async ({ selector, files }) => {
+          const target = document.querySelector(selector);
+          const transfer = new DataTransfer();
+          for (const file of files) {
+            const binary = atob(file.b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+            transfer.items.add(new File([bytes], file.name, { type: file.mime }));
+          }
+          for (const eventName of ['dragenter', 'dragover', 'drop']) {
+            target.dispatchEvent(new DragEvent(eventName, {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer: transfer,
+            }));
+          }
+        }""",
+        {"selector": target_selector, "files": payload},
+    )
+
+
+def select_channel(page, channel):
+    page.select_option("#channel_select", channel)
+    wait_for_render(page)
+
+
+def click_plot_events(page):
+    page.click("#start_analysis_button")
+    page.wait_for_selector("#plot_area svg", timeout=120000)
+    wait_for_render(page)
+
+
+def confirm_time_qc_method(page, method=None, timeout_ms=4000):
+    """Answer the Time QC method dialog and wait for it to close.
+
+    Switching the "2. Time" QC filter ON opens #time_qc_method_modal so the user
+    can pick between Robust summary QC and Peak-tracking QC (see
+    docs/plans/peak_tracking_time_qc_implementation_spec.md). Every test that
+    turns that filter on has to answer it. Pass ``method`` ("robust-summary" or
+    "peak-tracking") to choose one, or leave it None to accept whatever is
+    already selected — which is the pre-existing robust-summary default, so the
+    stage behaves exactly as it did before this dialog existed.
+
+    Returns True when a dialog was answered, False when none was showing
+    (turning the filter off never prompts).
+    """
+    try:
+        page.wait_for_selector("#time_qc_method_modal:not([hidden])", timeout=timeout_ms)
+    except Exception:
+        return False
+    if method:
+        page.check(f"input[name='time_qc_method'][value='{method}']")
+    page.click("#time_qc_method_apply")
+    page.wait_for_selector("#time_qc_method_modal", state="hidden", timeout=timeout_ms)
+    return True
+
+
+def enter_modeling_mode(page):
+    """Open the sidebar's Cell Cycle Modeling mode.
+
+    The Pre-modeling QC filters (#qc_filter*) and the Identify Peaks panel
+    (#detect_peaks_button, #peak_region_*, etc.) now live in
+    #sidebar_modeling_section, which is hidden until Cell Cycle Modeling is
+    opened. Call this once after plotting, before interacting with those
+    controls. Idempotent — a no-op if modeling mode is already active.
+    """
+    if page.eval_on_selector(".app", "e => e.classList.contains('sidebar_modeling_mode')"):
+        return
+    page.click("#cell_cycle_modeling_button")
+    page.wait_for_selector("#sidebar_modeling_section", state="visible", timeout=5000)
+    wait_for_render(page)
+
+
+def exit_modeling_mode(page):
+    """Return the sidebar to file/channel mode via the Back button.
+
+    Idempotent — a no-op if modeling mode is not active.
+    """
+    if not page.eval_on_selector(".app", "e => e.classList.contains('sidebar_modeling_mode')"):
+        return
+    page.click("#sidebar_back_button")
+    page.wait_for_selector("#sidebar_modeling_section", state="hidden", timeout=5000)
+    wait_for_render(page)
+
+
+def select_all_visible_rows(page):
+    if page.query_selector("#select_all_files") is None:
+        return
+    if not page.eval_on_selector("#select_all_files", "e => e.checked && !e.indeterminate"):
+        page.click("#select_all_files")
+        page.wait_for_function(
+            "() => [...document.querySelectorAll('.file_table tbody .row_select')].every(e => e.checked)"
+        )
+
+
+def isolate_first_plotted_sample(page):
+    """Select exactly one linked table row and return its plot name + prior IDs.
+
+    The staged fit is deliberately expensive enough that multiplying it by all
+    loaded fixtures makes E2E timing noisy.  Pipeline tests use this helper to
+    exercise the real UI on one sample, then restore the user's prior table
+    selection with ``restore_row_selection``.
+    """
+    selection = page.evaluate(
+        """() => {
+          const boxes = [...document.querySelectorAll('.file_table tbody .row_select:not(:disabled)')];
+          if (!boxes.length) throw new Error('No selectable FCS rows are available.');
+          const previousIds = boxes.filter((box) => box.checked).map((box) => box.dataset.fileId);
+          const firstId = boxes[0].dataset.fileId;
+          for (const box of boxes) {
+            const shouldBeChecked = box.dataset.fileId === firstId;
+            if (box.checked === shouldBeChecked) continue;
+            box.checked = shouldBeChecked;
+            box.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          return { firstId, previousIds };
+        }"""
+    )
+    page.wait_for_function(
+        """(fileId) => {
+          const series = window.PhaseFinder?.plot?.series;
+          return Array.isArray(series) && series.length === 1 && series[0].row?.id === fileId;
+        }""",
+        arg=selection["firstId"],
+        timeout=30000,
+    )
+    sample_name = page.evaluate("() => window.PhaseFinder.plot.series[0].name")
+    return sample_name, selection["previousIds"]
+
+
+def restore_row_selection(page, selected_ids):
+    """Restore a selection snapshot returned by isolate_first_plotted_sample."""
+    expected = page.evaluate(
+        """(ids) => {
+          const selected = new Set(ids);
+          const boxes = [...document.querySelectorAll('.file_table tbody .row_select:not(:disabled)')];
+          for (const box of boxes) {
+            const shouldBeChecked = selected.has(box.dataset.fileId);
+            if (box.checked === shouldBeChecked) continue;
+            box.checked = shouldBeChecked;
+            box.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          return boxes.filter((box) => selected.has(box.dataset.fileId)).length;
+        }""",
+        selected_ids,
+    )
+    page.wait_for_function(
+        "(count) => window.PhaseFinder?.plot?.series?.length === count",
+        arg=expected,
+        timeout=30000,
+    )
+
+
+def ensure_channel_option(page, preferred="GFP/FITC-A"):
+    options = page.eval_on_selector_all("#channel_select option", "els => els.map(e => e.value).filter(Boolean)")
+    if preferred in options:
+        return preferred, None
+    if options:
+        return options[0], f"{preferred} unavailable; used {options[0]}"
+    raise RuntimeError("No channel options were populated")
+
+
+def another_channel(page, current):
+    options = page.eval_on_selector_all("#channel_select option", "els => els.map(e => e.value).filter(Boolean)")
+    for option in options:
+        if option != current:
+            return option
+    return None
+
+
+def open_filter(page, header_label):
+    headers = page.query_selector_all(".file_table thead th")
+    for header in headers:
+        if header_label in header.inner_text():
+            header.query_selector(".th_filter_toggle").click()
+            return
+    raise RuntimeError(f"Could not find filter header: {header_label!r}")
+
+
+def set_filter_option(page, field, value, checked):
+    page.evaluate(
+        """({ field, value, checked }) => {
+          const selector = `.th_filter_option[data-filter-field="${field}"]`;
+          const input = [...document.querySelectorAll(selector)].find(el => el.value === value);
+          if (!input) throw new Error(`Filter option not found: ${field}=${value}`);
+          input.checked = checked;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+        {"field": field, "value": value, "checked": checked},
+    )
+
+
+def close_filter(page):
+    """Close any open filter menu by pressing Escape then clicking away."""
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+    try:
+        # Dispatch a neutral click that bubbles to document, closing the filter
+        # dropdown without hitting any interactive element (logo, buttons, etc.).
+        page.evaluate(
+            "document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))"
+        )
+    except Exception:
+        pass
+    wait_for_render(page)
+
+
+# ---------------------------------------------------------------------------
+# Video clip extraction
+# ---------------------------------------------------------------------------
+
+def extract_video_clips(ctx: TestContext, full_video_path: str, results_dir: Path, stem: str):
+    """Use ffmpeg to trim per-test video clips from the full session recording."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return
+
+    for result in ctx.results:
+        if not ctx.all_media and not result.screenshot and result.status != STATUS_FAIL:
+            continue
+        # Several result cards can assert different effects of one preceding
+        # action. Include enough lead-in for each card to show that action.
+        start = max(0.0, result.video_start_sec - 2.0)
+        duration = max(0.5, result.video_end_sec - start + 0.6)
+        clip_name = f"{stem}_{result.number:03d}.webm"
+        _, vid_dir = results_asset_dirs(results_dir)
+        vid_dir.mkdir(parents=True, exist_ok=True)
+        clip_path = vid_dir / clip_name
+        try:
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-ss", f"{start:.3f}",
+                    "-t", f"{duration:.3f}",
+                    "-i", full_video_path,
+                    "-filter:v", "setpts=2.0*PTS",
+                    "-r", "12.5",
+                    "-avoid_negative_ts", "make_zero",
+                    str(clip_path),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+            result.video_clip = f"assets/vid/{clip_name}"
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Result tallying
+# ---------------------------------------------------------------------------
+
+def result_counts(results):
+    groups = []
+    for r in results:
+        if r.group not in groups:
+            groups.append(r.group)
+    counts = {g: {STATUS_PASS: 0, STATUS_WARN: 0, STATUS_FAIL: 0} for g in groups}
+    for r in results:
+        counts[r.group][r.status] += 1
+    return groups, counts
+
+
+# ---------------------------------------------------------------------------
+# Combined report writers
+# ---------------------------------------------------------------------------
+
+def _badge_html(status):
+    return f"<span class='badge {status.lower()}'>{status}</span>"
+
+
+def _asset_data_url(results_dir: Path, relative_path: str) -> str:
+    if not relative_path:
+        return ""
+    path = results_dir / relative_path
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    mime = "video/webm" if path.suffix.lower() == ".webm" else "image/png"
+    return f"data:{mime};base64,{encoded}"
+
+
+def _test_card_html(result: TestResult, results_dir: Path):
+    media = ""
+    video = _asset_data_url(results_dir, result.video_clip)
+    screenshot = _asset_data_url(results_dir, result.screenshot)
+    if video:
+        fallback = f"<img src='{screenshot}' alt='screenshot' />" if screenshot else ""
+        media = (
+            f"<div class='video-wrap'>"
+            f"<video src='{video}' controls preload='none'>"
+            f"{fallback}"
+            f"</video></div>"
+        )
+    elif screenshot:
+        media = f"<img src='{screenshot}' alt='screenshot' />"
+
+    detail_html = f"<p class='detail'>{html.escape(result.detail)}</p>" if result.detail else ""
+
+    return (
+        f"<div class='test-card'>"
+        f"<div class='test-header'>"
+        f"<span class='test-label'>{result.number}. {html.escape(result.name)}</span>"
+        f"{_badge_html(result.status)}"
+        f"</div>"
+        f"{detail_html}"
+        f"{media}"
+        f"</div><hr />"
+    )
+
+
+def _summary_table_html(groups, counts):
+    header = "<tr><th>Group</th><th>PASS</th><th>WARN</th><th>FAIL</th></tr>"
+    rows = "\n".join(
+        f"<tr><td>{html.escape(g)}</td>"
+        f"<td>{counts[g][STATUS_PASS]}</td>"
+        f"<td>{counts[g][STATUS_WARN]}</td>"
+        f"<td>{counts[g][STATUS_FAIL]}</td></tr>"
+        for g in groups
+    )
+    return f"<table>{header}\n{rows}</table>"
+
+
+def write_combined_report(
+    e2e_ctx: TestContext,
+    unit_ctx: Optional["TestContext"],
+    results_dir: Path,
+    stem: str,
+):
+    """Write one self-contained HTML report covering E2E and unit results."""
+    all_results = list(e2e_ctx.results) + (list(unit_ctx.results) if unit_ctx else [])
+    total = len(all_results)
+    passed = sum(1 for r in all_results if r.status == STATUS_PASS)
+    warned = sum(1 for r in all_results if r.status == STATUS_WARN)
+    failed = sum(1 for r in all_results if r.status == STATUS_FAIL)
+
+    e2e_groups, e2e_counts = result_counts(e2e_ctx.results)
+    unit_groups, unit_counts = result_counts(unit_ctx.results) if unit_ctx else ([], {})
+
+    _write_html_report(
+        e2e_ctx, unit_ctx, e2e_groups, e2e_counts, unit_groups, unit_counts,
+        total, passed, warned, failed, results_dir, stem,
+    )
+
+    for asset_dir in results_asset_dirs(results_dir):
+        for path in asset_dir.iterdir():
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
+    for pattern in ("flow_e2e_*.jpg", "flow_e2e_*.pdf", "flow_e2e_*.png", "flow_e2e_*.svg", "flow_e2e_*.tsv"):
+        for path in results_dir.glob(pattern):
+            path.unlink()
+    for path in results_dir.glob("flow_e2e_*_fixtures"):
+        if path.is_dir():
+            shutil.rmtree(path)
+
+    return results_dir / f"{stem}.html"
+
+
+def _write_html_report(
+    e2e_ctx, unit_ctx, e2e_groups, e2e_counts, unit_groups, unit_counts,
+    total, passed, warned, failed, results_dir, stem,
+):
+    ts = datetime.now().isoformat(timespec="seconds")
+
+    e2e_summary = _summary_table_html(e2e_groups, e2e_counts) if e2e_groups else ""
+    unit_summary = _summary_table_html(unit_groups, unit_counts) if unit_groups else ""
+
+    def sections_html(ctx, groups):
+        out = []
+        for g in groups:
+            cards = "".join(
+                _test_card_html(r, results_dir) for r in ctx.results if r.group == g
+            )
+            out.append(f"<h3>{html.escape(g)}</h3>{cards}")
+        return "".join(out)
+
+    def unit_sections_html(ctx, groups):
+        out = []
+        for group in groups:
+            rows = []
+            for result in (r for r in ctx.results if r.group == group):
+                title, separator, expectation = result.name.partition(": ")
+                if not separator:
+                    title, expectation = result.name, "Expected behavior is satisfied."
+                outcome = result.detail or "Observed expected behavior."
+                rows.append(
+                    f"<tr><td>{result.number}. {html.escape(title)}</td>"
+                    f"<td>{_badge_html(result.status)}</td>"
+                    f"<td>{html.escape(expectation)}</td>"
+                    f"<td>{html.escape(outcome)}</td>"
+                    "</tr>"
+                )
+            out.append(
+                f"<h3>{html.escape(group)}</h3><table class='unit-results'>"
+                "<thead><tr><th>Test</th><th>PASS/FAIL</th><th>Expectation</th><th>Outcome</th></tr></thead>"
+                f"<tbody>{''.join(rows)}</tbody></table>"
+            )
+        return "".join(out)
+
+    e2e_sections = sections_html(e2e_ctx, e2e_groups)
+    unit_sections = unit_sections_html(unit_ctx, unit_groups) if unit_ctx else ""
+    active_tab = "e2e" if e2e_groups else "unit"
+    tabs = []
+    panels = []
+    if e2e_groups:
+        tabs.append(
+            f"<button type='button' role='tab' id='tab-e2e' aria-controls='panel-e2e' "
+            f"aria-selected='{'true' if active_tab == 'e2e' else 'false'}'>E2E</button>"
+        )
+        panels.append(
+            f"<section role='tabpanel' id='panel-e2e' aria-labelledby='tab-e2e' "
+            f"{'hidden' if active_tab != 'e2e' else ''}>"
+            f"<h2>E2E Test Summary</h2>{e2e_summary}<h2>E2E Tests</h2>{e2e_sections}</section>"
+        )
+    if unit_groups:
+        tabs.append(
+            f"<button type='button' role='tab' id='tab-unit' aria-controls='panel-unit' "
+            f"aria-selected='{'true' if active_tab == 'unit' else 'false'}'>Unit</button>"
+        )
+        panels.append(
+            f"<section role='tabpanel' id='panel-unit' aria-labelledby='tab-unit' "
+            f"{'hidden' if active_tab != 'unit' else ''}>"
+            f"<h2>Unit Test Summary</h2>{unit_summary}<h2>Unit Tests</h2>{unit_sections}</section>"
+        )
+
+    html_out = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PhaseFinder Test Report</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 32px; color: #172033; max-width: 1200px; margin: 32px auto; }}
+    h1, h2 {{ color: #072c67; }}
+    h3 {{ color: #1a3a6b; border-bottom: 1px solid #d7deea; padding-bottom: 4px; margin-top: 28px; }}
+    table {{ border-collapse: collapse; width: 100%; margin: 12px 0 20px; }}
+    th, td {{ border: 1px solid #d7deea; padding: 8px 10px; text-align: right; }}
+    th:first-child, td:first-child {{ text-align: left; }}
+    th {{ background: #eef1f8; }}
+    .unit-results th, .unit-results td {{ text-align: left; vertical-align: top; }}
+    .unit-results th:nth-child(2), .unit-results td:nth-child(2) {{ text-align: center; width: 90px; }}
+    hr {{ border: 0; border-top: 1px solid #d7deea; margin: 20px 0; }}
+    .test-card {{ margin: 12px 0 4px; }}
+    .test-header {{ display: flex; justify-content: space-between; align-items: center; gap: 16px;
+                    font-size: 1.05rem; font-weight: 600; padding: 6px 0; }}
+    .test-label {{ flex: 1; }}
+    .badge {{ border-radius: 4px; color: white; font-weight: 800; padding: 4px 12px;
+              min-width: 60px; text-align: center; flex-shrink: 0; }}
+    .pass {{ background: #16803c; }}
+    .fail {{ background: #c81e1e; }}
+    .warn {{ background: #b7791f; }}
+    .detail {{ color: #444; font-size: 0.9rem; margin: 4px 0 8px; white-space: pre-wrap; }}
+    img {{ max-width: 100%; border: 1px solid #d7deea; display: block; margin: 8px auto; }}
+    .video-wrap {{ display: flex; justify-content: center; margin: 12px 0; }}
+    .video-wrap video {{ width: 960px; max-width: 100%; border: 1px solid #d7deea; }}
+    .overall {{ background: #f4f6fb; border: 1px solid #d7deea; border-radius: 6px; padding: 12px 16px; margin: 16px 0; }}
+    .overall span {{ margin-right: 20px; font-weight: 600; }}
+    .overall .p {{ color: #16803c; }}
+    .overall .w {{ color: #b7791f; }}
+    .overall .f {{ color: #c81e1e; }}
+    [role='tablist'] {{ display: flex; gap: 8px; margin: 24px 0 16px; }}
+    [role='tab'] {{ border: 1px solid #9aa8bd; border-radius: 5px; background: #eef1f8;
+                    color: #072c67; cursor: pointer; font: inherit; font-weight: 700; padding: 9px 20px; }}
+    [role='tab'][aria-selected='true'] {{ background: #072c67; color: white; }}
+    [role='tab']:focus-visible {{ outline: 3px solid #76a9fa; outline-offset: 2px; }}
+    [role='tabpanel'][hidden] {{ display: none; }}
+  </style>
+</head>
+<body>
+  <h1>PhaseFinder Test Report</h1>
+  <p>Generated: {html.escape(ts)}</p>
+  <div class='overall'>
+    <span>Total: {total}</span>
+    <span class='p'>&#10003; PASS: {passed}</span>
+    <span class='w'>&#9888; WARN: {warned}</span>
+    <span class='f'>&#10007; FAIL: {failed}</span>
+  </div>
+
+  <div role='tablist' aria-label='Test result type'>{''.join(tabs)}</div>
+  {''.join(panels)}
+  <script>
+    const tabs = [...document.querySelectorAll("[role='tab']")];
+    function activate(tab) {{
+      for (const item of tabs) {{
+        const selected = item === tab;
+        item.setAttribute('aria-selected', String(selected));
+        document.getElementById(item.getAttribute('aria-controls')).hidden = !selected;
+      }}
+      tab.focus();
+    }}
+    tabs.forEach((tab, index) => {{
+      tab.addEventListener('click', () => activate(tab));
+      tab.addEventListener('keydown', event => {{
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const step = event.key === 'ArrowRight' ? 1 : -1;
+        activate(tabs[(index + step + tabs.length) % tabs.length]);
+      }});
+    }});
+  </script>
+</body>
+</html>
+"""
+    (results_dir / f"{stem}.html").write_text(html_out, encoding="utf-8")

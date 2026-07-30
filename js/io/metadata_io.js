@@ -8,7 +8,7 @@
 // hooks are triggered here when new files arrive after analysis has started.
 
 import { metadata_import_input } from "../ui/dom.js";
-import { display_name, metadata_filename_key } from "../util/names.js";
+import { display_name, metadata_filename_key, timestamped_filename } from "../util/names.js";
 import { get_file_map, get_file_table, set_file_table } from "../state/app_state.js";
 import { make_frame, concat_frames, build_metadata_frame_from_records } from "../data_structs/metadata_frame.js";
 import {
@@ -48,6 +48,7 @@ import {
 } from "../ui/metadata_wizard.js";
 import { register_loaded_files } from "../session/file_cache.js";
 import { clear_stats_plan } from "../analysis/stats.js";
+import { CELL_CYCLE_COLUMN_PREFIX, format_cell_cycle_value } from "../data_structs/derived_columns.js";
 
 function has_initialized_plot() {
   return Boolean(plot_channels);
@@ -83,23 +84,25 @@ export async function load_files(files) {
   const loaded_entries = [];
   const new_tabular_rows = [];
   const failures = [];
+  const failure_errors = [];
+  let parser_failure = false;
   const duplicates = [];
   const existing_names = new Set([...file_map.values()].map((e) => e.name));
   const queued_names = new Set();
-  show_progress("Loading FCS Metadata");
-  update_progress(0, "Loading FCS Metadata", `Preparing ${selected_files.length} file(s)...`);
+  let progress_operation = show_progress("Loading FCS Metadata");
+  update_progress(0, "Loading FCS Metadata", `Preparing ${selected_files.length} file(s)...`, "", progress_operation);
   await next_frame();
 
   for (const [index, file] of selected_files.entries()) {
     const current = index + 1;
     const start_percent = (index / selected_files.length) * 100;
-    set_status_bar("Working: Loading FCS Metadata");
-    update_progress(start_percent, "Loading FCS Metadata", `Reading metadata for file ${current} of ${selected_files.length}`, file.name);
+    set_status_bar("Working: Loading FCS Metadata", false, null, progress_operation);
+    update_progress(start_percent, "Loading FCS Metadata", `Reading metadata for file ${current} of ${selected_files.length}`, file.name, progress_operation);
     await next_frame();
 
     if (existing_names.has(file.name) || queued_names.has(file.name)) {
       duplicates.push(file.name);
-      update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Skipped duplicate file ${current} of ${selected_files.length}`, file.name);
+      update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Skipped duplicate file ${current} of ${selected_files.length}`, file.name, progress_operation);
       await next_frame();
       continue;
     }
@@ -122,9 +125,11 @@ export async function load_files(files) {
       loaded += 1;
     } catch (error) {
       failures.push(`${file.name}: ${error.message}`);
+      failure_errors.push(error);
+      parser_failure ||= String(error?.code || "").startsWith("FCS_");
     }
 
-    update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Finished file ${current} of ${selected_files.length}`, file.name);
+    update_progress((current / selected_files.length) * 100, "Loading FCS Metadata", `Finished file ${current} of ${selected_files.length}`, file.name, progress_operation);
     await next_frame();
   }
 
@@ -162,11 +167,13 @@ export async function load_files(files) {
   if (loaded) {
     try {
       downstream_refresh = await refresh_downstream_after_file_load();
+      progress_operation = downstream_refresh.progress_operation ?? progress_operation;
     } catch (error) {
+      progress_operation = error.progressOperation ?? progress_operation;
       set_status(`Read metadata from ${loaded} file(s), but the existing plot could not be updated: ${error.message}`, true);
-      set_status_bar("Existing plot refresh failed.", true);
-      update_progress(100, "Loading Added FCS Data", error.message);
-      hide_progress(1400);
+      set_status_bar("Existing plot refresh failed.", true, null, progress_operation, error);
+      update_progress(100, "Loading Added FCS Data", error.message, "", progress_operation);
+      hide_progress(1400, progress_operation);
       return;
     }
   }
@@ -182,25 +189,28 @@ export async function load_files(files) {
 
   if (loaded && (failures.length || duplicates.length)) {
     const failure_message = failures.length ? ` ${failures.join(" ")}` : "";
-    set_status(`Read metadata from ${loaded} file(s).${downstream_message}${duplicate_message}${failure_message}`, true);
-    set_status_bar(`Finished with ${failures.length + duplicates.length} issue(s).`, true);
-    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated, with file-load issue(s)." : `Finished with ${failures.length + duplicates.length} issue(s).`);
-    hide_progress(900);
+    const help = parser_failure ? "./help/help-troubleshooting.html#supported-fcs-input" : null;
+    set_status(`Read metadata from ${loaded} file(s).${downstream_message}${duplicate_message}${failure_message}`, true, help);
+    const aggregate = failure_errors.length ? new AggregateError(failure_errors, "One or more FCS files could not be read") : null;
+    set_status_bar(`Finished with ${failures.length + duplicates.length} issue(s).`, failures.length ? true : "warning", help, progress_operation, aggregate);
+    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated, with file-load issue(s)." : `Finished with ${failures.length + duplicates.length} issue(s).`, "", progress_operation);
+    hide_progress(900, progress_operation);
   } else if (loaded) {
     set_status(`Read metadata from ${loaded} file(s).${downstream_message} Configure filename metadata columns before plotting if needed.`);
-    set_status_bar(downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
-    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`);
-    hide_progress(600);
+    set_status_bar(downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`, false, null, progress_operation);
+    update_progress(100, final_progress_label, downstream_refresh.refreshed ? "Existing plot updated with added FCS data." : `Finished reading metadata from ${loaded} file(s).`, "", progress_operation);
+    hide_progress(600, progress_operation);
   } else if (duplicates.length) {
     set_status(`No new files loaded.${duplicate_message}`, true);
-    set_status_bar("Duplicate FCS file rejected.", true);
-    update_progress(100, "Loading FCS Metadata", "Duplicate FCS file rejected.");
-    hide_progress(1200);
+    set_status_bar("Duplicate FCS file rejected.", "warning", null, progress_operation);
+    update_progress(100, "Loading FCS Metadata", "Duplicate FCS file rejected.", "", progress_operation);
+    hide_progress(1200, progress_operation);
   } else {
-    set_status(failures.join(" "), true);
-    set_status_bar("No metadata could be read.", true);
-    update_progress(100, "Loading FCS Metadata", "No metadata could be read.");
-    hide_progress(1200);
+    const help = parser_failure ? "./help/help-troubleshooting.html#supported-fcs-input" : null;
+    set_status(failures.join(" "), true, help);
+    set_status_bar("No metadata could be read.", true, help, progress_operation, new AggregateError(failure_errors, "No metadata could be read"));
+    update_progress(100, "Loading FCS Metadata", "No metadata could be read.", "", progress_operation);
+    hide_progress(1200, progress_operation);
   }
 
   if (loaded_entries.length && has_initialized_plot()) {
@@ -274,6 +284,18 @@ export function parse_delimited_metadata(text, delimiter = detect_metadata_delim
   if (!rows.length) return { headers: [], records: [], delimiter };
 
   const headers = rows[0].map((value) => String(value || "").trim());
+  const seen_headers = new Map();
+  headers.forEach((header, index) => {
+    const normalized = normalized_metadata_header(header);
+    if (!normalized) return;
+    if (seen_headers.has(normalized)) {
+      const first = seen_headers.get(normalized) + 1;
+      const error = new Error(`Duplicate metadata header "${header}" in columns ${first} and ${index + 1}.`);
+      error.code = "METADATA_DUPLICATE_HEADER";
+      throw error;
+    }
+    seen_headers.set(normalized, index);
+  });
   const records = rows.slice(1).map((values) => {
     const record = {};
     headers.forEach((header, index) => {
@@ -301,6 +323,11 @@ export function find_metadata_filename_column(headers) {
     "name",
   ]);
   return headers.find((header) => preferred.has(normalized_metadata_header(header))) || "";
+}
+
+export function metadata_import_preview(parsed, source_name = "metadata file") {
+  return `Import ${parsed.records.length} row${parsed.records.length === 1 ? "" : "s"} from ${source_name}?\n\n` +
+    `Final columns: ${parsed.headers.join(", ")}\nNo columns renamed; duplicate headers are rejected.`;
 }
 
 export function loaded_file_index_by_metadata_key(rows) {
@@ -384,6 +411,11 @@ export async function handle_metadata_import_file() {
   if (!file) return;
   try {
     const parsed = parse_delimited_metadata(await file.text());
+    if (find_metadata_filename_column(parsed.headers)
+        && !window.confirm(metadata_import_preview(parsed, file.name))) {
+      set_status_bar("Metadata import cancelled; the table was not changed.");
+      return;
+    }
     import_metadata_records(parsed, file.name);
   } catch (error) {
     set_status_bar(`Metadata import failed: ${error.message}`, true);
@@ -402,9 +434,13 @@ Output:
 	cell [string]: TSV cell text
 
 */
-function tsv_cell(value) {
+export function tsv_cell(value) {
   if (value == null || Number.isNaN(value)) return "";
-  const text = String(value);
+  const raw = String(value);
+  // Spreadsheet policy: only string cells are candidates, so genuine numeric
+  // negatives remain numbers. Neutralize ASCII formula leaders even when a
+  // spreadsheet would first trim leading whitespace/control characters.
+  const text = typeof value === "string" && /^[\u0000-\u0020]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
   if (!/[\t\r\n"]/.test(text)) return text;
   return `"${text.replaceAll('"', '""')}"`;
 }
@@ -438,7 +474,12 @@ function metadata_export_columns() {
     const header = sep > 0
       ? `${field.slice(0, sep)} ${TABLE_EXPORT_STAT_LABELS[field.slice(sep + 1)] || field.slice(sep + 1)}`
       : field;
-    columns.push({ header, value: (row) => row[field] });
+    columns.push({
+      header,
+      value: (row) => field.startsWith(CELL_CYCLE_COLUMN_PREFIX)
+        ? format_cell_cycle_value(row[field], "")
+        : row[field],
+    });
   });
 
   return columns;
@@ -534,7 +575,7 @@ export async function handle_metadata_table_export() {
   const blob = new Blob([tsv], { type: "text/tab-separated-values;charset=utf-8" });
 
   try {
-    const saved = await save_blob(blob, "phasefinder_loaded_fcs_samples.tsv");
+    const saved = await save_blob(blob, timestamped_filename("phasefinder_loaded_fcs_samples", "tsv"));
     if (!saved) return;
     const row_count = displayed_files().length;
     set_status_bar(`Exported metadata table (${row_count} row${row_count === 1 ? "" : "s"}).`);

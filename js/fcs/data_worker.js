@@ -9,23 +9,32 @@
 
 import { FCSParser } from "./parser.js";
 
+const active = new Map();
+
 self.addEventListener("message", async (event) => {
-  const { request_id, file, summary, selected_indexes } = event.data || {};
+  const { type = "parse", request_id, file, summary, selected_indexes } = event.data || {};
+  if (type === "cancel") {
+    active.get(request_id)?.abort();
+    return;
+  }
+
+  const controller = new AbortController();
+  active.set(request_id, controller);
 
   try {
-    const data_buffer = await file.slice(summary.data_begin, summary.data_end + 1).arrayBuffer();
-    const parsed = FCSParser.parse_selected_columns(data_buffer, summary.metadata, selected_indexes);
-    const columns = {};
-    const transfers = [];
-
-    Object.entries(parsed).forEach(([index, values]) => {
-      const typed = Float64Array.from(values);
-      columns[index] = typed;
-      transfers.push(typed.buffer);
-    });
-
-    self.postMessage({ request_id, ok: true, columns }, transfers);
+    const { columns, metrics } = await FCSParser.parse_selected_columns_from_blob(
+      file.slice(summary.data_begin, summary.data_end + 1),
+      summary.metadata,
+      selected_indexes,
+      { signal: controller.signal },
+    );
+    self.postMessage(
+      { request_id, ok: true, columns, metrics },
+      Object.values(columns).map((values) => values.buffer),
+    );
   } catch (error) {
-    self.postMessage({ request_id, ok: false, error: error.message || String(error) });
+    self.postMessage({ request_id, ok: false, code: error.code, error: error.message || String(error) });
+  } finally {
+    active.delete(request_id);
   }
 });

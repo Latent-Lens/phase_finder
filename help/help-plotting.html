@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Create event histograms and adjust color, display mode, bins, navigation, and plot output." />
+    <title>Plotting Events | PhaseFinder Help</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <a href="./index.html" aria-label="PhaseFinder help home"><img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" /></a>
+      <a class="help_header_title help_header_home" href="./index.html">Help Center</a>
+      <a class="help_back_link" href="../index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">Help topics</p>
+        <nav aria-label="Help topics">
+          <ol>
+            <li><a href="./index.html">Help home</a></li>
+            <li><a href="./help-getting-started.html">Getting Started</a></li>
+            <li><a href="./help-metadata.html">Metadata & Sample Table</a></li>
+            <li><a href="./help-plotting.html" aria-current="page">Plotting Events</a></li>
+            <li><a href="./help-modeling.html">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-statistics.html">Summary Statistics</a></li>
+            <li><a href="./help-sessions.html">Sessions & Layout</a></li>
+            <li><a href="./help-troubleshooting.html">Troubleshooting & Compatibility</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_breadcrumb"><a href="./index.html">Help home</a> / Plotting Events</p>
+        <h1>Plotting Events</h1>
+        <p class="help_lede">Create event histograms and adjust color, display mode, bins, navigation, and plot output.</p>
+
+<section id="plotting" class="help_section">
+          <h2>5. Plotting Events</h2>
+          <figure class="help_figure">
+            <div class="screenshot_frame">
+              <img src="../assets/img/help/plotting-events.png" alt="PhaseFinder plot panel showing overlaid channel histograms, plot controls, and legend." />
+            </div>
+            <figcaption>The plot panel overlays the checked samples for the selected channel and keeps the plot controls above the chart.</figcaption>
+          </figure>
+          <p>Click <span class="ui_label">Plot Channel Events</span> to load the selected channel's data for every <em>checked</em> row in the metadata table and draw an overlaid event histogram (x-axis: the chosen channel; y-axis: number of events). The plot panel title reports the number of plotted samples and total included channel events.</p>
+          <p>The plot stays live afterward: checking or unchecking a row in the metadata table immediately adds or removes its curve &mdash; unchecking a row does not discard its already-loaded data, so re-checking it is instant. After the first plot, the button turns blue as a reminder that a channel is already plotted; click it again any time to refresh.</p>
+
+          <h3 id="plot-controls">Color by, display, and bins</h3>
+          <ul>
+            <li><strong>Color by</strong> &mdash; <em>File</em> gives every sample its own color; <em>Strain</em> groups samples sharing the same Strain annotation under one color.</li>
+            <li><strong>Display</strong> &mdash; choose smoothed curves, histogram bins, or both. This applies in both the Overlay and Ridge views.</li>
+            <li><strong>Bins</strong> &mdash; the histogram bin count, chosen on a slider with four stops (128, 256, 512, 1024; default 256). A larger bin count makes narrower bars and can reveal finer structure, but also makes curves noisier when event counts are low; a smaller count smooths the curves and makes broad trends easier to compare, but can hide small peaks or shoulders. The slider colours the chosen stop green/amber/red by how many events fall in each bin for your smallest sample, and marks the recommended stop with a teal outline.</li>
+            <li><strong>View</strong> &mdash; <strong>Overlay</strong> superimposes every plotted sample on one axis; <strong>Ridge</strong> stacks each sample as its own small histogram (with its fit) for side-by-side review.</li>
+          </ul>
+
+          <h4 id="choosing-bins">Choosing a bin count</h4>
+          <p>The bin count only makes sense relative to how many events you have &mdash; they aren't independent settings. The x-axis is a continuous range of values, and a bin is one equal-width slice of it; the histogram's height at that slice is simply how many events fell inside it. On average:</p>
+          <p><code>events per bin &asymp; total events &divide; number of bins</code></p>
+          <p>More bins spreads the same events thinner, so each bin's count gets small and jittery &mdash; the curve looks noisy, and that noise can look like a real peak that isn't there. Fewer bins packs more events into each slice (smoother), but real structure that's close together &mdash; for example a small shoulder right next to the G1 peak &mdash; can blur into one blob.</p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Events per bin</th><th>What it means</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Fewer than 20</td><td>Too sparse &mdash; random noise can look like a real peak.</td></tr>
+              <tr><td>20&ndash;50</td><td>Usable, but getting noisy.</td></tr>
+              <tr><td>More than 50</td><td>Good balance of detail and stability.</td></tr>
+            </tbody>
+          </table>
+          <p>128 bins is always shown as a caution stop, even with plenty of events per bin, because it can be coarse enough that G1, S, and G2/M blur into each other.</p>
+          <p>For example, a sample with about 60,000 events breaks down like this:</p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Bins</th><th>~Events per bin</th><th>Rating</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>128</td><td>~469</td><td>Caution &mdash; coarse; peaks can merge</td></tr>
+              <tr><td>256</td><td>~234</td><td>Good</td></tr>
+              <tr><td>512</td><td>~117</td><td>Good</td></tr>
+              <tr><td>1024</td><td>~59</td><td>Good, but close to the edge</td></tr>
+            </tbody>
+          </table>
+          <p>The slider marks one stop with a teal outline: the finest (most detailed) bin count that still stays in the good range for whichever plotted sample has the fewest events, so no sample ends up under-supported. Fewer events overall means fewer bins are recommended; more events means you can afford finer detail.</p>
+          <div class="callout">
+            <p class="callout_title">Where these thresholds come from</p>
+            <p>These are a practical, conservative guideline, not a formally published statistical standard specific to flow cytometry histograms. The underlying idea &mdash; that sparse bins introduce counting noise &mdash; is well established (a classical rule of thumb for count-based histograms calls for at least around 5 events per bin for the statistics to behave); PhaseFinder's floor of 20 is intentionally well above that minimum. Treat the colour coding as guidance, not proof, and use your own judgment about whether a fit looks right.</p>
+          </div>
+
+          <p>Above the plot, a toolbar (camera, pan, zoom in, zoom out, autoscale, home) lets you download the plot as an image (SVG, PDF, PNG, or JPEG), or download a printable HTML analysis report containing the plot and metadata/results table. Drag to pan, hold Shift and drag to zoom into a rectangle, use the mouse wheel to zoom, and double-click empty space to reset. Panning and zooming only change the view &mdash; they never re-run detection or a fit.</p>
+          <p>Event-quality masks and contamination terms are controlled by the pre-modeling QC filters below, so every correction has a visible control and diagnostic readout.</p>
+        </section>
+
+        <nav class="help_page_nav" aria-label="Previous and next help topics">
+          <a href="./help-metadata.html">&larr; Metadata & Sample Table</a>
+          <a href="./index.html">Help home</a>
+          <a href="./help-modeling.html">Cell-Cycle Modeling &rarr;</a>
+        </nav>
+
+        <p class="help_footer">PhaseFinder Help &mdash; <a href="./index.html">all help topics</a> &middot; <a href="../index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>

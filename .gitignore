@@ -1,17 +1,69 @@
 # E2E testing artifacts (screenshots, etc.) — keep the dir, ignore the output.
 tests/e2e/results/*
-!tests/test_data/.gitkeep
-tests/e2e/__pycache__
-tests/unit/__pycache__
+tests/validation/results/*
+tests/flow_e2e_*.html
+tests/validation_tests_*.html
+tests/e2e/driving_code/__pycache__
+tests/unit/driving_code/__pycache__
+tests/validation/driving_code/__pycache__
 
 # Test data
-tests/test_data/*
+tests/e2e/e2e_test_data/*
+!tests/e2e/e2e_test_data/.gitkeep
+# External validation payloads and phase-call files stay local. Commit only
+# manifest.json, licenses, and the verification/reconstruction scripts around
+# these directories; the manifest records sources, hashes, and call provenance.
+tests/validation/validation_test_data/external_fcs/datasets/
+tests/validation/validation_test_data/external_fcs/files/
+tests/validation/validation_test_data/external_fcs/results/
 flow_data
-
 
 # Local AI tooling
 .claude/
+.codex/
+
+# Personal session autoload/state. Keep only inert examples in Git.
+sessions/*
+!sessions/*.example.json
+!sessions/*.example.toml
 
 # Editors and IDEs
 .vscode/
 .idea/
+~$*.xlsx
+
+# Python for testing
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+
+# Node dependencies
+node_modules/
+
+# Production build output
+dist/
+dist-base/
+
+# Test and coverage output
+coverage/
+playwright-report/
+release-notes-preview.html
+
+# Tool caches
+.vite/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment files
+.env
+
+# OS metadata
+.DS_Store
+Thumbs.db
