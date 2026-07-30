@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "purpose": "PREP-01 pre-remediation numeric baseline",
+  "recordedAt": "2026-07-24",
+  "browser": "HeadlessChrome/149.0.7827.55",
+  "sources": {
+    "models": {
+      "path": "tests/validation/results/synthetic_fcs_benchmark_chromium_models_20260724-151857_1784920737733800012.json",
+      "sha256": "99bf6c1b6ffdd02cab78df7d02dd5532cfa181eb552d393d110b0b3916e3f946"
+    },
+    "qc": {
+      "path": "tests/validation/results/synthetic_fcs_benchmark_chromium_qc_20260724-151814_1784920694111569163.json",
+      "sha256": "db62abec69101946c0df354e8317c77fca43ecd0134bb10f3c7949d9e14a9dcb"
+    }
+  },
+  "models": {
+    "fixture": "truth_clean_70_20_10",
+    "truth": { "g1": 0.7, "s": 0.2, "g2": 0.1 },
+    "dean_jett": {
+      "status": "PASS",
+      "g1": 0.7013702583749222,
+      "s": 0.18995510144321495,
+      "g2": 0.10867464018186292
+    },
+    "dean_jett_fox": {
+      "status": "DEVIATION",
+      "g1": 0.7110262653677327,
+      "s": 0.14124542808382204,
+      "g2": 0.14772830654844524
+    },
+    "watson_pragmatic": {
+      "status": "DEVIATION",
+      "g1": 0.6556746623682732,
+      "s": 0.2019167140337962,
+      "g2": 0.1424086235979307
+    },
+    "auto_dj_djf": {
+      "status": "PASS",
+      "selectedModel": "dean_jett",
+      "g1": 0.7013702583749222,
+      "s": 0.18995510144321495,
+      "g2": 0.10867464018186292
+    }
+  },
+  "qualityControl": {
+    "time_qc": {
+      "fixture": "qc_time_rate_drop",
+      "status": "EXPOSED",
+      "goodRetained": 4800,
+      "goodTotal": 4800,
+      "badRejected": 1200,
+      "badTotal": 1200,
+      "goodRetention": 1.0,
+      "badRejection": 1.0
+    },
+    "scatter_qc": {
+      "fixture": "qc_scatter_high_fsc_artifact",
+      "status": "EXPOSED",
+      "goodRetained": 0,
+      "goodTotal": 8000,
+      "badRejected": 75,
+      "badTotal": 1500,
+      "goodRetention": 0.0,
+      "badRejection": 0.05
+    },
+    "singlet_qc": {
+      "fixture": "qc_pulse_doublets",
+      "status": "PASS",
+      "goodRetained": 7902,
+      "goodTotal": 8000,
+      "badRejected": 1000,
+      "badTotal": 1000,
+      "goodRetention": 0.98775,
+      "badRejection": 1.0
+    }
+  }
+}

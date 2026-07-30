@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Learn the workspace, load FCS files, choose a channel, and follow a typical analysis workflow." />
+    <title>Getting Started | PhaseFinder Help</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <a href="./index.html" aria-label="PhaseFinder help home"><img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" /></a>
+      <a class="help_header_title help_header_home" href="./index.html">Help Center</a>
+      <a class="help_back_link" href="../index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">Help topics</p>
+        <nav aria-label="Help topics">
+          <ol>
+            <li><a href="./index.html">Help home</a></li>
+            <li><a href="./help-getting-started.html" aria-current="page">Getting Started</a></li>
+            <li><a href="./help-metadata.html">Metadata & Sample Table</a></li>
+            <li><a href="./help-plotting.html">Plotting Events</a></li>
+            <li><a href="./help-modeling.html">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-statistics.html">Summary Statistics</a></li>
+            <li><a href="./help-sessions.html">Sessions & Layout</a></li>
+            <li><a href="./help-troubleshooting.html">Troubleshooting & Compatibility</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_breadcrumb"><a href="./index.html">Help home</a> / Getting Started</p>
+        <h1>Getting Started</h1>
+        <p class="help_lede">Learn the workspace, load FCS files, choose a channel, and follow a typical analysis workflow.</p>
+
+<section id="overview" class="help_section">
+          <h2>1. Overview</h2>
+          <p>PhaseFinder's screen is organized into these areas:</p>
+          <ul>
+            <li><strong>Sidebar</strong> (left) &mdash; drop zone for FCS files, the DNA-content channel selector, and the main action buttons (<span class="ui_label">Plot Channel Events</span>, <span class="ui_label">Cell Cycle Modeling</span>, <span class="ui_label">Calculate Statistics</span>). <span class="ui_label">Cell Cycle Modeling</span> switches the sidebar into a modeling view that holds the Pre-modeling QC filters, the Identify Peaks panel, and the Model &amp; Fit controls; <span class="ui_label">Back</span> returns it to the file/channel controls.</li>
+            <li><strong>Plot panel</strong> (top of the workspace) &mdash; appears once you plot a channel; shows the overlaid event histogram, its controls, and (once modeling starts) the DJF fit overlay and results table.</li>
+            <li><strong>Metadata table panel</strong> (bottom of the workspace) &mdash; one row per loaded FCS file with editable annotations, sorting, filtering, and optional summary-statistics columns.</li>
+            <li><strong>Header</strong> (top) &mdash; the PhaseFinder logo plus <span class="ui_label">Help</span>, <span class="ui_label">Load session</span>, and <span class="ui_label">Save session</span>.</li>
+            <li><strong>Status bar</strong> (bottom) &mdash; progress, completion messages, warnings, and copyright information.</li>
+          </ul>
+          <p>The header also has <span class="ui_label">Load session</span> and <span class="ui_label">Save session</span> buttons for saving your work to a file and restoring it later (see <a href="./help-sessions.html#sessions">Saving &amp; Loading Sessions</a>).</p>
+          <figure class="help_figure">
+            <div class="screenshot_frame annotated_screenshot">
+              <img src="../assets/img/help/overview.png" alt="PhaseFinder app with loaded FCS files, a plotted histogram, computed statistics in the metadata table, and header/session controls." />
+              <span class="overview_marker overview_marker_header" aria-hidden="true"></span>
+              <span class="overview_label overview_label_header">Header and session buttons</span>
+              <span class="overview_marker overview_marker_sidebar" aria-hidden="true"></span>
+              <span class="overview_label overview_label_sidebar">Sidebar</span>
+              <span class="overview_marker overview_marker_plot" aria-hidden="true"></span>
+              <span class="overview_label overview_label_plot">Plot panel</span>
+              <span class="overview_marker overview_marker_table" aria-hidden="true"></span>
+              <span class="overview_label overview_label_table">Metadata table panel</span>
+              <span class="overview_marker overview_marker_status" aria-hidden="true"></span>
+              <span class="overview_label overview_label_status">Status bar</span>
+            </div>
+            <figcaption>PhaseFinder's main workspace after files have been loaded, a channel has been plotted, and statistics have been calculated.</figcaption>
+            <ul class="overview_callout_list" aria-label="Overview screenshot labels">
+              <li><strong>Header and session buttons:</strong> open help, load a saved session, or save the current session.</li>
+              <li><strong>Sidebar:</strong> load files, select a channel, plot, model, and calculate statistics.</li>
+              <li><strong>Plot panel:</strong> view histograms and plot controls for the selected channel.</li>
+              <li><strong>Metadata table panel:</strong> edit annotations, filter/sort samples, export TSV data, and review statistics.</li>
+              <li><strong>Status bar:</strong> read progress, warnings, and completion messages.</li>
+            </ul>
+          </figure>
+          <div class="callout warn">
+            <p class="callout_title">Everything lives in memory</p>
+            <p>PhaseFinder keeps all loaded files, annotations, selections, and plots in the browser tab's memory only. Reloading or closing the page clears everything. Use <span class="ui_label">Save session</span> before you navigate away if you want to pick up where you left off.</p>
+          </div>
+        </section>
+
+<section id="loading-files" class="help_section">
+          <h2>2. Loading FCS Files</h2>
+          <p>Load one or more <code>.fcs</code> files by either:</p>
+          <ul>
+            <li>Dragging them onto the <span class="ui_label">Drop FCS files here</span> zone in the sidebar, or</li>
+            <li>Clicking the drop zone to open a file picker.</li>
+          </ul>
+          <p>PhaseFinder reads only each file's header and metadata (TEXT segment) at load time, so adding many files is fast &mdash; the actual event data for a channel is only read once you plot or compute statistics on it.</p>
+          <ul>
+            <li>Files that duplicate an already-loaded filename are rejected with a status message; nothing is re-loaded.</li>
+            <li>Newly loaded files appear checked (included) in the metadata table by default &mdash; unless a plot already exists, in which case new files start <em>unchecked</em> so they don't unexpectedly change an existing plot.</li>
+            <li>The sidebar shows a running <span class="ui_label">Loaded FCS files (N)</span> list once at least one file is loaded.</li>
+            <li>A progress overlay reports read progress for larger batches of files.</li>
+          </ul>
+          <p>If you collapse the sidebar (see <a href="./help-sessions.html#layout">Layout Controls</a>), a compact icon rail still lets you drop or browse for more files <img class="inline_icon" src="../assets/img/file_upload.svg" alt="" aria-hidden="true" />, change the channel <img class="inline_icon" src="../assets/img/checklist.svg" alt="" aria-hidden="true" />, plot <img class="inline_icon" src="../assets/img/histogram.svg" alt="" aria-hidden="true" />, model <img class="inline_icon" src="../assets/img/function_icon.svg" alt="" aria-hidden="true" />, and calculate statistics <img class="inline_icon" src="../assets/img/calculator.svg" alt="" aria-hidden="true" />.</p>
+        </section>
+
+<section id="channel-selection" class="help_section">
+          <h2>4. Choosing a Channel</h2>
+          <figure class="help_figure help_figure_sidebar">
+            <div class="screenshot_frame">
+              <img src="../assets/img/help/channel-selection.png" alt="Sidebar channel selector with GFP/FITC-A selected after FCS files have been loaded." />
+            </div>
+            <figcaption>Choose the FCS parameter/channel to plot from the sidebar before clicking <span class="ui_label">Plot Channel Events</span>.</figcaption>
+          </figure>
+          <p>The <span class="ui_label">Select channel</span> dropdown lists every FCS parameter label seen across all loaded files. In an FCS file, each parameter can have several pieces of metadata. PhaseFinder uses <code>$PnS</code> first because it is usually the user-facing stain or signal label, falls back to <code>$PnN</code> when <code>$PnS</code> is missing, and finally generates a generic <code>P&lt;n&gt;</code> label if neither value is available.</p>
+          <p>PhaseFinder guesses a likely DNA-content area channel automatically (looking for names containing patterns like <code>DAPI_A</code>, <code>DNA_A</code>, or ending in <code>_A</code>/<code>AREA</code>) and pre-selects it when possible &mdash; check that the suggestion is right before plotting.</p>
+          <p><span class="ui_label">Plot Channel Events</span> stays disabled until at least one file is loaded and a channel is chosen.</p>
+          <p>If you change the channel after already plotting, PhaseFinder preloads the newly selected channel's data in the background and clears the old curves. Click <span class="ui_label">Plot Channel Events</span> when you are ready to switch the visible plot explicitly.</p>
+        </section>
+
+<section id="workflow" class="help_section">
+          <h2>11. Typical Workflow</h2>
+          <ol>
+            <li>Navigate to PhaseFinder in a browser: <a href="https://PhaseFinder.LatentLens.org" target="_blank" rel="noopener">https://PhaseFinder.LatentLens.org</a>.</li>
+            <li>Drop your <code>.fcs</code> files onto the drop zone, or click the drop zone to browse and choose files.</li>
+            <li>Wait for metadata loading to finish; watch the progress overlay for large batches.</li>
+            <li>When the filename metadata wizard pops up, configure split steps so your filenames map cleanly onto Strain / Replicate / Nocodazole Arrest / Timepoint (or whatever columns make sense for your experiment), check the live preview, then click <span class="ui_label">Apply</span>.</li>
+            <li>Review and hand-edit any annotations the wizard couldn't infer, using the table's sort and filter controls to spot-check groups of samples.</li>
+            <li>Confirm (or change) the DNA-content channel in the sidebar.</li>
+            <li>Check the rows you want in the plot &mdash; unchecking removes a sample without losing its already-loaded data.</li>
+            <li>Click <span class="ui_label">Plot Channel Events</span>. Adjust <strong>Color by</strong>, <strong>Display</strong>, and <strong>Bins</strong>.</li>
+            <li>Click <span class="ui_label">Cell Cycle Modeling</span> to open the modeling controls in the sidebar. Apply the Pre-modeling QC filters you want, then use <span class="ui_label">Identify Peaks</span> to detect and, if needed, adjust the G1 and G2/M peak regions for the sample you're reviewing.</li>
+            <li>Optionally, use <span class="ui_label">Calculate Statistics</span> to compute per-file summary statistics for any channel, and export the table to TSV for use elsewhere.</li>
+            <li>Click <span class="ui_label">Save session</span> before closing the tab so you (or a collaborator) can resume this same analysis later.</li>
+          </ol>
+        </section>
+
+        <nav class="help_page_nav" aria-label="Previous and next help topics">
+          <a href="./index.html">&larr; Help home</a>
+          <a href="./index.html">Help home</a>
+          <a href="./help-metadata.html">Metadata & Sample Table &rarr;</a>
+        </nav>
+
+        <p class="help_footer">PhaseFinder Help &mdash; <a href="./index.html">all help topics</a> &middot; <a href="../index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>

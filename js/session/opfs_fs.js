@@ -20,8 +20,8 @@ Output:
 	supported [boolean]: true when navigator.storage.getDirectory exists
 
 */
-export function supports_opfs() {
-  return !!(navigator.storage && typeof navigator.storage.getDirectory === 'function');
+export function supports_opfs(storage = navigator.storage) {
+  return !!(storage && typeof storage.getDirectory === 'function');
 }
 
 /*
@@ -80,8 +80,34 @@ Output:
 */
 export function split_opfs_path(opfs_path) {
   const parts = String(opfs_path).split('/').filter(Boolean);
+  if (parts.length !== 4 || parts[0] !== 'sessions' || parts[2] !== 'files'
+      || parts.some((part) => !/^[A-Za-z0-9._-]+$/.test(part) || part === '.' || part === '..')) {
+    throw new Error('Invalid PhaseFinder cache path.');
+  }
   const file_name = parts.pop();
   return { dir_parts: parts, file_name };
+}
+
+export async function list_opfs_session_directories() {
+  try {
+    const root = await get_opfs_root();
+    const sessions = await ensure_directory(root, ['sessions'], false);
+    const names = [];
+    for await (const [name, handle] of sessions.entries()) {
+      if (handle.kind === 'directory') names.push(name);
+    }
+    return names;
+  } catch (_) { return []; }
+}
+
+export async function delete_opfs_session_directory(name) {
+  if (!/^[A-Za-z0-9._-]+$/.test(String(name)) || name === '.' || name === '..') return false;
+  try {
+    const root = await get_opfs_root();
+    const sessions = await ensure_directory(root, ['sessions'], false);
+    await sessions.removeEntry(name, { recursive: true });
+    return true;
+  } catch (_) { return false; }
 }
 
 /*
@@ -142,13 +168,13 @@ Output:
 	persisted [Promise<boolean>]: true when storage is persistent
 
 */
-export async function request_persistent_storage() {
+export async function request_persistent_storage(storage = navigator.storage) {
   try {
-    if (navigator.storage && typeof navigator.storage.persisted === 'function' && await navigator.storage.persisted()) {
+    if (storage && typeof storage.persisted === 'function' && await storage.persisted()) {
       return true;
     }
-    if (navigator.storage && typeof navigator.storage.persist === 'function') {
-      return await navigator.storage.persist();
+    if (storage && typeof storage.persist === 'function') {
+      return await storage.persist();
     }
   } catch (_) { /* storage API unavailable — non-fatal */ }
   return false;
@@ -166,10 +192,10 @@ Output:
 	estimate [Promise<StorageEstimate|null>]: { usage, quota } or null
 
 */
-export async function get_storage_estimate() {
+export async function get_storage_estimate(storage = navigator.storage) {
   try {
-    if (navigator.storage && typeof navigator.storage.estimate === 'function') {
-      return await navigator.storage.estimate();
+    if (storage && typeof storage.estimate === 'function') {
+      return await storage.estimate();
     }
   } catch (_) { /* non-fatal */ }
   return null;

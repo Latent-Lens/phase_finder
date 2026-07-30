@@ -1,0 +1,82 @@
+{
+  "fixtures": [
+    {
+      "firstEvent": {
+        "DNA-A": 1000.25,
+        "Time": 0.0
+      },
+      "id": "parser_f32_big_endian",
+      "sha256": "8bbfbdf185f45b9e43024ec322e7c9ff387894e887618b8e181019d3782bf000"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1000.25
+      },
+      "id": "parser_f32_little_endian",
+      "sha256": "af1fa0fd89b033cbe878072ce633119b823b294b3075c85c2442046ccf61f8b7"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1000.25,
+        "Time": 0.0
+      },
+      "id": "parser_f64_big_endian",
+      "sha256": "8ed36e179847433b9c8b1f0a1f3beccc72b705ef365b29906d16aa1930fdaac2"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1000.25
+      },
+      "id": "parser_fcs20_linear",
+      "sha256": "777b80dfa0265ffbbf81366841709807fd618c47ae6fbdc5deec2a86946c919d"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1000.25
+      },
+      "id": "parser_fcs30_linear",
+      "sha256": "44a6f3baf4c13c149369599bbbf508fb627ef9ddbfa7782e84422941c6a04a6f"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 0,
+        "Time": 65535
+      },
+      "id": "parser_i16_big_endian",
+      "sha256": "c3c7c72dd8c40730f2a213aa1a0d89ab586ec70ff1b1d20224278cc29779af1b"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1,
+        "Time": 2
+      },
+      "id": "parser_i16_little_endian",
+      "sha256": "06d7ef3da41101894613c233e66d4b6031ac769e1b7f2407e9457af3cd3e408d"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1,
+        "Time": 2
+      },
+      "id": "parser_i32_little_endian",
+      "sha256": "2ade265ebfa9c1de8be25e63099df01a466b3a68beb29b6b2b7f3db810512c34"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1,
+        "Time": 2
+      },
+      "id": "parser_i8_little_endian",
+      "sha256": "a4c263c5fd7beb2ea52181ea8f22c597771d26016fe63ed16f2d65dd8aa5a01e"
+    },
+    {
+      "firstEvent": {
+        "DNA-A": 1000.25
+      },
+      "id": "parser_spillover_other",
+      "sha256": "d62875b85184b5d1359331d697b67a69c884064b05592d678447893d627f3ea2"
+    }
+  ],
+  "reader": "FlowIO 1.4.0",
+  "schemaVersion": 1
+}

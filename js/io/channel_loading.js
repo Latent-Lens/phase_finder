@@ -35,7 +35,12 @@ import { init_plot } from "../plotting/modeling.js";
 import { render_density_plot } from "../plotting/render.js";
 
 export const ANALYSIS_FILE_CONCURRENCY = 4;
-const FCS_DATA_WORKER_URL = new URL("../fcs/data_worker.js", import.meta.url);
+export function analysis_file_concurrency(rows, device_memory_gb = globalThis.navigator?.deviceMemory ?? 4) {
+  const largest = Math.max(1, ...(rows || []).map((row) =>
+    Math.max(0, (row?.summary?.data_end ?? -1) - (row?.summary?.data_begin ?? 0) + 1)));
+  const budget = Math.max(32, Math.min(256, Number(device_memory_gb) * 64)) * 1024 * 1024;
+  return Math.max(1, Math.min(ANALYSIS_FILE_CONCURRENCY, Math.floor(budget / largest)));
+}
 
 let fcs_data_worker = null;
 let fcs_data_worker_request_id = 0;
@@ -65,19 +70,26 @@ function get_fcs_data_worker() {
   }
 
   try {
-    fcs_data_worker = new Worker(FCS_DATA_WORKER_URL, { type: "module" });
+    // Inline `new URL(...)` -- see fit_client.js: a hoisted constant is not
+    // recognised as a worker entry point by the bundler, so the build emits no
+    // chunk and the worker 404s in production.
+    fcs_data_worker = new Worker(new URL("../fcs/data_worker.js", import.meta.url), { type: "module" });
     fcs_data_worker.addEventListener("message", (event) => {
-      const { request_id, ok, columns, error } = event.data || {};
+      const { request_id, ok, columns, metrics, code, error } = event.data || {};
       const request = fcs_data_worker_requests.get(request_id);
       if (!request) {
         return;
       }
 
       fcs_data_worker_requests.delete(request_id);
+      request.signal?.removeEventListener("abort", request.abort);
       if (ok) {
+        Object.defineProperty(columns, "__loadMetrics", { value: metrics, enumerable: false });
         request.resolve(columns);
       } else {
-        request.reject(new Error(error || "FCS worker failed to load selected columns."));
+        const failure = new Error(error || "FCS worker failed to load selected columns.");
+        failure.code = code || "FCS_WORKER_LOAD_FAILED";
+        request.reject(failure);
       }
     });
     fcs_data_worker.addEventListener("error", () => {
@@ -113,7 +125,7 @@ Output:
 	columns [Promise<Object>|null]: selected parameter arrays keyed by index
 
 */
-function load_selected_fcs_columns_in_worker(file, summary, selected_indexes) {
+function load_selected_fcs_columns_in_worker(file, summary, selected_indexes, signal = null) {
   const worker = get_fcs_data_worker();
   if (!worker) {
     return null;
@@ -121,12 +133,16 @@ function load_selected_fcs_columns_in_worker(file, summary, selected_indexes) {
 
   const request_id = ++fcs_data_worker_request_id;
   const request = new Promise((resolve, reject) => {
-    fcs_data_worker_requests.set(request_id, { resolve, reject });
+    const abort = () => worker.postMessage({ type: "cancel", request_id });
+    fcs_data_worker_requests.set(request_id, { resolve, reject, signal, abort });
+    signal?.addEventListener("abort", abort, { once: true });
   });
 
   try {
-    worker.postMessage({ request_id, file, summary, selected_indexes });
+    worker.postMessage({ type: "parse", request_id, file, summary, selected_indexes });
   } catch (error) {
+    const pending = fcs_data_worker_requests.get(request_id);
+    pending?.signal?.removeEventListener("abort", pending.abort);
     fcs_data_worker_requests.delete(request_id);
     return null;
   }
@@ -152,7 +168,7 @@ Output:
 async function load_selected_fcs_columns(file, summary, selected_indexes, options = {}) {
   const { allow_main_thread_fallback = true } = options;
 
-  const worker_request = load_selected_fcs_columns_in_worker(file, summary, selected_indexes);
+  const worker_request = load_selected_fcs_columns_in_worker(file, summary, selected_indexes, options.signal);
   if (worker_request) {
     try {
       return await worker_request;
@@ -165,8 +181,14 @@ async function load_selected_fcs_columns(file, summary, selected_indexes, option
     throw new Error("Background worker unavailable; added FCS data will load when selected.");
   }
 
-  const data_buffer = await file.slice(summary.data_begin, summary.data_end + 1).arrayBuffer();
-  return FCSParser.parse_selected_columns(data_buffer, summary.metadata, selected_indexes);
+  const { columns, metrics } = await FCSParser.parse_selected_columns_from_blob(
+    file.slice(summary.data_begin, summary.data_end + 1),
+    summary.metadata,
+    selected_indexes,
+    { signal: options.signal },
+  );
+  Object.defineProperty(columns, "__loadMetrics", { value: metrics, enumerable: false });
+  return columns;
 }
 
 /*
@@ -217,6 +239,13 @@ function resolve_companion(params, override_label, auto_index, auto_label) {
 export function selected_indexes_for_file(summary, selected) {
   const params = parameter_map(summary);
   const dna_a = find_param_index(params, selected.dna_area);
+  const eligibility = FCSParser.channel_eligibility(summary, dna_a);
+  if (!eligibility.eligible) {
+    const error = new Error(eligibility.message);
+    error.code = eligibility.code;
+    error.eligibility = eligibility;
+    throw error;
+  }
   const aux = find_auxiliary_indexes_for_file(params, selected.dna_area);
   const pipeline = find_pipeline_channel_indexes(params);
   const label_for = (index) =>
@@ -236,11 +265,13 @@ export function selected_indexes_for_file(summary, selected) {
     fsc_a: fsc.index,
     ssc_a: ssc.index,
     time: pipeline.time,
+    dnaEligibility: eligibility,
   };
 }
 
 // Shape the stored analysis-data object from a built channel bundle.
 function make_analysis_data(row, selected, raw, indexes, companions_pending) {
+  if (raw.parameterMetadata.DNA_A) raw.parameterMetadata.DNA_A.eligibility = indexes.dnaEligibility;
   return {
     // Bare DNA-area label: the active-channel identifier the plot layer and DJF
     // pipeline match on. The companion-aware composite key is used only as the
@@ -258,6 +289,17 @@ function make_analysis_data(row, selected, raw, indexes, companions_pending) {
     dna_h: raw.channels.DNA_H,
     dna_w: raw.channels.DNA_W,
     companionsPending: companions_pending,
+    companionLoadResult: {
+      status: companions_pending ? "pending" : "loaded",
+      channels: Object.fromEntries(
+        [["DNA_H", indexes.dna_h], ["DNA_W", indexes.dna_w], ["FSC_A", indexes.fsc_a], ["SSC_A", indexes.ssc_a], ["Time", indexes.time]]
+          .map(([name, index]) => [name, {
+            status: Number.isInteger(index) ? (companions_pending ? "pending" : "loaded") : "unavailable",
+            index,
+          }]),
+      ),
+    },
+    loadMetrics: raw.loadMetrics ?? null,
   };
 }
 
@@ -311,6 +353,7 @@ async function load_companion_channels(row, selected, data, options = {}) {
     row.summary.metadata,
     row.summary.event_count,
   );
+  raw.loadMetrics = columns.__loadMetrics;
   for (const name of ["DNA_H", "DNA_W", "FSC_A", "SSC_A", "Time"]) {
     data.channels[name] = raw.channels[name];
     data.pnr[name] = raw.pnr[name];
@@ -318,6 +361,13 @@ async function load_companion_channels(row, selected, data, options = {}) {
   }
   data.dna_h = raw.channels.DNA_H;
   data.dna_w = raw.channels.DNA_W;
+  data.companionLoadResult = {
+    status: "loaded",
+    channels: Object.fromEntries(
+      [["DNA_H", indexes.dna_h], ["DNA_W", indexes.dna_w], ["FSC_A", indexes.fsc_a], ["SSC_A", indexes.ssc_a], ["Time", indexes.time]]
+        .map(([name, index]) => [name, { status: Number.isInteger(index) ? "loaded" : "unavailable", index }]),
+    ),
+  };
   data.companionsPending = false;
   return data;
 }
@@ -326,7 +376,7 @@ async function load_companion_channels(row, selected, data, options = {}) {
 
 Purpose:
 	Awaits any in-flight background companion loads for the given rows. The DJF
-	pipeline calls this so its scatter/singlet/time stages always see the
+	pipeline calls this so its scatter/singlet/time filters always see the
 	Height/Width/FSC/SSC/Time channels even when the plot rendered from DNA-A
 	first. Rows loaded without deferral (no companions_promise) resolve at once.
 
@@ -391,6 +441,16 @@ export async function load_analysis_row(row, selected, options = {}) {
     }
   }
 
+  const controller = new AbortController();
+  if (activate && row.analysis_data_active_load_key !== key) {
+    row.analysis_data_abort_controller?.abort();
+    row.analysis_data_abort_controller = controller;
+    row.analysis_data_active_load_key = key;
+  }
+  const forward_abort = () => controller.abort();
+  options.signal?.addEventListener("abort", forward_abort, { once: true });
+  const load_options = { ...options, signal: controller.signal };
+
   const promise = (async () => {
     const indexes = selected_indexes_for_file(row.summary, selected);
 
@@ -400,7 +460,7 @@ export async function load_analysis_row(row, selected, options = {}) {
         row.file,
         row.summary,
         unique_indexes([indexes.dna_a]),
-        options,
+        load_options,
       );
       const main_indexes = {
         ...indexes,
@@ -416,6 +476,7 @@ export async function load_analysis_row(row, selected, options = {}) {
         row.summary.metadata,
         row.summary.event_count,
       );
+      raw.loadMetrics = columns.__loadMetrics;
       const stored = store_analysis_data(
         row,
         selected,
@@ -423,11 +484,16 @@ export async function load_analysis_row(row, selected, options = {}) {
         activate,
       );
       // Phase 2: companions in the background. Keep the promise so the pipeline
-      // can await it; a failure leaves companions null (stages skip) rather than
+      // can await it; a failure leaves companions null (filters skip) rather than
       // blocking.
-      row.companions_promise = load_companion_channels(row, selected, stored, options)
+      row.companions_promise = load_companion_channels(row, selected, stored, load_options)
         .catch((error) => {
           stored.companionsPending = false;
+          stored.companionLoadResult = {
+            status: "failed",
+            code: error?.code ?? "FCS_COMPANION_LOAD_FAILED",
+            message: error?.message ?? String(error),
+          };
           set_status_bar(`Companion channels failed to load for ${row.name}: ${error.message}`, true);
           return stored;
         });
@@ -444,13 +510,14 @@ export async function load_analysis_row(row, selected, options = {}) {
       indexes.ssc_a,
       indexes.time,
     ]);
-    const columns = await load_selected_fcs_columns(row.file, row.summary, requested_indexes, options);
+    const columns = await load_selected_fcs_columns(row.file, row.summary, requested_indexes, load_options);
     const raw = build_raw_analysis_channels(
       columns,
       indexes,
       row.summary.metadata,
       row.summary.event_count,
     );
+    raw.loadMetrics = columns.__loadMetrics;
     return store_analysis_data(
       row,
       selected,
@@ -468,6 +535,7 @@ export async function load_analysis_row(row, selected, options = {}) {
     }
     return data;
   } finally {
+    options.signal?.removeEventListener("abort", forward_abort);
     row.analysis_data_promises_by_channel.delete(key);
   }
 }
@@ -504,17 +572,19 @@ export async function load_analysis_batch(
     defer_companions = false,
     display_total = total,
     display_suffix = "",
+    signal = null,
+    operation_id = null,
   } = options;
   const tasks = batch.map(({ row }) =>
-    load_analysis_row(row, selected, { allow_main_thread_fallback, activate, defer_companions }).then(async () => {
+    load_analysis_row(row, selected, { allow_main_thread_fallback, activate, defer_companions, signal }).then(async () => {
       completed.count += 1;
       const percent = (completed.count / total) * 100;
       const detail = `${detail_prefix} for file ${completed.count} of ${display_total}${display_suffix}`;
 
       if (use_overlay) {
-        update_progress(percent, label, detail, row.name);
+        update_progress(percent, label, detail, row.name, operation_id ?? undefined);
       } else {
-        set_status_bar(`${detail}: ${row.name}`);
+        set_status_bar(`${detail}: ${row.name}`, false, null, operation_id);
       }
       await next_frame();
     }),
@@ -548,32 +618,37 @@ export async function load_analysis_data() {
     return;
   }
 
-  show_progress("Loading FCS Data");
-  set_status_bar("Working: Loading FCS Data");
-  update_progress(0, "Loading FCS Data", `Preparing ${rows.length} file(s)...`);
+  const progress_operation = show_progress("Loading FCS Data");
+  set_status_bar("Working: Loading FCS Data", false, null, progress_operation);
+  update_progress(0, "Loading FCS Data", `Preparing ${rows.length} file(s)...`, "", progress_operation);
   await next_frame();
 
-  for (let start = 0; start < rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
-    const batch = rows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
-      row,
-      index: start + offset,
-    }));
-    await load_analysis_batch(batch, selected, completed, rows.length, "Loading FCS Data", {
-      detail_prefix: "Loading data",
-      // Load only the DNA channel now so the plot paints fast; the companion
-      // channels (Height/Width/FSC/SSC/Time) stream in behind it and the DJF
-      // pipeline awaits them via ensure_companions_loaded().
-      defer_companions: true,
-    });
+  try {
+    const concurrency = analysis_file_concurrency(rows);
+    for (let start = 0; start < rows.length; start += concurrency) {
+      const batch = rows.slice(start, start + concurrency).map((row, offset) => ({
+        row,
+        index: start + offset,
+      }));
+      await load_analysis_batch(batch, selected, completed, rows.length, "Loading FCS Data", {
+        detail_prefix: "Loading data",
+        // Load only the DNA channel now so the plot paints fast; the companion
+        // channels (Height/Width/FSC/SSC/Time) stream in behind it and the DJF
+        // pipeline awaits them via ensure_companions_loaded().
+        defer_companions: true,
+        operation_id: progress_operation,
+      });
+    }
+
+    set_status("Data loaded for all files. Curves shown for checked rows.");
+    set_status_bar(`Loaded event data for all ${rows.length} file(s).`, false, null, progress_operation);
+    update_progress(100, "Loading FCS Data", `Finished loading data for ${rows.length} file(s).`, "", progress_operation);
+    init_plot(selected);
+    hide_progress(700, progress_operation);
+  } catch (error) {
+    error.progressOperation = progress_operation;
+    throw error;
   }
-
-  set_status("Data loaded for all files. Curves shown for checked rows.");
-  set_status_bar(`Loaded event data for all ${rows.length} file(s).`);
-  update_progress(100, "Loading FCS Data", `Finished loading data for ${rows.length} file(s).`);
-
-  init_plot(selected);
-
-  hide_progress(700);
 }
 
 /*
@@ -610,30 +685,34 @@ export async function refresh_analysis_after_metadata_change({ redraw_if_no_miss
 
   const completed = { count: 0 };
   const label = "Loading Added FCS Data";
-  show_progress(label);
-  set_status_bar(`Working: ${label}`);
-  update_progress(0, label, `Preparing ${missing_rows.length} added file(s)...`);
+  const progress_operation = show_progress(label);
+  set_status_bar(`Working: ${label}`, false, null, progress_operation);
+  update_progress(0, label, `Preparing ${missing_rows.length} added file(s)...`, "", progress_operation);
   await next_frame();
 
   try {
-    for (let start = 0; start < missing_rows.length; start += ANALYSIS_FILE_CONCURRENCY) {
-      const batch = missing_rows.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row, offset) => ({
+    const concurrency = analysis_file_concurrency(missing_rows);
+    for (let start = 0; start < missing_rows.length; start += concurrency) {
+      const batch = missing_rows.slice(start, start + concurrency).map((row, offset) => ({
         row,
         index: start + offset,
       }));
       await load_analysis_batch(batch, selected, completed, missing_rows.length, label, {
         activate: should_activate_plot,
+        operation_id: progress_operation,
       });
     }
   } catch (error) {
     render_density_plot();
+    error.progressOperation = progress_operation;
     throw error;
   }
 
   if (should_activate_plot) {
     init_plot(selected);
   }
-  return { refreshed: should_activate_plot, loaded_rows: missing_rows.length };
+  hide_progress(700, progress_operation);
+  return { refreshed: should_activate_plot, loaded_rows: missing_rows.length, progress_operation };
 }
 
 /*
@@ -674,8 +753,9 @@ export async function preload_analysis_rows_in_background(rows) {
   set_status_bar(`Preparing ${targets.length} added FCS file(s) for background loading...`);
 
   try {
-    for (let start = 0; start < targets.length; start += ANALYSIS_FILE_CONCURRENCY) {
-      const batch = targets.slice(start, start + ANALYSIS_FILE_CONCURRENCY).map((row) => ({
+    const concurrency = analysis_file_concurrency(targets);
+    for (let start = 0; start < targets.length; start += concurrency) {
+      const batch = targets.slice(start, start + concurrency).map((row) => ({
         row,
         index: overall_index_by_row.get(row) ?? 0,
       }));

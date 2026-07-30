@@ -1,0 +1,7 @@
+# Authoritative model-result contract
+
+PhaseFinder has one authoritative model result: the normalized object selected by `state.modeling.activeResultKey` from `state.modeling.resultsByKey`. Plot overlays, table fractions, exports, sessions, and fit-change events consume only that object. Required fields are `schemaVersion`, `modelId`, `modelVersion`, `expectedCounts`, `components`, `phaseFractions`, `diagnostics`, `warnings`, and `provenance`.
+
+The older numbered pipeline still produces `peaks`, `baseFit`, `extendedFit`, and `report` in stages 5–8. Their producers are `apply_peak_detection`, `apply_base_fit`, `apply_contamination_fit`, and `apply_fit_report`; their numerical adapters are `legacy_bridge_fit.js`, `debris_aggregate_extension.js`, `cell_cycle_fit_report.js`, and `models/legacy_bridge.js`. These slots have no production UI bindings and are retained only for compatibility tests and old in-memory callers. They are not read by canonical plot, table, export, or session paths.
+
+`legacy_bridge_v1` remains an explicit advanced registry model for compatibility. When chosen through the modeling workflow it is stored in `resultsByKey` and follows the same authority rule; merely running legacy stages 5–8 cannot publish a result. No persisted session field depends on `baseFit`, `extendedFit`, or `report`, so removing those compatibility operations later requires no session migration. Existing modeling sessions remain recompute-on-load inputs.
