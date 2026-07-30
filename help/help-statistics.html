@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Calculate per-file channel statistics and add the results to the sample table." />
+    <title>Summary Statistics | PhaseFinder Help</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <a href="./index.html" aria-label="PhaseFinder help home"><img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" /></a>
+      <a class="help_header_title help_header_home" href="./index.html">Help Center</a>
+      <a class="help_back_link" href="../index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">Help topics</p>
+        <nav aria-label="Help topics">
+          <ol>
+            <li><a href="./index.html">Help home</a></li>
+            <li><a href="./help-getting-started.html">Getting Started</a></li>
+            <li><a href="./help-metadata.html">Metadata & Sample Table</a></li>
+            <li><a href="./help-plotting.html">Plotting Events</a></li>
+            <li><a href="./help-modeling.html">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-statistics.html" aria-current="page">Summary Statistics</a></li>
+            <li><a href="./help-sessions.html">Sessions & Layout</a></li>
+            <li><a href="./help-troubleshooting.html">Troubleshooting & Compatibility</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_breadcrumb"><a href="./index.html">Help home</a> / Summary Statistics</p>
+        <h1>Summary Statistics</h1>
+        <p class="help_lede">Calculate per-file channel statistics and add the results to the sample table.</p>
+
+<section id="summary-stats" class="help_section">
+          <h2>7. Summary Statistics</h2>
+          <p><span class="ui_label">Calculate Statistics</span> opens a window where you can pick any loaded channel and one or more statistics &mdash; <strong>Mean</strong>, <strong>Std Dev</strong>, <strong>Median</strong>, <strong>Min</strong>, <strong>Max</strong>, or <strong>All</strong> &mdash; computed per file across every loaded sample (not just checked rows).</p>
+          <figure class="help_figure help_figure_compact">
+            <div class="screenshot_frame">
+              <img src="../assets/img/help/statistics-modal.png" alt="Calculate Statistics window with GFP/FITC-A selected and Mean, Std Dev, and Median checked." />
+            </div>
+            <figcaption>Select the channel first, then choose the statistics to calculate. Mean and Std Dev are checked by default; Median, Min, Max, and All are optional.</figcaption>
+          </figure>
+          <p>Click <span class="ui_label">Calculate</span> to run the selected statistics. A progress bar appears in the <span class="ui_label">Calculate Statistics</span> window while PhaseFinder loads any needed channel data; files already loaded for plotting reuse their cached data.</p>
+          <figure class="help_figure help_figure_scroll">
+            <div class="screenshot_frame">
+              <img src="../assets/img/help/statistics-table.png" alt="Metadata table after statistics have been calculated, showing grouped GFP/FITC-A Summary Statistics columns for Mean, Std Dev, and Median." />
+            </div>
+            <figcaption>Statistics are inserted into the metadata table as a grouped column set, with one value per loaded FCS file.</figcaption>
+          </figure>
+          <p>Results are added to the metadata table as grouped columns, such as <code>GFP/FITC-A Summary Statistics</code> spanning <strong>Mean</strong>, <strong>Std Dev</strong>, <strong>Median</strong>, and any other metrics you chose. These columns are included when you <a href="./help-metadata.html#export-tsv">export the metadata table</a>.</p>
+          <p>If you reopen the <span class="ui_label">Calculate Statistics</span> window for a channel that already has statistics, those already-computed metrics are disabled so you do not recompute the same columns. The <strong>All</strong> checkbox only selects metrics that are still available for that channel.</p>
+          <div class="callout tip">
+            <p class="callout_title">Statistics are calculated automatically on new FCS file loads</p>
+            <p>Once you compute a statistic for a channel, PhaseFinder remembers that channel/statistic combination for the rest of the session. Any FCS file you load afterward gets the same statistics calculated automatically and filled into the new row, with no need to reopen the <span class="ui_label">Calculate Statistics</span> window.</p>
+          </div>
+        </section>
+
+        <nav class="help_page_nav" aria-label="Previous and next help topics">
+          <a href="./help-modeling.html">&larr; Cell-Cycle Modeling</a>
+          <a href="./index.html">Help home</a>
+          <a href="./help-sessions.html">Sessions & Layout &rarr;</a>
+        </nav>
+
+        <p class="help_footer">PhaseFinder Help &mdash; <a href="./index.html">all help topics</a> &middot; <a href="../index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>

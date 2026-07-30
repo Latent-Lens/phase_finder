@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Annotate samples, import metadata, split filenames, sort and filter rows, and export TSV files." />
+    <title>Metadata & Sample Table | PhaseFinder Help</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <a href="./index.html" aria-label="PhaseFinder help home"><img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" /></a>
+      <a class="help_header_title help_header_home" href="./index.html">Help Center</a>
+      <a class="help_back_link" href="../index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">Help topics</p>
+        <nav aria-label="Help topics">
+          <ol>
+            <li><a href="./index.html">Help home</a></li>
+            <li><a href="./help-getting-started.html">Getting Started</a></li>
+            <li><a href="./help-metadata.html" aria-current="page">Metadata & Sample Table</a></li>
+            <li><a href="./help-plotting.html">Plotting Events</a></li>
+            <li><a href="./help-modeling.html">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-statistics.html">Summary Statistics</a></li>
+            <li><a href="./help-sessions.html">Sessions & Layout</a></li>
+            <li><a href="./help-troubleshooting.html">Troubleshooting & Compatibility</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_breadcrumb"><a href="./index.html">Help home</a> / Metadata & Sample Table</p>
+        <h1>Metadata & Sample Table</h1>
+        <p class="help_lede">Annotate samples, import metadata, split filenames, sort and filter rows, and export TSV files.</p>
+
+<section id="metadata-table" class="help_section">
+          <h2>3. The Metadata Table</h2>
+          <p>Every loaded file becomes one row in <span class="ui_label">Table of Loaded FCS Samples</span>. Each row has a checkbox; only <em>checked</em> rows are included the next time you plot. The filename column is read-only (shown without its <code>.fcs</code> extension); every other column is editable.</p>
+
+          <h3 id="editing-annotations">Editing annotations</h3>
+          <p>Click into any annotation cell to type a value directly &mdash; strain, replicate, arrest status, timepoint, or whatever custom columns you've configured (see below). Edits are stored immediately and are included if you save a session or export the table.</p>
+          <p>Use the add-column icon <img class="inline_icon" src="../assets/img/manual_add_column.svg" alt="" aria-hidden="true" /> in the table title bar to create a blank editable metadata column by hand. Use the metadata import icon <img class="inline_icon" src="../assets/img/table_import.svg" alt="Metadata import" /> to load a CSV or TSV metadata file. The file must include a filename-like column such as <strong>Filename</strong>, <strong>Sample Name</strong>, or <strong>FCS File</strong>; PhaseFinder matches those values to the currently loaded FCS filenames and ignores metadata rows for files that are not loaded.</p>
+          <p>CSV/TSV source headers must be unique after trimming and case normalization. An import with duplicate headers is rejected before changing the table, and the error identifies both source column numbers.</p>
+
+          <h3 id="sorting-filtering">Sorting &amp; filtering</h3>
+          <ul>
+            <li><strong>Sort:</strong> click a column header's label to toggle ascending/descending, or click one of the small <strong>▲</strong> / <strong>▼</strong> arrows to jump straight to that direction. The Timepoint column sorts numerically even though it's stored as text.</li>
+            <li><strong>Filter:</strong> click the pill under a column header to open a checklist of that column's distinct values; check one or more values to show only matching rows. Clear the checkboxes to show all rows again.</li>
+            <li><strong>Filtering hides <em>and</em> deselects:</strong> a row hidden by a filter is automatically unchecked, so what's plotted always matches "visible &cap; checked". Removing the filter does not automatically re-check the row.</li>
+            <li>The header checkbox selects or deselects every currently <em>visible</em> row (it shows an indeterminate dash when only some visible rows are checked).</li>
+          </ul>
+
+          <h3 id="metadata-wizard">Filename metadata wizard</h3>
+          <p>Rather than guessing annotation values, PhaseFinder lets you derive metadata columns directly from each filename. The wizard opens automatically about a second after your first files load (only once per browser tab); you can reopen it any time via the filename-metadata icon <img class="inline_icon" src="../assets/img/text_to_col.svg" alt="" aria-hidden="true" /> in the table's title bar (it's disabled until at least one file is loaded).</p>
+          <figure class="help_figure help_figure_scroll">
+            <div class="screenshot_frame">
+              <img src="../assets/img/help/metadata-wizard.png" alt="Filename metadata wizard configured with delimiter, regex, and fixed-width steps, hidden throwaway pieces, and a preview table showing Filename, Strain, Replicate, Nocodazole Arrest, and Timepoint." />
+            </div>
+            <figcaption>The wizard can turn structured filenames into useful table columns before you start plotting or exporting metadata.</figcaption>
+          </figure>
+          <p>The wizard works left to right through the filename. Each <strong>split step</strong> extracts one piece from the current remaining text; the text after that split becomes the input to the next step. The file extension is already stripped before the first rule runs.</p>
+          <ul>
+            <li><strong>Delimiter</strong> &mdash; splits at the first occurrence of a fixed character or string, e.g. <code>_</code>.</li>
+            <li><strong>Fixed width</strong> &mdash; splits at a character position. Enter one or more comma/space-separated break positions, or type a column width into the small box and click <span class="ui_label">Set</span> to convert it into a break position automatically.</li>
+            <li><strong>Regex</strong> &mdash; splits using a JavaScript regular expression. If the pattern has a capture group, the captured text becomes the column value (useful for pulling a token out of the middle of a name); otherwise everything before the match becomes the value.</li>
+          </ul>
+          <p>Every step (and the final <strong>Remainder</strong>, i.e. whatever text is left after all steps) gets its own column name and a <strong>Hide</strong> checkbox to exclude it from the table entirely. Use <span class="ui_label">Add Step</span> to add another split, or the step's <span class="ui_label">Remove</span> button to delete it (at least one step must remain). The <strong>Preview</strong> panel shows how the first 20 loaded filenames would split with the current configuration, updating live as you edit.</p>
+          <p>In the example above, a filename like <code>EDS2026-03-06_800bN t20__E2E101.0001.fcs</code> is parsed into:</p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Step</th><th>Rule</th><th>Captured text</th><th>Remainder sent to next step</th><th>Shown?</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Split 1</td><td>Delimiter <code>_</code></td><td><code>EDS2026-03-06</code></td><td><code>800bN t20__E2E101.0001</code></td><td>Hidden</td></tr>
+              <tr><td>Split 2</td><td>Regex <code>(\d{2,3})</code></td><td><code>800</code></td><td><code>bN t20__E2E101.0001</code></td><td>Strain</td></tr>
+              <tr><td>Split 3</td><td>Fixed width <code>1</code></td><td><code>b</code></td><td><code>N t20__E2E101.0001</code></td><td>Replicate</td></tr>
+              <tr><td>Split 4</td><td>Fixed width <code>1</code></td><td><code>N</code></td><td><code> t20__E2E101.0001</code></td><td>Nocodazole Arrest</td></tr>
+              <tr><td>Split 5</td><td>Fixed width <code>2</code></td><td><code> t</code></td><td><code>20__E2E101.0001</code></td><td>Hidden</td></tr>
+              <tr><td>Split 6</td><td>Delimiter <code>_</code></td><td><code>20</code></td><td><code>_E2E101.0001</code></td><td>Timepoint</td></tr>
+              <tr><td>Remainder</td><td>After all rules</td><td><code>_E2E101.0001</code></td><td></td><td>Hidden</td></tr>
+            </tbody>
+          </table>
+          <p>That leaves the visible columns <strong>Filename</strong>, <strong>Strain</strong>, <strong>Replicate</strong>, <strong>Nocodazole Arrest</strong>, and <strong>Timepoint</strong>. The hidden pieces are still used while parsing, but they do not become metadata table columns.</p>
+          <h4>Regex quick primer</h4>
+          <p>Regex is useful when the next value is identified by a pattern rather than a fixed separator. Parentheses create a <strong>capture group</strong>; if a regex step has a capture group, PhaseFinder uses the captured text as that column's value.</p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Pattern</th><th>Useful when</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>(\d{2,3})</code></td><td>Capture a 2- or 3-digit strain number.</td></tr>
+              <tr><td><code>^([A-Za-z])</code></td><td>Capture the next single letter at the start of the remaining text, such as a replicate or arrest flag.</td></tr>
+              <tr><td><code>t(\d+)</code></td><td>Capture one or more digits after <code>t</code>, often used for timepoints like <code>t20</code>.</td></tr>
+              <tr><td><code>_(\d+)</code></td><td>Capture digits that appear after an underscore.</td></tr>
+            </tbody>
+          </table>
+          <ul>
+            <li><span class="ui_label">Apply</span> commits the configured columns, replacing whatever custom columns exist. Values already typed for a column are kept if that column's field key is unchanged; values for genuinely new columns are filled in from the split.</li>
+            <li><span class="ui_label">Filename Only</span> clears all custom columns, leaving just the read-only Filename column.</li>
+            <li><span class="ui_label">Cancel</span> (or the <kbd>Esc</kbd> key) discards any unsaved edits in the wizard.</li>
+          </ul>
+          <p>The last-applied split configuration is remembered in your browser (not tied to any one set of files) and is reapplied automatically to files you load later, and is also captured when you <a href="./help-sessions.html#sessions">save a session</a>.</p>
+
+          <h3 id="export-tsv">Exporting to TSV</h3>
+          <figure class="help_figure">
+            <div class="screenshot_frame">
+              <img src="../assets/img/help/metadata-export.png" alt="Metadata table title bar with the filename metadata wizard, export TSV, and collapse buttons." />
+            </div>
+            <figcaption>The export button is the table-with-down-arrow icon <img class="inline_icon" src="../assets/img/table_export.svg" alt="" aria-hidden="true" /> in the metadata table title bar.</figcaption>
+          </figure>
+          <p>The export icon <img class="inline_icon" src="../assets/img/table_export.svg" alt="" aria-hidden="true" /> in the table's title bar exports exactly the currently <em>visible</em> rows as a tab-separated <code>.tsv</code> file. Active filters are respected, so the exported file matches the rows you are looking at in the table.</p>
+          <p>The TSV includes the filename, every visible metadata column created by the wizard or typed by hand, and any summary-statistics columns currently shown. This makes the export useful as an analysis-ready metadata sheet after you have annotated samples and calculated channel statistics.</p>
+          <p><strong>Spreadsheet safety:</strong> export leaves PhaseFinder's stored values unchanged, but prefixes string cells whose first non-control character is <code>=</code>, <code>+</code>, <code>-</code>, or <code>@</code> with an apostrophe so spreadsheet software treats them as text. Genuine numeric negative values remain numeric. The protection targets ASCII formula syntax; visually similar Unicode characters are exported unchanged because they are not spreadsheet operators.</p>
+        </section>
+
+        <nav class="help_page_nav" aria-label="Previous and next help topics">
+          <a href="./help-getting-started.html">&larr; Getting Started</a>
+          <a href="./index.html">Help home</a>
+          <a href="./help-plotting.html">Plotting Events &rarr;</a>
+        </nav>
+
+        <p class="help_footer">PhaseFinder Help &mdash; <a href="./index.html">all help topics</a> &middot; <a href="../index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>

@@ -34,12 +34,18 @@ module.exports = defineConfig({
   },
   build: {
     rollupOptions: {
-      // help.html is a second HTML entry: the app links to it ("Get Help"), so
-      // it (and its stylesheet/images) must be emitted into the build, not just
-      // served from the source tree during build-free development.
+      // The app and help center are plain HTML entries. Listing the help pages
+      // here keeps their relative links working in root and subpath builds.
       input: {
         main: path.resolve(__dirname, "index.html"),
-        help: path.resolve(__dirname, "help.html"),
+        help: path.resolve(__dirname, "help/index.html"),
+        helpGettingStarted: path.resolve(__dirname, "help/help-getting-started.html"),
+        helpMetadata: path.resolve(__dirname, "help/help-metadata.html"),
+        helpPlotting: path.resolve(__dirname, "help/help-plotting.html"),
+        helpModeling: path.resolve(__dirname, "help/help-modeling.html"),
+        helpStatistics: path.resolve(__dirname, "help/help-statistics.html"),
+        helpSessions: path.resolve(__dirname, "help/help-sessions.html"),
+        helpTroubleshooting: path.resolve(__dirname, "help/help-troubleshooting.html"),
       },
     },
   },

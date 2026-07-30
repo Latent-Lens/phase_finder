@@ -189,7 +189,7 @@ export async function load_files(files) {
 
   if (loaded && (failures.length || duplicates.length)) {
     const failure_message = failures.length ? ` ${failures.join(" ")}` : "";
-    const help = parser_failure ? "./help.html#supported-fcs-input" : null;
+    const help = parser_failure ? "./help/help-troubleshooting.html#supported-fcs-input" : null;
     set_status(`Read metadata from ${loaded} file(s).${downstream_message}${duplicate_message}${failure_message}`, true, help);
     const aggregate = failure_errors.length ? new AggregateError(failure_errors, "One or more FCS files could not be read") : null;
     set_status_bar(`Finished with ${failures.length + duplicates.length} issue(s).`, failures.length ? true : "warning", help, progress_operation, aggregate);
@@ -206,7 +206,7 @@ export async function load_files(files) {
     update_progress(100, "Loading FCS Metadata", "Duplicate FCS file rejected.", "", progress_operation);
     hide_progress(1200, progress_operation);
   } else {
-    const help = parser_failure ? "./help.html#supported-fcs-input" : null;
+    const help = parser_failure ? "./help/help-troubleshooting.html#supported-fcs-input" : null;
     set_status(failures.join(" "), true, help);
     set_status_bar("No metadata could be read.", true, help, progress_operation, new AggregateError(failure_errors, "No metadata could be read"));
     update_progress(100, "Loading FCS Metadata", "No metadata could be read.", "", progress_operation);
