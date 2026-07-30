@@ -10,6 +10,7 @@ const DEFAULT_OPTIONS = Object.freeze({
   maxIterations: 150,
   tolerance: 1e-7,
   stepTolerance: 1e-6,
+  gradientTolerance: 1e-6,
   initialLambda: 1e-2,
   finiteDifferenceStep: 1e-4,
   minimumLambda: 1e-12,
@@ -396,10 +397,21 @@ export function runLevenbergMarquardt({
   if (!Number.isInteger(options.maxIterations) || options.maxIterations < 0) {
     throw new RangeError("maxIterations must be a nonnegative integer.");
   }
-  for (const name of ["tolerance", "stepTolerance", "initialLambda"]) {
+  for (const name of [
+    "tolerance",
+    "stepTolerance",
+    "gradientTolerance",
+    "initialLambda",
+    "minimumLambda",
+    "maximumLambda",
+    "finiteDifferenceStep",
+  ]) {
     if (!(options[name] >= 0) || !Number.isFinite(options[name])) {
       throw new RangeError(`${name} must be finite and nonnegative.`);
     }
+  }
+  if (options.maximumLambda < options.minimumLambda) {
+    throw new RangeError("maximumLambda must be greater than or equal to minimumLambda.");
   }
 
   const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
@@ -412,16 +424,19 @@ export function runLevenbergMarquardt({
   const indices = Array.from(freeIndices ?? freeParameterIndices ?? []);
   let lambda = options.initialLambda;
   let converged = indices.length === 0;
-  // Which stopping condition actually fired, so callers never label a fit with a
-  // criterion that did not hold (audit SCI-03). Convergence in the accepted-step
-  // branch can come from the objective tolerance OR the step tolerance alone, so
-  // "objective_and_step" must be reserved for when both genuinely held.
+  // A scientific fit is converged only when objective and step criteria agree.
+  // The scaled gradient remains explicit first-order evidence; a boundary or
+  // numerical stall is never converted into convergence (audit SCI-03).
   let terminationReason = indices.length === 0 ? "no_free_parameters" : null;
   let cancelled = false;
   let iterations = 0;
+  let iterationsPerformed = 0;
   let rankFailureCount = 0;
   let maximumJacobianCondition = 1;
   let activeProjectionCount = 0;
+  let lastStep = null;
+  let lastAcceptedStep = null;
+  let lastRejectedStep = null;
 
   let evaluation = residualFn(parameters);
   let residuals = objectiveResidualsFrom(evaluation);
@@ -454,6 +469,13 @@ export function runLevenbergMarquardt({
       residuals,
       lambda,
     );
+    const gradientNorm = rightHandSide.reduce(
+      (largest, value, index) => Math.max(
+        largest,
+        Math.abs(value) * Math.max(Math.abs(parameters[indices[index]]), 1),
+      ),
+      0,
+    ) / Math.max(currentSse, 1);
 
     let delta;
     try {
@@ -461,6 +483,26 @@ export function runLevenbergMarquardt({
     } catch {
       rankFailureCount += 1;
       lambda = Math.min(lambda * 10, options.maximumLambda);
+      const failedStep = {
+        iteration: iterations,
+        accepted: false,
+        failure: "singular_normal_equations",
+        lambda,
+        objectiveChange: null,
+        relativeObjectiveChange: null,
+        stepNorm: null,
+        rawStepNorm: null,
+        gradientNorm,
+        objectiveToleranceMet: false,
+        stepToleranceMet: false,
+        gradientToleranceMet: gradientNorm < options.gradientTolerance,
+      };
+      lastStep = lastRejectedStep = failedStep;
+      iterationsPerformed = iterations;
+      if (lambda >= options.maximumLambda) {
+        terminationReason = "numerical_failure";
+        break;
+      }
       continue;
     }
 
@@ -510,9 +552,31 @@ export function runLevenbergMarquardt({
     const stepGenuinelySmall =
       relativeStep < options.stepTolerance && rawRelativeStep < options.stepTolerance;
 
-    if (Number.isFinite(trialSse) && trialSse < currentSse) {
-      const relativeImprovement =
-        (currentSse - trialSse) / Math.max(currentSse, 1);
+    const objectiveChange = currentSse - trialSse;
+    const relativeObjectiveChange = Math.abs(objectiveChange) / Math.max(currentSse, 1);
+    const accepted = Number.isFinite(trialSse) && objectiveChange > 0;
+    const objectiveMet = Number.isFinite(trialSse) && relativeObjectiveChange < options.tolerance;
+    const gradientMet = gradientNorm < options.gradientTolerance;
+    const stepRecord = {
+      iteration: iterations,
+      accepted,
+      lambda,
+      objectiveChange,
+      relativeObjectiveChange,
+      stepNorm: relativeStep,
+      rawStepNorm: rawRelativeStep,
+      gradientNorm,
+      objectiveToleranceMet: objectiveMet,
+      stepToleranceMet: stepGenuinelySmall,
+      gradientToleranceMet: gradientMet,
+    };
+    lastStep = stepRecord;
+    if (accepted) lastAcceptedStep = stepRecord;
+    else lastRejectedStep = stepRecord;
+
+    iterationsPerformed = iterations;
+
+    if (accepted) {
 
       parameters = projectedTrial;
       evaluation = trialEvaluation;
@@ -520,29 +584,21 @@ export function runLevenbergMarquardt({
       currentSse = trialSse;
       lambda = Math.max(lambda / 3, options.minimumLambda);
 
-      const objectiveMet = relativeImprovement < options.tolerance;
-      if (objectiveMet || stepGenuinelySmall) {
+      if (objectiveMet && stepGenuinelySmall) {
         converged = true;
-        terminationReason =
-          objectiveMet && stepGenuinelySmall ? "objective_and_step"
-            : objectiveMet ? "objective_tolerance"
-              : "step_tolerance";
+        terminationReason = "objective_step_tolerance";
       }
     } else {
-      const relativeDifference =
-        Math.abs(trialSse - currentSse) / Math.max(currentSse, 1);
-      if (
-        Number.isFinite(trialSse) &&
-        relativeDifference < options.tolerance &&
-        stepGenuinelySmall
-      ) {
-        // No improving step exists and the trial step is tiny: a stall at the
-        // tolerance, not a fresh objective decrease. Labelled distinctly so it
-        // is not read as a productive objective-tolerance stop.
-        converged = true;
-        terminationReason = "step_stall";
-      } else {
-        lambda = Math.min(lambda * 10, options.maximumLambda);
+      lambda = Math.min(lambda * 10, options.maximumLambda);
+      if (lambda >= options.maximumLambda) {
+        if (!Number.isFinite(trialSse)) {
+          terminationReason = "numerical_failure";
+        } else if (relativeStep < options.stepTolerance && !stepGenuinelySmall) {
+          terminationReason = "boundary_stall";
+        } else if (stepGenuinelySmall && !(objectiveMet && gradientMet)) {
+          terminationReason = "step_stall";
+        }
+        if (terminationReason) break;
       }
     }
 
@@ -551,11 +607,6 @@ export function runLevenbergMarquardt({
     }
   }
 
-  // `iterations` holds the loop counter after its final post-increment (and is
-  // never entered as maxIterations + 1), so the number of iterations actually
-  // executed is one less. This equals the bodies run in every case: converged
-  // early, ran to the budget, or never entered the loop.
-  const iterationsPerformed = Math.max(0, iterations - 1);
   const evaluationObject =
     evaluation && !isArrayLike(evaluation) ? evaluation : null;
   // The loop exits either on a tolerance hit (`converged`) or on exhausting the
@@ -588,6 +639,14 @@ export function runLevenbergMarquardt({
       activeProjectionCount,
       weaklyIdentified: !Number.isFinite(maximumJacobianCondition) || maximumJacobianCondition > 1e8,
       finiteDifferenceRelativeStep: options.finiteDifferenceStep,
+      convergenceCriteria: {
+        objectiveTolerance: options.tolerance,
+        stepTolerance: options.stepTolerance,
+        gradientTolerance: options.gradientTolerance,
+      },
+      lastStep,
+      lastAcceptedStep,
+      lastRejectedStep,
     },
   };
 }

@@ -729,11 +729,13 @@ export function fitCellCycleHistogram(x, y, userOptions = {}) {
     },
     diagnostics: {
       converged: fit.converged,
+      terminationReason: fit.terminationReason,
       maxIterationsReached: fit.maxIterationsReached,
       cancelled: fit.cancelled,
       iterations: fit.iterations,
       sse: fit.sse,
       finalLambda: fit.finalLambda,
+      optimizer: fit.optimizerDiagnostics,
       detectedPeaks: initialization.detectedPeaks,
       ratioWasUnlocked: options.unlockRatio,
       options,

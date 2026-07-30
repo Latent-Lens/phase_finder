@@ -103,8 +103,8 @@ _TESTS = r"""() => {
       cancel();
       const result = await promise;
       return {
-        pass: result.convergenceReason !== 'cancelled' && result.converged === true,
-        detail: JSON.stringify({ convergenceReason: result.convergenceReason, converged: result.converged }),
+        pass: result.convergenceReason !== 'cancelled' && result.cancelled !== true,
+        detail: JSON.stringify({ convergenceReason: result.convergenceReason, converged: result.converged, cancelled: result.cancelled }),
       };
     });
 

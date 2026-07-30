@@ -41,8 +41,8 @@ function component_from_curve(id, label, counts, role = "biological") {
 
 function convergence_reason(diagnostics) {
   if (diagnostics.cancelled) return "cancelled";
-  if (diagnostics.converged) return "relative_deviance_and_step";
-  return diagnostics.maxIterationsReached ? "max_iterations" : "unknown";
+  return diagnostics.terminationReason
+    ?? (diagnostics.maxIterationsReached ? "max_iterations" : diagnostics.converged ? "objective_step_tolerance" : "unknown");
 }
 
 /*
@@ -82,6 +82,7 @@ function build_generic_result({ parameters, expectedCounts, components, diagnost
       sse: diagnostics.sse,
       iterations: diagnostics.iterations,
       finalLambda: diagnostics.finalLambda,
+      optimizer: diagnostics.optimizer,
       maxIterationsReached: diagnostics.maxIterationsReached,
       ...extraDiagnostics,
     },
