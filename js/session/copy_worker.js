@@ -6,6 +6,10 @@
 // error with the same request id. It inlines the small directory and path helpers
 // it needs so it stays a tiny self-contained worker.
 
+import { digest_file_chunks } from './file_digest.js';
+
+const cancelled_requests = new Set();
+
 async function ensure_directory(root, parts) {
   let dir = root;
   for (const part of parts) {
@@ -20,7 +24,7 @@ function split_opfs_path(opfs_path) {
   return { dir_parts: parts, file_name };
 }
 
-async function write_file_to_opfs(file, opfs_path) {
+async function write_file_to_opfs(file, opfs_path, request_id) {
   const root = await navigator.storage.getDirectory();
   const { dir_parts, file_name } = split_opfs_path(opfs_path);
   const dir = await ensure_directory(root, dir_parts);
@@ -30,18 +34,34 @@ async function write_file_to_opfs(file, opfs_path) {
   // (createSyncAccessHandle) would be faster but is a later optimization.
   const writable = await handle.createWritable();
   try {
-    await writable.write(file);
+    return await digest_file_chunks(file, {
+      signal: { get aborted() { return cancelled_requests.has(request_id); } },
+      consume_chunk: (buffer) => writable.write(buffer),
+      on_progress: (progress) => self.postMessage({ request_id, progress }),
+    });
+  } catch (error) {
+    try { await writable.abort(); } catch (_) { /* best effort */ }
+    try { await dir.removeEntry(file_name); } catch (_) { /* partial path may not exist */ }
+    throw error;
   } finally {
-    await writable.close();
+    if (!cancelled_requests.has(request_id)) {
+      try { await writable.close(); } catch (_) { /* already aborted */ }
+    }
   }
 }
 
 self.addEventListener('message', async (event) => {
+  if (event.data?.cancel) {
+    cancelled_requests.add(event.data.request_id);
+    return;
+  }
   const { request_id, file, opfs_path } = event.data || {};
   try {
-    await write_file_to_opfs(file, opfs_path);
-    self.postMessage({ request_id, ok: true });
+    const identity = await write_file_to_opfs(file, opfs_path, request_id);
+    self.postMessage({ request_id, ok: true, ...identity });
   } catch (error) {
     self.postMessage({ request_id, ok: false, error: error.message || String(error) });
+  } finally {
+    cancelled_requests.delete(request_id);
   }
 });
