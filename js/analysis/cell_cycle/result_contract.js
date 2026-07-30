@@ -348,3 +348,17 @@ export function apply_result_contract(rawResult, preflight) {
 export function is_reportable_result(result) {
   return result?.validForReporting === true;
 }
+
+export function result_reporting_summary(result) {
+  if (!result) return { reportable: false, status: "No result", reason: "", phaseFractions: null };
+  const reportable = result.validForReporting === true;
+  const reason = result.validityReasons?.map((entry) => entry.message || entry.code).join("; ")
+    || result.convergenceReason
+    || "No reason recorded";
+  return {
+    reportable,
+    status: reportable ? "Reportable" : result.cancelled ? "Cancelled" : result.converged ? "Not reportable" : "Not converged",
+    reason,
+    phaseFractions: reportable ? result.phaseFractions : null,
+  };
+}

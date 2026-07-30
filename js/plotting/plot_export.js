@@ -19,6 +19,7 @@ import { filename_timestamp } from "../util/names.js";
 import { get_file_table } from "../state/app_state.js";
 import { get_state } from "../analysis/pipeline_state.js";
 import { escape_html } from "../util/html.js";
+import { result_reporting_summary } from "../analysis/cell_cycle/result_contract.js";
 
 // Presentation properties that must survive the trip out of the document.
 const INLINED_STYLE_PROPERTIES = [
@@ -197,16 +198,23 @@ function report_fit_summary_html() {
     const modeling = get_state(row.name)?.modeling;
     if (!modeling) continue;
     const regions = modeling.peakSelection?.regions;
-    const result = modeling.activeResultKey ? modeling.resultsByKey?.[modeling.activeResultKey] : null;
+    const active = modeling.activeResultKey ? modeling.resultsByKey?.[modeling.activeResultKey] : null;
+    const diagnostic = modeling.lastDiagnosticResultKey
+      ? modeling.resultsByKey?.[modeling.lastDiagnosticResultKey]
+      : null;
+    const result = active ?? diagnostic;
     if (!regions && !result) continue;
     const model = result ? escape_html(result.modelLabel ?? result.modelId ?? "—") : "—";
     const converged = result ? (result.converged ? "yes" : "no") : "—";
-    const pf = result?.phaseFractions;
+    const reporting = result_reporting_summary(result);
+    const status = result ? escape_html(reporting.status) : "—";
+    const reason = result ? escape_html(reporting.reason) : "—";
+    const pf = reporting.phaseFractions;
     const eligibility = result?.channelEligibility ?? get_state(row.name)?.channelEligibility;
     const transform = escape_html(eligibility?.transform?.status ?? "unknown");
     const compensation = escape_html(eligibility?.compensation?.status ?? "unknown");
     rows.push(
-      `<tr><td>${escape_html(row.name)}</td><td>${model}</td><td>${converged}</td>` +
+      `<tr><td>${escape_html(row.name)}</td><td>${model}</td><td>${converged}</td><td>${status}</td><td>${reason}</td>` +
         `<td>${transform}</td><td>${compensation}</td>` +
         `<td>${region(regions?.g1)}</td><td>${region(regions?.g2)}</td>` +
         `<td>${pct(pf?.g1)}</td><td>${pct(pf?.s)}</td><td>${pct(pf?.g2)}</td></tr>`,
@@ -215,7 +223,7 @@ function report_fit_summary_html() {
   if (!rows.length) return "";
   return (
     `<div class="table-wrap"><table><thead><tr>` +
-    `<th>Sample</th><th>Model</th><th>Converged</th><th>DNA transform</th><th>Compensation</th><th>G1 region</th><th>G2/M region</th>` +
+    `<th>Sample</th><th>Model</th><th>Converged</th><th>Status</th><th>Reason</th><th>DNA transform</th><th>Compensation</th><th>G1 region</th><th>G2/M region</th>` +
     `<th>%G1</th><th>%S</th><th>%G2/M</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`
   );
 }

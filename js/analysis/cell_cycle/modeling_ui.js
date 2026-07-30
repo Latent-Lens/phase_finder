@@ -35,6 +35,7 @@ import { run_cloccs_fit } from "./cloccs_client.js";
 import { fit_pool_size } from "./fit_client.js";
 import { active_peak_review_row, peak_region_draft_valid } from "./peak_review_ui.js";
 import { deep_clone } from "../../util/clone.js";
+import { result_reporting_summary } from "./result_contract.js";
 
 // CLOCCS metadata-column mapping controls (index.html). Queried once at module
 // load, like the rest of the sidebar's DOM refs -- the markup is parsed before
@@ -233,6 +234,7 @@ function render_result(result) {
   }
 
   const warnings = result.warnings ?? [];
+  const reporting = result_reporting_summary(result);
   const convergenceText = result.converged ? "Converged" : `Not converged (${escape_html(result.convergenceReason ?? "unknown")})`;
   // auto_dj_djf's normalized result carries the selected submodel's own id
   // (plan §4.5's modelId field is overwritten to "auto_dj_djf" by
@@ -243,6 +245,13 @@ function render_result(result) {
   const warningList = warnings.length
     ? `<ul class="cell_cycle_fit_warning_list">${warnings.map((warning) => `<li>${escape_html(warning.message)}</li>`).join("")}</ul>`
     : "";
+  const fractions = reporting.reportable
+    ? `<dl class="cell_cycle_fit_fractions">
+        <div class="cell_cycle_fit_fraction_row"><dt>G1</dt><dd>${percent(reporting.phaseFractions?.g1)}</dd></div>
+        <div class="cell_cycle_fit_fraction_row"><dt>S</dt><dd>${percent(reporting.phaseFractions?.s)}</dd></div>
+        <div class="cell_cycle_fit_fraction_row"><dt>G2/M</dt><dd>${percent(reporting.phaseFractions?.g2)}</dd></div>
+      </dl>`
+    : `<p class="cell_cycle_fit_not_converged">Phase fractions withheld: this diagnostic result is not valid for reporting.</p>`;
 
   cell_cycle_fit_result.hidden = false;
   cell_cycle_fit_result.innerHTML = `
@@ -250,11 +259,7 @@ function render_result(result) {
       <span>${escape_html(result.modelLabel ?? model_label(result.modelId))}</span>
       <span class="cell_cycle_fit_convergence${result.converged ? "" : " cell_cycle_fit_not_converged"}">${convergenceText}</span>
     </div>
-    <dl class="cell_cycle_fit_fractions">
-      <div class="cell_cycle_fit_fraction_row"><dt>G1</dt><dd>${percent(result.phaseFractions?.g1)}</dd></div>
-      <div class="cell_cycle_fit_fraction_row"><dt>S</dt><dd>${percent(result.phaseFractions?.s)}</dd></div>
-      <div class="cell_cycle_fit_fraction_row"><dt>G2/M</dt><dd>${percent(result.phaseFractions?.g2)}</dd></div>
-    </dl>
+    ${fractions}
     ${selectedNote}
     <p class="cell_cycle_fit_warnings${warnings.length ? " cell_cycle_fit_has_warnings" : ""}">${
       warnings.length ? `${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "No warnings."

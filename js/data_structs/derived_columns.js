@@ -7,6 +7,7 @@
 export const TOTAL_EVENTS_COLUMN = "Total number of events";
 export const TOTAL_EVENTS_HEADER = { top: "Total number", bottom: "of events" };
 export const QC_STATUS_COLUMN = "QC status";
+export const CELL_CYCLE_STATUS_COLUMN = "Cell-cycle fit status";
 
 // Per-filter event-loss columns, ordered by the gating filter that produces them
 // (filter index 0..3). Written as each filter completes.
@@ -35,6 +36,7 @@ export const PEAK_REGION_COLUMNS = [
 export const DERIVED_COLUMN_GROUPS = [
   { label: "Quality Control", columns: [QC_STATUS_COLUMN, ...QC_LOST_COLUMNS.map((column) => column.label)] },
   { label: "Peak Regions", columns: PEAK_REGION_COLUMNS.map((column) => column.label) },
+  { label: "Cell-cycle Modeling", columns: [CELL_CYCLE_STATUS_COLUMN] },
 ];
 
 // Per-model cell-cycle fit fraction columns. Frame keys are
