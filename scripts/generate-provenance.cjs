@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -6,11 +7,13 @@ const root = path.resolve(process.env.DIST_DIR || "dist");
 const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
 const pkg = require("../package.json");
 function localCommit() {
-  const head = fs.readFileSync(".git/HEAD", "utf8").trim();
-  if (!head.startsWith("ref: ")) return head;
-  const ref = head.slice(5);
-  if (fs.existsSync(path.join(".git", ref))) return fs.readFileSync(path.join(".git", ref), "utf8").trim();
-  return fs.readFileSync(".git/packed-refs", "utf8").split("\n").find((line) => line.endsWith(` ${ref}`))?.split(" ")[0] || "unknown";
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch (_) {
+    return "unknown";
+  }
 }
 const sourceCommit = process.env.GITHUB_SHA || localCommit();
 const npmVersion = process.env.npm_config_user_agent?.match(/\bnpm\/([^ ]+)/)?.[1]
