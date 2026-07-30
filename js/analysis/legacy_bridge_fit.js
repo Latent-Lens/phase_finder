@@ -1,6 +1,15 @@
 "use strict";
 
-// Temporary compatibility fit using the project's legacy tapered S-phase bridge.
+// Temporary compatibility fit using the project's legacy tapered S-phase bridge
+// (a G1 + tapered-S + G2 model fit to a linear DNA histogram by projected
+// Levenberg-Marquardt). Wrapped for the model registry by
+// models/legacy_bridge.js; this module holds the numerics. fitCellCycleHistogram()
+// is the entry point: validateHistogramInput()/validateFittingOptions() guard
+// inputs; initializeParameters() builds the starting point (via
+// detectCandidatePeaks(), chooseG1G2Peaks(), estimateSigmaFromPeakWidth(),
+// estimatePeakArea(), and initializeSBridge()); projectParameters() enforces the
+// constraints; computeResiduals(), buildJacobian(), and fitWithLevenbergMarquardt()
+// drive the fit. isArrayLike() and finiteMedian() are small internal helpers.
 
 import { gaussianSmooth } from "./math/gaussian.js";
 import {
@@ -36,6 +45,19 @@ export const DEFAULT_OPTIONS = Object.freeze({
   weightedResiduals: false,
 });
 
+/*
+
+Purpose:
+	Whether a value is a numeric array-like (Array or typed array), excluding
+	strings.
+
+Input:
+	value [any]: the value to test
+
+Output:
+	isArrayLike [boolean]: true for an array/typed array
+
+*/
 function isArrayLike(value) {
   return value != null &&
     typeof value !== "string" &&
@@ -43,12 +65,39 @@ function isArrayLike(value) {
     value.length >= 0;
 }
 
+/*
+
+Purpose:
+	Median of the values, falling back to a default when the median isn't finite
+	(e.g. an empty set).
+
+Input:
+	values [array]: the values
+	fallback [number]: the value to return when the median isn't finite
+
+Output:
+	median [number]: the finite median, or the fallback
+
+*/
 function finiteMedian(values, fallback = 0) {
   const value = median(values);
   return Number.isFinite(value) ? value : fallback;
 }
 
-/** Validate Arrays, typed arrays, and other numeric array-like inputs. */
+/*
+
+Purpose:
+	Validates the histogram inputs: x and y are numeric array-likes of equal length
+	(>= 10 bins), all finite, y nonnegative, and x strictly increasing.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+
+Output:
+	(none) [void]: throws TypeError/RangeError on invalid input
+
+*/
 export function validateHistogramInput(x, y) {
   if (!isArrayLike(x) || !isArrayLike(y)) {
     throw new TypeError("x and y must both be arrays or typed arrays.");
@@ -72,6 +121,19 @@ export function validateHistogramInput(x, y) {
   }
 }
 
+/*
+
+Purpose:
+	Validates the fitting options (smoothing, CV bounds, G2/G1 ratio bounds,
+	iteration/tolerance settings) before a fit begins.
+
+Input:
+	options [object]: the merged fit options
+
+Output:
+	(none) [void]: throws RangeError on an invalid setting
+
+*/
 export function validateFittingOptions(options) {
   if (!(options.smoothSigmaBins > 0) || !Number.isFinite(options.smoothSigmaBins)) {
     throw new RangeError("smoothSigmaBins must be finite and positive.");
@@ -111,7 +173,21 @@ export function validateFittingOptions(options) {
   }
 }
 
-/** Find ordinary local maxima used by Stage 6's internal initializer. */
+/*
+
+Purpose:
+	Finds ordinary local maxima (above a small fraction of the tallest bin) used by
+	the fit's internal initializer, falling back to the single tallest bin when
+	none qualify.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+
+Output:
+	peaks [array]: [{ index, x, height }, ...]
+
+*/
 export function detectCandidatePeaks(x, y) {
   const maximum = maximumValue(y);
   const minimumHeight = Math.max(0, maximum) * 0.03;
@@ -141,7 +217,22 @@ export function detectCandidatePeaks(x, y) {
   return peaks;
 }
 
-/** Select the strongest plausible pair, with the source implementation's fallback. */
+/*
+
+Purpose:
+	Chooses the strongest plausible G1/G2 peak pair (best height with a ratio near
+	the target), with the source implementation's expected-G2 search fallback when
+	no pair qualifies.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	options [object]: the fit options (ratioTarget, ...)
+
+Output:
+	pair [object]: { first, second, detectedRatio }
+
+*/
 export function chooseG1G2Peaks(x, y, options) {
   const peaks = detectCandidatePeaks(x, y);
   let bestPair = null;
@@ -198,7 +289,21 @@ export function chooseG1G2Peaks(x, y, options) {
   return { first, second, detectedRatio: second.x / first.x };
 }
 
-/** Estimate Gaussian sigma from local full width at half maximum. */
+/*
+
+Purpose:
+	Estimates a peak's Gaussian sigma from its local full width at half maximum
+	(floored so adjacent bins give a nonzero width).
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	peakIndex [number]: the peak's bin index
+
+Output:
+	sigma [number]: the estimated Gaussian sigma
+
+*/
 export function estimateSigmaFromPeakWidth(x, y, peakIndex) {
   const peakHeight = y[peakIndex];
   const halfHeight = 0.5 * peakHeight;
@@ -217,7 +322,22 @@ export function estimateSigmaFromPeakWidth(x, y, peakIndex) {
   return Math.max(measuredFwhm, minimumFwhm, Number.EPSILON) / 2.354820045;
 }
 
-/** Estimate baseline-subtracted local peak area by trapezoidal integration. */
+/*
+
+Purpose:
+	Estimates a peak's baseline-subtracted area by trapezoidal integration over
+	+/-2.5 sigma, falling back to a Gaussian area when too few bins are in range.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	mu [number]: the peak center
+	sigma [number]: the peak sigma
+
+Output:
+	area [number]: the estimated (nonnegative) peak area
+
+*/
 export function estimatePeakArea(x, y, mu, sigma) {
   const lowerBound = mu - 2.5 * sigma;
   const upperBound = mu + 2.5 * sigma;
@@ -255,7 +375,21 @@ export function estimatePeakArea(x, y, mu, sigma) {
   return Math.max(area, 0);
 }
 
-/** Initialize a broad nonnegative S bridge from residual histogram height. */
+/*
+
+Purpose:
+	Initializes a broad nonnegative S-phase bridge (three control levels) from the
+	residual histogram height between the G1 and G2 peaks.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	parameters [array]: the current parameter vector (G1/G2 peaks)
+
+Output:
+	levels [array]: the [s0, s1, s2] bridge control levels
+
+*/
 export function initializeSBridge(x, y, parameters) {
   const mu1 = parameters[PARAMETER_INDEX.MU1];
   const ratio = parameters[PARAMETER_INDEX.R];
@@ -294,7 +428,22 @@ export function initializeSBridge(x, y, parameters) {
   ];
 }
 
-/** Full source-faithful initializer: peaks, widths, amplitudes, then S bridge. */
+/*
+
+Purpose:
+	Full source-faithful initializer: smooths the histogram, picks G1/G2 peaks and
+	their widths and amplitudes, then seeds the S bridge -- producing the starting
+	parameter vector for the fit.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	options [object]: the fit options
+
+Output:
+	init [object]: { parameters, detectedPeaks, smoothedHistogram }
+
+*/
 export function initializeParameters(x, y, options) {
   const smoothedHistogram = gaussianSmooth(y, options.smoothSigmaBins);
   const { first, second, detectedRatio } = chooseG1G2Peaks(
@@ -350,7 +499,21 @@ export function initializeParameters(x, y, options) {
   };
 }
 
-/** Project every parameter onto the DJF constraints. */
+/*
+
+Purpose:
+	Projects every parameter onto the model's constraints (peak ordering via the
+	G2/G1 ratio, CV-bounded sigmas, nonnegative amplitudes and S levels).
+
+Input:
+	parameters [array]: the parameter vector to project
+	x [array]: bin centers (for the domain bounds)
+	options [object]: the fit options (ratio/CV bounds, unlockRatio)
+
+Output:
+	projected [array]: the constraint-satisfying parameter vector
+
+*/
 export function projectParameters(parameters, x, options) {
   const projected = Array.from(parameters);
   const xMinimum = x[0];
@@ -395,7 +558,22 @@ export function projectParameters(parameters, x, options) {
   return projected;
 }
 
-/** Residual convention is fitted minus observed. */
+/*
+
+Purpose:
+	Evaluates the model and returns residuals (fitted minus observed), optionally
+	Poisson-weighted, alongside the raw residuals and the evaluated model.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	parameters [array]: the parameter vector
+	options [object]: the fit options (weightedResiduals)
+
+Output:
+	result [object]: { residuals, rawResiduals, model }
+
+*/
 export function computeResiduals(x, y, parameters, options) {
   const model = evaluateBaseModel(x, parameters);
   const rawResiduals = new Array(y.length);
@@ -410,7 +588,25 @@ export function computeResiduals(x, y, parameters, options) {
   return { residuals, rawResiduals, model };
 }
 
-/** Source-signature adapter retained for focused Jacobian tests. */
+/*
+
+Purpose:
+	Source-signature adapter retained for focused Jacobian tests: builds the
+	finite-difference Jacobian of the residuals with respect to the free
+	parameters.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	parameters [array]: the parameter vector
+	baseResiduals [array]: residuals at the current parameters
+	freeParameterIndices [array]: which parameters are free
+	options [object]: the fit options (finiteDifferenceStep)
+
+Output:
+	jacobian [array]: the finite-difference Jacobian
+
+*/
 export function buildJacobian(
   x,
   y,
@@ -429,7 +625,23 @@ export function buildJacobian(
   });
 }
 
-/** Thin Stage 6 adapter around the shared projected LM driver. */
+/*
+
+Purpose:
+	Thin adapter around the shared projected Levenberg-Marquardt driver: defines
+	the free-parameter set (adding the ratio only when unlocked) and wires in the
+	project/residual functions.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	initialParameters [array]: the starting parameter vector
+	options [object]: the fit options
+
+Output:
+	fit [object]: the LM result (parameters, residuals, diagnostics)
+
+*/
 export function fitWithLevenbergMarquardt(x, y, initialParameters, options) {
   const freeIndices = [
     PARAMETER_INDEX.MU1,
@@ -452,7 +664,23 @@ export function fitWithLevenbergMarquardt(x, y, initialParameters, options) {
   });
 }
 
-/** Fit a G1 + S + G2 model to a linear DNA histogram. */
+/*
+
+Purpose:
+	Fits a G1 + S + G2 model to a linear DNA histogram: validates inputs,
+	initializes parameters, runs projected LM, and returns the fitted parameters,
+	component curves, and diagnostics. The registry's entry point into the legacy
+	fit.
+
+Input:
+	x [array]: bin centers
+	y [array]: bin counts
+	userOptions [object]: options overriding DEFAULT_OPTIONS
+
+Output:
+	result [object]: { parameters, curves, diagnostics } (the legacy-shaped result)
+
+*/
 export function fitCellCycleHistogram(x, y, userOptions = {}) {
   validateHistogramInput(x, y);
   const xValues = Array.from(x);
@@ -513,7 +741,7 @@ export function fitCellCycleHistogram(x, y, userOptions = {}) {
   };
 }
 
-// Re-export the source model helpers alongside the stage-specific fit helpers.
+// Re-export the source model helpers alongside this module's fit helpers.
 export {
   PARAMETER_INDEX,
   evaluateBaseModel,

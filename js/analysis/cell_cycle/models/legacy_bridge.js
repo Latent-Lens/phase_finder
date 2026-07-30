@@ -11,17 +11,18 @@
 // can treat a base fit and an extended fit identically -- it just sees
 // components with role "contaminant" alongside the biological ones.
 //
-// phaseFractions and contaminantFractions are intentionally left
-// null/empty here -- those are computed today by cell_cycle_fit_report.js
-// (Stage 8), and folding that into this generic contract is deferred rather
-// than duplicated.
+// Exports legacy_bridge_v1 (the registry model) and
+// normalize_legacy_extended_result (the debris/aggregate refinement, coerced to
+// the same shape). phaseFractions and contaminantFractions are intentionally
+// left null/empty here -- those are computed today by cell_cycle_fit_report.js,
+// and folding that into this generic contract is deferred rather than duplicated.
 //
 // Every normalized result carries the exact original legacy-shaped output in
 // provenance.rawResult. That is not just an audit trail: extendCellCycleFit()
 // and summarizeCellCycleFit() both require a previousFit/fit argument in that
 // exact original shape (previousFit.parameters, previousFit.curves.residuals,
-// etc.) -- callers orchestrating Stage 7/8 must pass provenance.rawResult
-// through, not the normalized result itself.
+// etc.) -- callers orchestrating the contamination fit and report must pass
+// provenance.rawResult through, not the normalized result itself.
 
 import { fitCellCycleHistogram, DEFAULT_OPTIONS } from "../../legacy_bridge_fit.js";
 
@@ -44,7 +45,20 @@ function convergence_reason(diagnostics) {
   return diagnostics.maxIterationsReached ? "max_iterations" : "unknown";
 }
 
-/** Shared §4.5 result-shape construction for both the base and extended fit. */
+/*
+
+Purpose:
+	Shared construction of the generic result shape for both the base and the
+	extended (contamination) fit, so every consumer reads one contract.
+
+Input:
+	spec [object]: { parameters, expectedCounts, components, diagnostics,
+	               converged, extraDiagnostics, rawResult }
+
+Output:
+	result [object]: the normalized, model-neutral fit result
+
+*/
 function build_generic_result({ parameters, expectedCounts, components, diagnostics, converged, extraDiagnostics = {}, rawResult }) {
   return {
     schemaVersion: 1,
@@ -88,8 +102,19 @@ export const legacy_bridge_v1 = {
   capabilities: { contaminants: false, multiplePloidy: false, autoComparison: false },
   defaultConfig: { ...DEFAULT_OPTIONS },
 
-  /** context: { histogram, config }. histogram is a Stage 4-shaped result
-   * (x/y required); config overrides DEFAULT_OPTIONS. */
+  /*
+
+  Purpose:
+  	Runs the legacy histogram fit for the registry.
+
+  Input:
+  	context [object]: { histogram (masked histogram, x/y required), config
+  	                  (overrides DEFAULT_OPTIONS) }
+
+  Output:
+  	rawResult [object]: the legacy-shaped fit result
+
+  */
   fit(context) {
     const { histogram, config = {} } = context;
     return fitCellCycleHistogram(histogram.x, histogram.y, config);
@@ -120,15 +145,24 @@ export const legacy_bridge_v1 = {
   },
 };
 
-/**
- * Normalizes extendCellCycleFit()'s raw output (Stage 7: debris/aggregate
- * extension) into the same generic §4.5 shape as legacy_bridge_v1's base fit,
- * so pipeline_fit_for_series() can read state.extendedFit and state.baseFit
- * uniformly. Not a separate registered model -- Stage 7 refines a Stage 6
- * result rather than offering an alternative model choice, so this is a plain
- * export used directly by the Stage 7 orchestrator, not routed through the
- * registry's fit()/normalizeResult() pair.
- */
+/*
+
+Purpose:
+	Normalizes the debris/aggregate contamination extension's raw output into the
+	same generic shape as legacy_bridge_v1's base fit, so consumers can read
+	state.extendedFit and state.baseFit uniformly. Not a separate registered
+	model -- the contamination fit refines the base fit rather than offering an
+	alternative model, so it's a plain export used directly by the orchestrator,
+	not routed through the registry's fit()/normalizeResult() pair.
+
+Input:
+	rawResult [object]: extendCellCycleFit()'s legacy-shaped output
+
+Output:
+	result [object]: the normalized result, with any aggregate/debris components
+	                 added under role "contaminant"
+
+*/
 export function normalize_legacy_extended_result(rawResult) {
   const { parameters, curves, diagnostics, selectedModel } = rawResult;
   const components = [

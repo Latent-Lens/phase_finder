@@ -1,17 +1,18 @@
 // Shared component builders for the canonical generative cell-cycle models
-// (Dean-Jett here; Dean-Jett-Fox reuses the same G1/G2 peaks and quadratic
-// profile in M4). Pure functions of already-resolved numeric parameters --
-// which parameters are free, bounded, or locked (G2:G1 ratio mode, CV mode)
-// is an initialization/fit_engine concern, not this module's.
+// (Dean-Jett and Dean-Jett-Fox, which reuse the same G1/G2 peaks and quadratic
+// S-phase profile). Pure functions of already-resolved numeric parameters --
+// which parameters are free, bounded, or locked (G2:G1 ratio mode, CV mode) is
+// an initialization/fit-engine concern, not this module's. Exposes the
+// quadratic S-phase profile helpers (quadraticProfile, quadraticProfileMinimum,
+// isQuadraticProfileValid, projectQuadraticProfile), the area-parameterized
+// G1/G2 peaks (peakComponents), and the broadened S-phase integrators
+// (convolvedSPhaseWithProfile and its Dean-Jett specialization convolvedSPhase).
 //
-// Ported/adapted from the reference archive's src/models/shared.js, with the
-// two changes the modeling plan calls out explicitly (see docs/
-// cell_cycle_modeling_plan.md §5.3): the quadratic S-phase profile is used
-// literally (no softplus reparameterization -- an invalid profile is
-// rejected outright via isQuadraticProfileValid, not silently clamped
-// positive), and the S-phase integral runs on independent fixed-node
-// Gauss-Legendre quadrature (quadrature.js) rather than on the histogram's
-// own bin centers as the latent integration grid.
+// Two deliberate choices: the quadratic S-phase profile is used literally (no
+// softplus reparameterization -- an invalid profile is rejected outright, not
+// silently clamped positive), and the S-phase integral runs on independent
+// fixed-node Gauss-Legendre quadrature rather than on the histogram's own bin
+// centers as the latent integration grid.
 
 import { gaussianBinMass, normalCdf } from "../../math/gaussian_bin_mass.js";
 import { gaussLegendre } from "../../math/quadrature.js";
@@ -20,21 +21,41 @@ import { clamp } from "../../math/stats.js";
 const EPS = 1e-12;
 export const DEFAULT_S_QUADRATURE_NODES = 64;
 
-/**
- * Literal normalized quadratic profile q(z) = a + b*z + c*z^2 with
- * a = 1 - b/2 - c/3, so integral(q, 0..1) = 1 for any b, c.
- */
+/*
+
+Purpose:
+	Literal normalized quadratic profile q(z) = a + b·z + c·z^2 with
+	a = 1 - b/2 - c/3, so its integral over [0, 1] is 1 for any b, c.
+
+Input:
+	z [number]: the latent position in [0, 1]
+	b [number]: linear coefficient
+	c [number]: quadratic coefficient
+
+Output:
+	q [number]: the profile value at z
+
+*/
 export function quadraticProfile(z, b, c) {
   const a = 1 - b / 2 - c / 3;
   return a + b * z + c * z * z;
 }
 
-/**
- * The analytic minimum of q(z) on [0, 1]: q is checked at both endpoints and,
- * when c > 0 and the vertex z = -b/(2c) lies inside [0, 1], at the vertex --
- * a downward-opening or monotonic quadratic's minimum is always at an
- * endpoint, so the vertex only needs checking when c > 0 (upward-opening).
- */
+/*
+
+Purpose:
+	Analytic minimum of q(z) on [0, 1]: checked at both endpoints and, when
+	c > 0 and the vertex z = -b/(2c) lies inside (0, 1), at the vertex too (a
+	downward-opening or monotonic quadratic's minimum is always at an endpoint).
+
+Input:
+	b [number]: linear coefficient
+	c [number]: quadratic coefficient
+
+Output:
+	minimum [number]: the smallest value of q on [0, 1]
+
+*/
 export function quadraticProfileMinimum(b, c) {
   const a = 1 - b / 2 - c / 3;
   let minimum = Math.min(a, a + b + c); // q(0), q(1)
@@ -47,41 +68,144 @@ export function quadraticProfileMinimum(b, c) {
   return minimum;
 }
 
-/** Whether q(z) stays nonnegative over [0, 1] -- the plan's explicit rejection rule. */
+/*
+
+Purpose:
+	Whether q(z) stays nonnegative over [0, 1] -- the explicit rejection rule for
+	an invalid S-phase profile.
+
+Input:
+	b [number]: linear coefficient
+	c [number]: quadratic coefficient
+
+Output:
+	valid [boolean]: true when q(z) >= 0 across [0, 1]
+
+*/
 export function isQuadraticProfileValid(b, c) {
   return quadraticProfileMinimum(b, c) >= 0;
 }
 
-/**
- * Projects (b, c) onto the feasible set { isQuadraticProfileValid(b, c) },
- * shrinking both coefficients toward the always-valid flat profile (b=c=0)
- * rather than clamping each independently, since validity is a joint
- * condition on the pair, not two separate bounds. Shared by every model
- * whose latent occupancy profile includes this quadratic term as a
- * component -- Dean-Jett uses it directly as q(z); Dean-Jett-Fox (M4) uses
- * the same projection on the same (b, c) before blending in the wave term,
- * since q_F(z) = (1-w)*q(z) + w*T(z) only stays nonnegative when q(z) itself
- * does (T(z) is a density, already nonnegative by construction).
- */
-export function projectQuadraticProfile(b, c, { maxMagnitude = 8, shrinkFactor = 0.7, maxIterations = 40 } = {}) {
-  let bb = clamp(b, -maxMagnitude, maxMagnitude);
-  let cc = clamp(c, -maxMagnitude, maxMagnitude);
-  let guard = 0;
-  while (!isQuadraticProfileValid(bb, cc) && guard < maxIterations) {
-    bb *= shrinkFactor;
-    cc *= shrinkFactor;
-    guard += 1;
+/*
+
+Purpose:
+	Projects (b, c) exactly along the ray from the always-valid flat profile.
+	For coefficients (t*b,t*c), q_t(z)=1+t*(q(z)-1), so when the proposed
+	minimum m is negative, t=1/(1-m) makes the new minimum exactly zero.
+	Validity is a joint condition on the pair; no arbitrary coefficient bounds,
+	shrink factor, or iterative repair is involved.
+	Shared by every model whose latent profile includes this quadratic term
+	(Dean-Jett uses it as q(z); Dean-Jett-Fox projects the same (b, c) before
+	blending in the wave, since q_F = (1-w)·q + w·T stays nonnegative only when q
+	itself does).
+
+Input:
+	b [number]: linear coefficient
+	c [number]: quadratic coefficient
+Output:
+	pair [array]: a feasible [b, c], unchanged when already feasible
+
+*/
+export function projectQuadraticProfile(b, c) {
+  if (!Number.isFinite(b) || !Number.isFinite(c)) {
+    throw new RangeError("Quadratic profile coefficients must be finite.");
   }
-  return isQuadraticProfileValid(bb, cc) ? [bb, cc] : [0, 0];
+  const minimum = quadraticProfileMinimum(b, c);
+  if (minimum >= 0) return [b, c];
+  // Stay a few ulps inside the boundary so recomputing the vertex cannot turn
+  // mathematical zero into a tiny negative value through roundoff.
+  const scale = (1 - 16 * Number.EPSILON) / (1 - minimum);
+  return [b * scale, c * scale];
 }
 
-/**
- * G1 and G2/M peaks as area-parameterized Gaussians integrated exactly over
- * each histogram bin (plan §5.2). sigma = CV * mean for each peak
- * independently -- equal-CV/locked-ratio behavior is an explicit caller
- * choice (which parameters get tied together before this function is
- * called), never inferred here.
- */
+/*
+
+Purpose:
+	Projects a proposed (mu1, mu2) jointly onto the feasible set defined by both
+	peak regions AND the G2:G1 ratio mode, so the returned pair always satisfies
+	every constraint at once (audit SCI-02). The previous per-model version
+	clamped mu1 and mu2 to their regions independently and then patched mu2 for
+	the ratio, re-clamping it back into the G2 region afterwards -- and that final
+	re-clamp could reintroduce a ratio violation (e.g. G1 [1,10], G2 [18,20],
+	ratio [1.65,2.25], proposed mu1 = 1 left mu2 = 18 at ratio 18). Here mu1 is
+	first confined to the sub-interval of its region for which SOME mu2 in the G2
+	region can satisfy the ratio band, then mu2 is clamped into the intersection
+	of the G2 region and the ratio band about that mu1 -- feasible by construction
+	whenever the regions and ratio are jointly satisfiable (assert_ratio_feasible
+	rejects the empty case before fitting; the fallbacks here only guard against a
+	caller that skipped that check).
+
+	This is a projection for FEASIBILITY, not the exact Euclidean nearest point:
+	it prioritises landing inside every constraint, then stays as close to the
+	proposal as each 1-D clamp allows.
+
+Input:
+	g1Mean [number]: proposed mu1
+	g2Mean [number]: proposed mu2
+	regions [object]: { g1:{left,right}, g2:{left,right} } accepted peak regions
+	config [object]: { ratioMode: "free"|"bounded"|"locked", fitRatioRange,
+	                  lockedRatio }
+
+Output:
+	means [object]: { g1Mean, g2Mean } guaranteed to satisfy the active bounds
+
+*/
+export function projectMeansToFeasible(g1Mean, g2Mean, regions, config) {
+  const g1L = regions.g1.left;
+  const g1R = regions.g1.right;
+  const g2L = regions.g2.left;
+  const g2R = regions.g2.right;
+
+  if (config.ratioMode === "locked") {
+    const ratio = config.lockedRatio;
+    // mu1 must place BOTH mu1 and ratio*mu1 inside their regions.
+    const lo = Math.max(g1L, g2L / ratio);
+    const hi = Math.min(g1R, g2R / ratio);
+    if (lo > hi) throw new Error(`The locked G2:G1 ratio (${ratio}) is infeasible for the current peak regions.`);
+    const mu1 = clamp(g1Mean, lo, hi);
+    return { g1Mean: mu1, g2Mean: ratio * mu1 };
+  }
+
+  if (config.ratioMode === "bounded") {
+    const [ratioMin, ratioMax] = config.fitRatioRange;
+    // mu1 values for which some mu2 in [g2L, g2R] satisfies the ratio band:
+    //   ratioMin*mu1 <= g2R  and  ratioMax*mu1 >= g2L
+    //   => mu1 in [g2L/ratioMax, g2R/ratioMin]
+    const mu1Lo = Math.max(g1L, g2L / ratioMax);
+    const mu1Hi = Math.min(g1R, g2R / ratioMin);
+    if (mu1Lo > mu1Hi) {
+      throw new Error(`No G2:G1 ratio in [${ratioMin}, ${ratioMax}] is achievable from the current peak regions.`);
+    }
+    const mu1 = clamp(g1Mean, mu1Lo, mu1Hi);
+    // Given that mu1, the feasible mu2 interval is the region ∩ the ratio band.
+    // Nonempty whenever mu1 came from the interval above.
+    const mu2Lo = Math.max(g2L, ratioMin * mu1);
+    const mu2Hi = Math.min(g2R, ratioMax * mu1);
+    const mu2 = clamp(g2Mean, mu2Lo, mu2Hi);
+    return { g1Mean: mu1, g2Mean: mu2 };
+  }
+
+  // free: each mean clamped to its own region only.
+  return { g1Mean: clamp(g1Mean, g1L, g1R), g2Mean: clamp(g2Mean, g2L, g2R) };
+}
+
+/*
+
+Purpose:
+	Builds the G1 and G2/M peaks as area-parameterized Gaussians integrated
+	exactly over each histogram bin, with sigma = CV·mean for each peak
+	independently. Equal-CV/locked-ratio behavior is a caller choice (which
+	parameters are tied together before calling), never inferred here.
+
+Input:
+	edges [array]: histogram bin edges
+	parameters [object]: { g1Area, g1Mean, g1CV, g2Area, g2Mean, g2CV }
+
+Output:
+	components [object]: { g1Mean, g2Mean, g1Sigma, g2Sigma, g1, g2 } where g1/g2
+	                     are the per-bin count arrays
+
+*/
 export function peakComponents(edges, { g1Area, g1Mean, g1CV, g2Area, g2Mean, g2CV }) {
   const g1Sigma = Math.max(EPS, Math.abs(g1CV * g1Mean));
   const g2Sigma = Math.max(EPS, Math.abs(g2CV * g2Mean));
@@ -95,27 +219,26 @@ export function peakComponents(edges, { g1Area, g1Mean, g1CV, g2Area, g2Mean, g2
   };
 }
 
-/**
- * Broadened S-phase count per bin, generalized over the latent z-occupancy
- * profile (plan §5.3's structure, generic over which profile function fills
- * it): every latent DNA position u(z) = g1Mean + z*(g2Mean-g1Mean), z in
- * [0,1], carries profileFn(z)*dz of occupancy mass and its own CV-scaled
- * Gaussian broadening; the total per-bin count is the sum over quadrature
- * nodes of each node's broadened contribution. Evaluates each node's CDF at
- * every bin edge once (not twice per bin) by sweeping edges left to right
- * and reusing the previous edge's CDF value, the same trick gaussianBinMass
- * uses internally.
- *
- * Dean-Jett's convolvedSPhase() below is this function specialized to
- * profileFn = z => quadraticProfile(z, b, c). Dean-Jett-Fox (M4) is the
- * other specialization, with profileFn = z => (1-w)*quadraticProfile(z,b,c)
- * + w*waveProfile(z, ...) -- see models/dean_jett_fox.js.
- *
- * Returns an all-zero array (rather than throwing) for a non-positive area
- * or a non-positive g1-to-g2 span -- those are caller/optimizer-side
- * validation failures, not this integrator's concern. profileFn's own
- * validity (e.g. isQuadraticProfileValid) is the caller's responsibility.
- */
+/*
+
+Purpose:
+	Broadened S-phase count per bin, generic over the latent z-occupancy profile.
+	Every latent DNA position u(z) = g1Mean + z·(g2Mean-g1Mean), z in [0, 1],
+	carries profileFn(z)·dz of occupancy mass and its own CV-scaled Gaussian
+	broadening; the per-bin count is the quadrature sum of each node's broadened
+	contribution. Evaluates each node's CDF at every bin edge once by sweeping
+	edges left to right and reusing the previous edge's value.
+
+Input:
+	edges [array]: histogram bin edges
+	parameters [object]: { sArea, g1Mean, g2Mean, broadeningCV, profileFn }
+	quadratureNodes [number]: Gauss-Legendre node count
+
+Output:
+	counts [array]: per-bin S-phase counts (all zero for a non-positive area or
+	                g1->g2 span; profileFn's own validity is the caller's concern)
+
+*/
 export function convolvedSPhaseWithProfile(
   edges,
   { sArea, g1Mean, g2Mean, broadeningCV, profileFn },
@@ -147,12 +270,22 @@ export function convolvedSPhaseWithProfile(
   return out;
 }
 
-/**
- * Dean-Jett S phase (plan §5.3): convolvedSPhaseWithProfile() specialized to
- * the quadratic occupancy profile q(z). Returns an all-zero array for an
- * invalid quadratic profile in addition to the generic non-positive-area/
- * span cases -- see convolvedSPhaseWithProfile()'s own doc for those.
- */
+/*
+
+Purpose:
+	Dean-Jett S phase: convolvedSPhaseWithProfile specialized to the quadratic
+	occupancy profile q(z). Returns all zeros for an invalid quadratic profile in
+	addition to the generic non-positive-area/span cases.
+
+Input:
+	edges [array]: histogram bin edges
+	parameters [object]: { sArea, g1Mean, g2Mean, broadeningCV, b, c }
+	quadratureNodes [number]: Gauss-Legendre node count
+
+Output:
+	counts [array]: per-bin S-phase counts
+
+*/
 export function convolvedSPhase(
   edges,
   { sArea, g1Mean, g2Mean, broadeningCV, b, c },
