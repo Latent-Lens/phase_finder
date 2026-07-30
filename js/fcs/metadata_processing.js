@@ -31,7 +31,7 @@ export async function read_fcs_header(file) {
   }
 
   const text_buffer = await file.slice(header.text_begin, header.text_end + 1).arrayBuffer();
-  const summary = FCSParser.parse_fcs_header_from_segments(header_buffer, text_buffer);
+  const summary = FCSParser.parse_fcs_header_from_segments(header_buffer, text_buffer, file.size);
 
   return {
     id: create_id(),
