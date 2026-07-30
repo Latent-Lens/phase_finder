@@ -181,6 +181,11 @@ export function sort_indicator(field) {
   return `<span class="sort_indicator"><span class="${asc_class}" data-sort-dir="asc" title="${sort_ascending_title}">▲</span><span class="${desc_class}" data-sort-dir="desc" title="${sort_descending_title}">▼</span></span>`;
 }
 
+function sort_aria(field) {
+  if (sort_state.field !== field) return "none";
+  return sort_state.direction === "desc" ? "descending" : "ascending";
+}
+
 /*
 
 Purpose:
@@ -201,12 +206,13 @@ export function filter_control(column) {
     a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
   );
   const is_open = open_filter_field === column.field;
+  const menu_id = `filter_menu_${column.field.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
   const options = unique_column_values(column.field)
     .map(
       (value) => `
             <label class="checkbox_option">
-              <input type="checkbox" class="th_filter_option" data-filter-field="${column.field}" value="${escape_html(value)}"${selected.has(value) ? " checked" : ""} />
+              <input type="checkbox" class="th_filter_option" data-filter-field="${column.field}" data-focus-key="filter-option:${escape_html(column.field)}:${escape_html(value)}" value="${escape_html(value)}"${selected.has(value) ? " checked" : ""} />
               <span title="${escape_html(value)}">${escape_html(value)}</span>
             </label>`,
     )
@@ -214,8 +220,8 @@ export function filter_control(column) {
 
   return `
           <div class="th_filter multi_select">
-            <button type="button" class="th_filter_toggle multi_select_toggle" data-filter-field="${column.field}" aria-expanded="${is_open}" title="${escape_html(Tooltips.text("filterBy", column.label))}">${escape_html(summary.join(", "))}</button>
-            <div class="multi_select_menu" data-filter-menu="${column.field}"${is_open ? "" : " hidden"}>${options}</div>
+            <button type="button" class="th_filter_toggle multi_select_toggle" data-filter-field="${column.field}" data-focus-key="filter:${escape_html(column.field)}" aria-label="Filter ${escape_html(column.label)}" aria-controls="${menu_id}" aria-haspopup="true" aria-expanded="${is_open}" title="${escape_html(Tooltips.text("filterBy", column.label))}">${escape_html(summary.join(", "))}</button>
+            <div id="${menu_id}" class="multi_select_menu" data-filter-menu="${column.field}" role="group" aria-label="Filter ${escape_html(column.label)} values"${is_open ? "" : " hidden"}>${options}</div>
           </div>`;
 }
 
@@ -238,7 +244,7 @@ export function header_label_control(column) {
             >OK</button>
           </div>`;
   }
-  return `<button type="button" class="th_sort" data-sort-field="${column.field}">${escape_html(column.label)}${sort_indicator(column.field)}</button>`;
+  return `<button type="button" class="th_sort" data-sort-field="${column.field}" data-focus-key="sort:${escape_html(column.field)}">${escape_html(column.label)}${sort_indicator(column.field)}</button>`;
 }
 
 /*
@@ -258,7 +264,7 @@ export function header_cell(column) {
   const filter = column.filterable ? filter_control(column) : "";
 
   return `
-        <th${column_key_attrs(column)}>
+        <th aria-sort="${sort_aria(column.field)}"${column_key_attrs(column)}>
           <div class="th_inner">
             ${header_label_control(column)}
             ${filter}
@@ -287,7 +293,7 @@ export function column_key_attrs(column) {
 }
 
 export function header_label_cell(column) {
-  return `<th class="stats_label_th"${column_key_attrs(column)}>${header_label_control(column)}</th>`;
+  return `<th class="stats_label_th" aria-sort="${sort_aria(column.field)}"${column_key_attrs(column)}>${header_label_control(column)}</th>`;
 }
 
 /*

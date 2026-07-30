@@ -24,6 +24,7 @@ import {
   progress_detail,
   channel_select,
   collapsed_channel_select,
+  channel_eligibility_status,
   channel_aux_panel,
   aux_height_select,
   aux_width_select,
@@ -38,7 +39,8 @@ import {
 } from "./dom.js";
 import { escape_html } from "../util/html.js";
 import { get_file_map, get_file_table } from "../state/app_state.js";
-import { parameter_map } from "../io/parameter_map.js";
+import { parameter_map, find_param_index } from "../io/parameter_map.js";
+import { FCSParser } from "../fcs/parser.js";
 import {
   find_auxiliary_indexes_for_file,
   find_pipeline_channel_indexes,
@@ -101,6 +103,33 @@ export function get_selected_channels() {
   };
 }
 
+export function update_channel_eligibility_status() {
+  if (!channel_eligibility_status) return;
+  const selected = channel_select.value;
+  if (!selected) {
+    channel_eligibility_status.hidden = true;
+    channel_eligibility_status.textContent = "";
+    return;
+  }
+
+  const results = [...get_file_map().values()].map((entry) => {
+    try {
+      return FCSParser.channel_eligibility(entry.summary, find_param_index(parameter_map(entry.summary), selected));
+    } catch (_) {
+      return { eligible: false, message: `Channel ${selected} is missing from ${entry.name}.` };
+    }
+  });
+  const compatible = results.filter((result) => result.eligible).length;
+  const firstFailure = results.find((result) => !result.eligible);
+  channel_eligibility_status.hidden = results.length === 0;
+  channel_eligibility_status.classList.toggle("error", Boolean(firstFailure));
+  channel_eligibility_status.textContent = firstFailure
+    ? `${compatible}/${results.length} files compatible · ${firstFailure.message}`
+    : `Linear · no compensation declared · ${results.length}/${results.length} files compatible`;
+  channel_eligibility_status.title = results.map((result) => result.message).join("\n");
+  collapsed_channel_select.title = channel_eligibility_status.textContent;
+}
+
 // Companion selects, in panel order, paired with the auto-detected label to
 // pre-select for each.
 const AUX_SELECTS = [
@@ -152,6 +181,7 @@ export function populate_companion_channel_controls() {
 
   const dna_area = channel_select.value;
   const columns = unique_columns();
+  update_channel_eligibility_status();
   if (!dna_area || columns.length === 0) {
     channel_aux_panel.hidden = true;
     if (status_el) status_el.hidden = false;
@@ -181,8 +211,18 @@ Output:
 	(none) [void]: updates the #status element
 
 */
-export function set_status(message, is_error = false) {
+function append_help_link(element, help_href) {
+  if (!help_href) return;
+  element.append(" ");
+  const link = document.createElement("a");
+  link.href = help_href;
+  link.textContent = "Supported FCS input";
+  element.append(link);
+}
+
+export function set_status(message, is_error = false, help_href = null) {
   status_el.textContent = message;
+  append_help_link(status_el, help_href);
   status_el.classList.toggle("error", is_error);
 }
 
@@ -199,10 +239,33 @@ Output:
 	(none) [void]: updates the status bar
 
 */
-export function set_status_bar(message, is_error = false) {
+export function set_status_bar(message, is_error = false, help_href = null, operation_id = null, error = null) {
+  if (operation_id != null && operation_id !== progress_operation) return false;
+  const level = is_error === true ? "error" : is_error === "warning" ? "warning" : "status";
   status_bar_message.textContent = message;
-  status_bar.classList.toggle("error", is_error);
+  append_help_link(status_bar_message, help_href);
+  status_bar.classList.toggle("error", level === "error");
+  status_bar.classList.toggle("warning", level === "warning");
+  if (level !== "status") {
+    const alert = document.querySelector("#status_bar_alert");
+    const details = document.querySelector("#status_diagnostics");
+    const log = document.querySelector("#status_diagnostics_log");
+    if (alert && level === "error") alert.textContent = message;
+    if (details && log) {
+      details.hidden = false;
+      const diagnostic = error instanceof AggregateError
+        ? error.errors.map((item) => item?.stack || item?.message || String(item)).join("\n---\n")
+        : error?.stack || error?.message || String(error || message);
+      log.textContent += `${log.textContent ? "\n" : ""}[${new Date().toISOString()}] ${level.toUpperCase()}: ${message}\n${diagnostic}`;
+    }
+  }
+  return true;
 }
+
+let progress_operation = 0;
+let progress_hide_timer = null;
+let progress_inert_snapshot = null;
+let progress_return_focus = null;
 
 /*
 
@@ -277,9 +340,16 @@ Output:
 
 */
 export function show_progress(label = "Loading FCS Metadata") {
+  progress_operation += 1;
+  window.clearTimeout(progress_hide_timer);
+  if (!progress_inert_snapshot) progress_return_focus = document.activeElement;
+  progress_inert_snapshot ??= new Map([...document.body.children].map((child) => [child, child.inert]));
+  [...document.body.children].forEach((child) => { child.inert = !child.contains(progress_overlay); });
   progress_overlay.hidden = false;
   progress_overlay.setAttribute("aria-busy", "true");
   update_progress(0, label, "Preparing files...");
+  progress_overlay.querySelector(".progress_card")?.focus();
+  return progress_operation;
 }
 
 /*
@@ -298,14 +368,17 @@ Output:
 	(none) [void]: updates the progress overlay
 
 */
-export function update_progress(percent, label = "Loading FCS Metadata", detail = "", filename = "") {
+export function update_progress(percent, label = "Loading FCS Metadata", detail = "", filename = "", operation_id = progress_operation) {
+  if (operation_id !== progress_operation) return false;
   const bounded_percent = Math.max(0, Math.min(100, percent));
   progress_fill.style.width = `${bounded_percent}%`;
   progress_label.textContent = label;
   progress_percent.textContent = `${Math.round(bounded_percent)}%`;
+  progress_overlay.querySelector("[role='progressbar']")?.setAttribute("aria-valuenow", String(Math.round(bounded_percent)));
   progress_detail.innerHTML = filename
     ? `${escape_html(detail)}<br><strong>${escape_html(filename)}</strong>`
     : escape_html(detail);
+  return true;
 }
 
 /*
@@ -320,11 +393,67 @@ Output:
 	(none) [void]: hides the progress overlay after the delay
 
 */
-export function hide_progress(delay = 500) {
-  window.setTimeout(() => {
+export function hide_progress(delay = 500, operation_id = progress_operation) {
+  hide_progress_cancel();
+  window.clearTimeout(progress_hide_timer);
+  progress_hide_timer = window.setTimeout(() => {
+    if (operation_id !== progress_operation) return;
     progress_overlay.hidden = true;
     progress_overlay.setAttribute("aria-busy", "false");
+    progress_inert_snapshot?.forEach((value, element) => { element.inert = value; });
+    progress_inert_snapshot = null;
+    if (progress_return_focus?.isConnected && !progress_return_focus.disabled) progress_return_focus.focus();
+    progress_return_focus = null;
   }, delay);
+}
+
+export function current_progress_operation() {
+  return progress_operation;
+}
+
+/*
+
+Purpose:
+	Shows a Cancel button on the progress overlay and wires it to `handler`, so a
+	long cancellable operation (e.g. the CLOCCS worker fit) can be interrupted.
+
+Input:
+	handler [function]: called once when the user clicks Cancel
+
+Output:
+	(none) [void]
+
+*/
+export function show_progress_cancel(handler) {
+  const button = document.querySelector("#progress_cancel");
+  if (!button) return;
+  button.hidden = false;
+  button.disabled = false;
+  button.textContent = "Cancel";
+  button.onclick = () => {
+    button.disabled = true;
+    button.textContent = "Cancelling…";
+    handler?.();
+  };
+}
+
+/*
+
+Purpose:
+	Hides and unwires the progress overlay's Cancel button.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]
+
+*/
+export function hide_progress_cancel() {
+  const button = document.querySelector("#progress_cancel");
+  if (!button) return;
+  button.hidden = true;
+  button.onclick = null;
 }
 
 /*

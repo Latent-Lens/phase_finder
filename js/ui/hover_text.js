@@ -38,8 +38,10 @@ const HoverText = Object.freeze({
   filterBy(label) {
     return "Filter by " + label;
   },
-  qcStructural: `1. Structural QC: Before other gates, rejects events with non-finite (NaN or infinite) or negative readings in loaded DNA-A, DNA-H, DNA-W, FSC-A, SSC-A, or Time channels. It also rejects saturated DNA readings at or above the configured PnR limit (DNA-A/H/W only); zero remains valid, and no upper-PnR limit is applied to FSC-A, SSC-A, or Time. Scatter saturation is left to the Cell gate, since side/forward scatter maxes out for the largest cells and a ceiling here would preferentially discard the G2/M population.`,
-  qcTime: `2. Time QC: Unwraps timer rollovers, splits unrelated backward jumps into acquisition segments, and forms roughly 500-event bins within each segment. For event rate and DNA-A, FSC-A, and SSC-A medians and IQRs, it calculates z = (value − across-bin median) / (1.4826 · MAD) and, by default, rejects a bin when any available |z| > 4. When MAD is effectively zero, matches score 0 and differences are treated as infinite outliers.`,
+  qcStructural: `1. Structural QC: Asks about the DNA saturation-ceiling settings when you turn it on. Before other gates, rejects events with non-finite (NaN or infinite) or negative readings in loaded DNA-A, DNA-H, DNA-W, FSC-A, SSC-A, or Time channels. It also rejects saturated DNA readings at or above the configured PnR limit (DNA-A/H/W only); zero remains valid, and no upper-PnR limit is applied to FSC-A, SSC-A, or Time. Scatter saturation is left to the Cell gate, since side/forward scatter maxes out for the largest cells and a ceiling here would preferentially discard the G2/M population.`,
+  qcTime: `2. Time QC: Detects unstable acquisition periods, and asks which method to use when you turn it on. Robust summary QC (the original method) unwraps timer rollovers, splits backward jumps into acquisition segments, forms roughly 500-event bins, and rejects a bin when the robust z-score of its event rate or its DNA-A/FSC-A/SSC-A median or IQR exceeds 4. Peak-tracking QC instead follows the major density peaks of those channels across overlapping bins and removes regions where the peaks shift abnormally.`,
+  timeQcMethodEdit: `Change which Time QC method runs (Robust summary or Peak-tracking) and its settings, then re-run Time QC on every plotted sample.`,
+  structuralQcEdit: `Enable/disable or override the DNA-A/H/W saturation ceiling Structural QC applies, then re-run it on every plotted sample.`,
   qcCellGate: `3. Cell gate: Fits a two-component, full-covariance Gaussian mixture to FSC-A and SSC-A, then selects a substantial component with the highest mean FSC-A (using SSC-A to break ties). By default it keeps events with squared Mahalanobis distance d² = (x − μ)ᵀΣ⁻¹(x − μ) ≤ 5.991, the nominal 95% ellipse for a 2D Gaussian. The ellipse can be adjusted manually; excluded events are off-cloud candidates, not proven debris.`,
   qcSingletGate: `4. Singlet gate: Fits an iteratively robust PCA ridge to raw DNA-A versus DNA-H, falling back to DNA-W. For signed orthogonal distances d, it keeps |d − median(d)| ≤ 5 · MAD(d) by default. Off-ridge events are doublet/aggregate candidates; the gate does not prove their biological identity.`,
   qcRunAll: `Apply all four pre-modeling QC filters (Structural, Time, Cell gate, Singlet gate). Click again to clear them.`,
@@ -47,7 +49,7 @@ const HoverText = Object.freeze({
   resetPeakRegions: `Discard any manual edits and restore the detector's automatic G1/G2 region proposal.`,
   acceptPeakRegions: `Mark the current G1/G2 regions as reviewed, without changing them.`,
   applyRegionsToAll: `Copy this sample's exact G1/G2 regions to every plotted sample and fit them all with the selected model. Only valid if the samples share the same DNA-content axis/calibration; each sample can still be adjusted afterward.`,
-  plotToolCamera: `Download the plot as an image — SVG or PDF (vector) or PNG/JPEG (rasterized, 1×–4×).`,
+  plotToolCamera: `Download the plot as SVG, PDF, PNG, or JPEG, or download a printable HTML analysis report containing the plot and metadata/results table.`,
   plotToolPan: `Pan (default): drag anywhere in the plot to move it, hold Shift and drag to zoom into a rectangle. Panning and zooming only change the view — they never re-run peak detection or a fit.`,
   plotToolZoomIn: `Zoom in: click the plot to zoom in about the cursor, or drag a rectangle to zoom into it (hold Shift to pan instead). The mouse wheel zooms in every mode.`,
   plotToolZoomOut: `Zoom out: click the plot to zoom out about the cursor, or drag a rectangle to zoom into it (hold Shift to pan instead). The mouse wheel zooms in every mode.`,
@@ -133,9 +135,12 @@ export function init_tooltips() {
     let tx, ty, placement, arrow_pct;
 
     if (in_sidebar) {
-      // Sidebar tooltips open to the right of the anchor.
-      placement = 'right';
-      tx = ar.right + GAP;
+      // Prefer the inline-end side, then flip when it would leave the viewport.
+      const prefer_left = getComputedStyle(document.documentElement).direction === 'rtl';
+      const right_fits = ar.right + GAP + tw <= vw - VP_PAD;
+      placement = (prefer_left || !right_fits) ? 'left' : 'right';
+      tx = placement === 'right' ? ar.right + GAP : ar.left - tw - GAP;
+      tx = Math.max(VP_PAD, Math.min(tx, vw - tw - VP_PAD));
       ty = ar.top + ar.height / 2 - th / 2;
       // Clamp vertically.
       ty = Math.max(VP_PAD, Math.min(ty, vh - th - VP_PAD));
@@ -162,13 +167,17 @@ export function init_tooltips() {
     tip.style.setProperty('--pf-arrow-offset', `${arrow_pct.toFixed(1)}%`);
     tip.dataset.placement = placement;
     tip.classList.add('pf_tip_visible');
+    tip.setAttribute('aria-hidden', 'false');
+    anchor.setAttribute('aria-describedby', tip.id);
   }
 
   function hide() {
+    if (active?.getAttribute('aria-describedby') === tip.id) active.removeAttribute('aria-describedby');
     clearTimeout(timer);
     timer  = null;
     active = null;
     tip.classList.remove('pf_tip_visible');
+    tip.setAttribute('aria-hidden', 'true');
   }
 
   // ── Mouse events (delegated) ──────────────────────────────────────────────
@@ -200,6 +209,19 @@ export function init_tooltips() {
 
   document.addEventListener('focusout', (e) => {
     if (e.target.closest('.quick_tooltip') === active) hide();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && active) hide();
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') return;
+    const anchor = event.target.closest('.quick_tooltip');
+    if (!anchor || !anchor.dataset.tooltip) return hide();
+    hide();
+    active = anchor;
+    show(anchor);
   });
 
   // ── Hide on scroll / resize so the tooltip doesn't go stale ─────────────
