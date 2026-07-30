@@ -33,6 +33,11 @@
 //      in a clearly worse local optimum
 //
 // Fox is retained only when DJF itself converged AND all five hold.
+//
+// Exports: selectAutomaticModel (the pure comparison policy over two fitted,
+// normalized results) and auto_dj_djf (the registry model that fits both then
+// defers to it in normalizeResult). Internal helpers residual_structure_improved,
+// wave_not_on_bounds, and restarts_agree_on_wave implement criteria 2, 4, and 5.
 // ============================================================================
 
 import { dean_jett } from "./models/dean_jett.js";
@@ -43,42 +48,99 @@ export const DEFAULT_SELECTION_OPTIONS = Object.freeze({
   minimumWaveAreaFraction: 0.01,
   restartWaveTolerance: 0.05, // absolute spread in fitted w across competitive restarts
   nearBestDevianceMargin: 0.02, // a restart counts as "competitive" within 2% relative deviance of the best
+  minimumLag1Improvement: 0.05,
 });
 
-/** Criterion 2: does DJF's lag-1 residual autocorrelation drop in magnitude
- * relative to DJ's? (see the module doc for why this, not a plan-given
- * formula, operationalizes "residual structure materially improves"). */
-function residual_structure_improved(djDiagnostics, djfDiagnostics) {
+/*
+
+Purpose:
+	Criterion 2: does Dean-Jett-Fox's lag-1 residual autocorrelation drop in
+	magnitude relative to Dean-Jett's? (See the module header for why this, not a
+	fixed formula, operationalizes "residual structure materially improves".)
+
+Input:
+	djDiagnostics [object]: the Dean-Jett fit's diagnostics bundle
+	djfDiagnostics [object]: the Dean-Jett-Fox fit's diagnostics bundle
+
+Output:
+	improved [boolean]: true when Fox's lag-1 autocorrelation is smaller
+
+*/
+function residual_structure_improved(djDiagnostics, djfDiagnostics, minimumImprovement) {
   const djLag1 = Math.abs(djDiagnostics.lag1Autocorrelation);
   const djfLag1 = Math.abs(djfDiagnostics.lag1Autocorrelation);
-  if (!Number.isFinite(djfLag1)) return false;
-  return !Number.isFinite(djLag1) || djfLag1 < djLag1;
+  const improvement = djLag1 - djfLag1;
+  return {
+    pass: Number.isFinite(improvement) && improvement >= minimumImprovement,
+    djLag1,
+    djfLag1,
+    improvement,
+  };
 }
 
-/** Criterion 4: true when none of DJF's boundary warnings concern a wave parameter. */
+/*
+
+Purpose:
+	Criterion 4: true when none of Dean-Jett-Fox's boundary warnings concern a
+	wave parameter (a wave sitting on its bound is treated as not real).
+
+Input:
+	djfResult [object]: the normalized Dean-Jett-Fox result (reads .warnings)
+
+Output:
+	interior [boolean]: true when no wave parameter is at a bound
+
+*/
 function wave_not_on_bounds(djfResult) {
   const waveParameters = new Set(["w", "waveMean", "waveSigma"]);
-  return !djfResult.warnings.some(
+  return !(djfResult.warnings ?? []).some(
     (warning) =>
       (warning.code === "parameter_at_lower_bound" || warning.code === "parameter_at_upper_bound") &&
       waveParameters.has(warning.parameter),
   );
 }
 
-/**
- * Criterion 5: spread of w across restarts that are actually *competitive*
- * with the winning fit must stay within tolerance. "Competitive" means
- * converged with deviance within `nearBestDevianceMargin` of the best
- * converged restart's deviance -- a restart that converged to a clearly
- * worse local optimum is already excluded from winning by fit_engine.js's
- * own best-by-deviance selection, so it shouldn't count as "disagreement"
- * here either just because it also happened to satisfy the generic LM
- * convergence tolerance. Falls back to every converged restart (or every
- * restart at all) when there are too few competitive ones or deviance data
- * is missing, so a hand-built fixture that omits `deviance` degrades to the
- * simpler "did every converged restart agree" check rather than silently
- * passing.
- */
+export function candidateValidity(result) {
+  const reasons = [];
+  if (result?.validForReporting === false) reasons.push("result is not valid for reporting");
+  if (result?.converged !== true) reasons.push(`did not converge (${result?.convergenceReason ?? "unknown reason"})`);
+  for (const key of ["deviance", "bic", "reducedDeviance"]) {
+    if (!Number.isFinite(result?.diagnostics?.[key])) reasons.push(`missing finite ${key}`);
+  }
+  for (const [key, range] of Object.entries(result?.bounds ?? {})) {
+    const value = result?.parameters?.[key];
+    if (!Number.isFinite(value) || value < range[0] - 1e-9 || value > range[1] + 1e-9) reasons.push(`${key} violates its bound`);
+  }
+  const fractions = Object.values(result?.phaseFractions ?? {});
+  if (fractions.length !== 3 || fractions.some((value) => !Number.isFinite(value) || value < 0) || Math.abs(fractions.reduce((a, b) => a + b, 0) - 1) > 1e-6) {
+    reasons.push("phase fractions are invalid");
+  }
+  if ((result?.warnings ?? []).some((warning) => warning.code === "component_tail_mass_outside_domain")) reasons.push("component tail mass exceeds the accepted limit");
+  return { valid: reasons.length === 0, reasons };
+}
+
+/*
+
+Purpose:
+	Criterion 5: the spread of fitted w across the restarts that are actually
+	competitive with the winning fit must stay within tolerance. "Competitive"
+	means converged with deviance within nearBestDevianceMargin of the best
+	converged restart -- a restart that landed in a clearly worse local optimum
+	is already excluded from winning, so it shouldn't count as disagreement here
+	either. Falls back to every converged restart (or every restart) when there
+	are too few competitive ones or deviance data is missing, so a fixture that
+	omits deviance degrades to a simpler "did every converged restart agree".
+
+Input:
+	djfResult [object]: the normalized Dean-Jett-Fox result (reads
+	                    diagnostics.restarts)
+	tolerance [number]: allowed absolute spread in fitted w
+	nearBestDevianceMargin [number]: relative deviance margin defining "competitive"
+
+Output:
+	agree [boolean]: true when the competitive restarts agree on w within tolerance
+
+*/
 function restarts_agree_on_wave(djfResult, tolerance, nearBestDevianceMargin) {
   const restarts = djfResult.diagnostics.restarts ?? [];
   const converged = restarts.filter((restart) => restart.converged);
@@ -93,16 +155,75 @@ function restarts_agree_on_wave(djfResult, tolerance, nearBestDevianceMargin) {
   return Math.max(...values) - Math.min(...values) <= tolerance;
 }
 
-/**
- * Compares two already-fit, already-normalized results (dean_jett's and
- * dean_jett_fox's, both plan §4.5-shaped) and applies plan §5.4's selection
- * criteria. Pure function of its two results -- does no fitting itself, so
- * it is independently testable against hand-built diagnostics fixtures as
- * well as real fits.
- */
+/*
+
+Purpose:
+	Compares two already-fit, already-normalized results (Dean-Jett's and
+	Dean-Jett-Fox's) and applies the selection criteria, keeping Fox only when
+	DJF converged and all five criteria hold. A pure function of its two inputs
+	-- it does no fitting itself, so it is independently testable against
+	hand-built diagnostics fixtures as well as real fits.
+
+Input:
+	spec [object]: { djResult, djfResult, options } where options overrides
+	               DEFAULT_SELECTION_OPTIONS (thresholds/tolerances)
+
+Output:
+	selection [object]: { selectedModelId, selectedResult, reasons (per-criterion
+	                     pass/detail), comparison (deltaBic, waveAreaFraction, ...) }
+
+*/
 export function selectAutomaticModel({ djResult, djfResult, options = {} }) {
   const config = { ...DEFAULT_SELECTION_OPTIONS, ...options };
   const reasons = [];
+
+  const djValidity = candidateValidity(djResult);
+  const djfValidity = candidateValidity(djfResult);
+  reasons.push({ criterion: "dj_valid", pass: djValidity.valid, detail: djValidity.valid ? "Dean-Jett is valid." : djValidity.reasons.join("; ") });
+  reasons.push({ criterion: "djf_valid", pass: djfValidity.valid, detail: djfValidity.valid ? "Dean-Jett-Fox is valid." : djfValidity.reasons.join("; ") });
+
+  if (!djValidity.valid && !djfValidity.valid) {
+    return {
+      selectedModelId: null,
+      selectedResult: {
+        schemaVersion: 1,
+        modelId: "auto_dj_djf",
+        modelLabel: "Automatic — No valid model",
+        converged: false,
+        convergenceReason: "no_valid_model",
+        errorCode: "no_valid_model",
+        phaseFractions: null,
+        warnings: [{ code: "no_valid_model", severity: "error", message: `No valid automatic model. Dean-Jett: ${djValidity.reasons.join("; ")}. Dean-Jett-Fox: ${djfValidity.reasons.join("; ")}.` }],
+      },
+      reasons,
+      comparison: { policy: "no_valid_model", deltaBic: null, waveAreaFraction: null },
+    };
+  }
+
+  if (djValidity.valid !== djfValidity.valid) {
+    const selectedResult = djValidity.valid ? djResult : djfResult;
+    return {
+      selectedModelId: selectedResult.modelId,
+      selectedResult,
+      reasons,
+      comparison: { policy: "sole_valid_candidate", deltaBic: null, waveAreaFraction: null },
+    };
+  }
+
+  const djObservation = djResult.diagnostics.observationKey;
+  const djfObservation = djfResult.diagnostics.observationKey;
+  if (djObservation && djfObservation && djObservation !== djfObservation) {
+    return {
+      selectedModelId: null,
+      selectedResult: null,
+      reasons: [...reasons, {
+        criterion: "same_observed_histogram",
+        pass: false,
+        detail: "AIC/BIC candidates were fitted to different observed histograms and are not comparable.",
+      }],
+      comparison: { policy: "incomparable_histograms", deltaBic: null, waveAreaFraction: null },
+    };
+  }
 
   const djfConverged = djfResult.converged === true;
   reasons.push({
@@ -119,11 +240,18 @@ export function selectAutomaticModel({ djResult, djfResult, options = {} }) {
     detail: `deltaBic (DJ - DJF) = ${Number.isFinite(deltaBic) ? deltaBic.toFixed(2) : "n/a"}, threshold ${config.bicImprovementThreshold}.`,
   });
 
-  const residualPass = residual_structure_improved(djResult.diagnostics, djfResult.diagnostics);
+  const residualEvidence = residual_structure_improved(
+    djResult.diagnostics,
+    djfResult.diagnostics,
+    config.minimumLag1Improvement,
+  );
+  const residualPass = residualEvidence.pass;
   reasons.push({
     criterion: "residual_structure_improved",
     pass: residualPass,
-    detail: `DJ reducedDeviance=${djResult.diagnostics.reducedDeviance?.toFixed(3)}, DJF reducedDeviance=${djfResult.diagnostics.reducedDeviance?.toFixed(3)}.`,
+    detail: `absolute |lag-1| improvement=${Number.isFinite(residualEvidence.improvement) ? residualEvidence.improvement.toFixed(3) : "n/a"} `
+      + `(DJ ${Number.isFinite(residualEvidence.djLag1) ? residualEvidence.djLag1.toFixed(3) : "n/a"} - DJF ${Number.isFinite(residualEvidence.djfLag1) ? residualEvidence.djfLag1.toFixed(3) : "n/a"}); `
+      + `required ≥ ${config.minimumLag1Improvement.toFixed(3)}.`,
   });
 
   const biologicalArea = djfResult.parameters.g1Area + djfResult.parameters.sArea + djfResult.parameters.g2Area;
@@ -156,6 +284,7 @@ export function selectAutomaticModel({ djResult, djfResult, options = {} }) {
     selectedResult: selectFox ? djfResult : djResult,
     reasons,
     comparison: {
+      policy: "information_criterion",
       deltaBic,
       waveAreaFraction,
       djReducedDeviance: djResult.diagnostics.reducedDeviance,
@@ -175,15 +304,23 @@ export const auto_dj_djf = {
   capabilities: { contaminants: false, multiplePloidy: false, autoComparison: true },
   defaultConfig: { dj: {}, djf: {}, selection: { ...DEFAULT_SELECTION_OPTIONS } },
 
-  /**
-   * Fits DJ first, then fits DJF with DJ's own converged parameters passed
-   * through as config.djHint ("Independently fit both generative models to
-   * each selected sample histogram from comparable starts" -- DJF's nesting
-   * guarantee, spelled out in dean_jett_fox.js's build_parameter_starts(),
-   * only actually holds in practice when DJF's starts include DJ's real
-   * optimum, not just a fresh region-only estimate). Defers the actual
-   * selection to normalizeResult(), where selectAutomaticModel() runs.
-   */
+  /*
+
+  Purpose:
+  	Fits Dean-Jett first, then fits Dean-Jett-Fox with DJ's own converged
+  	parameters threaded through as config.djHint -- DJF's nesting guarantee only
+  	holds in practice when its starts include DJ's real optimum, not just a fresh
+  	region-only estimate. Defers the actual choice to normalizeResult(), where
+  	selectAutomaticModel() runs.
+
+  Input:
+  	context [object]: the model fit context (histogram, peakRegions, config with
+  	                  optional dj/djf/selection/onProgress/shouldCancel)
+
+  Output:
+  	rawResult [object]: { djRaw, djfRaw, selectionOptions } for normalizeResult()
+
+  */
   fit(context) {
     const { config: userConfig = {} } = context;
     const shared = { onProgress: userConfig.onProgress, shouldCancel: userConfig.shouldCancel };
@@ -193,9 +330,22 @@ export const auto_dj_djf = {
     return { djRaw, djfRaw, selectionOptions: userConfig.selection ?? {} };
   },
 
-  /** DJF's parameters always include `w`; DJ's never do -- a reliable,
-   * simple way to route to the model that actually produced `parameters`
-   * without threading an extra field through the generic §4.5 shape. */
+  /*
+
+  Purpose:
+  	Expected per-bin counts for whichever submodel produced the parameters.
+  	Dean-Jett-Fox's parameters always include `w` and Dean-Jett's never do, which
+  	is a reliable way to route without threading an extra field through the
+  	generic result shape.
+
+  Input:
+  	edges [array]: histogram bin edges
+  	parameters [object]: a fitted parameter set from either submodel
+
+  Output:
+  	counts [array]: the expected per-bin counts from the matching submodel
+
+  */
   expectedCounts(edges, parameters) {
     return "w" in parameters
       ? dean_jett_fox.expectedCounts(edges, parameters)
