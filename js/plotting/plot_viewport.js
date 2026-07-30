@@ -1,7 +1,7 @@
 // Interactive pan/zoom for the overlay plot, plus the toolbar's interaction
 // mode. Everything here is DISPLAY-ONLY: it writes plot_viewport (data.js) and
 // re-renders, and never touches axis_range_override or fires
-// "pf-x-range-changed". That separation is deliberate -- the axis-range modal is
+// "pf-analysis-domain-changed". That separation is deliberate -- only the explicit analysis-domain control is
 // the explicit *modeling* range (narrowing it re-runs detection and every fit),
 // while dragging or wheeling around to examine an existing fit must never
 // invalidate it. See docs/plans/cell_cycle_modeling_plan.md and todo.md.
@@ -119,6 +119,33 @@ function clamp_span(domain, base_domain) {
   return [center - target / 2, center + target / 2];
 }
 
+// The y-axis is event counts / density: its floor is a hard 0 (there is no such
+// thing as a negative count), so no gesture may reveal space below it. When a
+// proposed y-domain would dip under 0, slide the whole domain up so its floor
+// sits exactly at 0 -- this preserves the gesture's span (the zoom level or the
+// pan distance) while pinning the count-0 baseline to the bottom edge. Panning
+// down therefore hits a wall at 0 instead of scrolling into empty space, and
+// zooming out reveals room above the data rather than below it.
+function clamp_y_floor(domain) {
+  if (!is_usable_domain(domain)) return domain;
+  if (domain[0] >= 0) return domain;
+  return [0, domain[1] - domain[0]];
+}
+
+// The x-axis is DNA content, which is non-negative for normal data, so no
+// gesture may reveal space left of 0 -- UNLESS the plotted data itself extends
+// below 0 (e.g. a compensated channel with negative values), in which case the
+// wall is the data's own left extent instead. Same "slide up, preserve span"
+// treatment as the y floor: panning left hits the wall at the floor rather than
+// scrolling into empty space, and the floor is 0 whenever the base view starts
+// at or above 0.
+function clamp_x_floor(domain, base_x) {
+  if (!is_usable_domain(domain)) return domain;
+  const floor = is_usable_domain(base_x) && base_x[0] < 0 ? base_x[0] : 0;
+  if (domain[0] >= floor) return domain;
+  return [floor, floor + (domain[1] - domain[0])];
+}
+
 /*
 
 Purpose:
@@ -139,8 +166,10 @@ Output:
 function commit_viewport(x_domain, y_domain, base) {
   const same_as_base = (domain, base_domain) =>
     !domain || (is_usable_domain(base_domain) && domain[0] === base_domain[0] && domain[1] === base_domain[1]);
-  const next_x = is_usable_domain(x_domain) && !same_as_base(x_domain, base.x) ? x_domain : null;
-  const next_y = is_usable_domain(y_domain) && !same_as_base(y_domain, base.y) ? y_domain : null;
+  const x_floored = clamp_x_floor(x_domain, base.x);
+  const y_floored = clamp_y_floor(y_domain);
+  const next_x = is_usable_domain(x_floored) && !same_as_base(x_floored, base.x) ? x_floored : null;
+  const next_y = is_usable_domain(y_floored) && !same_as_base(y_floored, base.y) ? y_floored : null;
   set_plot_viewport({ x: next_x, y: next_y });
   schedule_render();
 }
@@ -364,12 +393,15 @@ export function install_plot_interactions(context) {
         return;
       }
 
-      // Pan: shift both domains so the data under the cursor tracks it.
+      // Pan: horizontal only. The y-axis is event counts / density with a fixed
+      // 0 baseline, so panning is locked to the x-axis -- you can't drag up or
+      // down off the baseline. The current y-domain (base, or a zoom the user
+      // set) is passed through unchanged; only x tracks the cursor. Vertical
+      // range is still adjustable by zooming, never by panning.
       const x_shift = dx * gesture.x_per_px;
-      const y_shift = dy * gesture.y_per_px;
       commit_viewport(
         [gesture.x_domain[0] - x_shift, gesture.x_domain[1] - x_shift],
-        [gesture.y_domain[0] + y_shift, gesture.y_domain[1] + y_shift],
+        gesture.y_domain.slice(),
         base,
       );
     })
