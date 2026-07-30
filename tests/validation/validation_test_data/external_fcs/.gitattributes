@@ -1,0 +1,4 @@
+files/*.fcs -text
+datasets/**/*.fcs -text
+datasets/**/*.gz -text
+results/*.jpg -text
