@@ -3,9 +3,10 @@
 // measurements can be compared reliably across naming conventions. It detects
 // optional matching height and width channels for a selected area channel when
 // those companion columns actually exist. It also identifies the FSC-A, SSC-A,
-// and acquisition-time parameters needed by the staged DJF pipeline and builds
+// and acquisition-time parameters needed by the DJF pipeline and builds
 // raw, index-aligned typed arrays. Structural filtering is deliberately deferred
-// to Stage 0 so every mask continues to refer to the original FCS event order.
+// to the structural filter so every mask continues to refer to the original FCS
+// event order.
 
 /*
 
@@ -162,7 +163,7 @@ export function find_auxiliary_indexes_for_file(params, selected_label) {
 
 Purpose:
 	Finds the optional scatter-area and acquisition-time parameters used by the
-	staged DJF pipeline. Matching considers each parameter's label, $PnN, and
+	DJF pipeline. Matching considers each parameter's label, $PnN, and
 	$PnS fields so common spellings such as FSC-A, Forward Scatter Area, Time,
 	and HDR-T are accepted.
 
@@ -230,13 +231,15 @@ function raw_channel(columns, index, event_count, channel_name) {
       `${channel_name} event count mismatch: expected ${event_count}, received ${values.length}.`,
     );
   }
-  return Float64Array.from(values, (value) => Number(value));
+  return values instanceof Float64Array
+    ? values
+    : Float64Array.from(values, (value) => Number(value));
 }
 
 /*
 
 Purpose:
-	Builds the staged pipeline's full-fidelity channel bundle from selected FCS
+	Builds the pipeline's full-fidelity channel bundle from selected FCS
 	columns. Arrays are never compacted: every typed-array index is the original
 	event index. It also captures the acquisition metadata required for boundary
 	QC and later diagnostics.
@@ -281,6 +284,7 @@ export function build_raw_analysis_channels(columns, indexes, metadata, event_co
       bits: finite_metadata_number(metadata, `P${index}B`),
       range: pnr[name],
       amplification: (metadata && metadata[`P${index}E`]) || "",
+      gain: finite_metadata_number(metadata, `P${index}G`) ?? 1,
       name: (metadata && metadata[`P${index}N`]) || "",
       stain: (metadata && metadata[`P${index}S`]) || "",
     } : null;
