@@ -326,7 +326,14 @@ export const auto_dj_djf = {
     const shared = { onProgress: userConfig.onProgress, shouldCancel: userConfig.shouldCancel };
     const djRaw = dean_jett.fit({ ...context, config: { ...(userConfig.dj ?? {}), ...shared } });
     const djHint = dean_jett.normalizeResult(djRaw).parameters;
-    const djfRaw = dean_jett_fox.fit({ ...context, config: { ...(userConfig.djf ?? {}), djHint, ...shared } });
+    // Fit the DJF candidate with the *joint* generative estimator (not the
+    // clean_flank peaks-first default): this selection policy compares DJ vs
+    // DJF on residual structure and BIC, which is only a like-for-like
+    // comparison when both are the same generative fit. clean_flank is a
+    // fitting-procedure choice for the standalone dean_jett_fox model, orthogonal
+    // to the DJ-vs-DJF-wave question decided here. A caller can still override
+    // via config.djf.peakFitMode.
+    const djfRaw = dean_jett_fox.fit({ ...context, config: { peakFitMode: "joint", ...(userConfig.djf ?? {}), djHint, ...shared } });
     return { djRaw, djfRaw, selectionOptions: userConfig.selection ?? {} };
   },
 

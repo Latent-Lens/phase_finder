@@ -121,7 +121,12 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
   // region-only starts alone aren't guaranteed to reach DJ's optimum, let
   // alone improve on it).
   const waveDjHint = dj.normalizeResult(dj.fit({ histogram: { edges, counts: waveCounts }, peakRegions: regions, config: {} })).parameters;
-  const waveRaw = djf.fit({ histogram: { edges, counts: waveCounts }, peakRegions: regions, config: { djHint: waveDjHint } });
+  // Planted-wave recovery specifically exercises the *joint* generative fit
+  // (recover a planted 12-parameter DJF wave from a djHint-seeded start), so it
+  // pins peakFitMode:'joint' rather than inheriting the clean_flank default
+  // (which fixes the peaks and fits only S to the residual -- a different
+  // estimator, covered by its own tests below).
+  const waveRaw = djf.fit({ histogram: { edges, counts: waveCounts }, peakRegions: regions, config: { djHint: waveDjHint, peakFitMode: 'joint' } });
   const waveFitted = djf.normalizeResult(waveRaw);
 
   run('dean_jett_fox converges on a planted-wave synthetic histogram', () => ({
@@ -165,6 +170,43 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
   run('dean_jett_fox expected counts are finite and nonnegative at every bin (planted-wave fit)', () => {
     const pass = waveFitted.expectedCounts.every((value) => Number.isFinite(value) && value >= 0);
     return { pass, detail: waveFitted.expectedCounts.length };
+  });
+
+  // ---- clean_flank (FlowJo-style peaks-first) is the default ---------------
+  // Validated to match FlowJo DJF to ~5pp per phase and to remove the joint-fit
+  // degeneracy (a peak CV pinned at its ceiling so S absorbs the peak) on skewed
+  // samples. See docs/djf-model-validation.html.
+  run('dean_jett_fox defaults to clean_flank (FlowJo-style peaks-first) fitting', () => {
+    const entry = get_model('dean_jett_fox');
+    return { pass: entry.defaultConfig.peakFitMode === 'clean_flank', detail: entry.defaultConfig.peakFitMode };
+  });
+
+  // A clean two-peak histogram with a genuine (flat, wave-free) S population.
+  const CLEAN_FLANK_TRUTH = {
+    g1Area: 8000, g1Mean: 70, g1CV: 0.06,
+    g2Area: 3000, g2Mean: 140, g2CV: 0.07,
+    sArea: 4000, b: 0, c: 0,
+    w: 0, waveMean: 0.5, waveSigma: 0.1,
+  };
+  const cleanFlankCounts = seededJitteredCounts(djf.expectedCounts(edges, CLEAN_FLANK_TRUTH), 0x5eed_1234);
+  const cleanFlankFit = djf.normalizeResult(djf.fit({ histogram: { edges, counts: cleanFlankCounts }, peakRegions: regions, config: {} }));
+
+  run('clean_flank (default) produces a converged, area-conserving fit on standard two-peak data', () => {
+    const f = cleanFlankFit.phaseFractions;
+    const sum = f.g1 + f.s + f.g2;
+    return {
+      pass: cleanFlankFit.converged === true && Number.isFinite(f.g1) && Math.abs(sum - 1) < 1e-6,
+      detail: JSON.stringify({ converged: cleanFlankFit.converged, convergenceReason: cleanFlankFit.convergenceReason, fractions: f }),
+    };
+  });
+
+  run('clean_flank holds both peak CVs off their bounds (no S-swallows-peak degeneracy)', () => {
+    // The joint-fit overfit signature is a peak CV driven to the 0.30 ceiling so
+    // S absorbs a peak; clean_flank estimates each peak width from its clean
+    // flank first, so both CVs must sit strictly inside their configured bounds.
+    const p = cleanFlankFit.parameters;
+    const inside = (cv) => cv > 0.011 && cv < 0.299;
+    return { pass: inside(p.g1CV) && inside(p.g2CV), detail: JSON.stringify({ g1CV: p.g1CV, g2CV: p.g2CV }) };
   });
 
   // ---- auto_dj_djf: end-to-end selection on real fits ----------------------
