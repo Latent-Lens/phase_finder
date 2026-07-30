@@ -430,6 +430,7 @@ def run_session_tests(ctx: TestContext):
           push('SES-02: a legacy no-digest session requires explicit manual verification',
             restored.found.length === 0 && restored.unverified.length === 1 && legacyRecord.status === 'unverified');
 
+          await cache.copy_file_to_opfs(original, path);
           const savedRecord = {
             ...strictRecord, original_name: 'saved.fcs',
             digest_algorithm: copied.digest_algorithm, digest: copied.digest,
