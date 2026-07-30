@@ -97,10 +97,14 @@ const PARAMETER_INDEX = Object.freeze({
 });
 
 export const DEFAULT_CONFIG = Object.freeze({
-  // "joint": fit every parameter (peaks + S) together (the generative default).
-  // "clean_flank": fit G1/G2 from their clean flanks and hold them fixed, then
-  // fit only the S phase to the residual -- the FlowJo-style peaks-first approach.
-  peakFitMode: "joint",
+  // "clean_flank" (default): fit G1/G2 from their clean flanks and hold them
+  // fixed, then fit only the S phase to the residual -- the FlowJo-style
+  // peaks-first approach. Validated to match FlowJo DJF to ~5pp per phase and to
+  // be the closest model on 26/30 reference samples, and it removes the joint-fit
+  // degeneracy (S collapsing to 0% or ballooning to swallow a peak) on skewed
+  // samples. See docs/djf-model-validation.html.
+  // "joint": fit every parameter (peaks + S) together (the older generative fit).
+  peakFitMode: "clean_flank",
   ratioMode: "bounded",
   fitRatioRange: [1.65, 2.25],
   lockedRatio: 2,
