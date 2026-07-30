@@ -6,7 +6,7 @@
 // handles file-by-file or folder-style reconnect flows. Session core calls this
 // during restore and after users pick replacement files.
 
-import { supports_opfs, read_file_from_opfs } from "./opfs_fs.js";
+import { supports_opfs, read_file_from_opfs, delete_opfs_path } from "./opfs_fs.js";
 import {
   is_resolved,
   human_size,
@@ -16,17 +16,28 @@ import {
   idb_put,
   pick_dir_fallback_all,
   copy_file_to_opfs,
+  catalogue_cached_record,
+  fresh_reconnect_opfs_path,
+  release_cache_path,
+  logical_session_id,
 } from "./file_cache.js";
 import { set_status_bar, next_frame } from "../ui/status_channels.js";
+import {
+  show_progress,
+  update_progress,
+  hide_progress,
+  show_progress_cancel,
+} from "../ui/status_channels.js";
 import { load_files } from "../io/metadata_io.js";
+import { digest_file } from './file_digest.js';
 
 // ── OPFS restore + reconnect matching ────────────────────────────────────────
 
 // Reads each record's OPFS copy, rewrapping it as a File with the original name
 // and metadata (OPFS stores it under an id-based filename). Buckets results.
 export async function try_load_from_opfs(records) {
-  const found = [], missing = [], mismatch = [];
-  if (!supports_opfs()) return { found, missing: records.slice(), mismatch };
+  const found = [], missing = [], mismatch = [], unverified = [];
+  if (!supports_opfs()) return { found, missing: records.slice(), mismatch, unverified };
   for (const record of records) {
     try {
       const raw = await read_file_from_opfs(record.opfs_path);
@@ -34,31 +45,43 @@ export async function try_load_from_opfs(records) {
         type: record.mime_type || 'application/octet-stream',
         lastModified: record.last_modified,
       });
-      if (record.size != null && file.size !== record.size) {
+      if (!record.digest || !record.digest_algorithm) {
+        record.status = 'unverified';
+        unverified.push(record);
+      } else if (record.size != null && file.size !== record.size) {
         record.status = 'mismatch';
         mismatch.push({ record, file });
       } else {
-        record.status = 'available';
-        found.push({ record, file });
+        const identity = await digest_file(file);
+        if (record.digest_algorithm !== identity.digest_algorithm || record.digest !== identity.digest) {
+          record.status = 'mismatch';
+          mismatch.push({ record, file });
+        } else {
+          record.status = 'available';
+          found.push({ record, file });
+        }
       }
     } catch (_) {
       record.status = 'missing';
       missing.push(record);
     }
   }
-  return { found, missing, mismatch };
+  return { found, missing, mismatch, unverified };
 }
 
 function index_selected_files(files) {
   const by_name_size_lastmod = new Map();
   const by_name_size = new Map();
+  const by_size = new Map();
   for (const file of files) {
     by_name_size_lastmod.set(`${file.name}::${file.size}::${file.lastModified}`, file);
     const key = `${file.name}::${file.size}`;
     if (!by_name_size.has(key)) by_name_size.set(key, []);
     by_name_size.get(key).push(file);
+    if (!by_size.has(file.size)) by_size.set(file.size, []);
+    by_size.get(file.size).push(file);
   }
-  return { by_name_size_lastmod, by_name_size };
+  return { by_name_size_lastmod, by_name_size, by_size };
 }
 
 function match_record_to_selected_file(record, indexes) {
@@ -193,6 +216,7 @@ const STATUS_LABELS = {
   uncached: 'Found',
   missing: 'Missing',
   mismatch: 'Mismatch',
+  unverified: 'Needs verification',
   copying: 'Copying…',
 };
 
@@ -266,11 +290,65 @@ export async function apply_reconnected_files(files) {
   if (!reconnect_ctx) return;
   const indexes = index_selected_files(Array.from(files || []));
   const matches = [];
-  for (const record of reconnect_ctx.records) {
-    if (is_resolved(record)) continue;
-    const file = match_record_to_selected_file(record, indexes);
-    if (file) matches.push({ record, file });
+  let digest_mismatches = 0;
+  const digest_cache = new Map();
+  const controller = new AbortController();
+  let cancelled = false;
+  show_progress('Verifying FCS identity');
+  show_progress_cancel(() => controller.abort());
+  try {
+    for (const [record_index, record] of reconnect_ctx.records.entries()) {
+      if (is_resolved(record)) continue;
+      const exact = match_record_to_selected_file(record, indexes);
+      const candidates = record.digest
+        ? [...new Set([exact, ...(indexes.by_size.get(record.size) || [])].filter(Boolean))]
+        : (exact ? [exact] : []);
+      for (const file of candidates) {
+        update_progress(
+          (record_index / reconnect_ctx.records.length) * 100,
+          'Verifying FCS identity',
+          `Checking file ${record_index + 1} of ${reconnect_ctx.records.length}`,
+          file.name,
+        );
+        let identity = digest_cache.get(file);
+        if (!identity) {
+          identity = digest_file(file, {
+            signal: controller.signal,
+            on_progress: ({ bytes_done, bytes_total }) => update_progress(
+              ((record_index + (bytes_total ? bytes_done / bytes_total : 1)) / reconnect_ctx.records.length) * 100,
+              'Verifying FCS identity', 'Computing bounded-memory content digest', file.name),
+          });
+          digest_cache.set(file, identity);
+        }
+        identity = await identity;
+        if (!record.digest) {
+          // Legacy session: the user's explicit manual selection is the review
+          // step. Record its identity so every later save/restore is strict.
+          Object.assign(record, identity);
+          matches.push({ record, file });
+          break;
+        }
+        if (record.digest_algorithm === identity.digest_algorithm && record.digest === identity.digest) {
+          matches.push({ record, file });
+          break;
+        }
+      }
+      if (candidates.length && !matches.some((match) => match.record === record)) {
+        record.status = 'mismatch';
+        digest_mismatches += 1;
+      }
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      cancelled = true;
+      matches.length = 0;
+      set_status_bar('File verification cancelled; no replacement files were accepted.', true);
+    }
+    else throw error;
+  } finally {
+    hide_progress(0);
   }
+  if (cancelled) { render_reconnect_list(); return; }
 
   // Copies run sequentially, not in parallel: concurrent createWritable()
   // streams into the same freshly-created OPFS directory were observed to
@@ -278,8 +356,19 @@ export async function apply_reconnected_files(files) {
   // real-browser testing, and it wasn't reproducible enough to safely chase
   // down and fix here, so this stays on the proven-correct path.
   for (const { record, file } of matches) {
-    try { await copy_file_to_opfs(file, record.opfs_path); record.status = 'available'; }
-    catch (err) { record.status = 'uncached'; console.warn('OPFS copy failed for', record.opfs_path, err); }
+    const previous_path = record.opfs_path;
+    const destination = fresh_reconnect_opfs_path(record);
+    try {
+      const identity = await copy_file_to_opfs(file, destination);
+      record.opfs_path = destination;
+      Object.assign(record, identity);
+      record.status = 'available';
+      catalogue_cached_record(record);
+      if (previous_path !== destination) {
+        await release_cache_path(previous_path, logical_session_id, delete_opfs_path);
+      }
+    }
+    catch (err) { record.status = 'uncached'; console.warn('OPFS reconnect cache failed', err); }
   }
 
   // Rows can flip to "available" as soon as the copies land, rather than
@@ -293,7 +382,9 @@ export async function apply_reconnected_files(files) {
   set_status_bar(
     to_load.length
       ? `Reconnected ${to_load.length} file${to_load.length === 1 ? '' : 's'}.${remaining ? ` ${remaining} still missing.` : ''}`
-      : 'No matching files found in your selection.',
+      : digest_mismatches
+        ? `Content mismatch: ${digest_mismatches} selected file${digest_mismatches === 1 ? '' : 's'} had the expected size but different bytes.`
+        : 'No matching files found in your selection.',
     !to_load.length,
   );
 }

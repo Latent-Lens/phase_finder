@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Full code, frontend, scientific-modeling, data, session, build, deployment, and test audit of PhaseFinder." />
+  <title>PhaseFinder Full Project Audit — Codex — 2026-07-24</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5d687c;
+      --paper: #ffffff;
+      --page: #f2f5f9;
+      --line: #d8e0ea;
+      --navy: #14284b;
+      --blue: #2468c9;
+      --blue-soft: #eaf2ff;
+      --green: #18794e;
+      --green-soft: #e8f6ef;
+      --amber: #9a5b00;
+      --amber-soft: #fff3d6;
+      --red: #b42318;
+      --red-soft: #ffebe9;
+      --critical: #7a0916;
+      --critical-soft: #ffe1e5;
+      --violet: #6b3fa0;
+      --violet-soft: #f2eafb;
+      --shadow: 0 12px 34px rgba(20, 40, 75, 0.09);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font: 15.5px/1.62 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--blue); }
+    a:hover { text-decoration-thickness: 2px; }
+
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    code {
+      padding: 0.12em 0.34em;
+      border-radius: 5px;
+      background: #edf1f6;
+      color: #243653;
+      font-size: 0.92em;
+      overflow-wrap: anywhere;
+    }
+
+    .hero {
+      color: #fff;
+      background:
+        radial-gradient(circle at 84% 18%, rgba(81, 142, 242, 0.35), transparent 30%),
+        linear-gradient(135deg, #101e37 0%, #18345f 58%, #214f86 100%);
+      padding: 58px max(24px, calc((100vw - 1440px) / 2));
+    }
+
+    .hero-inner { max-width: 1120px; }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: #bed7ff;
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, h4 { line-height: 1.22; }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(2.2rem, 5vw, 4.25rem);
+      letter-spacing: -0.045em;
+    }
+
+    .hero-summary {
+      max-width: 920px;
+      margin: 20px 0 0;
+      color: #e1ecff;
+      font-size: clamp(1.05rem, 2vw, 1.28rem);
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 26px;
+    }
+
+    .hero-meta span {
+      padding: 7px 11px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #f1f6ff;
+      font-size: 0.86rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 28px;
+      width: min(1440px, calc(100% - 40px));
+      margin: 30px auto 64px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      padding: 19px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .toc strong {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--navy);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .toc a {
+      display: block;
+      padding: 6px 8px;
+      border-radius: 7px;
+      color: #3a4b65;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    .toc a:hover, .toc a:focus-visible {
+      background: var(--blue-soft);
+      color: #174f9e;
+    }
+
+    main { min-width: 0; }
+
+    section {
+      margin-bottom: 25px;
+      padding: clamp(22px, 4vw, 38px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      scroll-margin-top: 18px;
+    }
+
+    section > :first-child { margin-top: 0; }
+    section > :last-child { margin-bottom: 0; }
+
+    h2 {
+      margin: 0 0 18px;
+      color: var(--navy);
+      font-size: clamp(1.55rem, 3vw, 2.15rem);
+      letter-spacing: -0.025em;
+    }
+
+    h3 {
+      margin: 28px 0 10px;
+      color: #203a61;
+      font-size: 1.24rem;
+    }
+
+    h4 { margin: 20px 0 8px; color: #2e4261; }
+
+    .lede { color: #3e4c62; font-size: 1.06rem; }
+    .muted { color: var(--muted); }
+
+    .verdict {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 16px;
+      align-items: start;
+      padding: 18px;
+      border: 1px solid #f1aaa5;
+      border-left: 6px solid var(--red);
+      border-radius: 10px;
+      background: var(--red-soft);
+    }
+
+    .verdict strong { color: #861d16; font-size: 1.05rem; }
+    .verdict p { margin: 2px 0 0; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 13px;
+      margin: 22px 0;
+    }
+
+    .card {
+      min-height: 125px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #fbfcfe;
+    }
+
+    .card .label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .card .value {
+      display: block;
+      margin: 6px 0 4px;
+      color: var(--navy);
+      font-size: 1.55rem;
+      font-weight: 850;
+      line-height: 1.1;
+    }
+
+    .card p { margin: 0; color: #56647a; font-size: 0.87rem; }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .badge.critical { background: var(--critical-soft); color: var(--critical); }
+    .badge.high { background: var(--red-soft); color: var(--red); }
+    .badge.medium { background: var(--amber-soft); color: var(--amber); }
+    .badge.low { background: var(--blue-soft); color: #1858a6; }
+    .badge.good { background: var(--green-soft); color: var(--green); }
+    .badge.info { background: var(--violet-soft); color: var(--violet); }
+
+    .callout {
+      margin: 18px 0;
+      padding: 15px 17px;
+      border-left: 4px solid var(--blue);
+      border-radius: 8px;
+      background: var(--blue-soft);
+    }
+
+    .callout.warning { border-color: #d98200; background: var(--amber-soft); }
+    .callout.danger { border-color: var(--red); background: var(--red-soft); }
+    .callout.good { border-color: var(--green); background: var(--green-soft); }
+    .callout p { margin: 0.35em 0; }
+
+    .table-wrap {
+      margin: 17px 0;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      font-size: 0.91rem;
+    }
+
+    caption {
+      padding: 11px 13px;
+      background: #f5f8fc;
+      color: #40506a;
+      font-weight: 750;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid #e4e9f0;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #f4f7fb;
+      color: #263d5e;
+      font-size: 0.78rem;
+      letter-spacing: 0.045em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #fafcff; }
+
+    .feature-grid, .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 15px;
+    }
+
+    .feature {
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfcfe;
+    }
+
+    .feature h3 { margin: 0 0 7px; font-size: 1.03rem; }
+    .feature p { margin: 0; color: #526077; }
+
+    .finding {
+      margin: 16px 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-left: 5px solid #8595aa;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .finding.critical { border-left-color: var(--critical); background: #fffafb; }
+    .finding.high { border-left-color: var(--red); }
+    .finding.medium { border-left-color: #d98200; }
+    .finding.low { border-left-color: var(--blue); }
+
+    .finding-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .finding-head h3 { flex: 1 1 420px; margin: 0; color: var(--navy); }
+    .finding p { margin: 8px 0; }
+
+    .finding dl {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 7px 12px;
+      margin: 12px 0 0;
+    }
+
+    .finding dt { color: #485a74; font-weight: 800; }
+    .finding dd { margin: 0; }
+
+    ul, ol { padding-left: 1.35rem; }
+    li + li { margin-top: 0.38rem; }
+
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { position: relative; padding-left: 27px; }
+    .checklist li::before {
+      position: absolute;
+      left: 0;
+      top: 0.08em;
+      content: "✓";
+      color: var(--green);
+      font-weight: 900;
+    }
+
+    .roadmap {
+      counter-reset: phase;
+      list-style: none;
+      padding: 0;
+    }
+
+    .roadmap > li {
+      position: relative;
+      margin: 0 0 18px;
+      padding: 4px 0 18px 52px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .roadmap > li:last-child { border-bottom: 0; }
+    .roadmap > li::before {
+      counter-increment: phase;
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--navy);
+      color: #fff;
+      content: counter(phase);
+      font-weight: 850;
+    }
+
+    .roadmap h3 { margin: 0 0 7px; }
+
+    .footer-note {
+      width: min(1160px, calc(100% - 40px));
+      margin: -35px auto 50px;
+      color: #66748a;
+      font-size: 0.86rem;
+      text-align: center;
+    }
+
+    @media (max-width: 1050px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc { position: static; columns: 2; }
+      .toc strong { column-span: all; }
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 680px) {
+      .hero { padding: 38px 20px; }
+      .layout { width: min(100% - 20px, 1440px); margin-top: 12px; }
+      section { padding: 20px 16px; }
+      .toc { columns: 1; }
+      .cards, .feature-grid, .two-col { grid-template-columns: 1fr; }
+      .finding dl { grid-template-columns: 1fr; }
+      .finding dt { margin-top: 5px; }
+      th, td { min-width: 125px; }
+    }
+
+    @media print {
+      body { background: #fff; font-size: 11pt; }
+      .hero { padding: 28px; background: var(--navy); }
+      .layout { display: block; width: 100%; margin: 0; }
+      .toc { display: none; }
+      section { break-inside: avoid; margin: 0; border: 0; border-bottom: 1px solid #bbb; border-radius: 0; box-shadow: none; }
+      .finding, tr { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">Independent engineering and scientific-code review</p>
+      <h1>PhaseFinder full project audit</h1>
+      <p class="hero-summary">
+        A feature-by-feature review of the HTML, CSS, JavaScript, FCS processing,
+        quality-control pipeline, cell-cycle models, sessions, security, build,
+        deployment, and automated tests.
+      </p>
+      <div class="hero-meta" aria-label="Audit snapshot">
+        <span>Audit date: 24 July 2026</span>
+        <span>Branch: cell-cycle-modeling-sidebar</span>
+        <span>Base commit: 2af7969</span>
+        <span>Includes uncommitted peak-tracking Time QC work</span>
+        <span>Implementation-checklist amendment added</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Audit contents">
+      <strong>Contents</strong>
+      <a href="#executive-summary">Executive summary</a>
+      <a href="#implementation-amendment">Checklist amendment</a>
+      <a href="#scope">Scope and method</a>
+      <a href="#feature-map">Feature map</a>
+      <a href="#findings-register">Findings register</a>
+      <a href="#scientific-review">Scientific review</a>
+      <a href="#frontend-review">Frontend review</a>
+      <a href="#data-sessions">Data and sessions</a>
+      <a href="#build-release">Build, CI, and release</a>
+      <a href="#testing">Test evidence</a>
+      <a href="#strengths">Strengths</a>
+      <a href="#roadmap">Remediation roadmap</a>
+      <a href="#limitations">Audit limitations</a>
+    </nav>
+
+    <main>
+      <section id="executive-summary">
+        <h2>Executive summary</h2>
+        <div class="verdict">
+          <span class="badge high">Needs work</span>
+          <div>
+            <strong>PhaseFinder is a substantial, promising research application, but this snapshot is not ready for a production release or for unqualified quantitative scientific reporting.</strong>
+            <p>The source application has broad functionality and unusually extensive synthetic tests. However, the release path is broken, the Vite artifact is incomplete, and several modeling and data-interpretation defects can change reported phase fractions or make constraints appear satisfied when they are not.</p>
+          </div>
+        </div>
+
+        <div class="cards" aria-label="Audit outcome summary">
+          <div class="card">
+            <span class="label">Full source regression</span>
+            <span class="value">596 / 596</span>
+            <p>181 end-to-end checks plus 415 browser unit checks passed.</p>
+          </div>
+          <div class="card">
+            <span class="label">Production build</span>
+            <span class="value">Builds, incomplete</span>
+            <p>Vite succeeds on Node 24, but Help and several dynamic assets are missing.</p>
+          </div>
+          <div class="card">
+            <span class="label">Modeling verdict</span>
+            <span class="value">Structurally sound core</span>
+            <p>Good numerical foundations, with high-impact constraint and reporting defects.</p>
+          </div>
+          <div class="card">
+            <span class="label">Scientific validation</span>
+            <span class="value">Not established</span>
+            <p>No external reference implementation, biological gold standard, or uncertainty analysis.</p>
+          </div>
+        </div>
+
+        <h3>Bottom line</h3>
+        <ul>
+          <li><strong>Good foundation:</strong> local-first design, vendored D3, modular ES code, index-preserving gates, bin-integrated model mass, Poisson-deviance fitting, multistart optimization, worker isolation, and detailed diagnostics.</li>
+          <li><strong>Release blocker:</strong> the Cloudflare workflow calls a nonexistent script and, if that is fixed alone, deploys the repository root instead of the tested <code>dist/</code> artifact.</li>
+          <li><strong>Scientific blockers:</strong> Watson residual S is integrated outside the G1–G2 interval; G2:G1 bounds can be violated by the projector; stalled fits can be labeled converged; Auto can compare against a nonconverged base model; and the plot can show different fractions from the table.</li>
+          <li><strong>Data-validity blocker:</strong> the parser does not apply or reject amplification/scaling and compensation metadata before a linear DNA-content model is run.</li>
+          <li><strong>Validation gap:</strong> passing self-generated synthetic tests establishes implementation consistency, not numerical equivalence to Dean–Jett–Fox literature or biological accuracy.</li>
+        </ul>
+      </section>
+
+      <section id="implementation-amendment">
+        <h2>Implementation checklist amendment</h2>
+        <p class="lede">A companion Markdown file converts every finding in this report—and additional optimization opportunities—into implementation and verification tasks for the agent performing remediation.</p>
+        <div class="callout">
+          <p><strong>Agent work queue:</strong> <a href="./codex_audit_of_full_project_remediation_checklist.md">Open the PhaseFinder remediation and optimization checklist</a>.</p>
+          <p>It is organized by release safety, scientific models, FCS/data handling, sessions/security, frontend/accessibility, CI/testing, documentation, and final release readiness. Each issue includes the problem, affected code, priority, concrete <code>- [ ]</code> fix steps, regression tests, and acceptance criteria.</p>
+        </div>
+        <p class="muted">The checklist is an amendment, not a replacement: use this HTML report for the original evidence and rationale, and use the Markdown file to plan, implement, review, and record completion. Decomposing the findings into executable work also exposed additional state-consistency, QC-validity, accessibility, performance, and test-infrastructure tasks; those are clearly identified in the amendment.</p>
+      </section>
+
+      <section id="scope">
+        <h2>Scope and method</h2>
+        <p class="lede">This audit reviewed the current working tree, not only the last commit. That matters because the peak-tracking Time QC implementation and related UI/tests were uncommitted at the time of review.</p>
+
+        <div class="two-col">
+          <div class="feature">
+            <h3>Reviewed statically</h3>
+            <p><code>index.html</code>, <code>help.html</code>, all first-party CSS and JavaScript, model and numerical modules, FCS parsing/loading, sessions and OPFS, workers, test harnesses, Vite/package configuration, GitHub Actions, release scripts, and tracked session material.</p>
+          </div>
+          <div class="feature">
+            <h3>Exercised dynamically</h3>
+            <p>Browser unit harness, Vite production build, source-served Playwright workflow, generated plot exports, and static structure/reference checks. Test artifacts remain git-ignored and were not added to this audit.</p>
+          </div>
+        </div>
+
+        <h3>Review standard</h3>
+        <ul>
+          <li>Correctness and internal consistency of UI state and data flow.</li>
+          <li>Scientific correspondence between stated model behavior and implemented equations.</li>
+          <li>Numerical constraints, convergence, diagnostics, and interpretation of outputs.</li>
+          <li>FCS compatibility, input bounds, event-index alignment, memory behavior, and reproducibility.</li>
+          <li>Accessibility, responsive layout, production-only asset behavior, and error feedback.</li>
+          <li>Security/privacy of imported/exported content and release contents.</li>
+        </ul>
+
+        <div class="callout warning">
+          <p><strong>Meaning of this report:</strong> this is a code and numerical-method audit, not an independent biostatistical validation, regulatory review, penetration test, or claim that every browser/device path was exhaustively exercised.</p>
+        </div>
+      </section>
+
+      <section id="feature-map">
+        <h2>What the code does, feature by feature</h2>
+        <div class="feature-grid">
+          <article class="feature">
+            <h3>1. Local FCS ingestion</h3>
+            <p>Accepts browser file selection and drag/drop, reads FCS HEADER/TEXT first for fast metadata display, rejects duplicate names, and later loads selected DATA columns through a module worker. There is no application data-upload service.</p>
+          </article>
+          <article class="feature">
+            <h3>2. Metadata workspace</h3>
+            <p>Maintains a column-oriented sample frame with editable annotations, filename parsing, imported rows, selectable samples, sorting, multi-value filters, removable columns, summary statistics, and TSV import/export.</p>
+          </article>
+          <article class="feature">
+            <h3>3. Channel selection and caching</h3>
+            <p>Maps a user-selected DNA-area channel per file, detects corresponding height/width, FSC-A, SSC-A, and Time channels, preserves original event indexes, and caches working arrays for repeated plotting and analysis.</p>
+          </article>
+          <article class="feature">
+            <h3>4. Histograms and visualization</h3>
+            <p>Builds raw-count DNA histograms; renders overlays or ridges with D3; supports curves/bins, color grouping, isolation, pan/zoom, axis overrides, region overlays, tooltips, and SVG/PDF/PNG/JPEG export.</p>
+          </article>
+          <article class="feature">
+            <h3>5. Structural QC</h3>
+            <p>Creates index-aligned validity masks, rejects nonfinite/negative required values, tracks saturation/range metadata, and provides the base mask consumed by later gates.</p>
+          </article>
+          <article class="feature">
+            <h3>6. Time QC</h3>
+            <p>Offers acquisition-rate anomaly detection and a new peak-tracking method. The first summarizes event rate across time bins; the second tracks distribution peaks and scores temporal anomalies. Both can optionally include event-rate information.</p>
+          </article>
+          <article class="feature">
+            <h3>7. Scatter and singlet gates</h3>
+            <p>Uses a two-component FSC/SSC Gaussian-mixture heuristic for the main cell population, plus robust PCA on pulse geometry (area/height or area/width) for singlet selection, with manual scatter review.</p>
+          </article>
+          <article class="feature">
+            <h3>8. Peak detection and review</h3>
+            <p>Smooths and inspects the masked histogram, proposes G1/G2 regions, assigns confidence and warnings, and exposes accessible slider/keyboard controls for manual region correction.</p>
+          </article>
+          <article class="feature">
+            <h3>9. Cell-cycle fitting</h3>
+            <p>Fits Dean–Jett, Dean–Jett–Fox, a pragmatic Watson decomposition, or an automatic DJ/DJF choice. Supports individual and bulk fitting, worker execution, raw-count objectives, contamination terms, report columns, and plot overlays.</p>
+          </article>
+          <article class="feature">
+            <h3>10. Diagnostics and reports</h3>
+            <p>Computes phase fractions, residual structure, deviance/information metrics, boundary warnings, tail mass, restart stability, and model-specific details. Results are surfaced in the sidebar, plot, and metadata table.</p>
+          </article>
+          <article class="feature">
+            <h3>11. Sessions and local storage</h3>
+            <p>Saves human-readable TOML, caches browser-private FCS copies in OPFS, restores UI/table/model settings, reconnects missing files, and recomputes model fits instead of trusting serialized numeric output.</p>
+          </article>
+          <article class="feature">
+            <h3>12. Build, help, and automation</h3>
+            <p>Supports source serving with native modules/import maps and a Vite production build. Includes a help page, responsive styling, unit/E2E harnesses, browser-matrix workflows, release notes, and a Cloudflare Pages release workflow.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="findings-register">
+        <h2>Findings register</h2>
+        <p class="lede">The register below is the concise risk inventory. High-priority findings are expanded in later sections with evidence and remediation.</p>
+        <div class="table-wrap">
+          <table>
+            <caption>Verified findings by severity and subsystem</caption>
+            <thead>
+              <tr><th>ID</th><th>Severity</th><th>Area</th><th>Finding</th><th>Primary evidence</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>REL-01</td><td><span class="badge critical">Critical</span></td><td>Release/privacy</td><td>Release workflow calls the wrong script and would deploy the repository root, including tracked session metadata.</td><td><code>.github/workflows/deploy-release.yml:29–50</code></td></tr>
+              <tr><td>REL-02</td><td><span class="badge high">High</span></td><td>Production build</td><td>Vite output omits Help and runtime-swapped panel icons; manifest icon paths are broken.</td><td><code>vite.config.js:4</code>, <code>index.html:722</code>, <code>js/ui/dom.js:125</code></td></tr>
+              <tr><td>SCI-01</td><td><span class="badge high">High</span></td><td>Watson model</td><td>Residual S phase is integrated across every bin, including debris and post-G2 signal.</td><td><code>watson_pragmatic.js:181–217</code></td></tr>
+              <tr><td>SCI-02</td><td><span class="badge high">High</span></td><td>DJ/DJF constraints</td><td>Joint mean/ratio bounds are not guaranteed after independent clamping.</td><td><code>dean_jett.js:129–147</code>, <code>dean_jett_fox.js:174–191</code></td></tr>
+              <tr><td>SCI-03</td><td><span class="badge high">High</span></td><td>Solver</td><td>Either a small improvement or a small step is labeled as both; stalled fits can appear converged.</td><td><code>lm_solver.js:382–405</code></td></tr>
+              <tr><td>SCI-04</td><td><span class="badge high">High</span></td><td>Auto selection</td><td>DJF convergence is required, but the baseline Dean–Jett fit need not converge before BIC comparison.</td><td><code>model_selection.js:103–152</code></td></tr>
+              <tr><td>SCI-05</td><td><span class="badge high">High</span></td><td>Scientific reporting</td><td>Plot percentages are recomputed on the visible domain and can disagree with canonical table/sidebar fractions.</td><td><code>js/plotting/render.js:154–213</code></td></tr>
+              <tr><td>SCI-06</td><td><span class="badge high">High</span></td><td>Bulk fitting</td><td>Auto-Fit All averages absolute peak-region bounds without confirming common calibration or robust confidence.</td><td><code>modeling_ui.js:226–279</code></td></tr>
+              <tr><td>DATA-01</td><td><span class="badge high">High</span></td><td>FCS/science</td><td>Amplification/scaling, compensation, mode, and multiple-dataset conditions are not transformed or rejected before linear DNA modeling.</td><td><code>js/fcs/parser.js:267–435</code></td></tr>
+              <tr><td>UI-01</td><td><span class="badge high">High</span></td><td>QC settings</td><td>Time QC reset mutates live state even when cancelled; numeric min/max constraints are not enforced in JavaScript/session restore.</td><td><code>time_qc_modal.js:119–182</code>, <code>time_qc_settings.js:82–102</code></td></tr>
+              <tr><td>UI-02</td><td><span class="badge high">High</span></td><td>Error handling</td><td>QC-stage exceptions are swallowed and followed by a success status.</td><td><code>pipeline_ui.js:327–356</code></td></tr>
+              <tr><td>UI-03</td><td><span class="badge high">High</span></td><td>Responsive layout</td><td>Body scroll is disabled while the mobile layout grows taller than the fixed viewport calculation.</td><td><code>css/base.css:62</code>, <code>layout.css:148</code>, <code>responsive.css:3</code></td></tr>
+              <tr><td>SES-01</td><td><span class="badge high">High</span></td><td>Browser storage</td><td>Reset deletes only the current runtime OPFS directory; restored/older cached FCS copies can become permanent orphans.</td><td><code>file_cache.js:206–299</code>, <code>core.js:425–435</code></td></tr>
+              <tr><td>SES-02</td><td><span class="badge high">High</span></td><td>Reproducibility</td><td>Session reconnect validates only name/size, not a content digest.</td><td><code>reconnect.js:27–64</code></td></tr>
+              <tr><td>CI-01</td><td><span class="badge high">High</span></td><td>CI</td><td>Native Safari validation was configured but not operational.</td><td>Legacy Safari workflow</td></tr>
+              <tr><td>CI-02</td><td><span class="badge high">High</span></td><td>Test gate</td><td>The combined runner can return success if the entire unit phase throws before recording failures.</td><td><code>drive_flow.py:203–228</code></td></tr>
+              <tr><td>SCI-07</td><td><span class="badge medium">Medium</span></td><td>Numerics</td><td>Raw, differently scaled parameters plus hard projection and normal equations weaken conditioning.</td><td><code>dean_jett.js:155–181</code>, <code>lm_solver.js:213–216</code></td></tr>
+              <tr><td>SCI-08</td><td><span class="badge medium">Medium</span></td><td>S profile</td><td>An invalid quadratic S profile is repeatedly shrunk rather than rejected or smoothly constrained.</td><td><code>models/shared.js:66–75</code></td></tr>
+              <tr><td>SCI-09</td><td><span class="badge medium">Medium</span></td><td>QC heuristics</td><td>Scatter selection, raw-unit pulse PCA, and median-filled missing peak tracks can hide biological or acquisition failures.</td><td><code>scatter_gmm_gate.js:69–90</code>, <code>pulse_geometry_gate.js:150–207</code>, <code>peak_tracking_time_qc.js:398–435</code></td></tr>
+              <tr><td>SCI-10</td><td><span class="badge medium">Medium</span></td><td>Metrics</td><td>Reported absolute likelihood/AIC/BIC omit the Poisson factorial constant; deltas on one histogram remain valid.</td><td><code>math/poisson.js:10–21</code>, <code>diagnostics.js:47–63</code></td></tr>
+              <tr><td>DATA-02</td><td><span class="badge medium">Medium</span></td><td>Parser robustness</td><td>Offsets/counts are insufficiently bounded; non-byte-aligned or &gt;53-bit integer data can decode incorrectly.</td><td><code>metadata_processing.js:25</code>, <code>parser.js:328–408</code></td></tr>
+              <tr><td>DATA-03</td><td><span class="badge medium">Medium</span></td><td>Memory</td><td>Selected-column loading still slices the full DATA segment and temporarily duplicates columns.</td><td><code>channel_loading.js:168</code>, <code>data_worker.js:16–21</code></td></tr>
+              <tr><td>DATA-04</td><td><span class="badge medium">Medium</span></td><td>Degraded QC</td><td>Companion-channel load failures are caught and analysis continues with requested gates skipped.</td><td><code>channel_loading.js:425</code></td></tr>
+              <tr><td>SEC-01</td><td><span class="badge medium">Medium</span></td><td>Session parser</td><td>Arbitrary TOML keys/paths can target object prototypes.</td><td><code>toml_io.js:219–289</code></td></tr>
+              <tr><td>SEC-02</td><td><span class="badge medium">Medium</span></td><td>Export</td><td>TSV cells beginning with spreadsheet formula characters are not neutralized.</td><td><code>metadata_io.js:405</code></td></tr>
+              <tr><td>DATA-05</td><td><span class="badge medium">Medium</span></td><td>Metadata import</td><td>Duplicate CSV/TSV headers collapse into one key and silently lose earlier values.</td><td><code>metadata_io.js:276–330</code></td></tr>
+              <tr><td>UI-04</td><td><span class="badge medium">Medium</span></td><td>Plot export</td><td>Ridge view renders multiple SVGs but export selects only the first.</td><td><code>render.js:436</code>, <code>plot_export.js:49</code></td></tr>
+              <tr><td>UI-05</td><td><span class="badge medium">Medium</span></td><td>Accessibility</td><td>Upload/logo keyboard access, control labels, tooltips, plot naming, and modal focus handling are incomplete.</td><td><code>index.html:37,87,232</code> and UI modules</td></tr>
+              <tr><td>REL-03</td><td><span class="badge medium">Medium</span></td><td>Toolchain</td><td>Node is not pinned; Vite 8 fails under available Node 18; no npm test script exists.</td><td><code>package.json:10–25</code></td></tr>
+              <tr><td>DOC-01</td><td><span class="badge low">Low</span></td><td>Documentation</td><td>README/help/release preview contain stale feature, build, location, privacy, or temporary-style references.</td><td><code>README.md</code>, <code>help.html</code>, <code>release-notes-preview.html:25</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="scientific-review">
+        <h2>Scientific and modeling review</h2>
+        <p class="lede">The modeling code is not simply “wrong” or “right.” Its core construction contains several strong numerical choices, but specific implementation defects and missing external validation currently prevent treating all reported fractions as authoritative.</p>
+
+        <h3>Assessment by pipeline stage</h3>
+        <div class="table-wrap">
+          <table>
+            <caption>Does each scientific component do what it is intended to do?</caption>
+            <thead><tr><th>Component</th><th>Assessment</th><th>What is correct</th><th>Important limitation</th></tr></thead>
+            <tbody>
+              <tr><td>Structural QC</td><td><span class="badge good">Mostly yes</span></td><td>Preserves event alignment and rejects invalid numeric inputs.</td><td>Validity of transformed/log-scaled DNA input is not established by this stage.</td></tr>
+              <tr><td>Acquisition-rate Time QC</td><td><span class="badge good">Reasonable heuristic</span></td><td>Robust bin summaries and anomaly masking are internally coherent.</td><td>Rate uses <code>n / duration</code>, not <code>(n-1) / duration</code>; settings validation needs strengthening.</td></tr>
+              <tr><td>Peak-tracking Time QC</td><td><span class="badge medium">Needs validation</span></td><td>Tracks distribution structure rather than relying only on event rate.</td><td>Missing tracks are median-filled, which can erase the disappearance of a biologically meaningful mode.</td></tr>
+              <tr><td>Scatter gate</td><td><span class="badge medium">Heuristic</span></td><td>Two-component GMM provides an automated, reviewable candidate cell population.</td><td>Raw units and “largest substantial FSC” do not guarantee the biological singlet-cell population.</td></tr>
+              <tr><td>Pulse-geometry gate</td><td><span class="badge medium">Heuristic</span></td><td>Orthogonal PCA distance is a defensible way to find a narrow singlet locus.</td><td>Unstandardized A/H or A/W values make orientation and distance instrument-scale dependent.</td></tr>
+              <tr><td>DNA histogram</td><td><span class="badge good">Yes</span></td><td>Exact-maximum placement, mass conservation, and under/overflow accounting are handled carefully.</td><td>Scientific meaning still depends on a valid linear DNA channel.</td></tr>
+              <tr><td>Peak regions</td><td><span class="badge medium">Review required</span></td><td>Detection, confidence, warnings, and manual correction are appropriately separated.</td><td>Automated bulk averaging can override the caution implied by per-sample review.</td></tr>
+              <tr><td>Dean–Jett</td><td><span class="badge medium">Core sound; constraints flawed</span></td><td>Integrated Gaussian peaks, normalized S profile, bin mass, Poisson deviance, and multistart are good choices.</td><td>Mean-ratio projection and convergence semantics can invalidate a nominally successful fit.</td></tr>
+              <tr><td>Dean–Jett–Fox</td><td><span class="badge medium">Structurally consistent</span></td><td>Fox wave broadening precedes DJ broadening and nests DJ at zero wave weight.</td><td>Published-form numerical equivalence has not been benchmarked; it shares the constraint/convergence problems.</td></tr>
+              <tr><td>Watson pragmatic</td><td><span class="badge high">Incorrect S scope</span></td><td>Appropriately treated as a heuristic and excluded from DJ/DJF information-criterion comparison.</td><td>All positive residual mass is counted as S, including sub-G1 and post-G2 contamination.</td></tr>
+              <tr><td>Automatic DJ/DJF</td><td><span class="badge high">Needs correction</span></td><td>Uses BIC, wave mass, bounds, residual structure, and restart stability rather than BIC alone.</td><td>Can compare against a nonconverged DJ baseline and accepts any tiny lag-1 improvement as “material.”</td></tr>
+              <tr><td>Phase-fraction reporting</td><td><span class="badge high">Inconsistent</span></td><td>Canonical fit fractions are normalized from modeled component area.</td><td>The plot recomputes visible-domain fractions, so different UI surfaces can disagree.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Mathematically strong implementation choices</h3>
+        <ul class="checklist">
+          <li><strong>Histogram accounting:</strong> <code>js/analysis/dna_histogram.js:108–187</code> explicitly tracks underflow/overflow and places the exact maximum correctly.</li>
+          <li><strong>Integrated peak mass:</strong> <code>gaussian_bin_mass.js:40–55</code> integrates Gaussian probability over bin edges instead of point-sampling bin centers.</li>
+          <li><strong>Dean–Jett S component:</strong> <code>models/shared.js:119–167</code> normalizes the quadratic interphase profile and independently integrates CV-dependent broadening.</li>
+          <li><strong>DJF nesting:</strong> <code>dean_jett_fox.js:128–165</code> applies latent wave broadening before the Dean–Jett broadening and reduces to DJ when wave weight is zero.</li>
+          <li><strong>Objective:</strong> <code>fit_engine.js:49–65</code> fits raw counts using Poisson-deviance residuals rather than fitting smoothed display curves.</li>
+          <li><strong>Determinism and diagnostics:</strong> deterministic multistart, retained candidate diagnostics, tail mass, bound warnings, residual autocorrelation, and restart stability are all valuable safeguards.</li>
+        </ul>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>SCI-01</code><h3>Watson S-phase fraction includes contamination outside the S interval</h3></div>
+          <p>The implementation computes <code>max(0, observed - G1 - G2)</code> for every histogram bin and normalizes that total as S phase. The project plan states that residual S should be limited to the interval between fitted G1 and G2 centers.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>js/analysis/cell_cycle/models/watson_pragmatic.js:181–185,208–217</code>; intended behavior in <code>docs/plans/cell_cycle_modeling_plan.md:570–577</code>.</dd>
+            <dt>Impact</dt><dd>Sub-G1 debris, baseline, and aggregates beyond G2 can materially inflate %S while still producing a plausible-looking decomposition.</dd>
+            <dt>Remediation</dt><dd>Restrict residual integration to the declared S interval, or explicitly model/exclude contamination. Add quantitative recovery tests, not only “S is nonzero” tests.</dd>
+          </dl>
+        </article>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>SCI-02</code><h3>G2:G1 ratio constraints are not guaranteed</h3></div>
+          <p>The projection clamps G1 and G2 independently, adjusts G2 for the ratio, and then clamps G2 back into its region. That final clamp can reintroduce a ratio violation even when a feasible pair exists elsewhere.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>dean_jett.js:129–147</code> and <code>dean_jett_fox.js:174–191</code>. For G1 region [1,10], G2 region [18,20], ratio [1.65,2.25], proposed G1=1 can return G2=18, a ratio of 18.</dd>
+            <dt>Impact</dt><dd>A fit can be displayed as bounded while violating a biologically important DNA-content relationship.</dd>
+            <dt>Remediation</dt><dd>Jointly project the pair onto the feasible intersection or parameterize G2 as G1 multiplied by a smoothly bounded ratio. Assert every final result satisfies every constraint.</dd>
+          </dl>
+        </article>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>SCI-03/04</code><h3>Convergence and automatic model validity are overstated</h3></div>
+          <p>The LM solver terminates when relative deviance improvement is small <em>or</em> the parameter step is small, yet labels the reason as if both occurred. Auto selection explicitly requires DJF convergence but not base DJ convergence.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>math/lm_solver.js:382–405</code>; result mapping in <code>dean_jett.js:282–285</code> and <code>dean_jett_fox.js:350–354</code>; comparison in <code>model_selection.js:103–152</code>.</dd>
+            <dt>Impact</dt><dd>Stalled/ill-conditioned fits can look converged, and Fox may be chosen against an invalid baseline—or a nonconverged DJ may remain the default.</dd>
+            <dt>Remediation</dt><dd>Report distinct termination reasons; require explicit objective, step, and preferably gradient/conditioning checks; require both candidates to be valid or return “no valid model.”</dd>
+          </dl>
+        </article>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>SCI-05/06</code><h3>Displayed and bulk-applied scientific quantities can diverge</h3></div>
+          <p>The plot recomputes fractions from model mass inside the displayed histogram while the table/sidebar use canonical fit fractions. Separately, Auto-Fit All averages absolute region limits across samples without checking shared calibration and includes low-confidence/inferred proposals.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>js/plotting/render.js:154–213</code>; canonical fractions in <code>dean_jett.js:403–409</code> and <code>dean_jett_fox.js:464–467</code>; bulk logic in <code>modeling_ui.js:226–279</code>.</dd>
+            <dt>Impact</dt><dd>Users can see different %G1/%S/%G2 for the same fit, while one atypical or differently scaled sample can bias every bulk fit.</dd>
+            <dt>Remediation</dt><dd>Use <code>fit.phaseFractions</code> everywhere; label domain-limited summaries separately. Gate bulk sharing on compatible channel calibration and robust, reviewed normalized regions.</dd>
+          </dl>
+        </article>
+
+        <h3>Further scientific limitations</h3>
+        <ul>
+          <li><strong>Conditioning:</strong> areas, channel coordinates, CVs, and shape values are optimized on very different raw scales with hard projections and finite-difference normal equations. The design plan called for dimensionless/log/logit parameterization.</li>
+          <li><strong>S-profile positivity:</strong> invalid quadratic profiles are clipped and repeatedly multiplied by 0.7 until positive. This undocumented nonsmooth repair changes the candidate shape rather than rejecting it or guaranteeing validity through parameterization.</li>
+          <li><strong>Model-selection threshold:</strong> any decrease in absolute lag-1 residual autocorrelation counts as improvement; there is no material-effect threshold despite the UI/policy language.</li>
+          <li><strong>Absolute information metrics:</strong> the Poisson factorial constant is omitted. Within-histogram model deltas remain valid because the constant cancels, but the displayed absolute likelihood/AIC/BIC are nonstandard and should not be compared across samples or external tools.</li>
+          <li><strong>No uncertainty:</strong> there are no confidence intervals, bootstrap distributions, profile likelihoods, or identifiability/condition-number diagnostics for phase fractions and model parameters.</li>
+          <li><strong>Legacy/canonical overlap:</strong> stages 5–8 of <code>cell_cycle_pipeline.js</code> retain a legacy bridge while canonical fitting uses separate model state. The UI and documentation should state which result is authoritative.</li>
+        </ul>
+
+        <div class="callout danger">
+          <p><strong>Scientific readiness conclusion:</strong> DJ and DJF are structurally consistent with the intended model family, but they are not yet demonstrated numerically equivalent to a published reference implementation. Watson does not currently implement its intended S-range rule. Do not use this snapshot for publication-grade, clinical, or irreversible biological decisions without correcting the high findings and benchmarking against established software and annotated datasets.</p>
+        </div>
+      </section>
+
+      <section id="frontend-review">
+        <h2>HTML, CSS, and frontend behavior</h2>
+        <p class="lede">The frontend is modular and feature rich, with generally careful escaping and several good accessibility details. The major problems are production-only assets, mobile reachability, scientific-settings state, swallowed errors, and incomplete keyboard/screen-reader support.</p>
+
+        <h3>Verified strengths</h3>
+        <ul class="checklist">
+          <li>No duplicate IDs or missing label targets were found in the main page.</li>
+          <li>Static source-page images have alternative text; dynamic user strings are generally escaped or assigned with <code>textContent</code>.</li>
+          <li>Peak-region sliders expose good keyboard and ARIA semantics.</li>
+          <li>Collapsed panels synchronize <code>aria-expanded</code>, <code>aria-hidden</code>, and <code>inert</code>.</li>
+          <li>Viewport panning coalesces redraws through <code>requestAnimationFrame</code>.</li>
+          <li>CSS braces and source asset references were structurally intact, except the stale release-preview stylesheet.</li>
+        </ul>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>UI-01</code><h3>Time QC modal can save invalid or cancelled state</h3></div>
+          <p>“Reset defaults” mutates shared settings immediately; pressing Cancel afterward returns null but does not roll the mutation back. Apply checks only that values are finite and does not enforce HTML min/max constraints, and restored session values bypass HTML validation entirely.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>time_qc_modal.js:9,119–182</code>; <code>time_qc_settings.js:82–102</code>; numeric declarations around <code>index.html:572,590</code>.</dd>
+            <dt>Impact</dt><dd>Negative counts, invalid overlap, or out-of-range thresholds can enter scientific calculations; Cancel may unexpectedly change the analysis.</dd>
+            <dt>Remediation</dt><dd>Edit a modal-local draft, validate complete cross-field constraints in one schema, commit only on Apply, and validate session-restored settings through the same function.</dd>
+          </dl>
+        </article>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>UI-02</code><h3>QC exceptions are reported as success</h3></div>
+          <p><code>pipeline_ui.js:327</code> catches stage exceptions without surfacing the failure, then line 356 always reports “Pre-model QC applied.” Expected insufficient-data skips and unexpected programming/data errors are indistinguishable.</p>
+          <dl>
+            <dt>Impact</dt><dd>A user can proceed to modeling believing requested QC ran successfully when it crashed or silently degraded.</dd>
+            <dt>Remediation</dt><dd>Use typed expected-skip results; fail closed on unexpected exceptions; display per-sample stage status; block downstream fitting when a required stage fails.</dd>
+          </dl>
+        </article>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>UI-03</code><h3>Mobile layout can make content unreachable</h3></div>
+          <p>The body disables scrolling, while the app height assumes a 60px header. At the mobile breakpoint, the header grows and the sidebar/workspace stack vertically, but the viewport calculation is not reconciled.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>css/base.css:62</code>, <code>css/layout.css:148</code>, and <code>css/responsive.css:3</code>.</dd>
+            <dt>Remediation</dt><dd>Allow document scrolling on stacked layouts or use a single dynamic viewport grid with <code>min-height: 0</code> on internal scroll regions; test narrow/short viewports and mobile browser chrome.</dd>
+          </dl>
+        </article>
+
+        <h3>Other frontend defects</h3>
+        <div class="table-wrap">
+          <table>
+            <caption>Medium and low frontend findings</caption>
+            <thead><tr><th>Severity</th><th>Issue</th><th>Evidence / recommendation</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge medium">Medium</span></td><td>Switching Time QC methods does not reload the method-specific event-rate checkbox; Run All bypasses the intentional method-choice dialog.</td><td><code>time_qc_modal.js:128–150</code>, <code>pipeline_ui.js:427–458</code>. Bind controls to a per-method draft and use the same decision path for individual/Run All execution.</td></tr>
+              <tr><td><span class="badge medium">Medium</span></td><td>Auto-Fit All can count the same failed sample twice, producing a failure total larger than the sample count.</td><td><code>modeling_ui.js:226,265,283</code>. Track a per-sample terminal state.</td></tr>
+              <tr><td><span class="badge medium">Medium</span></td><td>Ridge export exports only the first sample SVG.</td><td><code>render.js:436</code>, <code>plot_export.js:49</code>. Export one composite SVG or an explicitly labeled archive/first-view result.</td></tr>
+              <tr><td><span class="badge medium">Medium</span></td><td>Axis modal accepts equal or inverted limits, then stores misleading state before render fallback.</td><td><code>axis_modal.js:97</code>. Require finite min &lt; max and report validation inline.</td></tr>
+              <tr><td><span class="badge medium">Medium</span></td><td>Upload drop zone and clickable logo are pointer-only; file input/checkboxes lack accessible names; sortable headers omit <code>aria-sort</code>.</td><td><code>index.html:37,87,232</code>, <code>main.js:231,253</code>, <code>table_render.js:263,356</code>. Use semantic buttons/labels and stateful ARIA.</td></tr>
+              <tr><td><span class="badge medium">Medium</span></td><td>Tooltip content remains <code>aria-hidden</code>, can overflow mobile width, and is not associated with triggers.</td><td><code>hover_text.js:107,132,165</code>. Toggle accessibility state, add <code>aria-describedby</code>, and clamp both axes.</td></tr>
+              <tr><td><span class="badge medium">Medium</span></td><td>Plot SVG has no role/name/description; modals do not trap focus or restore it to their trigger.</td><td><code>render.js:657</code>, <code>plot_export.js:206</code>, <code>axis_modal.js:49</code>, <code>time_qc_modal.js:182</code>.</td></tr>
+              <tr><td><span class="badge low">Low</span></td><td>Help and README omit/currently misstate several features and storage/build behavior; release preview links a temporary missing CSS path.</td><td>Update documentation from the implemented feature map and generate previews with repository-relative assets.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="data-sessions">
+        <h2>FCS data, sessions, reproducibility, and security</h2>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>DATA-01</code><h3>The model can accept a channel that is not linear DNA content</h3></div>
+          <p>The parser reads stored F/D/I values but does not apply or explicitly reject <code>$PnE</code>/<code>$PnG</code> amplification/scaling, compensation/spillover, non-list <code>$MODE</code>, or chained <code>$NEXTDATA</code> datasets. Amplification metadata is recorded, not used.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>js/fcs/parser.js:267–305,392–435</code>; <code>js/fcs/channel_cleaning.js:272–286</code>.</dd>
+            <dt>Impact</dt><dd>DJ/DJF can converge numerically on log-amplified, uncompensated, or otherwise unsuitable values while producing scientifically meaningless G1/G2 positions and fractions.</dd>
+            <dt>Remediation</dt><dd>Before modeling, require list mode and a verified supported linear DNA channel. Apply documented transforms/compensation where supported; otherwise block with a specific explanation.</dd>
+          </dl>
+        </article>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>SES-01/02</code><h3>Cached files can orphan, and restored file identity is weak</h3></div>
+          <p>A fresh runtime session ID is generated each load, while restored records can point to an older OPFS path. Reset deletes only the current runtime directory. Reconnect accepts OPFS content by size and manual content by filename plus size; no digest proves it is the same sample.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>file_cache.js:206,235,299</code>; <code>core.js:425–435</code>; <code>reconnect.js:27–64</code>.</dd>
+            <dt>Impact</dt><dd>Large private FCS copies can accumulate without cleanup, and a same-name/same-size replacement can silently undermine scientific reproducibility.</dd>
+            <dt>Remediation</dt><dd>Persist ownership/index metadata for every cached object; delete all session-referenced paths on reset; offer cache inventory/clear controls; store and verify SHA-256 digests.</dd>
+          </dl>
+        </article>
+
+        <h3>Parser robustness and memory</h3>
+        <ul>
+          <li>TEXT/DATA offsets and <code>$TOT × event_stride</code> are not fully checked against file/buffer size before reads and allocation.</li>
+          <li>Integer parsing assumes <code>ceil(bits/8)</code> byte-aligned fields; non-byte-aligned encodings and integers above JavaScript's exact 53-bit range should be implemented correctly or rejected.</li>
+          <li>Selected-column loading still slices the whole DATA segment, allocates normal arrays, then creates <code>Float64Array</code> copies. Four-file concurrency can amplify peak memory.</li>
+          <li>Companion channel failures are caught and warned, but Time/scatter/singlet QC can then skip while modeling remains available. Requested mandatory gates should fail closed.</li>
+          <li>Current parser fixtures cover little-endian float32 and 16-bit integer happy paths, not double, big-endian, truncation, escaped delimiters, supplemental TEXT, unusual bit widths, or multiple datasets.</li>
+        </ul>
+
+        <h3>Security and privacy</h3>
+        <div class="table-wrap">
+          <table>
+            <caption>Local-first does not eliminate local-file and export risks</caption>
+            <thead><tr><th>Risk</th><th>Evidence</th><th>Recommended control</th></tr></thead>
+            <tbody>
+              <tr><td>Tracked session/config material contains experiment filenames, annotations, sizes, timestamps, and OPFS identifiers; source-root deployment would publish it.</td><td><code>sessions/phasefinder_local.json</code>, <code>sessions/phasefinder_session_20260705.toml</code>, <code>.codex/config.toml</code>; contradiction at <code>core.js:446</code>.</td><td>Deploy only <code>dist/</code>; remove personal files from tracking/history as appropriate; ignore local active sessions and tooling configuration.</td></tr>
+              <tr><td>Custom TOML parser assigns untrusted keys/section paths into ordinary objects, including prototype-sensitive names.</td><td><code>toml_io.js:219–289</code>.</td><td>Use null-prototype dictionaries, reject <code>__proto__</code>/<code>constructor</code>/<code>prototype</code>, and validate against a session schema.</td></tr>
+              <tr><td>Exported TSV permits cells beginning with <code>=</code>, <code>+</code>, <code>-</code>, or <code>@</code>.</td><td><code>metadata_io.js:405</code>.</td><td>Neutralize spreadsheet formulas on export or provide a safe-export mode with a clear policy.</td></tr>
+              <tr><td>Duplicate imported headers collapse into one object key and lose earlier column values.</td><td><code>metadata_io.js:276–330</code>.</td><td>Reject duplicate headers or deterministically rename them before row mapping.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="build-release">
+        <h2>Build, CI, deployment, and documentation</h2>
+
+        <article class="finding critical">
+          <div class="finding-head"><span class="badge critical">Critical</span><code>REL-01</code><h3>The release workflow cannot complete safely</h3></div>
+          <p><code>deploy-release.yml</code> calls <code>scripts/update-release-notes.sh</code>, but the repository contains <code>.github/scripts/update_release_notes.sh</code>. It does not set up Node, install dependencies, or run Vite. The deploy command publishes <code>.</code>, not <code>dist/</code>.</p>
+          <dl>
+            <dt>Impact now</dt><dd>Release-note generation fails before deployment.</dd>
+            <dt>Impact if partly fixed</dt><dd>Cloudflare receives source modules, tests, internal docs/tooling, and tracked experiment/session metadata instead of the minimized production artifact.</dd>
+            <dt>Remediation</dt><dd>Correct the script path/interface; pin Node; run <code>npm ci</code>, unit/E2E/build checks; inspect <code>dist/</code>; deploy exactly <code>dist</code>; use least-privilege permissions and concurrency controls.</dd>
+          </dl>
+        </article>
+
+        <article class="finding high">
+          <div class="finding-head"><span class="badge high">High</span><code>REL-02</code><h3>The production artifact is incomplete</h3></div>
+          <p>Vite is configured only with a D3 alias. It treats <code>index.html</code> as the sole page, so the live Help link points to a file that is not emitted. Panel/sidebar icon paths are runtime strings Vite cannot discover, and manifest paths point to nonexistent root icons.</p>
+          <dl>
+            <dt>Evidence</dt><dd><code>vite.config.js:4</code>; <code>index.html:722</code>; <code>js/ui/dom.js:125</code>; <code>js/ui/panels.js:28,122</code>; <code>assets/img/favicon/site.webmanifest:1</code>.</dd>
+            <dt>Observed</dt><dd>The successful build contains <code>dist/index.html</code> but no <code>dist/help.html</code> and no four runtime-swapped SVGs.</dd>
+            <dt>Remediation</dt><dd>Add multi-page inputs, import dynamic asset URLs or place stable paths in <code>public/</code>, correct manifest URLs, remove the hand-authored raw <code>modulepreload</code>, and test the built artifact.</dd>
+          </dl>
+        </article>
+
+        <h3>CI and toolchain findings</h3>
+        <ul>
+          <li><strong>Broken native Safari workflow:</strong> the legacy workflow referenced dependency and test paths that did not exist.</li>
+          <li><strong>WebKit is not native Safari:</strong> the main compatibility matrix labels Playwright WebKit as “safari.” That is useful engine coverage, but should be named WebKit and not presented as native browser validation.</li>
+          <li><strong>Unit phase can disappear:</strong> <code>drive_flow.py:203</code> catches unit-run exceptions and only prints a warning; exit status at line 228 checks recorded FAIL rows. A completely missing unit phase can therefore return success.</li>
+          <li><strong>Source-only E2E:</strong> the browser runner serves the repository root, never <code>dist/</code>. Production-only Help/icon/manifest/preload failures escape the regression gate.</li>
+          <li><strong>Node reproducibility:</strong> <code>package.json</code> lacks <code>engines</code> and a committed version pin. Vite 8 requires Node <code>^20.19.0 || &gt;=22.12.0</code>; the available Node 18.19.1 fails, while Node 24.16.0 builds successfully.</li>
+          <li><strong>No npm test contract:</strong> package scripts expose dev/build/preview only. GitHub/Cloudflare cannot use a conventional <code>npm test</code> gate without custom knowledge.</li>
+          <li><strong>Pre-commit drift:</strong> documentation says dirty worktrees are blocked, but the relevant exits are commented out in <code>.githooks/pre-commit:11,26</code>.</li>
+        </ul>
+
+        <h3>Documentation drift</h3>
+        <p><code>README.md</code> still says there is no build pipeline/package manager and contains stale model-wiring language. <code>help.html</code> mislocates Help, conflicts with OPFS behavior, and omits current fitting, Time QC, ridge, viewport, bulk-fit, and export features. <code>release-notes-preview.html:25</code> references a temporary absolute stylesheet that is absent.</p>
+      </section>
+
+      <section id="testing">
+        <h2>Test and runtime evidence</h2>
+        <div class="table-wrap">
+          <table>
+            <caption>Checks performed for this audit</caption>
+            <thead><tr><th>Check</th><th>Result</th><th>Interpretation</th></tr></thead>
+            <tbody>
+              <tr><td>Browser unit harness</td><td><span class="badge good">415 / 415 passed</span></td><td>Strong regression coverage for implemented synthetic behavior, including new peak-tracking Time QC.</td></tr>
+              <tr><td>Vite production build on Node 24.16.0</td><td><span class="badge good">Build completed</span></td><td>100 modules transformed; bundling/minification works, but artifact-content checks exposed missing pages/assets.</td></tr>
+              <tr><td>Vite under Node 18.19.1</td><td><span class="badge high">Failed</span></td><td>Expected incompatibility with Vite 8 confirms the need for a declared/pinned Node version.</td></tr>
+              <tr><td>Full local Playwright source workflow</td><td id="e2e-result"><span class="badge good">596 / 596 passed</span></td><td id="e2e-interpretation">The clean isolated run passed 181 end-to-end checks and the same 415 unit checks, including file I/O, plots/exports, QC, modeling, sessions, metadata, and Reset.</td></tr>
+              <tr><td>HTML/static reference checks</td><td><span class="badge good">Main source pages structurally clean</span></td><td>No duplicate main-page IDs, missing label targets, or missing static source assets. The release preview has a stale CSS path.</td></tr>
+              <tr><td>Production artifact inspection</td><td><span class="badge high">Failed content completeness</span></td><td>Help, dynamic panel icons, and manifest icon paths are not deployable as built.</td></tr>
+              <tr><td>Native Safari/browser matrix</td><td><span class="badge medium">Not established</span></td><td>Not run locally; the native Safari workflow is nonfunctional and WebKit coverage is not native Safari.</td></tr>
+              <tr><td>External scientific benchmark</td><td><span class="badge high">Absent</span></td><td>No comparison to FlowJo, ModFit, an independent R/Python implementation, literature reference curves, or annotated biological truth.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout warning">
+          <p><strong>Why 415/415 is not enough:</strong> many numeric tests generate observations from the same implemented model family and verify that the implementation recovers its own assumptions. That is excellent regression testing, but it does not test model misspecification, instrument transforms, real biological contamination, cross-platform reference values, or external truth.</p>
+        </div>
+
+        <h3>Missing high-value tests</h3>
+        <ul>
+          <li>A regression proving every final DJ/DJF result obeys the G2:G1 ratio across adversarial region combinations.</li>
+          <li>Watson fixtures with sub-G1 debris and post-G2 aggregates, asserting they do not become S phase.</li>
+          <li>Nonconverged DJ/DJF candidates and explicit “no valid model” Auto behavior.</li>
+          <li>Consistency of plot, sidebar, table, session restoration, and export phase fractions.</li>
+          <li>Gold-standard FCS files covering double/big-endian/truncated/supplemental/multiple-dataset and scaling/compensation cases.</li>
+          <li>A CI job that builds, serves <code>dist/</code>, follows Help, toggles every dynamic icon, validates the web manifest, and runs a smoke analysis.</li>
+          <li>OPFS inspection proving Reset deletes every owned cache entry and digest mismatch blocks reconnect.</li>
+          <li>Mobile viewport, keyboard-only, screen-reader, and native Safari scenarios.</li>
+        </ul>
+      </section>
+
+      <section id="strengths">
+        <h2>Notable strengths worth preserving</h2>
+        <ul class="checklist">
+          <li><strong>Privacy-oriented architecture:</strong> runtime analysis is browser-local, D3 is vendored, and no analytics/upload service was found.</li>
+          <li><strong>Good separation of concerns:</strong> UI, state, FCS, plotting, scientific analysis, sessions, and workers are split into focused ES modules.</li>
+          <li><strong>Index alignment:</strong> masks and companion channels preserve source event indexing across staged QC.</li>
+          <li><strong>Model transparency:</strong> components, diagnostics, bounds, restarts, and warnings are retained rather than hiding the fit behind one percentage.</li>
+          <li><strong>Recomputation on restore:</strong> sessions restore inputs/settings and recompute fits instead of trusting stale serialized scientific results.</li>
+          <li><strong>Performance awareness:</strong> header-first loading, deferred companion channels, worker transfer buffers, limited concurrency, and animation-frame redraw coalescing are sensible.</li>
+          <li><strong>Escaping discipline:</strong> user-derived strings are generally escaped in tables, status/progress UI, tooltips, fit displays, and reconnect views.</li>
+          <li><strong>Deep test investment:</strong> 415 browser unit checks cover many numeric components, boundaries, worker parity, selection policy, and Time QC paths.</li>
+        </ul>
+      </section>
+
+      <section id="roadmap">
+        <h2>Prioritized remediation roadmap</h2>
+        <ol class="roadmap">
+          <li>
+            <h3>Stop unsafe/incomplete releases</h3>
+            <p>Fix the release script path; pin Node; build and test <code>dist/</code>; add Help and dynamic assets; deploy only <code>dist/</code>; remove/ignore personal session/tooling material; repair or disable the broken Safari workflow until its tests exist.</p>
+          </li>
+          <li>
+            <h3>Correct scientific result integrity</h3>
+            <p>Limit Watson S residuals; guarantee ratio constraints; make convergence reasons honest and strict; require valid DJ and DJF candidates; unify phase-fraction consumers; validate calibrated regions before bulk fitting.</p>
+          </li>
+          <li>
+            <h3>Gate valid FCS inputs and QC execution</h3>
+            <p>Validate list mode, scaling/amplification, compensation, data bounds, integer representation, and dataset count. Treat required companion-channel or stage failures as explicit blocking states, not success.</p>
+          </li>
+          <li>
+            <h3>Make sessions reproducible and storage manageable</h3>
+            <p>Add content digests, cache ownership/indexing, comprehensive reset/clear controls, schema-validated TOML, prototype-safe parsing, and regression tests that inspect OPFS.</p>
+          </li>
+          <li>
+            <h3>Harden the frontend</h3>
+            <p>Use draft/validated Time QC settings, fix mobile scrolling, complete keyboard and screen-reader semantics, trap/restore modal focus, validate axes, and make ridge export behavior explicit.</p>
+          </li>
+          <li>
+            <h3>Establish independent scientific validity</h3>
+            <p>Freeze representative reference FCS datasets; compare component curves and fractions with literature equations and established software; test known mixtures/perturbations; add uncertainty and identifiability measures; document supported instruments/transforms and acceptance tolerances.</p>
+          </li>
+        </ol>
+
+        <div class="callout good">
+          <p><strong>Recommended release gate:</strong> no Critical/High findings open; clean Node-pinned build; unit plus source and <code>dist/</code> E2E pass; artifact manifest check; no personal session/config files; browser matrix reports accurately named engines; and reference-model benchmarks meet documented tolerances.</p>
+        </div>
+      </section>
+
+      <section id="limitations">
+        <h2>Audit limitations and interpretation</h2>
+        <ul>
+          <li>The audited working tree contained active uncommitted Time QC changes. Findings describe that snapshot and should be rechecked after those changes are finalized.</li>
+          <li>No real private FCS dataset was required or inspected for this report; dynamic tests used repository-generated fixtures unless otherwise noted.</li>
+          <li>Static review cannot enumerate every browser resource limit, numerical local minimum, malformed file, or assistive-technology interaction.</li>
+          <li>The code was compared with repository specifications and standard numerical expectations, not line-by-line with every equation in the primary Dean, Jett, Fox, and Watson publications.</li>
+          <li>Security findings are targeted code observations, not an exhaustive threat model or third-party dependency audit.</li>
+          <li>Severity reflects the likely impact on scientific correctness, privacy, release reliability, accessibility, and reproducibility—not only whether an exception is thrown.</li>
+        </ul>
+
+        <p class="muted"><strong>Audit author:</strong> Codex, with independent parallel reviews of scientific modeling, frontend behavior, and FCS/session/build paths. Final conclusions were consolidated against the same repository snapshot.</p>
+      </section>
+    </main>
+  </div>
+
+  <p class="footer-note">PhaseFinder full project audit • Generated 2026-07-24 • Report is self-contained and uses no external scripts, fonts, or stylesheets.</p>
+</body>
+</html>

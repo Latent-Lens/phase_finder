@@ -18,15 +18,53 @@ The project currently focuses on a specific analysis workflow:
 7. Optionally fit a Dean–Jett–Fox (DJF) cell-cycle model to one sample and read
    off its %G1 / %S / %G2 fractions.
 
-Files are read by browser APIs. There is no upload server, database, or build
-pipeline in this repository.
+Files are read by browser APIs. There is no upload server or database. Vite
+builds the static production artifact used by the release workflow.
+
+### Browser support
+
+PhaseFinder supports Chrome/Edge 111+, Firefox 121+, Safari 16.2+, Chrome for
+Android 111+, and iOS Safari 16.2+. CI exercises current Chromium, Firefox, and
+WebKit because Playwright does not distribute historical engines; these minimums
+are the feature baseline, while current stable releases are recommended.
+Web Workers, WebAssembly, IndexedDB, CSS Grid, and `inert` are required and are
+checked at startup. OPFS and persistent folder access are optional: without
+them, analysis remains in memory and session reconnect falls back to manual file
+selection. The startup report is available as `window.PhaseFinderCompatibility`.
+
+### Statistical metric comparability
+
+Poisson log-likelihood includes the full `log(y!)` term and therefore matches standard external tools for the same observed histogram. AIC, AICc, and BIC use the number of fitted bins as `n` and the number of optimizer-moved parameters as `k`. Information-criterion differences are valid between models fitted to the same histogram only; they must not be ranked across samples, binning schemes, or different observed counts. Deviance and reduced deviance describe fit to their own histogram, while phase fractions remain the appropriate cross-sample biological outputs.
+
+## Development
+
+Use Node 22 (the exact major is pinned in `.nvmrc`) and Python 3.12:
+
+```bash
+npm ci
+python3 -m pip install --requirement requirements-dev.txt
+python3 -m playwright install chromium
+npm test
+npm run build
+npm run check:dist
+```
+
+`npm run dev` starts the source development server. `npm run preview` serves
+the built `dist/` artifact. The combined `npm run check` command runs the
+browser unit suite, production build, and artifact integrity checks.
+Use `BASE_PATH=/phasefinder/ npm run build` for a non-root deployment; run
+`npm run check:base` to build and verify that supported base path locally.
+Release containment, rollback, artifact URL, and privacy policy are documented
+in [`docs/release-and-privacy.md`](docs/release-and-privacy.md).
+PhaseFinder is licensed under PolyForm Noncommercial 1.0.0; vendored dependency attribution is recorded in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## Project Structure
 
 ```text
 .
 ├── index.html
-├── help.html             # in-app help/feature guide, linked from the header
+├── help/                 # topic-based in-app help center, linked from the footer
 ├── assets/
 │   └── img/
 │       ├── logo.png
@@ -41,12 +79,12 @@ pipeline in this repository.
 │   ├── plot.css         # plot panel layout, controls bar, DJF readout
 │   ├── feedback.css     # status bar and progress overlay
 │   ├── responsive.css   # @media overrides (loaded last)
-│   └── help.css         # standalone stylesheet for help.html
+│   └── help.css         # standalone stylesheet for the help center
 ├── js/
 │   ├── vendor/          # vendored D3 ESM bundle
 │   ├── state/           # app_state (file_map + frame accessors), file-selection queries
 │   ├── util/            # leaf string helpers (HTML escaping, filename transforms)
-│   ├── analysis/        # staged DJF pipeline (lazy-loaded), orchestration, summary stats
+│   ├── analysis/        # QC + cell-cycle modeling pipeline (lazy-loaded), orchestration, summary stats
 │   ├── data_structs/    # frame, table state, metadata columns, channel cache
 │   ├── fcs/             # FCS parser, metadata reader, channel cleanup, module worker
 │   ├── io/              # FCS/metadata loading, parameter map, table import/export
@@ -59,8 +97,9 @@ pipeline in this repository.
 │   ├── function-call-and-user-decision-graphs.html # interactive call + decision diagrams
 │   └── *.md                                     # canonical Mermaid sources for those pages
 ├── tests/
-│   ├── e2e/             # Playwright driver (drive_flow.py) + results/
-│   └── unit/            # module-level unit suites driven via test_harness.html
+│   ├── e2e/             # driver, test data, generated reports and media
+│   ├── unit/            # driver, unit checks, and browser test harness
+│   └── validation/      # driver, synthetic/external data, and reports
 └── misc/
     └── README.md
 ```
@@ -69,7 +108,7 @@ Note: the file list above is a high-level map, not exhaustive. The app loads as
 native ES modules: `index.html` has a single `<script type="module"
 src="./js/main.js">`, and `js/main.js` imports every layer and runs an ordered
 `init_*()` bootstrap, so the dependency graph lives in the `import` statements
-rather than a hand-maintained list of script tags. `help.html` documents all of
+rather than a hand-maintained list of script tags. `help/index.html` links to topic pages documenting all of
 the features the app adds (the metadata wizard, summary statistics, session
 save/load, and layout controls); see it for an up-to-date feature tour. For the
 module dependency layers and the key event-flow / user-decision paths as mermaid
@@ -83,9 +122,9 @@ controls; their canonical Mermaid sources remain beside them as `.md` files.
 `index.html` defines the full application shell. It maps D3 to the locally
 vendored ESM bundle in `js/vendor/` (no runtime CDN dependency), loads the split
 stylesheets, lays out the header, file drop zone, channel selector, metadata
-table, plot panel, staged DJF controls, progress overlay, and bottom status bar,
+table, plot panel, cell-cycle modeling controls, progress overlay, and bottom status bar,
 then loads the app through the single ES-module entry (`js/main.js`). The native
-DJF numeric modules under `js/analysis/djf/` are lazy-loaded on the first pipeline
+DJF numeric modules under `js/analysis/` are lazy-loaded on the first pipeline
 action, so they stay off the initial load path.
 
 Load order is no longer hand-maintained: it is the ES-module dependency graph
@@ -106,8 +145,8 @@ runtime:
 5. `js/io/channel_loading.js` imports the file getters and `FCSParser` to load
    index-aligned DNA A/H/W, FSC-A, SSC-A, and Time channels (via the module
    worker), then `js/plotting/modeling.js`'s `init_plot` draws the plot.
-6. `js/analysis/djf/pipeline_loader.js` dynamically imports the Stage 0–8
-   orchestrator on the first stage or Run-all action.
+6. `js/analysis/pipeline_loader.js` dynamically imports the QC + modeling
+   pipeline orchestrator on the first QC or modeling action.
 
 The only runtime third-party library is:
 
@@ -209,7 +248,7 @@ across `data.js` (state, data preparation, and histogram binning), `modeling.js`
 (fit/report table), `render.js` (the main SVG render pass), and `axis_modal.js`
 (axis-range modal, plot-control listeners, and the `window.PhaseFinder.plot`
 inspection API). Rendering reads the latest available checkpoint from the
-per-sample state owned by `js/analysis/djf/pipeline_state.js`.
+per-sample state owned by `js/analysis/pipeline_state.js`.
 
 Important responsibilities:
 
@@ -221,12 +260,14 @@ Important responsibilities:
   loaded samples and redraws on `fcs-selection-change` (unchecking a row removes
   its curve without discarding its loaded data; re-checking restores it).
 - Maintains a dynamic plot title: `Histogram of Events: n Samples, m Events`.
-- **Dean–Jett–Fox modeling** is a manual nine-stage pipeline: structural QC,
-  optional Time/scatter/singlet gates, masked histogram construction, peak
-  detection, constrained base fit, optional debris/aggregate extension, and a
-  normalized report. Stage 6/7 overlays the fitted total and filled G1/S/G2
-  components (plus selected contamination terms); Stage 8 populates the grouped
-  report table and diagnostic warnings.
+- **Cell-cycle modeling** runs in layers: pre-modeling QC (Structural, Time,
+  Cell Gate, Singlet Gate) removes acquisition artifacts, debris, and doublets;
+  the masked histogram is built; peaks are detected and reviewed (Identify
+  Peaks); then a model is fit against the accepted G1/G2 regions (Model & Fit:
+  Dean–Jett, Dean–Jett–Fox, Watson Pragmatic, or Automatic). The plot overlays
+  the fitted total and filled G1/S/G2 components (plus selected contamination
+  terms), and the fitted fractions plus the accepted region bounds are written
+  to the metadata table.
 - Plot styling is centralized in named constants at the top of the file —
   component colors (`DJF_G1_COLOR`, `DJF_S_COLOR`, `DJF_G2_COLOR`), fill opacity,
   line widths, margins, axis tick/title sizes, legend metrics, and threshold
@@ -235,8 +276,9 @@ Important responsibilities:
 ### `js/analysis/`
 
 The selected-data loading and panel orchestration layer, loaded after
-`js/plotting/`. The `js/analysis/djf/` directory contains the Stage 0–8 model,
-numeric helpers, per-sample state, lazy loader, and UI orchestration;
+`js/plotting/`. The QC + modeling pipeline, numeric helpers under `js/analysis/math/`,
+per-sample state, lazy loader, and UI orchestration live directly under
+`js/analysis/`;
 `js/analysis/start.js` coordinates plotting/pipeline actions, and
 `js/analysis/stats.js` owns summary statistics. Selected FCS DATA loading is in
 `js/io/channel_loading.js`, using `js/io/parameter_map.js` for parameter-index
@@ -252,35 +294,33 @@ Important responsibilities:
 - Reveals the plot panel and calls `initPlot()` once the data is loaded; the
   sample/event counts are shown in the plot title rather than the sidebar.
 
-### `tests/e2e/`
+### `tests/e2e/driving_code/`
 
 A Playwright end-to-end driver (`drive_flow.py`) that launches the app in
 headless Chromium, loads real FCS files, runs analysis, and exercises the plot
 and DJF modeling. Screenshots are written to `tests/e2e/results/` (git-ignored).
-See `tests/e2e/README.md` for the one-time Playwright setup and usage.
+Setup, usage, fixture documentation, provenance, and validation commands are
+consolidated under [Testing](#testing) below.
 
 The test driver is also the project's regression gate. It runs the browser e2e
 workflow and then the JavaScript unit suites through `tests/unit/test_harness.html`:
 
 ```bash
-/tmp/flowvenv/bin/python tests/e2e/drive_flow.py
+/tmp/flowvenv/bin/python tests/e2e/driving_code/drive_flow.py
 ```
 
-To require this full suite before local commits, enable the tracked pre-commit
-hook once per clone:
+To run the fast CI-contract and supply-chain checks before local commits,
+enable the tracked pre-commit hook once per clone:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-After that, `git commit` is blocked unless the worktree is clean and the full
-regression suite passes. If Playwright is installed in a different environment,
-set `PHASEFINDER_TEST_PYTHON` to that Python executable before committing. While
-the hook is running, live output is also written to:
-
-```bash
-tail -f tests/e2e/results/pre_commit_latest.log
-```
+The hook warns about unstaged/untracked files but permits legitimate partial
+commits. It blocks only when its fast checks fail or Python is unavailable,
+discovering Python from `PHASEFINDER_TEST_PYTHON`, `.venv`, then `python3`.
+The full browser and production-artifact suites remain required CI/release
+checks. `git commit --no-verify` bypasses the local hook, not required CI.
 
 ### `assets/img/*`
 
@@ -306,7 +346,7 @@ prefer `$PnS`, then `$PnN`, then a generated `P<number>` fallback.
 
 ## Running Locally
 
-Because this is a static browser app, there is no install or build step. The app
+The source tree can run without a build after dependencies are installed. It
 loads as native ES modules, which the browser refuses to load over `file://`
 (module CORS), so **a static HTTP server is required** — opening `index.html`
 directly from disk will not work.
@@ -344,11 +384,13 @@ offline — no network access or CDN is needed at runtime.
 7. Check the rows that should be included in the plot.
 8. Click **Plot Channel Events**.
 9. Review the overlaid event histogram; adjust Color by / Bins.
-10. Run individual Stage 0–8 buttons for checkpoint diagnostics, or click
-    **Run all** / **Run DJF Pipeline** to execute the full analysis.
-11. Review the fitted components, normalized phase fractions, contamination
-    accounting, diagnostics, and warnings in the plot and report table.
-12. Check or uncheck rows to add or remove plotted samples live.
+10. Click **Cell Cycle Modeling** to open the modeling controls in the
+    sidebar. Apply the **Pre-modeling QC** filters you want (Structural, Time,
+    Cell Gate, Singlet Gate — individually or via **Run All**), then use
+    **Identify Peaks** to detect and, if needed, adjust the G1 and G2/M peak
+    regions, and **Model & Fit** to pick a model and fit it against the
+    reviewed regions; **Back** returns to the file/channel controls.
+11. Check or uncheck rows to add or remove plotted samples live.
 
 ## Development Notes
 
@@ -359,15 +401,14 @@ offline — no network access or CDN is needed at runtime.
   OPFS" below).
 - No files are sent to a backend by this code. OPFS working copies are stored
   privately by the browser for this site and never leave the machine.
-- There is no package manager configuration or bundler in the repository; the
-  JavaScript is plain browser JavaScript, so changes can be tested by refreshing
-  the page.
+- Vite produces the reviewed release artifact; source changes can still be
+  exercised directly through the local development server.
 - We use Tablericons (https://tabler.io/icons) for a lot of the icons on the site.
 
 ## Session reload via OPFS
 
-Sessions are saved as TOML by `js/session/` (`toml.js` for the serializer/
-parser, `opfs.js` for the OPFS working-copy cache, `reconnect.js` for the
+Sessions are saved as TOML by `js/session/` (`toml_io.js` for the serializer/
+parser, `opfs_fs.js` for the OPFS working-copy cache, `reconnect.js` for the
 restore/reconnect flow, and `core.js` for state collection/application, file
 I/O, and button wiring). To make reloading a session "just work" without
 re-selecting files, loaded FCS files are cached into the browser's Origin
@@ -376,17 +417,18 @@ Private File System (OPFS):
 - **On file load**, `js/io/metadata_io.js` calls `register_loaded_files`
   (imported from `js/session/file_cache.js`), which builds a per-file record
   (`id`, `original_name`, `relative_path`, `size`, `last_modified`, `mime_type`,
-  `opfs_path`, `status`) and copies each file into OPFS in the background via a
+  `opfs_path`, `status`, digest algorithm/value) and copies each file into OPFS in the background via a
   module worker (`js/session/copy_worker.js`), showing "Caching file x of y" in
   the status bar. Low-level OPFS helpers live in `js/session/opfs_fs.js`.
 - **On save**, those records are written to the session TOML as
   `[[files.records]]` (alongside the legacy `[files].names`). No absolute OS
   paths are ever stored — only app-private OPFS paths and file metadata.
-- **On reload**, files are restored automatically from OPFS by `opfs_path`; if
-  every file is present the session loads with no picker. Any missing or
-  size-mismatched files open a reconnect modal that lists the expected files and
-  lets the user pick the containing folder or select the files manually (matched
-  by name/size/lastModified), after which the matches are re-cached into OPFS.
+- **On reload**, files are restored automatically from OPFS only after content-
+  digest verification. The digest is `SHA-256-CHUNKED-1M-v1`: SHA-256 is applied
+  to each fixed 1 MiB chunk and then to the ordered chunk hashes, bounding memory
+  without depending on browser stream boundaries. Filename and size are only
+  prefilters. Missing, legacy-unverified, or mismatched files open the reconnect
+  modal; a renamed manual selection is accepted when its digest matches.
 - **Fallbacks**: legacy sessions without records use the original names-only
   folder picker; browsers without OPFS skip caching and warn that automatic
   reload is unavailable, falling back to manual reconnect.
@@ -397,6 +439,252 @@ New JS files for this feature:
   detection plus read/delete helpers and storage-persistence requests (writes are
   delegated to the worker).
 - `js/session/file_cache.js` — the higher-level file registry, background copy
-  queue, directory-handle persistence, and autoload fallbacks.
+  queue, persistent cache ownership index, directory-handle persistence, and
+  autoload fallbacks.
+- `js/session/cache_manager.js` — quota/use, ownership and orphan cleanup UI.
+- `js/session/file_digest.js` — bounded-memory content identity shared by copy
+  and reconnect verification.
 - `js/session/copy_worker.js` — module worker that writes a loaded `File` into
   OPFS off the main thread so caching large files never blocks the UI.
+
+## Testing
+
+All test documentation lives here. Machine-readable manifests remain beside
+the files that consume them:
+
+```text
+tests/
+├── flow_e2e_*.html              # final combined E2E/unit report
+├── validation_tests_*.html      # final validation report
+├── e2e/
+│   ├── driving_code/            # Playwright driver and E2E checks
+│   ├── e2e_test_data/           # generated E2E FCS fixtures
+│   └── results/                 # temporary report media and hook log
+├── unit/
+│   ├── driving_code/            # Python unit-suite drivers and checks
+│   └── test_harness.html        # browser unit harness
+└── validation/
+    ├── driving_code/            # synthetic/external validation runner
+    ├── results/                 # benchmark JSON/Markdown output
+    └── validation_test_data/
+        ├── synthetic_fcs/       # generated FCS, truth, and manifest
+        └── external_fcs/        # published data, licenses, and manifest
+```
+
+The manifests intentionally remain separate. The synthetic manifest is
+generated and consumed by its benchmark; the external manifest records
+licensing, provenance, privacy review, independent-reader summaries, and
+published biological results. Their schemas and consumers are different.
+
+### End-to-end and unit regression tests
+
+One-time setup:
+
+```bash
+python3 -m venv /tmp/flowvenv
+/tmp/flowvenv/bin/pip install playwright
+/tmp/flowvenv/bin/python -m playwright install chromium
+```
+
+`ffmpeg` on `$PATH` enables WebM clips; without it the driver uses screenshots.
+Run the browser workflow and JavaScript unit suites:
+
+```bash
+/tmp/flowvenv/bin/python tests/e2e/driving_code/drive_flow.py
+```
+
+Useful flags are `--files N`, `--extra-files N`, `--data DIR`, `--url`,
+`--channel`, `--headed`, and `--keep`. Every invocation writes to a unique
+git-ignored directory under `tests/e2e/results/`, so concurrent runs never
+delete one another's output. One self-contained HTML report with E2E and Unit
+tabs is written inside that run directory; screenshots and videos are embedded
+and their temporary files are removed. By default the report retains media for
+every eligible check; pass `--limited-media` to keep one representative
+image/video per test group plus evidence for every failure. Full-media E2E
+clips include two seconds of lead-in so related assertions retain the action
+that produced them. Local test servers use the first open
+port from 8000 through 9000. Run only the unit suites with:
+
+```bash
+/tmp/flowvenv/bin/python tests/unit/driving_code/run_standalone.py
+```
+
+The suite covers FCS decoding, metadata, selection/filtering, plotting,
+structural/time/scatter/singlet QC, peak review, fitting, statistics, sessions,
+and parser/model/math boundaries. Enable the fast tracked commit gate with
+`git config core.hooksPath .githooks`; the full browser gate runs in CI.
+
+### Synthetic and external validation report
+
+The independent validation runner resets and reloads every FCS separately,
+captures auto-detected G1/G2 regions, fits each enabled cell-cycle model, and
+runs Dean–Jett–Fox again with Structural, both Time methods, Cell Gate, and
+Singlet individually, then all four filters with each Time method.
+It writes one self-contained HTML report directly under `tests/`; all plot images are embedded in the
+HTML, so no separate screenshots are retained.
+
+```bash
+/tmp/flowvenv/bin/python tests/validation/driving_code/validation_tests.py
+```
+
+The full default run is intentionally large. For a quick browser smoke test,
+select files by case ID, filename, or substring and limit the models/QC matrix:
+
+```bash
+/tmp/flowvenv/bin/python tests/validation/driving_code/validation_tests.py \
+  --files truth_low_count_55_30_15 \
+  --models watson_pragmatic \
+  --skip-qc-matrix
+```
+
+Other useful options are `--kind synthetic|external`, `--max-files`,
+`--headed`, `--report`, and `--keep`. By default older
+`validation_tests_*.html` files in the report directory are removed before the
+run; `--keep` retains them. Every modeled validation case uses the bin count
+marked recommended for its retained event count. Parser-rejection fixtures and files without a
+claimed DNA cell-cycle endpoint are imported and documented but are not given
+invented biological expectations. Published external studies do not provide
+PhaseFinder-style peak boundaries, so those expected/differential cells are
+reported as N/A.
+
+### Synthetic FCS benchmark
+
+`tests/validation/validation_test_data/synthetic_fcs/` contains 47 deterministic, entirely synthetic
+FCS cases. No file contains human, patient, instrument, or other real
+experimental data. The corpus tests parser behavior, QC defenses, and recovery
+of planted G1/S/G2/M fractions; it is regression evidence, not biological
+validation.
+
+| Fixture | Exact G1 / S / G2/M | Purpose |
+|---|---:|---|
+| `truth_clean_70_20_10` | 70 / 20 / 10 | G1-dominant control |
+| `truth_clean_50_30_20` | 50 / 30 / 20 | balanced control |
+| `truth_s_rich_25_55_20` | 25 / 55 / 20 | S-rich control |
+| `truth_g2_rich_20_20_60` | 20 / 20 / 60 | G2/M-rich control |
+| `truth_low_s_48_04_48` | 48 / 4 / 48 | low-S sensitivity |
+| `truth_dj_early_40_40_20` | 40 / 40 / 20 | early-S residence profile |
+| `truth_djf_early_wave_45_40_15` | 45 / 40 / 15 | early Fox-like wave |
+| `truth_djf_late_wave_45_40_15` | 45 / 40 / 15 | late Fox-like wave |
+| `truth_high_cv_overlap_35_45_20` | 35 / 45 / 20 | overlapping peaks |
+| `truth_low_count_55_30_15` | 55 / 30 / 15 | low-count convergence |
+
+Truth lives in event-aligned JSON sidecars rather than an FCS parameter, so it
+cannot leak into fitting. The manifest pins hashes, fractions, parser/QC
+outcomes, model contracts, regions, and tolerances. `recovery` contracts require
+convergence within tolerance; `diagnostic` contracts only record behavior.
+
+```bash
+python3 tests/validation/validation_test_data/synthetic_fcs/generate_fixtures.py
+python3 tests/validation/validation_test_data/synthetic_fcs/generate_fixtures.py --check
+/tmp/flowvenv/bin/python tests/validation/validation_test_data/synthetic_fcs/run_benchmark.py
+```
+
+The runner accepts `--mode parser|qc|models`, `--models`, `--groups`, `--cases`,
+`--browser`, and `--strict`. Groups are `known_phase_truth`,
+`scientific_adversarial`, `qc_adversarial`, and `parser_conformance`. Reports
+go under `tests/validation/results/`. A single seed is a regression
+check; calibration requires a multi-seed or blinded validation corpus.
+
+### Non-synthetic FCS and published validation data
+
+`tests/validation/validation_test_data/external_fcs/` contains the combined tracked non-synthetic corpus:
+**10 redistributable artifacts total, of which 6 are FCS files**. The other artifacts are two
+labeled tables and two published reference figures.
+
+The files sit at:
+
+- `tests/validation/validation_test_data/external_fcs/files/fcsparser_miltenyi_pbs_fcs31.fcs`
+- `tests/validation/validation_test_data/external_fcs/datasets/amouzgar_2025/` — one FCS and one table
+- `tests/validation/validation_test_data/external_fcs/datasets/rodighiero_2024/` — four FCS and one table
+- `tests/validation/validation_test_data/external_fcs/results/` — two Rodighiero reference figures
+
+Every admitted binary must have a stable path, size, SHA-256, immutable source,
+file-level redistribution basis, privacy review, FCS summary, and independent
+oracle in `tests/validation/validation_test_data/external_fcs/manifest.json`. Files are immutable after
+admission; changed upstream bytes require a new fixture and hash.
+
+The Miltenyi PBS fixture came from `fcsparser` commit
+`da70aaa7ec92ff3bd9ce00aec4eea7c77ee8c096` under MIT. It is an FCS 3.1
+MACSQuant acquisition with a real-world off-by-one DATA stop offset. Its public
+metadata contains no patient or human-subject identifier.
+
+#### Rodighiero et al. (2024)
+
+> Rodighiero S, Ceccacci E, Hayatigolkhatmi K, et al. “Automated workflow for
+> the cell cycle analysis of (non-)adherent cells using a machine learning
+> approach.” *eLife* 13:RP94689 (2024).
+> [doi:10.7554/eLife.94689](https://doi.org/10.7554/eLife.94689),
+> [PMC11584176](https://pmc.ncbi.nlm.nih.gov/articles/PMC11584176/).
+
+The corpus contains four CC0 FCS files from the paper's
+[Dryad dataset](https://doi.org/10.5061/dryad.cvdncjtcx): stained EdU/FUCCI
+acquisitions and negative controls for Kasumi-1 and MDA-MB-231. It also retains
+the pinned MIT FUCCI phase-track table and CC-BY Figure 4 panels.
+
+| Sample and reference method | G1 | S | G2/M |
+|---|---:|---:|---:|
+| Kasumi-1, EdU/DAPI gates | 63.00% | 28.41% | 7.63% |
+| Kasumi-1, FUCCI gates | 65.20% | 29.10% | 3.67% |
+| MDA-MB-231, EdU/DAPI gates | 44.30% | 44.91% | 9.86% |
+| MDA-MB-231, FUCCI gates | 43.60% | 49.90% | 4.77% |
+
+These percentages came from manual EdU/DAPI and FUCCI gates, not a Dean–Jett,
+Dean–Jett–Fox, Watson, or other DNA-histogram model. PhaseFinder estimates are
+expected to differ, especially for S and G2/M; compare broad agreement rather
+than exact equality. Negative controls have no specimen-specific percentages.
+
+#### Amouzgar et al. (2025)
+
+> Amouzgar M, et al. “A deep single cell mass cytometry approach to capture
+> canonical and noncanonical cell cycle states.” *Nature Communications*
+> (2025). [doi:10.1038/s41467-025-63883-4](https://doi.org/10.1038/s41467-025-63883-4),
+> [PMC12494979](https://pmc.ncbi.nlm.nih.gov/articles/PMC12494979/),
+> [Zenodo 14852934](https://zenodo.org/records/14852934).
+
+The CC-BY-4.0 corpus includes a labeled 162,000-event table and one raw FCS 3.0
+primary-T-cell acquisition. Labels are 51.167901% G0/G1, 33.295062% S,
+13.761728% G2, and 1.775309% M; combined G2/M is 15.537037%. Its mass-cytometry
+truth uses multiple cell-cycle markers, so a DNA-only fit is not expected to
+reproduce it exactly. The FCS has no specimen-specific published phase table;
+the CSV carries the biological truth.
+
+#### Li, MacAlpine & Hartemink CLOCCS series (local-only)
+
+> Li Y, MacAlpine DM, Hartemink AJ. “Comprehensive profiling of chromatin
+> occupancy dynamics through the cell cycle.” *Nucleic Acids Research* 54(2)
+> (2026). [doi:10.1093/nar/gkaf1385](https://doi.org/10.1093/nar/gkaf1385),
+> [PMC12809599](https://pmc.ncbi.nlm.nih.gov/articles/PMC12809599/).
+
+Two 16-timepoint yeast release series (32 FCS files, 30,000 events each) are
+used to compare PhaseFinder's joint CLOCCS fit with the authors' saved CLOCCS
+posteriors. Local files sit under
+`tests/validation/validation_test_data/external_fcs/datasets/li_2026_cloccs/`;
+their exact paths, sizes, SHA-256 hashes, citation, upstream commit, and
+reference parameters are tracked in `external_fcs/manifest.json`.
+
+The upstream GitHub repository declares no license, so these 32 binaries are
+gitignored and are never uploaded with PhaseFinder. The default validation run
+includes them when present and reports a documented skip when absent. The
+source acquisitions are available from the pinned
+[HarteminkLab repository](https://github.com/HarteminkLab/cell-cycle-deconv/tree/6d3b06a265f06c0385102262d839bd9c0c02218b/data/facs/cell_cycle).
+The comparison covers recovery delay, S-entry time, cycle length, daughter
+delay, population spread, and S-phase boundaries. The published model includes
+a halted-cell fraction that PhaseFinder does not yet implement, so the report
+shows that limitation instead of claiming exact equivalence.
+
+Verify external hashes, metadata, counts, markers, and production decoding:
+
+```bash
+python3 tests/validation/validation_test_data/external_fcs/verify.py
+node tests/validation/validation_test_data/external_fcs/verify_phasefinder_parser.mjs
+```
+
+Future deposits can be sought in [FlowRepository](https://flowrepository.org/),
+[ImmPort](https://www.immport.org/), [Cytobank](https://community.cytobank.org/),
+[BioStudies](https://www.ebi.ac.uk/biostudies/), [Dryad](https://datadryad.org/),
+[Zenodo](https://zenodo.org/), [Figshare](https://figshare.com/), and
+[OSF](https://osf.io/). Public access is not redistribution permission: verify
+file-level licensing and privacy metadata. Pending parser-fixture candidates
+include FlowCal, FlowIO, FlowKit, remaining fcsparser samples, and flowCore.
+NCBI GEO is not a general FCS archive; FlowRepository and ImmPort are the
+closest domain-specific repositories.

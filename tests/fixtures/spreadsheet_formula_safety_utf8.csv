@@ -1,0 +1,9 @@
+﻿Case,Exported value
+equals,'=CMD()
+plus,'+SUM(A1:A2)
+formula-like negative,'-1+2
+at sign,'@A1
+leading spaces,'  =CMD()
+ordinary numeric negative,-1
+Unicode lookalike,＝CMD()
+quoted text,"""quoted"""

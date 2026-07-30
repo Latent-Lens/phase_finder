@@ -1,9 +1,24 @@
 /* Responsive overrides — loaded last so these win at the breakpoint. */
 
 @media (max-width: 820px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  body {
+    display: block;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
   .app {
     grid-template-columns: 1fr;
-    padding: 8px 10px 0;
+    grid-template-rows: auto auto;
+    height: auto;
+    padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(10px, env(safe-area-inset-left));
   }
 
   .app.sidebar_collapsed {
@@ -22,6 +37,54 @@
   .page_header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .header_actions,
+  .session_control_group {
+    width: 100%;
+    flex-wrap: wrap;
+    margin-right: 0;
+  }
+
+  .sidebar,
+  .workspace {
+    overflow: visible;
+  }
+
+  .sidebar_content {
+    overflow-y: visible;
+  }
+
+  .metadata_title_row,
+  .metadata_title_actions {
+    flex-wrap: wrap;
+  }
+
+  .metadata_ops_group_3,
+  .metadata_ops_group_2 {
+    width: auto;
+    min-width: 84px;
+  }
+
+  .remove_columns_panel {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: min(352px, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  }
+
+  .remove_columns_actions {
+    flex-wrap: wrap;
+  }
+
+  .remove_columns_confirm,
+  .remove_columns_cancel {
+    width: 100%;
+  }
+
+  .metadata_title_actions {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   .parsed_files_panel {

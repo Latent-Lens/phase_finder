@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Review supported FCS inputs, browser requirements, limitations, and common recovery steps." />
+    <title>Troubleshooting & Compatibility | PhaseFinder Help</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <a href="./index.html" aria-label="PhaseFinder help home"><img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" /></a>
+      <a class="help_header_title help_header_home" href="./index.html">Help Center</a>
+      <a class="help_back_link" href="../index.html" target="_blank" rel="noopener">Open PhaseFinder</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">Help topics</p>
+        <nav aria-label="Help topics">
+          <ol>
+            <li><a href="./index.html">Help home</a></li>
+            <li><a href="./help-getting-started.html">Getting Started</a></li>
+            <li><a href="./help-metadata.html">Metadata & Sample Table</a></li>
+            <li><a href="./help-plotting.html">Plotting Events</a></li>
+            <li><a href="./help-modeling.html">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-statistics.html">Summary Statistics</a></li>
+            <li><a href="./help-sessions.html">Sessions & Layout</a></li>
+            <li><a href="./help-troubleshooting.html" aria-current="page">Troubleshooting & Compatibility</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_breadcrumb"><a href="./index.html">Help home</a> / Troubleshooting & Compatibility</p>
+        <h1>Troubleshooting & Compatibility</h1>
+        <p class="help_lede">Review supported FCS inputs, browser requirements, limitations, and common recovery steps.</p>
+
+<section id="tips" class="help_section">
+          <h2>12. Tips, Limitations, and Troubleshooting</h2>
+          <table class="help_table">
+            <thead>
+              <tr><th>Topic</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr><td id="supported-fcs-input">Supported FCS input</td><td>PhaseFinder supports FCS 2.0/3.0/3.1 list-mode files with numeric <code>F</code>, <code>D</code>, or byte-aligned exact-range <code>I</code> DATA in declared little- or big-endian order. DNA modeling requires linear <code>$PnE=0,0</code>, unit/absent <code>$PnG</code>, one dataset, primary TEXT only, and no declared spillover involving the DNA channel. The channel selector shows this status; parser errors link to this supported-input summary, while unsupported transforms, compensation, modes, widths, supplemental TEXT, and chained datasets are blocked with a specific error.</td></tr>
+              <tr><td>Parameter labels</td><td>Channels shown in PhaseFinder are extracted from each parameter's <code>$PnS</code> label when present, falling back to <code>$PnN</code>, and ultimately to a generated <code>P&lt;n&gt;</code> label when needed.</td></tr>
+              <tr><td>No backend</td><td>Files are read entirely by browser APIs; nothing is uploaded anywhere.</td></tr>
+              <tr><td>State lives in memory</td><td>Reloading the page clears everything that isn't saved to a session file first.</td></tr>
+              <tr><td>Network dependency</td><td>None at runtime: D3 is vendored locally, and the DJF numeric implementation is repository-native.</td></tr>
+              <tr><td>Folder re-linking on session load</td><td>Chromium browsers remember the FCS folder between sessions; Firefox and Safari will ask you to pick it again each time.</td></tr>
+              <tr><td>Supported browsers</td><td>Chrome/Edge 111+, Firefox 121+, Safari 16.2+, Chrome for Android 111+, and iOS Safari 16.2+. Current stable releases are recommended. OPFS and persistent folder access are optional; without them, analysis still works in memory and session reconnect uses manual file selection.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <nav class="help_page_nav" aria-label="Previous and next help topics">
+          <a href="./help-sessions.html">&larr; Sessions & Layout</a>
+          <a href="./index.html">Help home</a>
+          <a href="../index.html">Open PhaseFinder &rarr;</a>
+        </nav>
+
+        <p class="help_footer">PhaseFinder Help &mdash; <a href="./index.html">all help topics</a> &middot; <a href="../index.html">back to the app</a>.</p>
+      </main>
+    </div>
+  </body>
+</html>
