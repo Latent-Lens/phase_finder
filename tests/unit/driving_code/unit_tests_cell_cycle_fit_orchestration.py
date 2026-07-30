@@ -123,6 +123,21 @@ _TESTS = r"""() => {
     };
   });
 
+  run('SCI-03: a stall termination cannot remain converged after normalization', () => {
+    const contracted = window.CellCycleResultContract.apply_result_contract({
+      kind: 'generative', converged: true, convergenceReason: 'boundary_stall', cancelled: false,
+      expectedCounts: [4, 5, 6], phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
+      diagnostics: { deviance: 10 },
+    }, { passed: true, reasons: [] });
+    return {
+      pass: contracted.converged === false
+        && contracted.optimizerConverged === false
+        && contracted.validForReporting === false
+        && contracted.validityReasons.some((reason) => reason.code === 'optimizer_not_converged'),
+      detail: JSON.stringify({ converged: contracted.converged, reasons: contracted.validityReasons }),
+    };
+  });
+
   run('SCI-03/GATE-01: a peak CV pinned at its upper bound is limited-reliability and NOT valid for reporting', () => {
     // The VALID-01 DJF S-overfit signature: converged, fractions sum to 1, but a
     // G2 "peak" driven to the 0.30 CV ceiling let S absorb G2 (g1=0, s=0.86).

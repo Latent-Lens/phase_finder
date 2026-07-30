@@ -27,6 +27,14 @@ export const RESULT_REASON = Object.freeze({
   FIT_PEAK_DEGENERATE: "fit_peak_degenerate",
 });
 
+const NONCONVERGED_TERMINATIONS = new Set([
+  "boundary_stall",
+  "cancelled",
+  "max_iterations",
+  "numerical_failure",
+  "step_stall",
+]);
+
 const issue = (code, message, detail = null) => ({ code, message, detail });
 
 // QC-00 mandatory model-boundary thresholds, enforced regardless of any optional
@@ -285,7 +293,10 @@ export function apply_result_contract(rawResult, preflight) {
   const result = { ...rawResult };
   const reasons = [...(preflight?.reasons ?? [])];
   const cancelled = result.cancelled === true;
-  const optimizerConverged = result.kind === "decomposition" ? null : result.converged === true;
+  const terminationReason = result.terminationReason ?? result.convergenceReason ?? null;
+  const optimizerConverged = result.kind === "decomposition"
+    ? null
+    : result.converged === true && !NONCONVERGED_TERMINATIONS.has(terminationReason);
   const expected = result.expectedCounts ?? [];
   const finite = (Array.isArray(expected) || ArrayBuffer.isView(expected))
     && expected.length > 0 && [...expected].every((value) => Number.isFinite(value) && value >= 0);
@@ -296,7 +307,7 @@ export function apply_result_contract(rawResult, preflight) {
     );
 
   if (cancelled) reasons.push(issue(RESULT_REASON.FIT_CANCELLED, "Fitting was cancelled."));
-  if (optimizerConverged === false) reasons.push(issue(RESULT_REASON.OPTIMIZER_NOT_CONVERGED, "The optimizer did not converge.", { terminationReason: result.terminationReason ?? result.convergenceReason ?? null }));
+  if (optimizerConverged === false) reasons.push(issue(RESULT_REASON.OPTIMIZER_NOT_CONVERGED, "The optimizer did not converge.", { terminationReason }));
   if (!finite || !diagnosticsFinite) reasons.push(issue(
     RESULT_REASON.RESULT_NONFINITE,
     !finite ? "Expected counts are missing, negative, or non-finite." : "Diagnostics contain a non-finite number.",
@@ -321,6 +332,7 @@ export function apply_result_contract(rawResult, preflight) {
   const limitedReliability = Boolean(degeneratePeakCv);
   return {
     ...result,
+    converged: optimizerConverged === null ? result.converged : optimizerConverged,
     computed: !cancelled,
     optimizerConverged,
     scientificallyValid,

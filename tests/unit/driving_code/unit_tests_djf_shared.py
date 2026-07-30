@@ -466,6 +466,71 @@ _SHARED_HELPERS = r"""() => {
     };
   });
 
+  run('SCI-03: objective tolerance alone cannot claim convergence while the step is large', () => {
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [0],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 100],
+      options: { maxIterations: 1, tolerance: 1, stepTolerance: 1e-15, gradientTolerance: 1 },
+    });
+    return {
+      pass: fit.converged === false
+        && fit.terminationReason === 'max_iterations'
+        && fit.optimizerDiagnostics.lastStep.objectiveToleranceMet === true
+        && fit.optimizerDiagnostics.lastStep.stepToleranceMet === false,
+      detail: JSON.stringify({ reason: fit.terminationReason, last: fit.optimizerDiagnostics.lastStep }),
+    };
+  });
+
+  run('SCI-03: a damped tiny step cannot claim convergence with poor objective and gradient evidence', () => {
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [0],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 100],
+      options: {
+        maxIterations: 1, tolerance: 0, stepTolerance: 1,
+        gradientTolerance: 0, initialLambda: 1e12,
+      },
+    });
+    return {
+      pass: fit.converged === false
+        && fit.optimizerDiagnostics.lastStep.stepToleranceMet === true
+        && fit.optimizerDiagnostics.lastStep.objectiveToleranceMet === false
+        && fit.optimizerDiagnostics.lastStep.gradientToleranceMet === false,
+      detail: JSON.stringify({ reason: fit.terminationReason, last: fit.optimizerDiagnostics.lastStep }),
+    };
+  });
+
+  run('SCI-03: a constraint-clipped outward step is a boundary stall, not convergence', () => {
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [1],
+      freeIndices: [0],
+      residualFn: ([value]) => [value - 2],
+      projectFn: ([value]) => [Math.min(1, value)],
+      options: { maximumLambda: 0.1 },
+    });
+    return {
+      pass: fit.converged === false && fit.terminationReason === 'boundary_stall',
+      detail: JSON.stringify({ reason: fit.terminationReason, last: fit.optimizerDiagnostics.lastStep }),
+    };
+  });
+
+  run('SCI-03: an unsolvable normal equation reports numerical failure with diagnostics', () => {
+    const fit = lm.runLevenbergMarquardt({
+      initialParameters: [0, 0],
+      freeIndices: [0, 1],
+      residualFn: ([left, right]) => [left + right - 1, 2 * left + 2 * right - 2],
+      options: { initialLambda: 0, minimumLambda: 0, maximumLambda: 0 },
+    });
+    return {
+      pass: fit.converged === false
+        && fit.terminationReason === 'numerical_failure'
+        && fit.optimizerDiagnostics.rankFailureCount === 1
+        && fit.optimizerDiagnostics.lastRejectedStep.failure === 'singular_normal_equations',
+      detail: JSON.stringify({ reason: fit.terminationReason, diagnostics: fit.optimizerDiagnostics }),
+    };
+  });
+
   run('LM: invalid free-parameter indexes fail before fitting', () => {
     const failed = throws(() => lm.buildFiniteDiffJacobian({
       parameters: [1],

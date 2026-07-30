@@ -806,17 +806,19 @@ _STAGES_5_TO_8 = r"""() => {
     };
   });
 
-  run('Stage 6: constrained DJF fit converges with G1 in range and G2/G1 near two', () => {
+  run('SCI-03: the constrained legacy fit keeps valid bounds but reports its iteration-limit stop', () => {
     fit = baseFitModule.fitCellCycleHistogram(histogram.x, histogram.y);
     const ratio = fit.parameters.mu2 / fit.parameters.mu1;
     return {
-      pass: fit.diagnostics.converged
+      pass: fit.diagnostics.converged === false
+        && fit.diagnostics.terminationReason === 'max_iterations'
         && fit.parameters.mu1 > 52000
         && fit.parameters.mu1 < 76000
         && ratio > 1.9
         && ratio < 2.1,
       detail: JSON.stringify({
         converged: fit.diagnostics.converged,
+        terminationReason: fit.diagnostics.terminationReason,
         iterations: fit.diagnostics.iterations,
         mu1: fit.parameters.mu1,
         mu2: fit.parameters.mu2,
