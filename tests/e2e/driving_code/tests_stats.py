@@ -6,7 +6,7 @@ and auto-computing stats for files loaded after the fact."""
 from helpers import (
     TestContext,
     set_files_via_drag_drop,
-    wait_briefly,
+    wait_for_render,
     wait_for_rows,
     write_synthetic_fcs,
 )
@@ -70,7 +70,7 @@ def test_summary_statistics(ctx: TestContext):
     page.check('input[name="stat"][value="median"]')
     page.click("#stats_calculate_button")
     page.wait_for_function("() => document.querySelector('#stats_modal').hidden", timeout=30000)
-    wait_briefly(0.3)
+    wait_for_render(page)
 
     header_text = " ".join(page.eval_on_selector_all(".file_table thead th", "els => els.map(e => e.textContent)"))
     ctx.check(group, "Computed stats add a grouped column header",
@@ -86,7 +86,7 @@ def test_summary_statistics(ctx: TestContext):
     # --- reopening the modal disables already-computed stats ---
     page.click("#calculate_stats_button")
     page.select_option("#stats_channel_select", STATS_CHANNEL)
-    wait_briefly(0.2)
+    wait_for_render(page)
     disabled_map = page.evaluate(
         """() => Object.fromEntries([...document.querySelectorAll('input[name="stat"]:not([value="all"])')]
           .map((e) => [e.value, e.disabled]))"""
@@ -109,7 +109,7 @@ def test_summary_statistics(ctx: TestContext):
 
     page.click("#stats_calculate_button")
     page.wait_for_function("() => document.querySelector('#stats_modal').hidden", timeout=30000)
-    wait_briefly(0.3)
+    wait_for_render(page)
 
     min_a = _frame_stat(page, STATS_CHANNEL, "min", "E2E8801")
     max_a = _frame_stat(page, STATS_CHANNEL, "max", "E2E8801")

@@ -10,23 +10,32 @@ import re
 
 from helpers import (
     TestContext,
+    confirm_time_qc_method,
     enter_modeling_mode,
     exit_modeling_mode,
     isolate_first_plotted_sample,
     restore_row_selection,
+    select_all_visible_rows,
     status_bar_text,
+    wait_for_render,
+    wait_for_overlay_hidden,
 )
+
+_QC_FILTER_IDS = ["qc_structural", "qc_time", "qc_cellgate", "qc_singlet"]
 
 
 def _ensure_qc_applied(page):
     """Turn on every Pre-modeling QC gate that isn't already on, and wait for
     each to apply. Checks gates individually rather than using the combined
-    #qc_stage_all toggle, since that button's click semantics (turn all on,
+    #qc_filter_all toggle, since that button's click semantics (turn all on,
     or clear if already all on) depend on the current state."""
     for stage in range(4):
-        selector = f"#qc_stage{stage}"
+        selector = f"#{_QC_FILTER_IDS[stage]}"
         if page.eval_on_selector(selector, "e => e.getAttribute('aria-pressed')") != "true":
             page.click(selector)
+            # Time QC asks which method to run when it is switched on.
+            if stage == 1:
+                confirm_time_qc_method(page)
             page.wait_for_function(
                 "(sel) => !document.querySelector(sel)?.disabled",
                 arg=selector, timeout=30000,
@@ -138,6 +147,25 @@ def test_modeling(ctx: TestContext):
         # coordinate-based drag ambiguous, and the domain edge leaves no room
         # to move outward. G1 left has no such neighbor and is not pinned.
         handle = page.locator('#plot_area svg rect.peak_region_handle[data-boundary-key="g1_left"]')
+        handle.focus()
+        handle.press("ArrowLeft")
+        handle.press("ArrowLeft")
+        keyboard_state = _modeling_state(page, sample_name)
+        ctx.check(
+            group,
+            "Repeated peak-slider arrow keys retain focus and synchronize the numeric input",
+            page.evaluate("() => document.activeElement?.dataset?.boundaryKey === 'g1_left'")
+            and keyboard_state["peakSelection"]["regions"]["g1"]["left"] < regions["g1"]["left"]
+            and abs(page.eval_on_selector("#peak_region_g1_left", "e => Number(e.value)")
+                    - keyboard_state["peakSelection"]["regions"]["g1"]["left"]) < 0.01,
+            str(keyboard_state["peakSelection"]["regions"]),
+        )
+        page.click("#peak_regions_reset_button")
+        page.wait_for_function(
+            "(sampleName) => window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection?.source === 'automatic'",
+            arg=sample_name,
+            timeout=5000,
+        )
         handle_box = handle.bounding_box()
         page.mouse.move(handle_box["x"] + handle_box["width"] / 2, handle_box["y"] + handle_box["height"] / 2)
         page.mouse.down()
@@ -182,6 +210,7 @@ def test_modeling(ctx: TestContext):
         # regions are untouched. Scaled to the G1 region's own width so this
         # is robust regardless of the DNA channel's absolute unit scale.
         invalid_g2_left = regions["g1"]["right"] - 0.5 * (regions["g1"]["right"] - regions["g1"]["left"])
+        page.select_option("#cell_cycle_model_select", "watson_pragmatic")
         _set_region_input(page, "#peak_region_g2_left", invalid_g2_left)
         page.wait_for_function(
             "() => !document.querySelector('#peak_region_error').hidden",
@@ -192,6 +221,10 @@ def test_modeling(ctx: TestContext):
             group,
             "An invalid region edit (L1 < R1 <= L2 < R2 broken) shows an inline error and leaves state untouched",
             page.eval_on_selector("#peak_region_error", "e => e.textContent.length > 0")
+            and page.eval_on_selector("#peak_region_g2_left", "e => e.getAttribute('aria-invalid') === 'true'")
+            and page.eval_on_selector("#peak_regions_accept_button", "e => e.disabled")
+            and page.eval_on_selector("#cell_cycle_fit_current_button", "e => e.disabled")
+            and page.eval_on_selector("#cell_cycle_fit_all_button", "e => e.disabled")
             and after_invalid["peakSelection"]["regions"] == regions,
             str(after_invalid["peakSelection"]["regions"]),
         )
@@ -260,8 +293,18 @@ def test_modeling(ctx: TestContext):
         )
         ctx.check(
             group,
-            "Accept marks the current regions as reviewed",
-            _modeling_state(page, sample_name)["peakSelection"]["reviewed"] is True,
+            "Accept uses exactly the four displayed region boundaries",
+            _modeling_state(page, sample_name)["peakSelection"]["reviewed"] is True
+            and page.evaluate(
+                """(name) => {
+                  const r = window.PhaseFinder.pipeline.get_state(name).modeling.peakSelection.regions;
+                  return Number(document.querySelector('#peak_region_g1_left').value) === r.g1.left
+                    && Number(document.querySelector('#peak_region_g1_right').value) === r.g1.right
+                    && Number(document.querySelector('#peak_region_g2_left').value) === r.g2.left
+                    && Number(document.querySelector('#peak_region_g2_right').value) === r.g2.right;
+                }""",
+                sample_name,
+            ),
         )
 
         status_after = status_bar_text(page)
@@ -312,6 +355,18 @@ def test_modeling(ctx: TestContext):
             and "%" in fit_result_dom["fractionRows"][0],
             str({"active_result_fractions": active_result["phaseFractions"], "dom": fit_result_dom}),
         )
+        provenance = active_result.get("histogramProvenance") or {}
+        ctx.check(
+            group,
+            "A fit persists its exact analysis domain, bins, and underflow/overflow provenance",
+            provenance.get("domain", {}).get("min") == modeling_after_fit["fitDomain"]["min"]
+            and provenance.get("domain", {}).get("max") == modeling_after_fit["fitDomain"]["max"]
+            and len(provenance.get("binEdges", [])) == len(provenance.get("counts", [])) + 1
+            and isinstance(provenance.get("underflow"), (int, float))
+            and isinstance(provenance.get("overflow"), (int, float)),
+            str({"domain": provenance.get("domain"), "underflow": provenance.get("underflow"),
+                 "overflow": provenance.get("overflow")}),
+        )
 
         status_after_fit = status_bar_text(page)
         ctx.check(
@@ -320,6 +375,26 @@ def test_modeling(ctx: TestContext):
             "fit" in status_after_fit.lower(),
             status_after_fit,
         )
+
+        result_key_before_view = page.evaluate(
+            "(name) => window.PhaseFinder.pipeline.get_state(name).modeling.activeResultKey",
+            sample_name,
+        )
+        page.click("#plot_tool_zoom_in")
+        page.click("#plot_area svg")
+        wait_for_render(page)
+        result_key_after_view = page.evaluate(
+            "(name) => window.PhaseFinder.pipeline.get_state(name).modeling.activeResultKey",
+            sample_name,
+        )
+        ctx.check(
+            group,
+            "Viewport-only zoom leaves the scientific fit identity unchanged",
+            result_key_after_view == result_key_before_view,
+            str({"before": result_key_before_view, "after": result_key_after_view}),
+        )
+        page.click("#plot_tool_pan")
+        page.click("#plot_tool_home")
 
         # The plot itself picks up the same active model-neutral result
         # (js/plotting/render.js's pipeline_fit_for_series()): the floating
@@ -396,10 +471,8 @@ def test_modeling(ctx: TestContext):
             str(columns_info),
         )
 
-        # Changing the Bins slider after a fit auto-recalculates: the histogram
-        # is rebuilt at the new bin count and the sample is re-fit with its last
-        # model, announced by #bin_recalc_modal (bin_settings_sync.js). Watson
-        # is still the active model here, so the refit succeeds deterministically.
+        # Changing bins rebuilds the histogram and detector proposal, but must
+        # not silently accept/refit that new automatic proposal (PEAK-01).
         bins_before = page.evaluate(
             "(name) => window.PhaseFinder.pipeline.get_state(name)?.histogram?.binCount",
             sample_name,
@@ -412,17 +485,13 @@ def test_modeling(ctx: TestContext):
               slider.dispatchEvent(new Event('change', { bubbles: true }));
             }"""
         )
-        # Wait until the recalc has fully settled -- histogram rebuilt at 512,
-        # the refit stored (active key carries the new fingerprint), and the
-        # modal hidden again -- so the assertions below don't race the refit.
+        # Wait until the recalc has fully settled and the modal is hidden.
         page.wait_for_function(
             """(name) => {
               const state = window.PhaseFinder.pipeline.get_state(name);
               const modal = document.querySelector('#bin_recalc_modal');
               return state?.histogram?.binCount === 512
-                && modal.hidden
-                && Boolean(state.modeling.activeResultKey)
-                && state.modeling.activeResultKey.includes('|512|');
+                && modal.hidden;
             }""",
             arg=sample_name,
             timeout=30000,
@@ -439,41 +508,40 @@ def test_modeling(ctx: TestContext):
         )
         ctx.check(
             group,
-            "Changing the Bins slider rebuilds the histogram at the new bin count and re-fits the sample",
+            "Changing Bins rebuilds the histogram without auto-accepting or refitting the new proposal",
             bins_before != 512
             and bins_after == 512
             and page.eval_on_selector("#plot_bins_value", "e => e.textContent") == "512"
-            and recalc_active is not None
-            and recalc_active["modelId"] == "watson_pragmatic"
+            and recalc_active is None
+            and recalc_modeling["peakSelection"]["reviewed"] is False
             and page.eval_on_selector("#bin_recalc_modal", "e => e.hidden") is True,
             str({"binsBefore": bins_before, "binsAfter": bins_after,
-                 "activeModel": recalc_active and recalc_active["modelId"]}),
+                 "reviewed": recalc_modeling["peakSelection"]["reviewed"]}),
         )
 
         # The Undo button appears after a bin-size recalc; one click reverts the
         # whole change from the snapshot taken before it (bin_settings_sync.js),
-        # restoring the previous bin count and the sample's fit. This also puts
-        # the bin count back to the 256 default so the Dean-Jett assertion below
-        # runs under the same conditions as before this recalc/undo check.
+        # restoring the previous bin count and the sample's fit. The recommended
+        # default is data-dependent, so assert against the captured value rather
+        # than an obsolete fixed 256-bin assumption.
         undo_visible = page.eval_on_selector("#plot_bins_undo", "e => !e.hidden")
         page.click("#plot_bins_undo")
         page.wait_for_function(
-            """(name) => {
-              const state = window.PhaseFinder.pipeline.get_state(name);
-              return state?.histogram?.binCount === 256
+            """(arg) => {
+              const state = window.PhaseFinder.pipeline.get_state(arg.name);
+              return state?.histogram?.binCount === arg.bins
                 && document.querySelector('#plot_bins_undo').hidden
                 && Boolean(state.modeling.activeResultKey)
-                && state.modeling.activeResultKey.includes('|256|');
+                && state.modeling.activeResultKey.includes(`|${arg.bins}|`);
             }""",
-            arg=sample_name,
+            arg={"name": sample_name, "bins": bins_before},
             timeout=30000,
         )
         ctx.check(
             group,
             "Undo button reverts a bin-size change, restoring the previous bin count and fit",
             undo_visible
-            and page.eval_on_selector("#plot_bins_value", "e => e.textContent") == "256"
-            and page.eval_on_selector("#plot_bins", "e => e.value") == "1"
+            and page.eval_on_selector("#plot_bins_value", "e => e.textContent") == str(bins_before)
             and not page.eval_on_selector("#cell_cycle_fit_result", "e => e.hidden"),
             f"undo_was_visible={undo_visible}",
         )
@@ -503,6 +571,7 @@ def test_modeling(ctx: TestContext):
             arg=sample_name,
             timeout=30000,
         )
+        page.click("#peak_regions_accept_button")
         page.select_option("#cell_cycle_model_select", "dean_jett")
         page.click("#cell_cycle_fit_current_button")
         # Wait for the *new* status text specifically, not just visibility --
@@ -567,12 +636,8 @@ def test_modeling(ctx: TestContext):
             str(restore_result),
         )
 
-        # Modeling scope = only data within the visible x-range. Explicitly
-        # narrowing the x-axis (as the axis-range modal does) fires
-        # pf-x-range-changed, which recomputes: the modeling histogram is rebuilt
-        # over the new range (clamp_range_to_axis_override), so events outside it
-        # are excluded from peaks/fits. Assert the rebuilt histogram's domain
-        # matches the override, not the full data extent.
+        # A deliberate scientific-domain change recomputes the modeling
+        # histogram; ordinary display bounds and viewport gestures do not.
         x_range_result = page.evaluate(
             """async (name) => {
               const hist = window.PhaseFinder.pipeline.get_state(name).histogram;
@@ -580,11 +645,11 @@ def test_modeling(ctx: TestContext):
               const span = fullMax - fullMin;
               const newMin = fullMin + span * 0.2;
               const newMax = fullMax - span * 0.2;
-              const override = window.PhaseFinder.plot.axis_range_override;
-              override.x_min = newMin;
-              override.x_max = newMax;
-              document.dispatchEvent(new CustomEvent('pf-x-range-changed'));
-              return { fullMin, fullMax, newMin, newMax };
+              const data = await import('./js/plotting/data.js');
+              const previousKey = window.PhaseFinder.pipeline.get_state(name).modeling.activeResultKey;
+              data.set_analysis_domain_override(newMin, newMax);
+              document.dispatchEvent(new CustomEvent('pf-analysis-domain-changed'));
+              return { fullMin, fullMax, newMin, newMax, previousKey };
             }""",
             sample_name,
         )
@@ -599,77 +664,109 @@ def test_modeling(ctx: TestContext):
             timeout=30000,
         )
         histogram_after = page.evaluate(
-            "(name) => { const h = window.PhaseFinder.pipeline.get_state(name).histogram; return { min: h.min, max: h.max }; }",
+            """(name) => {
+              const state = window.PhaseFinder.pipeline.get_state(name);
+              return { min: state.histogram.min, max: state.histogram.max,
+                resultKey: state.modeling.activeResultKey };
+            }""",
             sample_name,
         )
         ctx.check(
             group,
-            "Narrowing the x-axis range excludes out-of-range events from the modeling histogram",
+            "Narrowing the analysis domain excludes out-of-range events from the modeling histogram",
             abs(histogram_after["min"] - x_range_result["newMin"]) < 1e-6
             and abs(histogram_after["max"] - x_range_result["newMax"]) < 1e-6
             and x_range_result["newMin"] > x_range_result["fullMin"]
-            and x_range_result["newMax"] < x_range_result["fullMax"],
+            and x_range_result["newMax"] < x_range_result["fullMax"]
+            and histogram_after["resultKey"] != x_range_result["previousKey"],
             str({"after": histogram_after, "requested": x_range_result}),
         )
 
-        # Bulk auto-fit: re-plot every sample, clear the narrow x-override from
-        # the previous check, pick Watson (no ratio constraint), and Auto-Fit
-        # All. It auto-detects each sample, averages the four region bounds, and
-        # applies those shared regions to every sample before fitting -- so all
-        # plotted samples end up fit AND sharing identical (averaged) regions.
+        # Bulk auto-fit previews its inclusion/exclusion decision. Only strong
+        # detections on proven-compatible DNA axes share robust median regions;
+        # weak/incompatible samples are still fit, but independently.
         page.evaluate(
-            """() => {
-              const o = window.PhaseFinder.plot.axis_range_override;
-              o.x_min = null; o.x_max = null;
-              for (const cb of document.querySelectorAll('.file_table tbody .row_select:not(:disabled)')) {
-                if (!cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
-              }
+            """async () => {
+              const data = await import('./js/plotting/data.js');
+              data.set_analysis_domain_override(null, null);
             }"""
         )
+        # Exercise the real bulk-selection control. Dispatching change on a
+        # captured NodeList of row checkboxes is brittle because the first
+        # selection notification may rebuild the table and detach the rest.
+        select_all_visible_rows(page)
         page.wait_for_function("() => (window.PhaseFinder.plot.series || []).length >= 2", timeout=30000)
         page.select_option("#cell_cycle_model_select", "watson_pragmatic")
+        page.once("dialog", lambda dialog: dialog.accept())
         page.click("#cell_cycle_fit_all_button")
         page.wait_for_function(
-            """() => {
-              const names = (window.PhaseFinder.plot.series || []).map((s) => s.name);
-              return names.length >= 2 && names.every((n) => {
-                const m = window.PhaseFinder.pipeline.get_state(n)?.modeling;
-                return m?.activeResultKey && m.resultsByKey[m.activeResultKey]?.modelId === 'watson_pragmatic';
-              });
-            }""",
+            """() => /^Auto-fit /.test(
+              document.querySelector('#status_bar_message')?.textContent || '')""",
             timeout=90000,
         )
         bulk = page.evaluate(
             """() => {
               const names = window.PhaseFinder.plot.series.map((s) => s.name);
-              const regions = names.map((n) => window.PhaseFinder.pipeline.get_state(n).modeling.peakSelection.regions);
-              const first = regions[0];
-              const all_same = regions.every((r) =>
-                Math.abs(r.g1.left - first.g1.left) < 1e-6 && Math.abs(r.g1.right - first.g1.right) < 1e-6
-                && Math.abs(r.g2.left - first.g2.left) < 1e-6 && Math.abs(r.g2.right - first.g2.right) < 1e-6);
-              return { count: names.length, all_same: all_same };
+              const attempts = names.map((n) => {
+                const m = window.PhaseFinder.pipeline.get_state(n).modeling;
+                return { result: m.resultsByKey[m.activeResultKey] || null, error: m.lastFitError || null };
+              });
+              return {
+                count: names.length,
+                attempted: attempts.filter(({ result, error }) => result || error).length,
+                modes: attempts.filter(({ result }) => result).map(({ result }) => result.bulkRegionProvenance?.mode || null),
+                allSuccessfulHaveEvidence: attempts.every(({ result }) =>
+                  !result || result.bulkRegionProvenance?.calibrationEvidence),
+              };
             }"""
         )
         ctx.check(
             group,
-            "Auto-Fit All fits every plotted sample and gives them shared averaged regions",
-            bulk["count"] >= 2 and bulk["all_same"] is True,
+            "Fit All Samples previews safe sharing, fits every sample, and records calibration provenance",
+            bulk["count"] >= 2
+            and bulk["attempted"] == bulk["count"]
+            and bulk["allSuccessfulHaveEvidence"] is True
+            and all(mode in ("shared_median_normalized", "independent") for mode in bulk["modes"]),
             str(bulk),
         )
 
+        # Regression for todo.md #2 ("Auto-Fit All ... doesn't add the values for
+        # each sample to the table"): a bulk fit dispatches cell-cycle-fit-changed
+        # like a single fit, so cell_cycle_columns.js must populate the Watson
+        # G1/S/G2-M cells for EVERY plotted sample's row, not just the active one.
+        table_fill = page.wait_for_function(
+            """(want) => {
+              const rows = [...document.querySelectorAll('#file_table tbody tr')];
+              const filled = rows.filter((tr) =>
+                [...tr.querySelectorAll('td.cell_cycle_td')].some((td) => td.textContent.trim().endsWith('%'))
+              ).length;
+              return filled >= want ? { filled } : null;
+            }""",
+            arg=len(bulk["modes"]),
+            timeout=15000,
+        )
+        ctx.check(
+            group,
+            "Fit All Samples writes each fitted sample's fractions into its own table row",
+            table_fill.json_value()["filled"] >= len(bulk["modes"]),
+            str(table_fill.json_value()),
+        )
+
         # A bulk fit auto-switches the plot to the Ridge view: one stacked
-        # small-multiple per plotted sample, each with a "Ready to model" badge
+        # small-multiple per plotted sample, each with a state-derived badge
         # and its own histogram, in a scrollable container (render.js Phase 1).
         ridge = page.evaluate(
             """() => {
               const container = document.querySelector('#plot_area .ridge_container');
               const rows = [...document.querySelectorAll('#plot_area .ridge_row')];
-              const badges = [...document.querySelectorAll('#plot_area .ridge_badge_ready')];
+              const badges = [...document.querySelectorAll('#plot_area .ridge_row .ridge_badge')];
               return {
                 mode: document.querySelector('#plot_view_mode').value,
                 hasContainer: Boolean(container),
                 rowCount: rows.length,
-                readyBadges: badges.length,
+                badgeCount: badges.length,
+                badgeReasonsPresent: badges.every(badge => Boolean(badge.title)),
+                badgeStates: badges.map(badge => badge.textContent.trim()),
                 svgPaths: document.querySelectorAll('#plot_area .ridge_row svg path').length,
               };
             }"""
@@ -680,7 +777,8 @@ def test_modeling(ctx: TestContext):
             ridge["mode"] == "ridge"
             and ridge["hasContainer"] is True
             and ridge["rowCount"] == bulk["count"]
-            and ridge["readyBadges"] == bulk["count"]
+            and ridge["badgeCount"] == bulk["count"]
+            and ridge["badgeReasonsPresent"] is True
             and ridge["svgPaths"] >= bulk["count"],
             str(ridge),
         )
@@ -689,6 +787,9 @@ def test_modeling(ctx: TestContext):
         # blow-up) edits that sample's region and re-fits it. The first
         # .ridge_region_hit is the G1-left boundary; drag it left and assert the
         # region moved, went "manual", and the sample still has a fit.
+        wait_for_overlay_hidden(page, timeout_ms=30000)
+        page.wait_for_selector("#plot_area .ridge_row .ridge_region_hit", state="visible", timeout=10000)
+        wait_for_render(page)
         region_before = page.evaluate(
             """() => {
               const name = window.PhaseFinder.plot.series[0].name;
@@ -737,11 +838,11 @@ def test_modeling(ctx: TestContext):
         # "Under manual review", Accept button, ridge hidden, only that sample
         # rendered); Accept returns to the ridge (render.js review flow).
         page.click("#plot_area .ridge_row .ridge_review_button")
-        page.wait_for_selector("#plot_area .ridge_review_bar", timeout=10000)
+        page.wait_for_selector(".ridge_review_bar", timeout=10000)
         blowup = page.evaluate(
             """() => ({
-              reviewBadge: (document.querySelector('#plot_area .ridge_badge_review') || {}).textContent,
-              hasAccept: Boolean(document.querySelector('#plot_area .ridge_review_accept')),
+              reviewBadge: (document.querySelector('.ridge_badge_review') || {}).textContent,
+              hasAccept: Boolean(document.querySelector('.ridge_review_accept')),
               seriesCount: (window.PhaseFinder.plot.series || []).length,
               ridgeHidden: !document.querySelector('#plot_area .ridge_container'),
             })"""
@@ -755,11 +856,11 @@ def test_modeling(ctx: TestContext):
             and blowup["ridgeHidden"] is True,
             str(blowup),
         )
-        page.click("#plot_area .ridge_review_accept")
+        page.click(".ridge_review_accept")
         page.wait_for_selector("#plot_area .ridge_container", timeout=10000)
         back_to_ridge = page.evaluate(
             "() => ({ rows: document.querySelectorAll('#plot_area .ridge_row').length,"
-            " barGone: !document.querySelector('#plot_area .ridge_review_bar') })"
+            " barGone: !document.querySelector('.ridge_review_bar') })"
         )
         ctx.check(
             group,
@@ -799,16 +900,9 @@ def test_modeling(ctx: TestContext):
         page.once("dialog", lambda dialog: dialog.accept())
         page.click("#peak_regions_apply_all_button")
         page.wait_for_function(
-            """(left) => {
-              const names = (window.PhaseFinder.plot.series || []).map((s) => s.name);
-              return names.length >= 2 && names.every((n) => {
-                const m = window.PhaseFinder.pipeline.get_state(n)?.modeling;
-                const r = m?.peakSelection?.regions;
-                return r && Math.abs(r.g1.left - left) < 1e-6 && m.activeResultKey;
-              });
-            }""",
-            arg=new_left,
-            timeout=90000,
+            """() => /^Applied .*regions/.test(
+              document.querySelector('#status_bar_message')?.textContent || '')""",
+            timeout=30000,
         )
         propagate_ok = page.evaluate(
             """(left) => {
@@ -820,7 +914,7 @@ def test_modeling(ctx: TestContext):
         )
         ctx.check(
             group,
-            "Apply to All copies the focused sample's regions to every plotted sample and refits",
+            "Apply to All copies the focused sample's regions and attempts a gated refit for every plotted sample",
             propagate_ok is True,
             str({"propagatedG1Left": new_left, "allMatch": propagate_ok}),
         )

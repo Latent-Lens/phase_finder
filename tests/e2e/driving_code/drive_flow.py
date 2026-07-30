@@ -8,29 +8,26 @@ This script is the single entry point. It:
      select a configured browser with --browser.
   2. Runs JavaScript unit tests via a second Playwright page pointed at
      tests/unit/test_harness.html.
-  3. Writes a combined HTML + Markdown report to tests/e2e/results/.
+  3. Writes one self-contained combined HTML report to tests/.
 
 Usage:
-  /tmp/flowvenv/bin/python tests/e2e/drive_flow.py [--headed] [--files N] [--extra-files N]
+  /tmp/flowvenv/bin/python tests/e2e/driving_code/drive_flow.py [--headed] [--files N] [--extra-files N]
 """
 
 import argparse
 import os
 import sys
 import time
-import threading
-import http.server
-import socketserver
-from contextlib import nullcontext
 from pathlib import Path
 
 # Put this directory on sys.path so sibling helpers/test modules are importable
 _HERE = Path(__file__).resolve().parent
+_TESTS_ROOT = _HERE.parents[1]
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 # Also put the unit test directory on sys.path
-_UNIT = _HERE.parent / "unit"
+_UNIT = _TESTS_ROOT / "unit" / "driving_code"
 if str(_UNIT) not in sys.path:
     sys.path.insert(0, str(_UNIT))
 
@@ -45,22 +42,23 @@ from helpers import (
     make_synthetic_fcs_pool,
     prepare_results_dir,
     prepare_test_data_dir,
-    suspended_local_autoload_config,
+    results_asset_dirs,
     write_combined_report,
 )
+from test_server import start_test_server
 from tests_io import test_file_loading, test_libraries
 from tests_filtering import test_table_filtering_sorting
 from tests_plotting import test_plotting, test_plot_toolbar
-from tests_pipeline import test_pipeline
+from tests_pipeline import test_pipeline, test_time_qc_methods
 from tests_modeling import test_modeling
-from tests_sidebar import test_sidebar_icons, test_sidebar_modeling_mode
+from tests_sidebar import test_responsive_reachability, test_sidebar_icons, test_sidebar_modeling_mode
 from tests_stats import test_summary_statistics
 from tests_metadata_wizard import test_metadata_wizard
 from tests_metadata_table import test_metadata_table_actions
 from tests_reset import test_reset
 
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
-TEST_DATA_DIR = Path(__file__).resolve().parents[1] / "test_data"
+RESULTS_DIR = _TESTS_ROOT / "e2e" / "results"
+TEST_DATA_DIR = _TESTS_ROOT / "e2e" / "e2e_test_data"
 GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
 
 
@@ -71,9 +69,9 @@ def launch_browser(playwright, browser_name, headed=False):
     that environment, browser_name is deliberately ignored so the existing
     local command continues to use Playwright's bundled Chromium.
 
-    The "safari" CI option runs Playwright WebKit for Safari-engine
-    compatibility; it is not the native Safari application. Brave is driven
-    through its installed executable, supplied by the workflow as BRAVE_PATH.
+    WebKit is engine compatibility coverage, not the native Safari application.
+    Brave is driven through its installed executable, supplied by the workflow
+    as BRAVE_PATH.
     """
     launch_options = {"headless": not headed}
 
@@ -82,11 +80,11 @@ def launch_browser(playwright, browser_name, headed=False):
         return playwright.chromium.launch(**launch_options)
 
     print(f"Browser: {browser_name} (GitHub Actions)", flush=True)
-    if browser_name == "chrome":
-        return playwright.chromium.launch(channel="chrome", **launch_options)
+    if browser_name == "chromium":
+        return playwright.chromium.launch(**launch_options)
     if browser_name == "firefox":
         return playwright.firefox.launch(**launch_options)
-    if browser_name == "safari":
+    if browser_name == "webkit":
         return playwright.webkit.launch(**launch_options)
     if browser_name == "edge":
         return playwright.chromium.launch(channel="msedge", **launch_options)
@@ -106,13 +104,20 @@ def launch_browser(playwright, browser_name, headed=False):
 
 def run(args):
     print("\n--- PhaseFinder Test Runner ---", flush=True)
-    print("Performing pre-test cleanup:", flush=True)
-    print(f"  1. Cleaning results directory ({RESULTS_DIR}) - removing old HTML reports, images, and videos...", flush=True)
-    _, vid_dir = prepare_results_dir(RESULTS_DIR)
+    run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+    results_dir = RESULTS_DIR / run_id
+    test_data_root = TEST_DATA_DIR / run_id
+    if args.keep:
+        print("Runs are isolated; older output is always retained.", flush=True)
+        img_dir, vid_dir = results_asset_dirs(results_dir)
+        for asset_dir in (img_dir, vid_dir):
+            asset_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        print("Preparing isolated test output:", flush=True)
+        _, vid_dir = prepare_results_dir(results_dir)
     
-    print(f"  2. Cleaning test data directory ({TEST_DATA_DIR}) - removing old synthetic FCS files...", flush=True)
-    test_data_dir = prepare_test_data_dir(TEST_DATA_DIR)
-    print("Cleanup complete!\n", flush=True)
+    test_data_dir = prepare_test_data_dir(test_data_root)
+    print(f"Run directory: {results_dir}\n", flush=True)
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
     report_stem = f"flow_e2e_{stamp}"
@@ -146,13 +151,15 @@ def run(args):
             record_video_dir=str(vid_dir),
             record_video_size={"width": 1920, "height": 1080},
         )
+        video_record_start = time.monotonic()
         e2e_page = e2e_context.new_page()
         e2e_ctx = TestContext(
             page=e2e_page,
-            results_dir=RESULTS_DIR,
+            results_dir=results_dir,
             report_stem=report_stem,
+            all_media=not args.limited_media,
         )
-        e2e_ctx.video_record_start = time.monotonic()
+        e2e_ctx.video_record_start = video_record_start
         e2e_ctx._last_test_end = e2e_ctx.video_record_start
 
         e2e_page.on("pageerror", lambda err: e2e_ctx.page_errors.append(str(err)))
@@ -165,9 +172,11 @@ def run(args):
         test_plotting(e2e_ctx, args.channel)
         test_plot_toolbar(e2e_ctx)
         test_pipeline(e2e_ctx)
+        test_time_qc_methods(e2e_ctx)
         test_modeling(e2e_ctx)
         test_sidebar_icons(e2e_ctx)
         test_sidebar_modeling_mode(e2e_ctx)
+        test_responsive_reachability(e2e_ctx)
         test_summary_statistics(e2e_ctx)
         test_metadata_wizard(e2e_ctx)
         test_metadata_table_actions(e2e_ctx)
@@ -194,16 +203,26 @@ def run(args):
         unit_page = e2e_context.new_page()
         unit_ctx = TestContext(
             page=unit_page,
-            results_dir=RESULTS_DIR,
+            results_dir=results_dir,
             report_stem=report_stem,
             number_offset=len(e2e_ctx.results),
+            all_media=not args.limited_media,
+            capture_media=False,
         )
 
         try:
             from run_unit_tests import run_unit_tests
             run_unit_tests(unit_ctx, args.url)
         except Exception as unit_err:
-            print(f"[WARN] Unit tests failed to run: {unit_err}", flush=True)
+            from unit_phase import unit_phase_failure
+            failure = unit_phase_failure("unit_execution", unit_err)
+            unit_ctx.check(
+                "Unit / Infrastructure",
+                "Unit phase completed with the expected minimum result count",
+                False,
+                str(failure),
+                screenshot=False,
+            )
 
         # Close context to finalise the video file (after unit tests)
         e2e_context.close()
@@ -213,7 +232,7 @@ def run(args):
             if e2e_page.video:
                 full_video = e2e_page.video.path()
                 if full_video and Path(full_video).exists():
-                    extract_video_clips(e2e_ctx, full_video, RESULTS_DIR, report_stem)
+                    extract_video_clips(e2e_ctx, full_video, results_dir, report_stem)
         except Exception as vid_err:
             print(f"[WARN] Video clip extraction failed: {vid_err}", flush=True)
 
@@ -222,42 +241,28 @@ def run(args):
     # ----------------------------------------------------------------
     # Combined report
     # ----------------------------------------------------------------
-    md_path, html_path = write_combined_report(e2e_ctx, unit_ctx, RESULTS_DIR, report_stem)
+    html_path = write_combined_report(e2e_ctx, unit_ctx, results_dir, report_stem)
 
     all_results = e2e_ctx.results + (unit_ctx.results if unit_ctx else [])
     total_tests = len(all_results)
+    failed = [r for r in all_results if r.status == "FAIL"]
 
-    print("\nTest Execution Results:")
-    for idx, r in enumerate(all_results, 1):
+    print(f"\nTest summary: {total_tests - len(failed)}/{total_tests} passed, {len(failed)} FAILED")
+    print("Test Execution Results (failures first):")
+    for r in sorted(all_results, key=lambda result: result.status != "FAIL"):
         color = "\033[92m" if r.status == "PASS" else "\033[93m" if r.status == "WARN" else "\033[91m"
         reset = "\033[0m"
         detail_str = f" — {r.detail}" if r.detail else ""
-        print(f"[{color}{r.status}{reset}] {idx}|{total_tests}. {r.name}{detail_str}")
+        print(f"[{color}{r.status}{reset}] {r.number}|{total_tests}. {r.name}{detail_str}")
 
-    print(f"\nReport markdown  → {md_path}", flush=True)
     print(f"Report html      → {html_path}", flush=True)
 
-    failed = [r for r in all_results if r.status == "FAIL"]
     return 1 if failed else 0
-
-
-def start_test_server(directory: str) -> tuple:
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, format, *args):
-            pass  # Suppress HTTP access logs
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, directory=directory, **kwargs)
-
-    httpd = socketserver.TCPServer(("127.0.0.1", 0), Handler)
-    port = httpd.server_address[1]
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    return port, httpd
 
 
 def main():
     parser = argparse.ArgumentParser(description="PhaseFinder E2E + unit test runner")
-    parser.add_argument("--url", default=None, help="App URL. If omitted, starts a local server on a random port.")
+    parser.add_argument("--url", default=None, help="App URL. If omitted, uses the first open port from 8000 through 9000.")
     parser.add_argument("--data", default=None,
                         help=f"FCS directory to test with; omitted uses synthetic fixtures. Legacy default was {DEFAULT_DATA}")
     parser.add_argument("--files", type=int, default=4, help="initial FCS files to load")
@@ -265,45 +270,43 @@ def main():
     parser.add_argument("--channel", default="GFP/FITC-A")
     parser.add_argument(
         "--browser",
-        choices=["chrome", "firefox", "brave", "safari", "edge"],
-        default="chrome",
+        choices=["chromium", "firefox", "webkit", "brave", "edge"],
+        default="chromium",
         help=(
             "browser for GitHub Actions jobs; local runs always use Playwright "
             "Chromium regardless of this value"
         ),
     )
     parser.add_argument("--headed", action="store_true")
+    parser.add_argument(
+        "--limited-media",
+        action="store_true",
+        help="keep one representative image/video per group instead of media for every eligible check",
+    )
+    parser.add_argument("--keep", action="store_true", help="keep older E2E/unit reports instead of deleting them before the run")
     args = parser.parse_args()
 
     httpd = None
-    local_autoload_guard = nullcontext()
-
     if not args.url:
-        repo_root = Path(_HERE.parents[1])
+        repo_root = _TESTS_ROOT.parent
         print(f"Starting up a new local server process to serve the app...", flush=True)
         port, httpd = start_test_server(str(repo_root))
         args.url = f"http://127.0.0.1:{port}/index.html"
         print(f"Server successfully started at {args.url}", flush=True)
-        # A personal, uncommitted sessions/phasefinder_local.json would
-        # otherwise get served to the app under test and silently auto-load
-        # unrelated files, desyncing every row-count assertion.
-        local_autoload_guard = suspended_local_autoload_config(repo_root)
-
-    with local_autoload_guard:
-        try:
-            ret = run(args)
-        except PlaywrightTimeoutError as err:
-            print(f"Playwright timed out: {err}", file=sys.stderr)
-            ret = 1
-        except Exception as err:
-            print(f"Test runner failed: {err}", file=sys.stderr)
-            ret = 1
-        finally:
-            if httpd:
-                print(f"\nShutting down local test server process...", flush=True)
-                httpd.shutdown()
-                httpd.server_close()
-                print("Server shutdown complete.", flush=True)
+    try:
+        ret = run(args)
+    except PlaywrightTimeoutError as err:
+        print(f"Playwright timed out: {err}", file=sys.stderr)
+        ret = 1
+    except Exception as err:
+        print(f"Test runner failed: {err}", file=sys.stderr)
+        ret = 1
+    finally:
+        if httpd:
+            print(f"\nShutting down local test server process...", flush=True)
+            httpd.shutdown()
+            httpd.server_close()
+            print("Server shutdown complete.", flush=True)
 
     return ret
 

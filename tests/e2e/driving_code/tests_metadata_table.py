@@ -67,6 +67,62 @@ def test_metadata_table_actions(ctx: TestContext):
     ctx.check(group, "Metadata title-bar actions are ordered wizard, add, upload, download",
               actual_order == expected_order, str(actual_order))
 
+    accessibility = page.evaluate("""() => {
+      const table = document.querySelector('.file_table');
+      const selectAll = document.querySelector('#select_all_files');
+      const rows = [...document.querySelectorAll('.file_table tbody tr[data-file-id]')];
+      return {
+        caption: table?.querySelector('caption')?.textContent,
+        selectAll: selectAll?.getAttribute('aria-label'),
+        rowLabels: rows.map(row => row.querySelector('.row_select')?.getAttribute('aria-label')),
+        rowHeaders: rows.every(row => row.querySelector('th[scope="row"]')),
+      };
+    }""")
+    ctx.check(group, "UI-05B: table, select-all, rows, caption, and row headers are named",
+              bool(accessibility["caption"] and accessibility["selectAll"])
+              and all(accessibility["rowLabels"])
+              and accessibility["rowHeaders"], str(accessibility))
+
+    page.click("#metadata_remove_column_button")
+    choice = page.locator('#file_table th[role="checkbox"][data-column-key]').first
+    choice.focus()
+    choice.press("Space")
+    ctx.check(group, "UI-18: removable columns are named keyboard-operable choices",
+              choice.get_attribute("aria-checked") == "true"
+              and choice.get_attribute("aria-label").startswith("Remove ")
+              and not page.eval_on_selector("#remove_columns_confirm", "e => e.disabled"))
+    page.click("#remove_columns_cancel")
+
+    sort_button = page.locator(".th_sort").first
+    sort_field = sort_button.get_attribute("data-sort-field")
+    sort_button.click()
+    page.wait_for_timeout(50)
+    sort_state = page.eval_on_selector(
+        f'.th_sort[data-sort-field="{sort_field}"]',
+        "button => ({ aria: button.closest('th').getAttribute('aria-sort'), focused: document.activeElement === button })",
+    )
+    ctx.check(group, "UI-05B: sortable header exposes aria-sort and preserves focus",
+              sort_state["aria"] in ("ascending", "descending") and sort_state["focused"], str(sort_state))
+
+    filter_toggle = page.locator(".th_filter_toggle").first
+    if filter_toggle.count():
+        filter_toggle.click()
+        relationship = filter_toggle.evaluate("""button => ({
+          expanded: button.getAttribute('aria-expanded'),
+          controls: button.getAttribute('aria-controls'),
+          visible: !document.getElementById(button.getAttribute('aria-controls'))?.hidden,
+          popup: button.getAttribute('aria-haspopup'),
+        })""")
+        filter_toggle.press("Escape")
+        page.wait_for_timeout(50)
+        closed_focus = page.locator(f'.th_filter_toggle[data-filter-field="{filter_toggle.get_attribute("data-filter-field")}"]').evaluate(
+            "button => button.getAttribute('aria-expanded') === 'false' && document.activeElement === button"
+        )
+        ctx.check(group, "UI-05B: filter popup exposes relationships and Escape restores focus",
+                  relationship["expanded"] == "true" and relationship["visible"]
+                  and relationship["popup"] == "true" and bool(relationship["controls"])
+                  and closed_focus, str(relationship))
+
     # --- Add a blank metadata column, edit its header, and edit values ---
     page.click("#metadata_add_column_button")
     page.wait_for_selector(".metadata_header_input", timeout=5000)
@@ -110,6 +166,7 @@ def test_metadata_table_actions(ctx: TestContext):
         f"{loaded_name}\tloaded-control\t0\n"
         f"{missing_name}\tmissing-drug\t10\n",
     )
+    page.once("dialog", lambda dialog: dialog.accept())
     page.set_input_files("#metadata_import_input", metadata_path)
     page.wait_for_function("() => window.PhaseFinder.app.get_table_columns().some((column) => column.label === 'Condition')", timeout=5000)
 

@@ -7,10 +7,12 @@ is reopened manually via the table's title-bar icon, matching how a user would
 reconfigure columns later in a session.
 """
 
+import re
+
 from helpers import (
     TestContext,
     set_files_via_drag_drop,
-    wait_briefly,
+    wait_for_render,
     wait_for_rows,
     write_synthetic_fcs,
 )
@@ -108,7 +110,7 @@ def test_metadata_wizard(ctx: TestContext):
     # Remainder: hide the leftover well/seed suffix.
     page.fill("#metadata_column_editor .metadata_column_name", "Well")
     page.check("#metadata_column_editor .metadata_leaf_hide input")
-    wait_briefly(0.2)
+    wait_for_render(page)
 
     # --- Preview reflects the configured split before Apply is clicked ---
     preview_header = page.eval_on_selector_all(
@@ -199,8 +201,10 @@ def test_metadata_wizard(ctx: TestContext):
         with page.expect_download(timeout=8000) as download_info:
             page.click("#metadata_export_button")
         download = download_info.value
-        ctx.check(group, "Export icon triggers a TSV file download",
-                  download.suggested_filename == "phasefinder_loaded_fcs_samples.tsv",
+        # The name is datetime-tagged: phasefinder_loaded_fcs_samples_YYYYMMDD-HHMMSS.tsv
+        ctx.check(group, "Export icon triggers a datetime-tagged TSV file download",
+                  re.match(r"^phasefinder_loaded_fcs_samples_\d{8}-\d{6}\.tsv$",
+                           download.suggested_filename) is not None,
                   download.suggested_filename)
     except Exception as error:
         ctx.check(group, "Export icon triggers a TSV file download", False, str(error))

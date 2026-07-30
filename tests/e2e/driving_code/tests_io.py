@@ -10,7 +10,7 @@ from helpers import (
     table_row_count,
     table_values,
     try_catch_progress,
-    wait_briefly,
+    wait_for_render,
     wait_for_overlay_hidden,
     wait_for_rows,
     write_synthetic_fcs,
@@ -126,7 +126,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
     except Exception:
         pass  # May complete too fast to observe
     wait_for_overlay_hidden(page)
-    wait_briefly(0.3)
+    wait_for_render(page)
     dup_row_count = table_row_count(page)
     dup_status = status_bar_text(page)
     sidebar_status = page.eval_on_selector("#status", "e => e.textContent.trim()")
@@ -155,7 +155,7 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
 
     # --- collapse sidebar and verify collapsed icons ---
     page.click("#sidebar_toggle")
-    wait_briefly(0.5)
+    wait_for_render(page)
     ctx.check(group, "Sidebar collapsed icon controls are visible",
               page.locator("#collapsed_upload_target").is_visible()
               and page.locator("#collapsed_channel_select").is_visible()
@@ -192,4 +192,4 @@ def test_file_loading(ctx: TestContext, drag_drop_files, file_browser_files, add
 
     # Restore expanded sidebar
     page.click("#sidebar_toggle")
-    wait_briefly(0.4)
+    wait_for_render(page)
