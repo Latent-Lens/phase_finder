@@ -40,6 +40,7 @@
   min-height: 0;
   flex-direction: column;
   gap: 0;
+  overflow-y: auto;
   transition:
     opacity 150ms ease,
     transform 150ms ease,
@@ -272,6 +273,11 @@
   background: var(--accent_soft);
 }
 
+.drop_zone:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .drop_zone strong,
 .drop_zone span {
   display: block;
@@ -349,6 +355,17 @@
 }
 
 .status.error {
+  color: var(--danger);
+}
+
+.channel_eligibility_status {
+  margin: 5px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--accent_dark);
+}
+
+.channel_eligibility_status.error {
   color: var(--danger);
 }
 
@@ -445,7 +462,7 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: visible;
   /* It becomes the top-most visible section, so drop the
      .sidebar_section + .sidebar_section separator it would otherwise inherit
      from the (now hidden) .controls section before it. */

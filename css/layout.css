@@ -9,12 +9,21 @@
   padding: 5px 10px 0;
 }
 
+.browser_compatibility_warning {
+  margin: 0;
+  padding: 6px 10px;
+  border: 2px solid var(--danger);
+  border-radius: 6px;
+  color: var(--danger);
+  background: var(--panel);
+  font-weight: 700;
+}
+
 .site_logo {
   display: block;
   width: min(260px, 100%);
   height: auto;
   margin-bottom: 0px;
-  cursor: pointer;
 }
 
 .header_brand {
@@ -102,9 +111,9 @@
 .load_session_button {
   width: auto;
   min-height: 36px;
-  border: 1px solid var(--logo_teal);
+  border: 1px solid var(--teal_action);
   border-radius: 8px;
-  background: var(--logo_teal);
+  background: var(--teal_action);
   color: var(--panel);
   padding: 0 14px;
   font-size: var(--panel_title_font_size);
@@ -145,23 +154,43 @@
   outline-offset: 2px;
 }
 
+.cache_manager_card {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.cache_manager_list {
+  max-height: 260px;
+  overflow: auto;
+  padding-left: 22px;
+  overflow-wrap: anywhere;
+}
+
+.cache_manager_actions {
+  flex-wrap: wrap;
+}
+
+.stats_modal_actions .danger_button {
+  border-color: #b91c1c;
+  background: #b91c1c;
+}
+
+.stats_modal_actions .danger_button:hover {
+  filter: brightness(1.15);
+}
+
 .app {
   --sidebar_width: 320px;
   --sidebar_collapsed_width: 56px;
-  /* Height of the .page_header row (logo + header-actions). */
-  --page_header_height: 60px;
-  /* Actual rendered height of the fixed status bar (36px + 3.5px border). */
-  --status_bar_height: 40px;
   /* Width of the drag handle between sidebar and workspace. */
   --sidebar_resizer_width: 12px;
 
   display: grid;
   grid-template-columns: var(--sidebar_width) var(--sidebar_resizer_width) minmax(0, 1fr);
-  /* Fill exactly the space between the page header and status bar. The
-     workspace column scrolls independently so the sidebar stays put. */
+  /* The body grid supplies the actual header/footer size; no fixed-height
+     subtraction is needed when either row wraps. */
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
-  height: calc(100vh - var(--page_header_height) - var(--status_bar_height));
+  min-height: 0;
   padding: 8px 10px;
   transition: grid-template-columns 180ms ease;
 }
@@ -174,6 +203,7 @@
 
 .sidebar_resizer {
   position: relative;
+  touch-action: none;
   cursor: col-resize;
   border-radius: 4px;
   z-index: 10;
@@ -194,7 +224,8 @@
 }
 
 .sidebar_resizer:hover::after,
-.sidebar_resizer.is_dragging::after {
+.sidebar_resizer.is_dragging::after,
+.sidebar_resizer:focus-visible::after {
   background: var(--accent);
 }
 
@@ -237,6 +268,7 @@
 .workspace_resizer {
   display: none; /* shown by JS when plot_panel is visible */
   position: relative;
+  touch-action: none;
   height: 16px;
   flex-shrink: 0;
   cursor: default;
@@ -272,7 +304,8 @@
 }
 
 .workspace_resizer.draggable:hover::after,
-.workspace_resizer.is_dragging::after {
+.workspace_resizer.is_dragging::after,
+.workspace_resizer:focus-visible::after {
   background: var(--accent);
 }
 
@@ -350,7 +383,7 @@
    edge. Scoped to when a real table is rendered (not the empty-state
    placeholder) so .empty_note's own top/bottom padding stays symmetrical
    when no files are loaded yet. */
-#metadata_panel_body > .table_wrap:has(> table.file_table) {
+#metadata_panel_body > .table_wrap.has_file_table {
   padding-bottom: 10px;
 }
 
@@ -389,6 +422,13 @@
   grid-template-rows: 0fr;
   opacity: 0;
   pointer-events: none;
+}
+
+/* plot.css normally sizes the plot to its content. With the table collapsed,
+   let it consume the released workspace height so the table title docks at
+   the bottom instead of leaving an empty band below it. */
+.workspace.metadata_panel_collapsed #plot_panel:not(.is_collapsed) {
+  flex: 1 1 auto;
 }
 
 .metadata_panel_body[hidden] {
@@ -569,6 +609,8 @@
   position: fixed;
   z-index: 1200;
   max-width: min(280px, 80vw);
+  max-height: calc(100dvh - 12px);
+  overflow-y: auto;
   padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -621,6 +663,11 @@
   top: calc(var(--pf-arrow-offset, 50%) - 4.5px);
 }
 
+#pf_tooltip[data-placement="left"]::before {
+  right: -4px;
+  top: calc(var(--pf-arrow-offset, 50%) - 4.5px);
+}
+
 /* ── Density-plot curve hover tooltip ─────────────────────────────────────
    Follows the cursor rather than a fixed anchor (see curve_tooltip.js), so
    unlike #pf_tooltip it has no arrow -- just a small offset from the pointer. */
@@ -629,6 +676,8 @@
   position: fixed;
   z-index: 1200;
   max-width: min(280px, 80vw);
+  max-height: calc(100dvh - 12px);
+  overflow-y: auto;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -751,8 +800,8 @@
 }
 
 .calculate_stats_button {
-  border-color: var(--logo_teal);
-  background: var(--logo_teal);
+  border-color: var(--teal_action);
+  background: var(--teal_action);
   color: var(--panel);
 }
 

@@ -15,6 +15,7 @@ export const collapsed_cell_cycle_modeling_button = document.querySelector("#col
 export const sidebar_back_button = document.querySelector("#sidebar_back_button");
 export const sidebar_modeling_section = document.querySelector("#sidebar_modeling_section");
 const app_shell = document.querySelector(".app");
+const workspace = document.querySelector(".workspace");
 const sidebar_content = document.querySelector("#sidebar_content");
 const sidebar_title = document.querySelector(".sidebar_title_row h2");
 export const plot_panel = document.querySelector("#plot_panel");
@@ -25,8 +26,8 @@ export const metadata_panel_toggle_icon = document.querySelector("#metadata_pane
 export const plot_panel_toggle = document.querySelector("#plot_panel_toggle");
 export const plot_panel_toggle_icon = document.querySelector("#plot_panel_toggle_icon");
 export const plot_panel_body = document.querySelector("#plot_panel_body");
-const TABLE_MINIMIZE_ICON = "./assets/img/table_minimize.svg";
-const TABLE_RESTORE_ICON = "./assets/img/table_restore.svg";
+const TABLE_MINIMIZE_ICON = new URL("../../assets/img/table_minimize.svg", import.meta.url).href;
+const TABLE_RESTORE_ICON = new URL("../../assets/img/table_restore.svg", import.meta.url).href;
 const TABLE_PANEL_TRANSITION_MS = 220;
 
 // Sidebar "Cell Cycle Modeling" mode: the file/channel controls cross-fade out
@@ -67,7 +68,7 @@ export function set_sidebar_modeling_mode(on) {
     // Move focus onto a control that is visible in the new mode so it never
     // falls back to <body> when the previously focused button is hidden.
     const focus_target = on
-      ? document.querySelector("#qc_stage0")
+      ? document.querySelector("#qc_structural")
       : cell_cycle_modeling_button;
     if (focus_target && !focus_target.disabled) focus_target.focus();
     window.requestAnimationFrame(notify_layout_changed);
@@ -112,6 +113,7 @@ export function set_metadata_panel_collapsed(is_collapsed) {
   }
 
   metadata_panel.classList.toggle("is_collapsed", is_collapsed);
+  workspace?.classList.toggle("metadata_panel_collapsed", is_collapsed);
   metadata_panel_body.setAttribute("aria-hidden", String(is_collapsed));
   if ("inert" in metadata_panel_body) metadata_panel_body.inert = is_collapsed;
 
