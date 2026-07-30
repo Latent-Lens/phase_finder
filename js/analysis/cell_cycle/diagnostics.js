@@ -1,10 +1,13 @@
-// Model-neutral Poisson fit diagnostics (plan §5.1/§4.5): every canonical
-// generative model (Dean-Jett here; Dean-Jett-Fox/Watson later) reports the
-// same deviance/residual/information-criterion bundle and the same warning
-// vocabulary, built from js/analysis/math/poisson.js's raw statistics plus
-// this module's AICc/BIC and tail-mass/boundary checks. Kept separate from
-// any one model file so the plot/report layer and future models can all read
-// (and eventually compare) the identical diagnostics shape.
+// Model-neutral Poisson fit diagnostics: every canonical generative model
+// (Dean-Jett, Dean-Jett-Fox, Watson) reports the same deviance/residual/
+// information-criterion bundle and the same warning vocabulary, built from
+// js/analysis/math/poisson.js's raw statistics plus this module's AICc/BIC and
+// tail-mass/boundary checks. Exposes the two information criteria
+// (akaikeInformationCriterionCorrected, bayesianInformationCriterion), the
+// full bundle builder (buildPoissonFitDiagnostics), and the warning generators
+// (fitQualityWarnings, tailMassWarning, boundaryHitWarnings). Kept separate from
+// any one model file so the plot/report layer and every model read (and can
+// compare) the identical diagnostics shape.
 
 import {
   poissonLogLikelihood,
@@ -17,28 +20,84 @@ import {
 
 const EPS = 1e-12;
 
-/** Corrected AIC (Hurvich-Tsai): AIC plus a small-sample bias correction that
- * blows up (reported as Infinity, never a misleadingly finite number) once
- * the sample size no longer exceeds parameterCount by more than 1. */
+/*
+
+Purpose:
+	Corrected AIC (Hurvich-Tsai): AIC plus a small-sample bias correction that
+	blows up to Infinity -- never a misleadingly finite number -- once the sample
+	size no longer exceeds the parameter count by more than 1.
+
+Input:
+	logLikelihood [number]: the fit's Poisson log-likelihood
+	parameterCount [number]: number of free parameters
+	sampleSize [number]: number of fitted bins
+
+Output:
+	aicc [number]: the corrected AIC, or Infinity when uncorrectable
+
+*/
 export function akaikeInformationCriterionCorrected(logLikelihood, parameterCount, sampleSize) {
   const aic = 2 * parameterCount - 2 * logLikelihood;
   const denominator = sampleSize - parameterCount - 1;
   return denominator > 0 ? aic + (2 * parameterCount * (parameterCount + 1)) / denominator : Infinity;
 }
 
+/*
+
+Purpose:
+	Bayesian information criterion for a fit.
+
+Input:
+	logLikelihood [number]: the fit's Poisson log-likelihood
+	parameterCount [number]: number of free parameters
+	sampleSize [number]: number of fitted bins
+
+Output:
+	bic [number]: the BIC
+
+*/
 export function bayesianInformationCriterion(logLikelihood, parameterCount, sampleSize) {
   return parameterCount * Math.log(Math.max(sampleSize, EPS)) - 2 * logLikelihood;
 }
 
-/**
- * Full §5.1 diagnostics bundle for one fitted histogram: log-likelihood,
- * deviance (raw and reduced), both residual families, the two structure
- * checks (lag-1 autocorrelation and the runs test) that distinguish "noisy
- * but unbiased" from "systematically wrong in one region", and AICc/BIC.
- * `parameterCount` must be the number of *free* parameters the optimizer
- * actually moved, matching plan §5.1's "use the number of fitted bins as n"
- * and never mixing that with a locked/derived parameter's count.
- */
+export function akaikeInformationCriterion(logLikelihood, parameterCount) {
+  return 2 * parameterCount - 2 * logLikelihood;
+}
+
+function observation_key(counts) {
+  let hash = 2166136261;
+  let total = 0;
+  for (const count of counts) {
+    total += count;
+    for (const character of String(count)) {
+      hash ^= character.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    hash ^= 44;
+    hash = Math.imul(hash, 16777619);
+  }
+  return `poisson:${counts.length}:${total}:${hash >>> 0}`;
+}
+
+/*
+
+Purpose:
+	Builds the full diagnostics bundle for one fitted histogram: log-likelihood,
+	deviance (raw and reduced), both residual families, the two structure checks
+	(lag-1 autocorrelation and the runs test) that distinguish "noisy but
+	unbiased" from "systematically wrong in one region", and AICc/BIC.
+
+Input:
+	spec [object]: { observedCounts, expectedCounts, parameterCount } --
+	               parameterCount must be the number of FREE parameters the
+	               optimizer actually moved, and n is the number of fitted bins
+
+Output:
+	diagnostics [object]: { logLikelihood, deviance, degreesOfFreedom,
+	                        reducedDeviance, devianceResiduals, pearsonResiduals,
+	                        lag1Autocorrelation, runsTestZ, aicc, bic }
+
+*/
 export function buildPoissonFitDiagnostics({ observedCounts, expectedCounts, parameterCount }) {
   if (observedCounts.length !== expectedCounts.length) {
     throw new Error("observedCounts and expectedCounts must have the same length.");
@@ -52,6 +111,7 @@ export function buildPoissonFitDiagnostics({ observedCounts, expectedCounts, par
 
   return {
     logLikelihood,
+    aic: akaikeInformationCriterion(logLikelihood, parameterCount),
     deviance,
     degreesOfFreedom,
     reducedDeviance,
@@ -61,15 +121,40 @@ export function buildPoissonFitDiagnostics({ observedCounts, expectedCounts, par
     runsTestZ: runsTestZ(devianceResiduals),
     aicc: akaikeInformationCriterionCorrected(logLikelihood, parameterCount, n),
     bic: bayesianInformationCriterion(logLikelihood, parameterCount, n),
+    informationCriterionScope: "same_observed_histogram",
+    observationKey: observation_key(observedCounts),
+    parameterCount,
   };
 }
 
-/** Structure-quality warnings from an already-built diagnostics bundle.
- * Thresholds are versioned heuristics (documented here, not calibrated
- * probabilities) -- callers needing different sensitivity pass overrides. */
+/*
+
+Purpose:
+	Structure-quality warnings derived from an already-built diagnostics bundle
+	(overdispersion, residual autocorrelation, and residual-sign runs). The
+	thresholds are versioned heuristics, not calibrated probabilities; callers
+	needing different sensitivity pass overrides.
+
+Input:
+	diagnostics [object]: a bundle from buildPoissonFitDiagnostics
+	thresholds [object]: optional { reducedDevianceThreshold, lag1Threshold,
+	                     runsZThreshold }
+
+Output:
+	warnings [array]: zero or more { code, severity, message } warnings
+
+*/
 export function fitQualityWarnings(diagnostics, { reducedDevianceThreshold = 2, lag1Threshold = 0.3, runsZThreshold = 2 } = {}) {
   const warnings = [];
   const { reducedDeviance, lag1Autocorrelation: lag1, runsTestZ: runsZ } = diagnostics;
+
+  if (diagnostics.optimizer?.weaklyIdentified) {
+    warnings.push({
+      code: "weak_optimizer_identifiability",
+      severity: "warning",
+      message: "The optimizer Jacobian is rank-deficient or poorly conditioned; fitted parameters may be weakly identified.",
+    });
+  }
 
   if (Number.isFinite(reducedDeviance) && reducedDeviance > reducedDevianceThreshold) {
     warnings.push({
@@ -95,14 +180,23 @@ export function fitQualityWarnings(diagnostics, { reducedDevianceThreshold = 2, 
   return warnings;
 }
 
-/**
- * Warns when a component's fitted total area extends materially beyond the
- * observed histogram domain (plan §5.1: "warn when missing tail mass is
- * large enough to make total-area fractions sensitive to the chosen
- * domain"). `totalArea` is the model's area *parameter* (the true, untruncated
- * area); `observedDomainArea` is the sum of that component's actual per-bin
- * counts, which the domain silently truncates.
- */
+/*
+
+Purpose:
+	Warns when a component's fitted total area extends materially beyond the
+	observed histogram domain, so total-area fractions that are sensitive to the
+	chosen domain are flagged.
+
+Input:
+	spec [object]: { componentId, componentLabel, totalArea (the model's
+	               untruncated area parameter), observedDomainArea (the summed
+	               in-domain per-bin counts), thresholdFraction }
+
+Output:
+	warning [object|null]: a { code, severity, componentId, message } warning, or
+	                       null when the missing fraction is below threshold
+
+*/
 export function tailMassWarning({ componentId, componentLabel, totalArea, observedDomainArea, thresholdFraction = 0.02 }) {
   if (!(totalArea > 0)) return null;
   const missingFraction = 1 - observedDomainArea / totalArea;
@@ -115,13 +209,23 @@ export function tailMassWarning({ componentId, componentLabel, totalArea, observ
   };
 }
 
-/**
- * Warns when a free parameter's fitted value sits at (or within `epsilon`
- * relative distance of) one of its bounds -- the optimizer wanted to move
- * further but a hard constraint stopped it. `bounds` maps parameter name to
- * `{ min, max }`; either may be omitted for a one-sided or unbounded
- * parameter.
- */
+/*
+
+Purpose:
+	Warns when a free parameter's fitted value sits at (or within a relative
+	epsilon of) one of its bounds -- the optimizer wanted to move further but a
+	hard constraint stopped it, so the reported optimum may be an artifact of the
+	bound.
+
+Input:
+	namedParameters [object]: parameter name -> fitted value
+	bounds [object]: parameter name -> { min?, max? } (either side may be omitted)
+	options [object]: optional { epsilon } relative closeness to a bound
+
+Output:
+	warnings [array]: zero or more { code, severity, parameter, message } warnings
+
+*/
 export function boundaryHitWarnings(namedParameters, bounds, { epsilon = 1e-3 } = {}) {
   const warnings = [];
   for (const [name, { min, max } = {}] of Object.entries(bounds)) {
