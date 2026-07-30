@@ -307,18 +307,18 @@ export const auto_dj_djf = {
   /*
 
   Purpose:
-  	Fits Dean-Jett first, then fits Dean-Jett-Fox with DJ's own converged
-  	parameters threaded through as config.djHint -- DJF's nesting guarantee only
-  	holds in practice when its starts include DJ's real optimum, not just a fresh
-  	region-only estimate. Defers the actual choice to normalizeResult(), where
-  	selectAutomaticModel() runs.
+	Fits Dean-Jett first, then fits Dean-Jett-Fox with DJ's own converged
+	parameters threaded through as config.djHint -- DJF's nesting guarantee only
+	holds in practice when its starts include DJ's real optimum, not just a fresh
+	region-only estimate. Defers the actual choice to normalizeResult(), where
+	selectAutomaticModel() runs.
 
   Input:
-  	context [object]: the model fit context (histogram, peakRegions, config with
-  	                  optional dj/djf/selection/onProgress/shouldCancel)
+	context [object]: the model fit context (histogram, peakRegions, config with
+	                  optional dj/djf/selection/onProgress/shouldCancel)
 
   Output:
-  	rawResult [object]: { djRaw, djfRaw, selectionOptions } for normalizeResult()
+	rawResult [object]: { djRaw, djfRaw, selectionOptions } for normalizeResult()
 
   */
   fit(context) {
@@ -333,17 +333,17 @@ export const auto_dj_djf = {
   /*
 
   Purpose:
-  	Expected per-bin counts for whichever submodel produced the parameters.
-  	Dean-Jett-Fox's parameters always include `w` and Dean-Jett's never do, which
-  	is a reliable way to route without threading an extra field through the
-  	generic result shape.
+	Expected per-bin counts for whichever submodel produced the parameters.
+	Dean-Jett-Fox's parameters always include `w` and Dean-Jett's never do, which
+	is a reliable way to route without threading an extra field through the
+	generic result shape.
 
   Input:
-  	edges [array]: histogram bin edges
-  	parameters [object]: a fitted parameter set from either submodel
+	edges [array]: histogram bin edges
+	parameters [object]: a fitted parameter set from either submodel
 
   Output:
-  	counts [array]: the expected per-bin counts from the matching submodel
+	counts [array]: the expected per-bin counts from the matching submodel
 
   */
   expectedCounts(edges, parameters) {

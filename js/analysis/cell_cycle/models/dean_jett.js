@@ -367,17 +367,17 @@ export const dean_jett = {
   /*
 
   Purpose:
-  	Builds theta_0, minimizes total Poisson deviance (the sum-of-squares
-  	stand-in for -logL(theta) from the header formula block) via fit_engine.js,
-  	and returns the raw fit result plus everything normalizeResult() needs.
+	Builds theta_0, minimizes total Poisson deviance (the sum-of-squares
+	stand-in for -logL(theta) from the header formula block) via fit_engine.js,
+	and returns the raw fit result plus everything normalizeResult() needs.
 
   Input:
-  	context [object]: { histogram (masked histogram: edges + counts/y),
-  	                  peakRegions { g1:{left,right}, g2:{left,right} },
-  	                  config (DEFAULT_CONFIG overrides) }
+	context [object]: { histogram (masked histogram: edges + counts/y),
+	                  peakRegions { g1:{left,right}, g2:{left,right} },
+	                  config (DEFAULT_CONFIG overrides) }
 
   Output:
-  	rawResult [object]: { fit, edges, counts, regions, config, initialCenters }
+	rawResult [object]: { fit, edges, counts, regions, config, initialCenters }
 
   */
   fit(context) {
@@ -433,16 +433,16 @@ export const dean_jett = {
   /*
 
   Purpose:
-  	Evaluates lambda_i(theta) at arbitrary edges, for rendering a fitted curve at
-  	a resolution independent of the histogram it was fit against.
+	Evaluates lambda_i(theta) at arbitrary edges, for rendering a fitted curve at
+	a resolution independent of the histogram it was fit against.
 
   Input:
-  	edges [array]: the edges to evaluate at
-  	parameters [object]: the NAMED parameters this model stores in a generic
-  	                     result (not the raw fit array)
+	edges [array]: the edges to evaluate at
+	parameters [object]: the NAMED parameters this model stores in a generic
+	                     result (not the raw fit array)
 
   Output:
-  	counts [array]: expected count per bin at the given edges
+	counts [array]: expected count per bin at the given edges
 
   */
   expectedCounts(edges, parameters) {
@@ -457,16 +457,16 @@ export const dean_jett = {
   /*
 
   Purpose:
-  	Packages the raw fit result into the generic model-neutral shape: components
-  	G1_i, S_i, G2_i (each with both its true area N_k and its observed-domain
-  	sum); phaseFractions is p_G1/p_S/p_G2 from the total-area ratio, not a
-  	bin-counting shortcut.
+	Packages the raw fit result into the generic model-neutral shape: components
+	G1_i, S_i, G2_i (each with both its true area N_k and its observed-domain
+	sum); phaseFractions is p_G1/p_S/p_G2 from the total-area ratio, not a
+	bin-counting shortcut.
 
   Input:
-  	rawResult [object]: the object returned by fit()
+	rawResult [object]: the object returned by fit()
 
   Output:
-  	result [object]: the normalized, model-neutral fit result
+	result [object]: the normalized, model-neutral fit result
 
   */
   normalizeResult(rawResult) {

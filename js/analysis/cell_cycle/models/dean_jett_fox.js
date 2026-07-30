@@ -461,17 +461,17 @@ export const dean_jett_fox = {
   /*
 
   Purpose:
-  	Fits Dean-Jett-Fox: same flow as dean_jett's fit(), plus an optional
-  	config.djHint (Dean-Jett's fitted named parameters) that seeds an additional
-  	nesting-guaranteed start -- see build_parameter_starts() for why. Callers
-  	fitting DJF standalone may omit it; auto_dj_djf always supplies it.
+	Fits Dean-Jett-Fox: same flow as dean_jett's fit(), plus an optional
+	config.djHint (Dean-Jett's fitted named parameters) that seeds an additional
+	nesting-guaranteed start -- see build_parameter_starts() for why. Callers
+	fitting DJF standalone may omit it; auto_dj_djf always supplies it.
 
   Input:
-  	context [object]: { histogram (masked histogram), peakRegions, config
-  	                  (DEFAULT_CONFIG overrides, optional djHint) }
+	context [object]: { histogram (masked histogram), peakRegions, config
+	                  (DEFAULT_CONFIG overrides, optional djHint) }
 
   Output:
-  	rawResult [object]: the raw fit result for normalizeResult()
+	rawResult [object]: the raw fit result for normalizeResult()
 
   */
   fit(context) {
@@ -528,15 +528,15 @@ export const dean_jett_fox = {
   /*
 
   Purpose:
-  	Evaluates lambda_i(theta_F) at arbitrary edges (see dean_jett's expectedCounts
-  	for why it takes the named-parameter shape, not the raw fit array).
+	Evaluates lambda_i(theta_F) at arbitrary edges (see dean_jett's expectedCounts
+	for why it takes the named-parameter shape, not the raw fit array).
 
   Input:
-  	edges [array]: the edges to evaluate at
-  	parameters [object]: the named Dean-Jett-Fox parameters
+	edges [array]: the edges to evaluate at
+	parameters [object]: the named Dean-Jett-Fox parameters
 
   Output:
-  	counts [array]: expected count per bin at the given edges
+	counts [array]: expected count per bin at the given edges
 
   */
   expectedCounts(edges, parameters) {
@@ -552,16 +552,16 @@ export const dean_jett_fox = {
   /*
 
   Purpose:
-  	Packages the raw fit result into the generic model-neutral shape --
-  	structurally identical to dean_jett's normalizeResult(), with waveFraction/
-  	waveArea/waveMean/waveSigma added so auto_dj_djf can read them without
-  	re-deriving anything from the raw fit.
+	Packages the raw fit result into the generic model-neutral shape --
+	structurally identical to dean_jett's normalizeResult(), with waveFraction/
+	waveArea/waveMean/waveSigma added so auto_dj_djf can read them without
+	re-deriving anything from the raw fit.
 
   Input:
-  	rawResult [object]: the object returned by fit()
+	rawResult [object]: the object returned by fit()
 
   Output:
-  	result [object]: the normalized, model-neutral fit result
+	result [object]: the normalized, model-neutral fit result
 
   */
   normalizeResult(rawResult) {
