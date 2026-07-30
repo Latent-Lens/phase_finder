@@ -263,6 +263,7 @@
   padding: 18px;
   text-align: center;
   background: var(--panel);
+  color: var(--text);
   transition:
     border-color 120ms ease,
     background 120ms ease;
