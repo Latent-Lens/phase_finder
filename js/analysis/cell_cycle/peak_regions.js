@@ -1,4 +1,9 @@
-// Peak region validation and region-local (fit-free) peak estimation.
+// Peak region validation and region-local (fit-free) peak estimation. Exposes
+// normalizePeakRegion (coerce/validate one region), validatePeakRegions (check
+// the G1 and G2/M pair are individually well-formed and correctly ordered), and
+// estimatePeakFromRegion (estimate a peak's center/width/area from the bins
+// inside a region, no model fit, so it can drive a live drag preview). Small
+// internal helpers do the binning and one-sided width search.
 //
 // Ported (with adaptation to PhaseFinder's existing gaussianSmooth utility)
 // from the MIT-licensed cell-cycle-modeling-handoff archive's
@@ -39,6 +44,21 @@ function finiteNumber(value, name) {
   return value;
 }
 
+/*
+
+Purpose:
+	Coerces and validates a single peak region into a normalized shape, defaulting
+	its label and boundary meaning.
+
+Input:
+	region [object]: { left, right, label?, boundaryMeaning? }
+	label [string]: fallback label used in errors and on the result
+
+Output:
+	region [object]: { left, right, label, boundaryMeaning } (throws when the
+	                 region is missing, non-finite, or has left >= right)
+
+*/
 export function normalizePeakRegion(region, label = "peak") {
   if (!region || typeof region !== "object") {
     throw new TypeError(`${label} region is required.`);
@@ -54,13 +74,22 @@ export function normalizePeakRegion(region, label = "peak") {
   };
 }
 
-/**
- * Validate semantic G1 and G2/M peak regions: both individually well-formed
- * (left < right) and correctly ordered/non-overlapping as a pair
- * (L1 < R1 <= L2 < R2, per the modeling plan's region-validation rule). The
- * regions identify which visible peak is which; they are not final
- * cell-cycle phase gates.
- */
+/*
+
+Purpose:
+	Validates the G1 and G2/M peak regions together: both individually
+	well-formed (left < right) and correctly ordered / non-overlapping as a pair
+	(L1 < R1 <= L2 < R2). The regions identify which visible peak is which; they
+	are not final cell-cycle phase gates.
+
+Input:
+	peakRegions [object]: { g1, g2 } regions
+	options [object]: optional { minimumGap } required between the regions
+
+Output:
+	regions [object]: { g1, g2 } normalized (throws when malformed or overlapping)
+
+*/
 export function validatePeakRegions(peakRegions, options = {}) {
   const g1 = normalizePeakRegion(peakRegions?.g1, "G1");
   const g2 = normalizePeakRegion(peakRegions?.g2, "G2/M");
@@ -117,18 +146,26 @@ function localLinearBaseline(values, indexes) {
   });
 }
 
-/**
- * Estimate a peak center, width, and rough area using only bins inside a
- * user-selected peak region -- no model fit required, so this can drive a
- * live preview as the user drags a region handle. The handles themselves are
- * never modified by this estimate.
- *
- * options.heightFraction (default 0.5, i.e. half-height/FWHM-style) sets
- * where on the one-sided flank the width is measured -- models/dean_jett.js
- * and models/dean_jett_fox.js use the default for their initial-guess
- * seeding; models/watson_pragmatic.js passes 0.6 per the modeling plan's
- * §5.5 "estimate G1 width near 60% peak height".
- */
+/*
+
+Purpose:
+	Estimates a peak's center, width, and rough area using only the bins inside a
+	user-selected region -- no model fit -- so it can drive a live preview as the
+	user drags a region handle. The handles themselves are never modified here.
+	Falls back from a one-sided flank width to a baseline-subtracted second
+	moment, and finally to the region span, when the cleaner estimate is unusable.
+
+Input:
+	edges [array]: histogram bin edges (length = binCount + 1)
+	counts [array]: per-bin counts
+	regionInput [object]: the peak region { left, right, ... }
+	options [object]: optional { label, smoothed, smoothingSigmaBins, cleanSide,
+	                  heightFraction (default 0.5; watson_pragmatic passes 0.6) }
+
+Output:
+	estimate [object]: { region, peakIndex, mean, sigma, cv, area, binIndexes }
+
+*/
 export function estimatePeakFromRegion(edges, counts, regionInput, options = {}) {
   const region = normalizePeakRegion(regionInput, options.label ?? "peak");
   const centers = binCenters(edges);

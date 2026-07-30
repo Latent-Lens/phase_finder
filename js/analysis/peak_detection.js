@@ -1,4 +1,9 @@
-// Detect a prominent lower/upper DNA peak pair near a 2:1 ratio.
+// Detect a prominent lower/upper DNA peak pair near a 2:1 ratio -- the legacy
+// bridge model's peak finder. validatePeakDetectionInput() guards the input;
+// findLocalMaxima() collapses flat-topped maxima to their plateau center;
+// calculatePeakProminence() scores a peak against its surrounding basins; and
+// detectDNAContentPeaks() smooths, filters, and scores all plausible G1/G2
+// pairs.
 
 import { gaussianSmooth } from "./math/gaussian.js";
 import { maximumValue } from "./math/stats.js";
@@ -10,6 +15,20 @@ function isArrayLike(value) {
     value.length >= 0;
 }
 
+/*
+
+Purpose:
+	Validates the peak-detection input: the histogram must have at least three
+	finite, nonnegative bins.
+
+Input:
+	histogram [array]: per-bin counts
+	options [object]: detection options (unused by the guard itself)
+
+Output:
+	(none) [void]: returns normally when valid, throws otherwise
+
+*/
 export function validatePeakDetectionInput(histogram, options) {
   if (!isArrayLike(histogram) || histogram.length < 3) {
     throw new RangeError("Histogram must contain at least three bins.");
@@ -57,7 +76,19 @@ export function validatePeakDetectionInput(histogram, options) {
   }
 }
 
-/** Collapse every flat-topped local maximum to the center of its plateau. */
+/*
+
+Purpose:
+	Finds local maxima in a smoothed histogram, collapsing every flat-topped
+	maximum to the center of its plateau.
+
+Input:
+	smoothedHistogram [array]: the smoothed per-bin counts
+
+Output:
+	maxima [array]: the local-maximum bin indices
+
+*/
 export function findLocalMaxima(smoothedHistogram) {
   const localMaxima = [];
   let bin = 1;
@@ -92,7 +123,19 @@ export function findLocalMaxima(smoothedHistogram) {
   return localMaxima;
 }
 
-/** Prominence above the higher of the two surrounding basin minima. */
+/*
+
+Purpose:
+	Prominence of a peak above the higher of the two surrounding basin minima.
+
+Input:
+	values [array]: the per-bin counts
+	peakBin [number]: the peak's bin index
+
+Output:
+	prominence [number]: the peak's prominence
+
+*/
 export function calculatePeakProminence(values, peakBin) {
   const peakHeight = values[peakBin];
   let leftMinimum = peakHeight;
@@ -110,9 +153,20 @@ export function calculatePeakProminence(values, peakBin) {
   return Math.max(0, peakHeight - Math.max(leftMinimum, rightMinimum));
 }
 
-/**
- * Smooth, filter, and score all plausible lower/upper DNA-content peak pairs.
- */
+/*
+
+Purpose:
+	Smooths, filters, and scores all plausible lower/upper (G1/G2) DNA-content
+	peak pairs near the expected 2:1 ratio.
+
+Input:
+	histogram [array]: per-bin counts
+	userOptions [object]: { sigma, histogramMin, binWidth, ... } overrides
+
+Output:
+	result [object]: the detected peaks and their scores
+
+*/
 export function detectDNAContentPeaks(histogram, userOptions = {}) {
   const options = {
     sigma: 2,

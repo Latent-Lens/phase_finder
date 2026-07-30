@@ -1,7 +1,7 @@
 // Multi-scale G1/G2 peak-pair detection and automatic region proposal.
 //
 // Ported (with adaptation to PhaseFinder's existing gaussianSmooth/clamp/
-// median utilities and its Stage-4 histogram shape) from the MIT-licensed
+// median utilities and its masked-histogram shape) from the MIT-licensed
 // cell-cycle-modeling-handoff archive's src/peakDetection.js and
 // src/histogram.js findLocalMaxima/gaussianKernel. See
 // assets/misc/cell-cycle-modeling-handoff(2).zip and
@@ -115,32 +115,58 @@ function crossingRight(values, peakIndex, level) {
   return interpolateLevelCrossing(values, outside - 1, outside, level);
 }
 
-/**
- * Measure one local maximum on one smoothed scale. Width is measured at half
- * prominence, not half absolute height, so a nonzero S-phase/background level
- * does not inflate the width as severely.
- */
+export function gaussianSigmaFromProminenceDistance(distance, relativeHeight = 0.5) {
+  if (!Number.isFinite(relativeHeight) || relativeHeight <= 0 || relativeHeight >= 1) {
+    throw new RangeError("widthRelativeHeight must be finite and strictly between 0 and 1.");
+  }
+  return distance / Math.sqrt(2 * Math.log(1 / (1 - relativeHeight)));
+}
+
+/*
+
+Purpose:
+	Measures one local maximum on one smoothed scale. Width is taken at half
+	PROMINENCE, not half absolute height, so a nonzero S-phase/background level
+	doesn't inflate the width as severely.
+
+Input:
+	values [array]: the smoothed signal at this scale
+	peak [object]: the local-maximum candidate ({ index, ... })
+	options [object]: measurement options (e.g. bin width)
+
+Output:
+	measured [object]: the peak augmented with prominence, width, area, etc.
+
+*/
 function measurePeak(values, peak, options = {}) {
   const window = Math.max(3, Math.floor(options.prominenceWindow ?? 24));
   const left = argMin(values, peak.index - window, peak.index - 1);
   const right = argMin(values, peak.index + 1, peak.index + window);
   const baseline = Math.max(left.value, right.value);
   const prominence = Math.max(0, values[peak.index] - baseline);
-  const relativeHeight = clamp(options.widthRelativeHeight ?? 0.5, 0.05, 0.95);
+  const relativeHeight = options.widthRelativeHeight ?? 0.5;
+  // Validate instead of silently clamping: this value defines the Gaussian
+  // conversion and values at either endpoint are singular.
+  gaussianSigmaFromProminenceDistance(1, relativeHeight);
   const widthLevel = values[peak.index] - relativeHeight * prominence;
   const leftCrossing = crossingLeft(values, peak.index, widthLevel);
   const rightCrossing = crossingRight(values, peak.index, widthLevel);
   const widthBins = Math.max(0.5, rightCrossing - leftCrossing);
-  const sigmaBins = widthBins / (2 * Math.sqrt(2 * Math.log(1 / Math.max(1e-6, 1 - relativeHeight))));
+  const sigmaBins = gaussianSigmaFromProminenceDistance(widthBins / 2, relativeHeight);
 
   let areaAboveBaseline = 0;
   for (let i = left.index; i <= right.index; i += 1) {
     areaAboveBaseline += Math.max(0, values[i] - baseline);
   }
 
-  const halfProminenceSigmaFactor = Math.sqrt(2 * Math.log(2));
-  const sigmaLeftBins = Math.max(0.5, (peak.index - leftCrossing) / halfProminenceSigmaFactor);
-  const sigmaRightBins = Math.max(0.5, (rightCrossing - peak.index) / halfProminenceSigmaFactor);
+  const sigmaLeftBins = Math.max(
+    0.5,
+    gaussianSigmaFromProminenceDistance(peak.index - leftCrossing, relativeHeight),
+  );
+  const sigmaRightBins = Math.max(
+    0.5,
+    gaussianSigmaFromProminenceDistance(rightCrossing - peak.index, relativeHeight),
+  );
 
   return {
     ...peak,
@@ -395,10 +421,20 @@ function pairSoftmaxProbability(pairs, temperature = 0.08) {
   return exponentials[0] / Math.max(1e-12, exponentials.reduce((acc, value) => acc + value, 0));
 }
 
-/**
- * Score every biologically plausible ordered G1/G2 pair. Scores are heuristic
- * evidence scores in [0,1], not calibrated posterior probabilities.
- */
+/*
+
+Purpose:
+	Scores every biologically plausible ordered G1/G2 candidate pair. Scores are
+	heuristic evidence in [0, 1], not calibrated posterior probabilities.
+
+Input:
+	spec [object]: { candidates, centers, smoothed, weights, ... } -- the scored
+	               candidates and the inputs the pair terms are computed from
+
+Output:
+	pairs [array]: the scored, ranked G1/G2 pairs
+
+*/
 export function scoreCellCyclePeakPairs({
   edges,
   counts,
@@ -524,23 +560,49 @@ function candidateByIndex(candidates, index, tolerance = 2) {
   return best;
 }
 
-function proposedRegion(edges, centerIndex, sigmaBins, multiplier) {
+// Build a peak region with independent left/right reach. Peaks are asymmetric:
+// the flank facing away from the other peak is "clean" (nothing biological beyond
+// it), while the flank facing the inter-peak gap is contaminated by rising S
+// phase. Extending the contaminated (inner) edge as far as the clean (outer) edge
+// pulls S-phase mass into the peak's region, which biases the peak-width seed and
+// -- on real G1/G2-heavy data -- lets the fitted Gaussian degenerate into a broad
+// slab while the S phase absorbs the peak (the VALID-01 DJF S-overfit). So the
+// inner edge uses a tighter multiplier than the clean outer edge.
+function proposedRegion(edges, centerIndex, sigmaBins, leftMultiplier, rightMultiplier = leftMultiplier) {
   const centers = binCenters(edges);
   const binWidth = medianBinWidth(edges);
   const center = centers[centerIndex];
-  const halfWidth = Math.max(1.5 * binWidth, multiplier * sigmaBins * binWidth);
+  const minHalf = 1.5 * binWidth;
+  const leftHalf = Math.max(minHalf, leftMultiplier * sigmaBins * binWidth);
+  const rightHalf = Math.max(minHalf, rightMultiplier * sigmaBins * binWidth);
   return {
-    left: clamp(center - halfWidth, edges[0], edges[edges.length - 1]),
-    right: clamp(center + halfWidth, edges[0], edges[edges.length - 1]),
+    left: clamp(center - leftHalf, edges[0], edges[edges.length - 1]),
+    right: clamp(center + rightHalf, edges[0], edges[edges.length - 1]),
   };
 }
 
-/**
- * Create initial editable peak regions. These are proposals only; after the
- * user edits them, the four handles are immutable during model fitting.
- */
+/*
+
+Purpose:
+	Creates the initial editable G1/G2 peak regions from a detection result.
+	These are proposals only; once the user edits them, the four handles are
+	immutable during model fitting.
+
+Input:
+	edges [array]: histogram bin edges
+	detection [object]: { g1Index, g2Index, g1Candidate, g2Candidate } from
+	                    detectCellCyclePeakPair
+	options [object]: region-width options
+
+Output:
+	regions [object]: { g1, g2 } proposed regions
+
+*/
 export function proposeAutomaticPeakRegions(edges, detection, options = {}) {
-  const multiplier = options.regionSigmaMultiplier ?? 2.75;
+  // Outer (clean-flank) reach vs inner (S-phase-facing) reach. The inner edge is
+  // held tighter so the region does not swallow the inter-peak S shoulder.
+  const outerMultiplier = options.regionSigmaMultiplier ?? 2.75;
+  const innerMultiplier = options.innerRegionSigmaMultiplier ?? 1.5;
   const g1Sigma = detection.g1Candidate?.sigmaLeftBins
     ?? detection.g1Candidate?.sigmaBins
     ?? detection.fallbackSigmaBins
@@ -549,8 +611,10 @@ export function proposeAutomaticPeakRegions(edges, detection, options = {}) {
     ?? detection.g2Candidate?.sigmaBins
     ?? detection.fallbackSigmaBins
     ?? g1Sigma;
-  const g1 = proposedRegion(edges, detection.g1Index, g1Sigma, multiplier);
-  const g2 = proposedRegion(edges, detection.g2Index, g2Sigma, multiplier);
+  // G1: clean flank is the LEFT (outer); the S-facing RIGHT edge is the inner one.
+  const g1 = proposedRegion(edges, detection.g1Index, g1Sigma, outerMultiplier, innerMultiplier);
+  // G2: the S-facing LEFT edge is the inner one; clean flank is the RIGHT (outer).
+  const g2 = proposedRegion(edges, detection.g2Index, g2Sigma, innerMultiplier, outerMultiplier);
 
   if (g1.right >= g2.left) {
     const centers = binCenters(edges);
@@ -565,14 +629,24 @@ export function proposeAutomaticPeakRegions(edges, detection, options = {}) {
   };
 }
 
-/**
- * Hardened automatic peak initialization:
- * - detects local maxima at multiple Gaussian smoothing scales;
- * - merges peaks that persist across scales;
- * - measures prominence, width, area, and location stability;
- * - scores all biologically plausible G1/G2 pairs;
- * - reports confidence and explicit inferred/low-confidence states.
- */
+/*
+
+Purpose:
+	The top-level automatic peak initialization. Detects local maxima at multiple
+	Gaussian smoothing scales, merges peaks that persist across scales, measures
+	prominence/width/area/location-stability, scores every plausible G1/G2 pair,
+	and reports a confidence with explicit inferred/low-confidence states.
+
+Input:
+	edges [array]: histogram bin edges
+	counts [array]: per-bin counts
+	options [object]: detector options (smoothing scales, weights, thresholds)
+
+Output:
+	result [object]: { detection, candidates, pairs, autoPeakRegions,
+	                  configuration } -- the full detection bundle
+
+*/
 export function detectCellCyclePeakPair(edges, counts, options = {}) {
   assertHistogram(edges, counts);
   const centers = binCenters(edges);
@@ -654,6 +728,7 @@ export function detectCellCyclePeakPair(edges, counts, options = {}) {
       softmaxTemperature: options.softmaxTemperature ?? 0.08,
       marginScale: options.marginScale ?? 0.08,
       regionSigmaMultiplier: options.regionSigmaMultiplier ?? 2.75,
+      innerRegionSigmaMultiplier: options.innerRegionSigmaMultiplier ?? 1.5,
     },
   };
 }
