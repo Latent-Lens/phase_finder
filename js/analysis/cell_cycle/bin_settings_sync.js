@@ -23,22 +23,28 @@ import {
   BIN_STOPS,
   DEFAULT_BINS,
   slider_index_for_bins,
-  clamp_range_to_axis_override,
+  clamp_range_to_analysis_domain,
 } from "../../plotting/data.js";
 import { render_density_plot } from "../../plotting/render.js";
+import { get_model } from "./model_registry.js";
 import { pipeline_states, invalidate_histogram_dependents, invalidate_model_results } from "../pipeline_state.js";
 import { load_pipeline } from "../pipeline_loader.js";
 import {
   get_modeling_state,
   fit_cell_cycle_model,
   detect_peak_regions,
-  accept_peak_regions,
 } from "./modeling_state.js";
 import { set_status_bar } from "../../ui/status_channels.js";
+import { deep_clone } from "../../util/clone.js";
 
 let initialized = false;
 let recalc_busy = false;
 let last_committed_bins = plot_bin_count();
+// Once the user picks a bin count themselves we stop auto-defaulting to the
+// recommended stop, so their choice is respected for the session. `applying_default`
+// guards re-entry while an auto-default is mid-render.
+let user_set_bins = false;
+let applying_default = false;
 
 // Single-level undo for the most recent bin-size recalculation: a snapshot of
 // every sample's modeling state + histogram taken just before the recalc, plus
@@ -118,6 +124,10 @@ function recommended_index(eventCount) {
   return best >= 0 ? best : 0;
 }
 
+export function recommended_bin_count(eventCount) {
+  return BIN_STOPS[recommended_index(eventCount)];
+}
+
 // The per-sample events/bin + recommendation sentence, prepended to the static
 // tooltip so hovering the slider explains the current choice (moved here from a
 // separate visible hint line).
@@ -125,7 +135,7 @@ function bins_guidance_text(bins, eventCount) {
   if (!Number.isFinite(eventCount) || eventCount <= 0) {
     return `Recommended ${DEFAULT_BINS} bins for DNA histograms (${BIN_STOPS[0]}–${BIN_STOPS[BIN_STOPS.length - 1]}).`;
   }
-  const recommended = BIN_STOPS[recommended_index(eventCount)];
+  const recommended = recommended_bin_count(eventCount);
   const sampleCount = plottable_rows().length;
   const scope = sampleCount > 1 ? ` (smallest of ${sampleCount} samples)` : "";
   const perBin = Math.round(eventCount / bins);
@@ -150,21 +160,34 @@ function update_slider_visuals() {
     plot_bins_input.title = `${bins_guidance_text(bins, eventCount)} ${SLIDER_TOOLTIP_STATIC}`;
   }
 
-  // Track gradient: each stop's risk colour anchored at that stop's position
-  // (0/33/66/100% for the four stops), matching the tick labels below and so
-  // blending smoothly between neighbours.
-  if (plot_bins_input) {
-    const stops = BIN_STOPS.map((stopBins, i) => {
-      const pos = (i / (BIN_STOPS.length - 1)) * 100;
-      return `${RISK_COLORS[stop_risk(stopBins, eventCount)]} ${pos}%`;
+  // The rail fills up to the thumb, and the fill, the thumb and the selected
+  // stop's dot all take the CURRENT stop's risk colour. (This replaced a
+  // heat-map gradient painted across the whole rail, which read as a chart
+  // rather than a control -- the risk that matters is the one selected.)
+  //
+  // --f_current is a plain fraction (0..1) of the thumb's travel, not a
+  // percentage of the element: the wrapper's CSS multiplies it by --track so
+  // the fill ends exactly under the thumb centre at every stop.
+  const index = plot_bins_input ? Number(plot_bins_input.value) : 0;
+  const wrap = plot_bins_input?.closest(".plot_bins_slider_wrap");
+  if (wrap) {
+    wrap.style.setProperty("--bins-fill", RISK_COLORS[stop_risk(bins, eventCount)]);
+    wrap.style.setProperty("--f_current", String(index / (BIN_STOPS.length - 1)));
+    wrap.querySelectorAll(".plot_bins_stop").forEach((stop) => {
+      stop.classList.toggle("plot_bins_stop__selected", Number(stop.dataset.index) === index);
     });
-    plot_bins_input.style.setProperty("--bins-track", `linear-gradient(to right, ${stops.join(", ")})`);
   }
 
+  // Two independent cues on the tick labels: the SELECTED stop (bold+underline,
+  // tracks the thumb) and the RECOMMENDED stop (a subtle teal hint at the finest
+  // still-safe bin count). They are distinct so the emphasis on the label the
+  // user is actually on is never mistaken for the recommendation.
   const recIndex = recommended_index(eventCount);
   if (bins_ticks) {
     bins_ticks.querySelectorAll(".plot_bins_tick").forEach((tick) => {
-      tick.classList.toggle("plot_bins_tick_recommended", Number(tick.dataset.index) === recIndex);
+      const tickIndex = Number(tick.dataset.index);
+      tick.classList.toggle("plot_bins_tick_selected", tickIndex === index);
+      tick.classList.toggle("plot_bins_tick_recommended", tickIndex === recIndex);
     });
   }
 }
@@ -178,17 +201,13 @@ function hide_recalc_modal() {
   if (recalc_modal) recalc_modal.hidden = true;
 }
 
-// For each already-computed sample: rebuild its histogram at the new bin
-// count, re-run automatic peak detection against it, re-accept, and re-fit the
-// ones that had a fit with their last model. (Re-detecting keeps the modeling
-// state -- including its histogram fingerprint, which the result key is built
-// from -- consistent with the new histogram; a manual peak edit is not
-// preserved across a bin-size change, matching the "re-run auto peak-detection"
-// behaviour.)
+// Rebuild each histogram and detector proposal. Reviewed manual regions remain
+// active and may be refit; a fresh automatic proposal stays unreviewed and is
+// never silently promoted by a bin-count change.
 async function recalculate_all(targets) {
   const pipeline = await load_pipeline();
   const rows = plottable_rows();
-  const range = clamp_range_to_axis_override(pipeline.shared_histogram_range(rows));
+  const range = clamp_range_to_analysis_domain(pipeline.shared_histogram_range(rows));
   const binCount = plot_bin_count();
 
   // Snapshot before touching anything: fitting mutates activeResultKey.
@@ -205,8 +224,10 @@ async function recalculate_all(targets) {
     try {
       pipeline.ensure_histogram_current(row, { binCount, range });
       detect_peak_regions(row);
-      accept_peak_regions(row);
-      if (hadFit) {
+      // Joint time-series models (CLOCCS) aren't per-sample fits, so there is no
+      // single-sample result to recompute here -- skip them rather than error.
+      const isJoint = get_model(modelId)?.fitScope === "joint_series";
+      if (hadFit && !isJoint && get_modeling_state(row).peakSelection.reviewed) {
         await fit_cell_cycle_model(row, modelId);
         refit += 1;
       }
@@ -239,8 +260,8 @@ function capture_undo_snapshot(previousBins) {
   const states = new Map();
   for (const [name, state] of pipeline_states) {
     states.set(name, {
-      modeling: structuredClone(state.modeling),
-      histogram: state.histogram ? structuredClone(state.histogram) : null,
+      modeling: deep_clone(state.modeling),
+      histogram: state.histogram ? deep_clone(state.histogram) : null,
     });
   }
   bin_undo = { previousIndex: slider_index_for_bins(previousBins), previousBins, states };
@@ -275,7 +296,7 @@ function apply_undo() {
 }
 
 // Shared recompute for any change to the modeling histogram identity -- bin
-// count or the visible x-range. Rebuilds each plotted computed sample's
+// count or the explicit analysis domain. Rebuilds each plotted computed sample's
 // histogram and re-fits it (recalculate_all), and invalidates any non-plotted
 // computed states. `undoFromBins` (a prior bin count), when given, snapshots
 // for the one-click bins undo and shows the button; an x-range recompute passes
@@ -331,20 +352,55 @@ async function run_recompute({ statusPrefix, undoFromBins = null }) {
   }
 }
 
+// Snap the slider to the recommended (teal-badge) stop for the current data --
+// the finest still-safe bin count -- so the DEFAULT reflects the data instead of
+// a fixed number. Only runs before the user has (a) picked a bin count manually
+// or (b) started modeling (detected peaks / fit): once either is true, silently
+// re-binning would be disruptive, so we leave the current count alone.
+function apply_recommended_default() {
+  if (user_set_bins || recalc_busy || applying_default || !plot_bins_input) return;
+  const eventCount = worst_case_event_count();
+  if (!Number.isFinite(eventCount) || eventCount <= 0) return;
+  const recIndex = recommended_index(eventCount);
+  if (recIndex === Number(plot_bins_input.value)) return;
+  const hasComputed = plottable_rows().some((row) => {
+    const modeling = pipeline_states.get(row.name)?.modeling;
+    return modeling && (modeling.peakSelection.regions || modeling.activeResultKey);
+  });
+  if (hasComputed) return;
+
+  applying_default = true;
+  try {
+    plot_bins_input.value = String(recIndex);
+    last_committed_bins = plot_bin_count();
+    update_slider_visuals();
+    render_density_plot(); // rebuild the histogram at the recommended count
+  } finally {
+    applying_default = false;
+  }
+}
+
+// Combined handler for the events that signal the plotted data may have changed:
+// re-default the bin count (if still eligible) and always repaint the slider.
+function on_plotted_data_changed() {
+  apply_recommended_default();
+  update_slider_visuals();
+}
+
 async function on_bins_commit() {
   if (recalc_busy) return;
   const bins = plot_bin_count();
   if (bins === last_committed_bins) return; // dragged back to the same stop
+  // A deliberate user choice from here on -- stop auto-defaulting to recommended.
+  if (!applying_default) user_set_bins = true;
   const previousBins = last_committed_bins;
   last_committed_bins = bins;
   await run_recompute({ statusPrefix: `Bin size changed to ${bins}.`, undoFromBins: previousBins });
 }
 
-// Fired by the axis modal (pf-x-range-changed) when the user explicitly sets or
-// clears the x-range, changing how much data is visible. That bounds the
-// modeling histogram, so peaks/fits recompute -- same as a bin-count change.
-// (A future interactive zoom/pan is viewport-only and must not fire this.)
-async function on_x_range_change() {
+// Fired only by the explicit scientific-domain control. Display axis limits
+// and interactive pan/zoom never enter this recomputation path.
+async function on_analysis_domain_change() {
   if (recalc_busy) return;
   await run_recompute({ statusPrefix: "X-axis range changed." });
 }
@@ -359,9 +415,15 @@ export function init_bin_settings_sync() {
     plot_bins_input.addEventListener("change", on_bins_commit);
   }
   if (bins_undo_button) bins_undo_button.addEventListener("click", apply_undo);
-  document.addEventListener("pf-x-range-changed", on_x_range_change);
+  document.addEventListener("pf-analysis-domain-changed", on_analysis_domain_change);
 
-  document.addEventListener("fcs-selection-change", update_slider_visuals);
+  // On a change to the plotted set, default the bin count to the recommended
+  // stop (before the app's own re-render, so the histogram is built at that
+  // count). The other two events are display-only, so they just repaint the
+  // slider (moving the recommended tick as post-QC counts settle) without
+  // re-defaulting -- which also avoids re-rendering inside a render-complete
+  // handler.
+  document.addEventListener("fcs-selection-change", on_plotted_data_changed);
   document.addEventListener("cell-cycle-focus-change", update_slider_visuals);
   document.addEventListener("pf-plot-complete", update_slider_visuals);
 
