@@ -169,6 +169,12 @@ _FULL_SUITE = """() => {
   push('annotation_input_size: fits short values to content length + 1',
        annotation_input_size('abc') === 4, String(annotation_input_size('abc')));
 
+  const cellCycleValues = [0, 0.0, 1e-9, -1, null, undefined, NaN, Infinity]
+    .map((value) => format_cell_cycle_value(value));
+  push('UI-17: cell-cycle formatting preserves finite zero, tiny, and negative values and marks only missing/non-finite values',
+       JSON.stringify(cellCycleValues) === JSON.stringify(['0', '0', '1e-9', '-1', '—', '—', '—', '—']),
+       JSON.stringify(cellCycleValues));
+
   push('parse_fixed_breaks: parses, sorts, and dedupes comma/space-separated positions',
        JSON.stringify(parse_fixed_breaks('5, 2 5 8,2')) === JSON.stringify([2, 5, 8]),
        JSON.stringify(parse_fixed_breaks('5, 2 5 8,2')));
@@ -186,6 +192,85 @@ _FULL_SUITE = """() => {
   const parsedCsv = parse_delimited_metadata('Filename,Note\\nA.fcs,\"alpha, beta\"\\n');
   push('parse_delimited_metadata: preserves quoted CSV commas',
        parsedCsv.records[0].Note === 'alpha, beta', JSON.stringify(parsedCsv.records[0]));
+
+  const duplicateCases = [
+    'Filename,Condition,Condition\\nA.fcs,control,drug\\n',
+    'Filename,Condition, condition \\nA.fcs,control,drug\\n',
+    'Filename\\tDose\\tdOsE\\nA.fcs\\t\\t10\\n',
+  ];
+  const duplicateResults = duplicateCases.map((text) => {
+    try { parse_delimited_metadata(text); return 'accepted'; }
+    catch (error) { return `${error.code}:${error.message}`; }
+  });
+  push('DATA-05: CSV/TSV duplicate headers are rejected after trim/case normalization with source columns',
+       duplicateResults.every((value) => value.startsWith('METADATA_DUPLICATE_HEADER:') && /columns 2 and 3/.test(value)),
+       JSON.stringify(duplicateResults));
+
+  const aligned = parse_delimited_metadata('Filename,Note,Empty\\nA.fcs,\\"alpha, beta\\",\\n');
+  push('DATA-05: quoted delimiters and empty cells preserve neighboring column alignment',
+       aligned.records[0].Note === 'alpha, beta' && aligned.records[0].Empty === '',
+       JSON.stringify(aligned.records[0]));
+
+  const hostile = '<img src=x onerror=window.__xss=1>\\"&\\\'';
+  const hostileTsv = parse_delimited_metadata(`Filename\\tAnnotation\\n${hostile}.fcs\\t${hostile}\\n`);
+  const escapedFixtures = [
+    hostileTsv.records[0].Filename,
+    hostileTsv.records[0].Annotation,
+    hostile,
+    `model-${hostile}`,
+  ].map(escape_html);
+  push('SEC-03: HTML/script-like filenames, annotations, TSV cells, and model labels are escaped',
+       escapedFixtures.every((value) => !value.includes('<') && !value.includes('>') && !value.includes('"')),
+       JSON.stringify(escapedFixtures));
+
+  const preview = metadata_import_preview(parsedTsv, 'samples.tsv');
+  push('DATA-05: import preview shows row count, final columns, and the reject-not-rename policy',
+       /2 rows/.test(preview) && /Filename, Condition, Dose/.test(preview) && /duplicate headers are rejected/.test(preview),
+       preview);
+
+  const roundTripSource = 'Filename\\tCondition\\tNote\\tEmpty\\nA.fcs\\tcontrol\\t"alpha\\tbeta"\\t\\n';
+  const roundTripParsed = parse_delimited_metadata(roundTripSource);
+  const roundTripText = [roundTripParsed.headers, ...roundTripParsed.records.map((record) =>
+    roundTripParsed.headers.map((header) => record[header]))]
+    .map((values) => values.map(tsv_cell).join('\\t')).join('\\n');
+  const roundTrip = parse_delimited_metadata(roundTripText);
+  push('DATA-05: exported/imported metadata round-trips quoted and empty values without loss',
+       JSON.stringify(roundTrip) === JSON.stringify({ ...roundTripParsed, delimiter: '\\t' }),
+       JSON.stringify(roundTrip));
+
+  const spreadsheetCases = [
+    ['=CMD()', "'=CMD()"], ['+SUM(A1:A2)', "'+SUM(A1:A2)"],
+    ['-1+2', "'-1+2"], ['@A1', "'@A1"], ['  =CMD()', "'  =CMD()"],
+    ['\t=CMD()', `"'\t=CMD()"`], ['＝CMD()', '＝CMD()'], ['"quoted"', '\"\"\"quoted\"\"\"'],
+  ];
+  const spreadsheetActual = spreadsheetCases.map(([value]) => tsv_cell(value));
+  push('SEC-02: generated spreadsheet fixture neutralizes formulas while preserving understandable text',
+       spreadsheetActual.every((value, index) => value === spreadsheetCases[index][1])
+       && tsv_cell(-1) === '-1' && tsv_cell('-1') === "'-1",
+       JSON.stringify(spreadsheetActual));
+
+  const failedQcStatus = qc_completion_message(
+    [{ name: 'sample.fcs' }],
+    { get_state: () => ({ timeQC: { failed: true, status: 'failed' } }) },
+    [1],
+  );
+  push('DATA-04: a required QC failure can never produce the “Pre-model QC applied” status',
+       failedQcStatus.incomplete.length === 1
+       && failedQcStatus.failures.length === 1
+       && /failed/.test(failedQcStatus.message)
+       && !/QC applied/.test(failedQcStatus.message),
+       failedQcStatus.message);
+
+  const qcUiTypes = [
+    qc_ui_outcome({ rejectedEventCount: 0, retainedEventCount: 10 }).type,
+    qc_ui_outcome({ skipped: true, reason: 'missing channel' }).type,
+    qc_ui_outcome({ warnings: ['review'] }).type,
+    qc_ui_outcome({ cancelled: true }).type,
+    qc_ui_outcome({ failed: true, error: { message: 'boom' } }).type,
+  ];
+  push('UI-02: QC UI outcomes distinguish success, expected skip, degraded, cancelled, and unexpected failure',
+       JSON.stringify(qcUiTypes) === JSON.stringify(['success', 'skipped_expected', 'warning/degraded', 'cancelled', 'failed_unexpected']),
+       JSON.stringify(qcUiTypes));
 
   push('find_metadata_filename_column: recognizes common filename headers',
        find_metadata_filename_column(['Sample Name', 'Condition']) === 'Sample Name',

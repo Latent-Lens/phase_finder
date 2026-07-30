@@ -555,7 +555,7 @@ _SHARED_HELPERS = r"""() => {
     };
   });
 
-  run('pipeline state: set_stage_mask builds an index-preserving compacted view', () => {
+  run('pipeline state: set_filter_mask builds an index-preserving compacted view', () => {
     const row = {
       id: 'filtered-row', name: 'filtered-view-unit',
       data: {
@@ -569,7 +569,7 @@ _SHARED_HELPERS = r"""() => {
         masks: {},
       },
     };
-    state.set_stage_mask(row, 0, Uint8Array.from([1, 0, 1, 0]));
+    state.set_filter_mask(row, 0, Uint8Array.from([1, 0, 1, 0]));
     const filtered = row.data.filtered;
     return {
       pass: Array.from(row.data.masks.final).join('') === '1010'
@@ -638,11 +638,11 @@ _SHARED_HELPERS = r"""() => {
         && Array.from(row.data.filtered.originalIndex).join(',') === '0,2'
         && pipelineState.scatterGate === null && pipelineState.singletResult === null
         && pipelineState.histogram === null && pipelineState.report === null
-        && pipelineState.lastStageRun === 1,
+        && pipelineState.lastRunIndex === 1,
       detail: JSON.stringify({
         final: Array.from(row.data.masks.final),
         indexes: Array.from(row.data.filtered.originalIndex),
-        lastStageRun: pipelineState.lastStageRun,
+        lastRunIndex: pipelineState.lastRunIndex,
       }),
     };
   });
@@ -749,9 +749,12 @@ _SHARED_HELPERS = r"""() => {
     };
     state.clear_state(row.name);
     const pipelineState = state.get_or_create_state(row);
-    pipelineState.report = {
-      fractions: { biologicalSinglets: { oneC: 0.5, sPhase: 0.25, twoC: 0.25 } },
+    pipelineState.modeling.resultsByKey['dean_jett|summary'] = {
+      modelId: 'dean_jett',
+      validForReporting: true,
+      phaseFractions: { g1: 0.5, s: 0.25, g2: 0.25 },
     };
+    pipelineState.modeling.activeResultKey = 'dean_jett|summary';
     const summary = pipeline.pipeline_table_stats(row);
     return {
       pass: summary.filters.map((filter) => filter.entered).join(',') === '5,4,3,3'

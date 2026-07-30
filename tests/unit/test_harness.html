@@ -25,7 +25,9 @@
     import { split_filename_metadata, parse_fixed_breaks } from "/js/ui/metadata_wizard.js";
     import { guess_annotations_from_filename, timepoint_sort_value, annotation_input_size } from "/js/ui/table_support.js";
     import { display_name, metadata_filename_key } from "/js/util/names.js";
-    import { parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key } from "/js/io/metadata_io.js";
+    import { escape_html } from "/js/util/html.js";
+    import { parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key, tsv_cell, metadata_import_preview } from "/js/io/metadata_io.js";
+    import { qc_completion_message, qc_ui_outcome } from "/js/analysis/pipeline_ui.js";
     import { parameter_map, find_param_index, unique_indexes } from "/js/io/parameter_map.js";
     import {
       build_raw_analysis_channels,
@@ -46,31 +48,49 @@
     import * as CellCyclePoisson from "/js/analysis/math/poisson.js";
     import * as CellCycleModelShared from "/js/analysis/cell_cycle/models/shared.js";
     import * as CellCycleModelRegistry from "/js/analysis/cell_cycle/model_registry.js";
-    import { run_fit_in_worker } from "/js/analysis/cell_cycle/fit_client.js";
+    import { run_fit_in_worker, fit_pool_size, compute_pool_size } from "/js/analysis/cell_cycle/fit_client.js";
     import * as CellCyclePeakDetection from "/js/analysis/cell_cycle/peak_detection.js";
     import * as CellCyclePeakRegions from "/js/analysis/cell_cycle/peak_regions.js";
     import * as CellCycleModelingState from "/js/analysis/cell_cycle/modeling_state.js";
+    import * as CellCycleResultContract from "/js/analysis/cell_cycle/result_contract.js";
     import * as CellCycleFitEngine from "/js/analysis/cell_cycle/fit_engine.js";
     import * as CellCycleDiagnostics from "/js/analysis/cell_cycle/diagnostics.js";
     import * as CellCycleDeanJett from "/js/analysis/cell_cycle/models/dean_jett.js";
     import * as CellCycleDeanJettFox from "/js/analysis/cell_cycle/models/dean_jett_fox.js";
     import * as CellCycleModelSelection from "/js/analysis/cell_cycle/model_selection.js";
     import * as CellCycleWatsonPragmatic from "/js/analysis/cell_cycle/models/watson_pragmatic.js";
+    import * as CellCycleWatsonClassic from "/js/analysis/cell_cycle/models/watson_classic.js";
+    import * as PeakTrackingTimeQC from "/js/analysis/peak_tracking_time_qc.js";
+    import * as TimeQCSettings from "/js/analysis/time_qc_settings.js";
+    import * as TimeQCDiagnosticPlot from "/js/analysis/time_qc_diagnostic_plot.js";
+    import * as CLOCCS from "/js/analysis/cell_cycle/models/cloccs.js";
+    import * as CLOCCSSynthetic from "/js/analysis/cell_cycle/models/cloccs_synthetic.js";
+    import * as NelderMead from "/js/analysis/math/nelder_mead.js";
+    import * as PlotRender from "/js/plotting/render.js";
+    import * as AxisRangeModal from "/js/plotting/axis_modal.js";
+    import * as BrowserCompatibility from "/js/ui/compatibility.js";
+    import * as CellCycleModelingUI from "/js/analysis/cell_cycle/modeling_ui.js";
+    import { format_cell_cycle_value } from "/js/data_structs/derived_columns.js";
 
     Object.assign(window, {
       FCSParser, PhaseFinderFrame, make_frame, concat_frames, build_metadata_frame_from_records,
       metadata_field_from_label, normalize_metadata_columns,
       split_filename_metadata, parse_fixed_breaks,
       guess_annotations_from_filename, timepoint_sort_value, annotation_input_size,
-      display_name, metadata_filename_key,
-      parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key,
+      display_name, metadata_filename_key, escape_html,
+      parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key, tsv_cell, metadata_import_preview,
+      qc_completion_message,
+      qc_ui_outcome,
+      AxisRangeModal,
+      BrowserCompatibility,
+      format_cell_cycle_value,
       parameter_map, find_param_index, unique_indexes,
       build_raw_analysis_channels,
       find_auxiliary_indexes_for_file, find_pipeline_channel_indexes,
       serialize_session, parse_session_toml,
     });
     // Expose both the public orchestrator and lower-level state helpers. The
-    // orchestrator itself exposes stage0 ... stage8 as module namespaces.
+    // orchestrator itself exposes structuralQc ... fitReport as module namespaces.
     window.PhaseFinder = { pipeline: DJFPipeline };
     window.PhaseFinderPipeline = DJFPipeline;
     window.DJFPipelineState = DJFPipelineState;
@@ -88,15 +108,26 @@
     window.CellCycleModelShared = CellCycleModelShared;
     window.CellCycleModelRegistry = CellCycleModelRegistry;
     window.run_fit_in_worker = run_fit_in_worker;
+    window.FitClientPool = { fit_pool_size, compute_pool_size };
     window.CellCyclePeakDetection = CellCyclePeakDetection;
     window.CellCyclePeakRegions = CellCyclePeakRegions;
     window.CellCycleModelingState = CellCycleModelingState;
+    window.CellCycleResultContract = CellCycleResultContract;
     window.CellCycleFitEngine = CellCycleFitEngine;
     window.CellCycleDiagnostics = CellCycleDiagnostics;
     window.CellCycleDeanJett = CellCycleDeanJett;
     window.CellCycleDeanJettFox = CellCycleDeanJettFox;
     window.CellCycleModelSelection = CellCycleModelSelection;
     window.CellCycleWatsonPragmatic = CellCycleWatsonPragmatic;
+    window.CellCycleWatsonClassic = CellCycleWatsonClassic;
+    window.PeakTrackingTimeQC = PeakTrackingTimeQC;
+    window.TimeQCSettings = TimeQCSettings;
+    window.TimeQCDiagnosticPlot = TimeQCDiagnosticPlot;
+    window.CLOCCS = CLOCCS;
+    window.CLOCCSSynthetic = CLOCCSSynthetic;
+    window.NelderMead = NelderMead;
+    window.PlotRender = PlotRender;
+    window.CellCycleModelingUI = CellCycleModelingUI;
     window.__libsReady = true;
   </script>
 

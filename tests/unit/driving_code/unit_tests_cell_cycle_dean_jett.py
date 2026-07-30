@@ -259,6 +259,23 @@ _DEAN_JETT_TESTS = r"""() => {
     return { pass: close(diagnostics.deviance, 0, 1e-9) && close(diagnostics.reducedDeviance, 0, 1e-9), detail: diagnostics.deviance };
   });
 
+  run('SCI-10: diagnostics report standard AIC, AICc, BIC and comparison scope', () => {
+    const diagnostics = buildPoissonFitDiagnostics({
+      observedCounts: [0, 1, 2], expectedCounts: [1, 1, 1], parameterCount: 1,
+    });
+    const ll = -3 - Math.log(2);
+    return {
+      pass: close(diagnostics.logLikelihood, ll, 1e-10)
+        && close(diagnostics.aic, 2 - 2 * ll, 1e-10)
+        && close(diagnostics.aicc, 6 - 2 * ll, 1e-10)
+        && close(diagnostics.bic, Math.log(3) - 2 * ll, 1e-10)
+        && diagnostics.parameterCount === 1
+        && diagnostics.informationCriterionScope === 'same_observed_histogram'
+        && diagnostics.observationKey.startsWith('poisson:3:3:'),
+      detail: JSON.stringify(diagnostics),
+    };
+  });
+
   run('tailMassWarning fires when most of a fitted component area falls outside the observed domain', () => {
     const warning = tailMassWarning({ componentId: 's', componentLabel: 'S', totalArea: 1000, observedDomainArea: 700 });
     return { pass: warning !== null && warning.code === 'component_tail_mass_outside_domain', detail: warning && warning.message };

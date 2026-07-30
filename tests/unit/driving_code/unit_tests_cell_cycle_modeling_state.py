@@ -15,7 +15,7 @@ from helpers import TestContext
 GROUP = "Unit / Cell Cycle Modeling State"
 
 
-_TESTS = r"""() => {
+_TESTS = r"""async () => {
   const pipeline = window.PhaseFinder.pipeline;
   const peakRegions = window.CellCyclePeakRegions;
   const modelingState = window.CellCycleModelingState;
@@ -26,6 +26,14 @@ _TESTS = r"""() => {
   const run = (name, test) => {
     try {
       const outcome = test();
+      push(name, outcome.pass, outcome.detail);
+    } catch (error) {
+      push(name, false, `${error.name}: ${error.message}`);
+    }
+  };
+  const runAsync = async (name, test) => {
+    try {
+      const outcome = await test();
       push(name, outcome.pass, outcome.detail);
     } catch (error) {
       push(name, false, `${error.name}: ${error.message}`);
@@ -85,7 +93,7 @@ _TESTS = r"""() => {
     };
   });
 
-  // --- modeling_state.js: build a real row + Stage 4 histogram to exercise
+  // --- modeling_state.js: build a real row + histogram to exercise
   // the state transitions against, via the actual pipeline orchestrator. ---
 
   function buildBimodalRow(name, eventsPerPeak) {
@@ -119,11 +127,11 @@ _TESTS = r"""() => {
     };
   }
 
-  run('detect_peak_regions populates peakDetection/peakSelection from a real Stage 4 histogram', () => {
+  run('detect_peak_regions populates peakDetection/peakSelection from a real histogram', () => {
     const row = buildBimodalRow('modeling-state-detect', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
 
     const detection = modelingState.detect_peak_regions(row);
     const state = pipeline.get_state(row.name);
@@ -133,23 +141,25 @@ _TESTS = r"""() => {
         && state.modeling.peakSelection.regions !== null
         && state.modeling.peakSelection.stale === false
         && state.modeling.histogramFingerprint === state.histogram.fingerprint
+        && Boolean(detection.regionEvidence?.g1?.method)
+        && Boolean(detection.regionEvidence?.g2?.method)
         && detection.pairs.every((pair) => typeof pair.id === 'string'),
       detail: JSON.stringify({ status: detection.status, regions: state.modeling.peakSelection.regions }),
     };
   });
 
-  run('detect_peak_regions requires a Stage 4 histogram first', () => {
+  run('detect_peak_regions requires a histogram first', () => {
     const row = buildBimodalRow('modeling-state-no-histogram', 100);
     pipeline.clear_state(row.name);
-    const failed = throws(() => modelingState.detect_peak_regions(row), /Stage 4 histogram/);
+    const failed = throws(() => modelingState.detect_peak_regions(row), /Build the histogram/);
     return { pass: failed, detail: `failed=${failed}` };
   });
 
   run('update_peak_regions applies a valid manual edit, marks reviewed, and invalidates cached fits', () => {
     const row = buildBimodalRow('modeling-state-update', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
     modelingState.detect_peak_regions(row);
 
     const state = pipeline.get_state(row.name);
@@ -163,6 +173,7 @@ _TESTS = r"""() => {
       pass: updated.source === 'manual'
         && updated.reviewed === true
         && updated.regions.g1.left === 55
+        && state.modeling.histogramFingerprint === state.histogram.fingerprint
         && Object.keys(state.modeling.resultsByKey).length === 0
         && state.modeling.activeResultKey === null,
       detail: JSON.stringify({ updated, resultsByKey: state.modeling.resultsByKey }),
@@ -172,8 +183,8 @@ _TESTS = r"""() => {
   run('update_peak_regions rejects an invalid edit and leaves the previous regions untouched', () => {
     const row = buildBimodalRow('modeling-state-update-invalid', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
     modelingState.detect_peak_regions(row);
     const state = pipeline.get_state(row.name);
     const before = JSON.stringify(state.modeling.peakSelection.regions);
@@ -188,8 +199,8 @@ _TESTS = r"""() => {
   run('select_peak_pair switches to an alternative pair and invalidates cached fits', () => {
     const row = buildBimodalRow('modeling-state-select', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
     const detection = modelingState.detect_peak_regions(row);
     const state = pipeline.get_state(row.name);
 
@@ -212,8 +223,8 @@ _TESTS = r"""() => {
   run('select_peak_pair rejects an unknown pair id', () => {
     const row = buildBimodalRow('modeling-state-select-unknown', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
     modelingState.detect_peak_regions(row);
     const failed = throws(() => modelingState.select_peak_pair(row, 'not-a-real-pair-id'), /No detected pair/);
     return { pass: failed, detail: `failed=${failed}` };
@@ -222,8 +233,8 @@ _TESTS = r"""() => {
   run('accept_peak_regions marks reviewed without changing the regions', () => {
     const row = buildBimodalRow('modeling-state-accept', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
     modelingState.detect_peak_regions(row);
     const state = pipeline.get_state(row.name);
     const before = JSON.stringify(state.modeling.peakSelection.regions);
@@ -238,8 +249,8 @@ _TESTS = r"""() => {
   run('reset_peak_regions restores the automatic proposal after a manual edit', () => {
     const row = buildBimodalRow('modeling-state-reset', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
     modelingState.detect_peak_regions(row);
     const state = pipeline.get_state(row.name);
     const automatic = JSON.stringify(state.modeling.peakSelection.automaticRegions);
@@ -264,8 +275,8 @@ _TESTS = r"""() => {
   run('rerunning detect_peak_regions after a manual edit preserves the manual selection', () => {
     const row = buildBimodalRow('modeling-state-rerun-preserve', 1500);
     pipeline.clear_state(row.name);
-    pipeline.run_stage0(row);
-    pipeline.run_stage4(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
     modelingState.detect_peak_regions(row);
     modelingState.update_peak_regions(row, { g1: { left: 55, right: 85 }, g2: { left: 120, right: 160 } });
     const state = pipeline.get_state(row.name);
@@ -273,9 +284,71 @@ _TESTS = r"""() => {
     modelingState.detect_peak_regions(row);
     return {
       pass: state.modeling.peakSelection.source === 'manual'
+        && state.modeling.peakSelection.reviewed === true
         && state.modeling.peakSelection.regions.g1.left === 55,
       detail: JSON.stringify(state.modeling.peakSelection),
     };
+  });
+
+  run('PEAK-01: redetecting an automatic proposal clears the old active fit', () => {
+    const row = buildBimodalRow('modeling-state-redetect-invalidates', 1500);
+    pipeline.clear_state(row.name);
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
+    modelingState.detect_peak_regions(row);
+    const state = pipeline.get_state(row.name);
+    state.modeling.resultsByKey = { old: { modelId: 'watson_pragmatic' } };
+    state.modeling.activeResultKey = 'old';
+    modelingState.detect_peak_regions(row);
+    return {
+      pass: state.modeling.activeResultKey === null
+        && Object.keys(state.modeling.resultsByKey).length === 0
+        && state.modeling.peakSelection.reviewed === false,
+      detail: JSON.stringify(state.modeling),
+    };
+  });
+
+  run('PEAK-01: weak, inferred, and fallback-width proposals require review', () => {
+    const low = modelingState.peak_detection_requires_review({ status: 'low_confidence' });
+    const inferred = modelingState.peak_detection_requires_review(
+      { status: 'inferred_g2' }, { g1: { source: 'detected' }, g2: { source: 'inferred' } });
+    const fallback = modelingState.peak_detection_requires_review({
+      status: 'detected', regionEvidence: { g1: { fallback: false }, g2: { fallback: true } },
+    });
+    const ambiguous = modelingState.peak_detection_requires_review({
+      status: 'detected', selectedPairId: 'pair-0',
+      pairs: [{ id: 'pair-0', scoreMargin: 0.02 }], alternatives: [{ id: 'pair-1' }],
+      configuration: { marginScale: 0.08 },
+    });
+    const clean = modelingState.peak_detection_requires_review({
+      status: 'detected', regionEvidence: { g1: { fallback: false }, g2: { fallback: false } },
+    });
+    return {
+      pass: low.required && inferred.required && fallback.required && ambiguous.required && !clean.required,
+      detail: JSON.stringify({ low, inferred, fallback, ambiguous, clean }),
+    };
+  });
+
+  // fit_cell_cycle_model must reject a joint-series model (CLOCCS) with a clear
+  // "fit it over all plotted timepoints" message from the per-sample path -- not
+  // "Unknown cell-cycle model", and not by attempting a single-sample fit. This
+  // guards every per-sample caller (Fit Current, bin-change recompute, ridge
+  // edit, session restore) at one chokepoint.
+  await runAsync('fit_cell_cycle_model rejects the joint-series CLOCCS model with a clear per-sample message', async () => {
+    const row = buildBimodalRow('modeling-state-cloccs-guard', 1500);
+    pipeline.clear_state(row.name);
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
+    modelingState.detect_peak_regions(row);
+    modelingState.accept_peak_regions(row);
+    let message = '';
+    try {
+      await modelingState.fit_cell_cycle_model(row, 'cloccs');
+    } catch (error) {
+      message = error.message;
+    }
+    const pass = /joint time-series/i.test(message) && !/Unknown/i.test(message);
+    return { pass, detail: message };
   });
 
   return results;

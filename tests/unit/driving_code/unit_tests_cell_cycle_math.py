@@ -153,6 +153,31 @@ _MATH_TESTS = r"""() => {
     return { pass: close(ll, -nll, 1e-9), detail: { ll, nll } };
   });
 
+  run('SCI-10: absolute Poisson likelihood matches a hand-calculated small-count fixture', () => {
+    const observed = [0, 1, 2];
+    const expected = [1, 1, 1];
+    const expectedLogLikelihood = -3 - Math.log(2);
+    const expectedDeviance = 2 + 2 * (2 * Math.log(2) - 1);
+    return {
+      pass: close(poissonLogLikelihood(observed, expected), expectedLogLikelihood, 1e-10)
+        && close(poissonDeviance(observed, expected), expectedDeviance, 1e-10),
+      detail: { ll: poissonLogLikelihood(observed, expected), deviance: poissonDeviance(observed, expected) },
+    };
+  });
+
+  run('SCI-10: adding log-factorial constants leaves within-histogram rankings unchanged', () => {
+    const observed = [0, 1, 2, 4];
+    const first = [0.8, 1.2, 2.2, 3.7];
+    const second = [1.4, 0.7, 1.5, 5.1];
+    const kernel = (expected) => observed.reduce((sum, y, index) =>
+      sum + y * Math.log(expected[index]) - expected[index], 0);
+    return {
+      pass: Math.sign(poissonLogLikelihood(observed, first) - poissonLogLikelihood(observed, second))
+        === Math.sign(kernel(first) - kernel(second)),
+      detail: '',
+    };
+  });
+
   run('poissonLogLikelihood/poissonNll reject mismatched-length inputs', () => {
     let threw = false;
     try { poissonLogLikelihood([1, 2], [1, 2, 3]); } catch (_) { threw = true; }

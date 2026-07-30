@@ -9,14 +9,15 @@ modules and records results into the provided TestContext.
 import sys
 from pathlib import Path
 
-# Ensure helpers (in tests/e2e/) and unit test modules are importable
-_E2E = Path(__file__).resolve().parent.parent / "e2e"
+# Ensure E2E helpers and unit test modules are importable.
+_E2E = Path(__file__).resolve().parents[2] / "e2e" / "driving_code"
 _UNIT = Path(__file__).resolve().parent
 for _p in (_E2E, _UNIT):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
 from helpers import TestContext
+from unit_phase import require_unit_result_count, unit_phase_failure
 
 HARNESS_PATH = "/tests/unit/test_harness.html"
 LIBS_READY_TIMEOUT = 60000  # ms to wait for harness ES modules
@@ -54,13 +55,14 @@ def run_unit_tests(ctx: TestContext, app_url: str):
         page.wait_for_function(
             "() => !!(window.FCSParser && window.PhaseFinderFrame "
             "   && window.PhaseFinder && window.PhaseFinder.pipeline "
-            "   && window.PhaseFinder.pipeline.stage8)",
+            "   && window.PhaseFinder.pipeline.fitReport)",
             timeout=LIBS_READY_TIMEOUT,
         )
     except Exception as err:
         detail = " | ".join([str(err), *load_diagnostics])
-        ctx.warn("Unit / Setup", "Core JS modules did not load", detail, screenshot=False)
-        return
+        raise unit_phase_failure("unit_setup", RuntimeError(detail)) from err
+
+    before = len(ctx.results)
 
     from unit_tests_parser import run_parser_tests
     run_parser_tests(ctx)
@@ -110,5 +112,19 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     from unit_tests_cell_cycle_watson_pragmatic import run_cell_cycle_watson_pragmatic_tests
     run_cell_cycle_watson_pragmatic_tests(ctx)
 
+    from unit_tests_cell_cycle_watson_classic import run_cell_cycle_watson_classic_tests
+    run_cell_cycle_watson_classic_tests(ctx)
+
     from unit_tests_cell_cycle_fit_orchestration import run_cell_cycle_fit_orchestration_tests
     run_cell_cycle_fit_orchestration_tests(ctx)
+
+    from unit_tests_time_qc_peak_tracking import run_time_qc_peak_tracking_tests
+    run_time_qc_peak_tracking_tests(ctx)
+
+    from unit_tests_time_qc_diagnostic_plot import run_time_qc_diagnostic_plot_tests
+    run_time_qc_diagnostic_plot_tests(ctx)
+
+    from unit_tests_cloccs import run_cloccs_tests
+    run_cloccs_tests(ctx)
+
+    return require_unit_result_count(len(ctx.results) - before)
