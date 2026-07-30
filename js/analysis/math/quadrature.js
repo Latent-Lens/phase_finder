@@ -1,9 +1,10 @@
-// Fixed-node Gauss-Legendre quadrature, independent of histogram resolution
-// (plan §5.3): the Dean-Jett/Dean-Jett-Fox S-phase integral is evaluated on
-// its own latent z-in-[0,1] grid via this module, never on histogram bin
-// centers -- the archive's convolvedSPhase() used the bin centers themselves
-// as the latent integration grid, which the plan explicitly calls out to
-// replace, since it ties the S-phase integral's accuracy to the bin count.
+// Fixed-node Gauss-Legendre quadrature, independent of histogram resolution:
+// the Dean-Jett / Dean-Jett-Fox S-phase integral is evaluated on its own latent
+// z-in-[0,1] grid via this module, never on histogram bin centers (which would
+// tie the integral's accuracy to the bin count). Exposes gaussLegendre (cached
+// nodes/weights for n points on [-1, 1]) and integrateGaussLegendre (integrate
+// a function over an arbitrary [a, b]); computeGaussLegendre and
+// legendrePolynomialAndDerivative are the internal root-finder behind them.
 
 const MAX_NEWTON_ITERATIONS = 100;
 const NEWTON_TOLERANCE = 1e-15;
@@ -23,12 +24,20 @@ function legendrePolynomialAndDerivative(n, x) {
   return { value: p1, derivative };
 }
 
-/**
- * Nodes and weights for `n`-point Gauss-Legendre quadrature on [-1, 1],
- * found by Newton's method on the Legendre polynomial roots from a standard
- * asymptotic initial guess -- the textbook algorithm, not tied to any
- * particular integrand.
- */
+/*
+
+Purpose:
+	Computes the nodes and weights for n-point Gauss-Legendre quadrature on
+	[-1, 1] by Newton's method on the Legendre-polynomial roots (the textbook
+	algorithm, from a standard asymptotic initial guess).
+
+Input:
+	n [number]: the number of quadrature nodes (positive integer)
+
+Output:
+	result [object]: { nodes, weights } arrays of length n (throws for n < 1)
+
+*/
 function computeGaussLegendre(n) {
   if (!Number.isInteger(n) || n < 1) {
     throw new RangeError("Gauss-Legendre quadrature requires a positive integer node count.");
@@ -59,7 +68,19 @@ function computeGaussLegendre(n) {
 
 const cache = new Map();
 
-/** Cached `{ nodes, weights }` for `n`-point Gauss-Legendre quadrature on [-1, 1]. */
+/*
+
+Purpose:
+	Returns the nodes and weights for n-point Gauss-Legendre quadrature on
+	[-1, 1], memoized so repeated fits at the same node count are free.
+
+Input:
+	n [number]: the number of quadrature nodes
+
+Output:
+	result [object]: the cached { nodes, weights }
+
+*/
 export function gaussLegendre(n) {
   let entry = cache.get(n);
   if (!entry) {
@@ -69,11 +90,22 @@ export function gaussLegendre(n) {
   return entry;
 }
 
-/**
- * Integrates `fn` over `[a, b]` with fixed `n`-point Gauss-Legendre
- * quadrature (default 64 nodes per plan §5.3), via the standard affine
- * change of variables from [-1, 1].
- */
+/*
+
+Purpose:
+	Integrates a function over [a, b] with fixed n-point Gauss-Legendre
+	quadrature, via the standard affine change of variables from [-1, 1].
+
+Input:
+	fn [function]: the integrand, called with a single number
+	a [number]: lower limit
+	b [number]: upper limit
+	n [number]: node count (default 64)
+
+Output:
+	integral [number]: the approximate integral, or 0 when b <= a
+
+*/
 export function integrateGaussLegendre(fn, a, b, n = 64) {
   if (!(b > a)) return 0;
   const { nodes, weights } = gaussLegendre(n);

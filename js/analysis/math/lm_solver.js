@@ -1,4 +1,10 @@
-// Small, dependency-free Levenberg-Marquardt primitives shared by cell-cycle fits.
+// Small, dependency-free Levenberg-Marquardt primitives shared by the cell-cycle
+// fits. Provides the pieces of a bounded nonlinear least-squares solve:
+// solveLinearSystem (Gaussian elimination with pivoting), buildNormalEquations
+// (assemble the damped J'J system), buildFiniteDiffJacobian (a projection-aware
+// finite-difference Jacobian that stays valid at parameter bounds), and
+// runLevenbergMarquardt (the driver that ties them together, with progress and
+// cancellation hooks). Internal helpers validate/normalize array inputs.
 
 const DEFAULT_OPTIONS = Object.freeze({
   maxIterations: 150,
@@ -52,7 +58,20 @@ function sumSquares(values) {
   return total;
 }
 
-/** Solve a small dense linear system by Gaussian elimination with pivoting. */
+/*
+
+Purpose:
+	Solves a small dense linear system Ax = b by Gaussian elimination with
+	partial pivoting.
+
+Input:
+	matrix [array]: the square coefficient matrix A (array of rows)
+	vector [array]: the right-hand side b, length = matrix size
+
+Output:
+	solution [array]: x (throws on a singular matrix or a size mismatch)
+
+*/
 export function solveLinearSystem(matrix, vector) {
   const rightHandSide = asFiniteArray(vector, "vector");
   const size = rightHandSide.length;
@@ -108,7 +127,21 @@ export function solveLinearSystem(matrix, vector) {
   return augmented.map(row => row[size]);
 }
 
-/** Build `(J'J + lambda D) delta = -J'r`. */
+/*
+
+Purpose:
+	Assembles the damped normal equations (J'J + lambda·D) delta = -J'r for one
+	Levenberg-Marquardt step, where D is the scaled diagonal of J'J.
+
+Input:
+	jacobian [array]: the Jacobian J, one row of partial derivatives per residual
+	residuals [array]: the residual vector r
+	lambda [number]: the LM damping factor (finite, >= 0)
+
+Output:
+	system [object]: { matrix, rightHandSide } ready for solveLinearSystem
+
+*/
 export function buildNormalEquations(jacobian, residuals, lambda) {
   const objectiveResiduals = asFiniteArray(residuals, "residuals");
   if (!isArrayLike(jacobian) || jacobian.length !== objectiveResiduals.length) {
@@ -159,22 +192,82 @@ export function buildNormalEquations(jacobian, residuals, lambda) {
   };
 }
 
-/**
- * Construct a finite-difference Jacobian, projected through model constraints.
- *
- * `residualFn(parameters)` may return residuals directly, or an object with
- * `objectiveResiduals`/`residuals`. `projectFn` applies model constraints
- * (e.g. clipping a parameter to a hard bound).
- *
- * Each free parameter is probed in both directions. When both a forward and a
- * backward step survive projection unclipped, the column uses a central
- * difference (second-order accurate). When only one side survives — the
- * parameter sits at a bound and the other direction gets clipped back to the
- * same value — the column uses a one-sided difference in that feasible
- * ("inward") direction instead of silently zeroing out. Only when *neither*
- * direction moves the parameter (it is fully pinned, e.g. by a degenerate
- * bound) does the column stay zero, which is the correct derivative there.
- */
+// 2-norm condition estimate from the eigenvalues of J'J. The cell-cycle
+// models have at most twelve parameters, so a small symmetric Jacobi sweep is
+// simpler and more reliable than inferring conditioning from solver failures.
+export function estimateJacobianCondition(jacobian) {
+  if (!jacobian.length || !jacobian[0]?.length) return 1;
+  const columns = jacobian[0].length;
+  const gram = Array.from({ length: columns }, () => new Array(columns).fill(0));
+  for (const row of jacobian) {
+    for (let left = 0; left < columns; left += 1) {
+      for (let right = left; right < columns; right += 1) {
+        gram[left][right] += row[left] * row[right];
+        if (left !== right) gram[right][left] = gram[left][right];
+      }
+    }
+  }
+  for (let sweep = 0; sweep < 50 * columns * columns; sweep += 1) {
+    let p = 0;
+    let q = 0;
+    let largest = 0;
+    for (let row = 0; row < columns; row += 1) {
+      for (let column = row + 1; column < columns; column += 1) {
+        if (Math.abs(gram[row][column]) > largest) {
+          largest = Math.abs(gram[row][column]);
+          p = row;
+          q = column;
+        }
+      }
+    }
+    if (largest <= 1e-12 * Math.max(1, ...gram.map((row, index) => Math.abs(row[index])))) break;
+    const angle = 0.5 * Math.atan2(2 * gram[p][q], gram[q][q] - gram[p][p]);
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    const app = gram[p][p];
+    const aqq = gram[q][q];
+    const apq = gram[p][q];
+    gram[p][p] = cosine * cosine * app - 2 * sine * cosine * apq + sine * sine * aqq;
+    gram[q][q] = sine * sine * app + 2 * sine * cosine * apq + cosine * cosine * aqq;
+    gram[p][q] = 0;
+    gram[q][p] = 0;
+    for (let index = 0; index < columns; index += 1) {
+      if (index === p || index === q) continue;
+      const aip = gram[index][p];
+      const aiq = gram[index][q];
+      gram[index][p] = gram[p][index] = cosine * aip - sine * aiq;
+      gram[index][q] = gram[q][index] = sine * aip + cosine * aiq;
+    }
+  }
+  const eigenvalues = gram.map((row, index) => Math.max(0, row[index]));
+  const largest = Math.max(...eigenvalues);
+  const smallest = Math.min(...eigenvalues);
+  if (!(largest > 0) || smallest <= largest * 1e-14) return Infinity;
+  return Math.sqrt(largest / smallest);
+}
+
+/*
+
+Purpose:
+	Builds a finite-difference Jacobian projected through the model's
+	constraints, so derivatives stay valid for parameters sitting at a bound.
+	Each free parameter is probed both ways: when both a forward and a backward
+	step survive projection unclipped, the column uses a central difference;
+	when only one side survives (the parameter is at a bound), it uses a
+	one-sided difference in that feasible direction rather than zeroing out;
+	only a fully pinned parameter yields a zero column (the correct derivative
+	there).
+
+Input:
+	spec [object]: {
+	  parameters, baseResiduals, freeIndices (or freeParameterIndices),
+	  residualFn (returns residuals or { objectiveResiduals|residuals }),
+	  projectFn (applies constraints), finiteDifferenceStep }
+
+Output:
+	jacobian [array]: rows = residuals, columns = free parameters
+
+*/
 export function buildFiniteDiffJacobian({
   parameters,
   baseResiduals,
@@ -266,7 +359,27 @@ export function buildFiniteDiffJacobian({
   return jacobian;
 }
 
-/** Generic projected Levenberg-Marquardt driver used by Stages 6 and 7. */
+/*
+
+Purpose:
+	Generic projected Levenberg-Marquardt driver -- the bounded nonlinear
+	least-squares loop the cell-cycle fits run on. Iterates finite-difference
+	Jacobian -> damped normal equations -> accept/reject step by SSE, adapting
+	lambda, until a tolerance is met, the step is genuinely small, the iteration
+	budget is exhausted, or the caller cancels.
+
+Input:
+	spec [object]: {
+	  initialParameters, residualFn, projectFn, freeIndices (or
+	  freeParameterIndices), options: { maxIterations, tolerance, stepTolerance,
+	  initialLambda, finiteDifferenceStep, onProgress, shouldCancel, ... } }
+
+Output:
+	result [object]: { parameters, residuals, objectiveResiduals, sse,
+	                   iterations, converged, maxIterationsReached, cancelled,
+	                   finalLambda, model, evaluation }
+
+*/
 export function runLevenbergMarquardt({
   initialParameters,
   residualFn,
@@ -299,8 +412,16 @@ export function runLevenbergMarquardt({
   const indices = Array.from(freeIndices ?? freeParameterIndices ?? []);
   let lambda = options.initialLambda;
   let converged = indices.length === 0;
+  // Which stopping condition actually fired, so callers never label a fit with a
+  // criterion that did not hold (audit SCI-03). Convergence in the accepted-step
+  // branch can come from the objective tolerance OR the step tolerance alone, so
+  // "objective_and_step" must be reserved for when both genuinely held.
+  let terminationReason = indices.length === 0 ? "no_free_parameters" : null;
   let cancelled = false;
   let iterations = 0;
+  let rankFailureCount = 0;
+  let maximumJacobianCondition = 1;
+  let activeProjectionCount = 0;
 
   let evaluation = residualFn(parameters);
   let residuals = objectiveResidualsFrom(evaluation);
@@ -324,6 +445,10 @@ export function runLevenbergMarquardt({
       projectFn,
       finiteDifferenceStep: options.finiteDifferenceStep,
     });
+    maximumJacobianCondition = Math.max(
+      maximumJacobianCondition,
+      estimateJacobianCondition(jacobian),
+    );
     const { matrix, rightHandSide } = buildNormalEquations(
       jacobian,
       residuals,
@@ -334,6 +459,7 @@ export function runLevenbergMarquardt({
     try {
       delta = solveLinearSystem(matrix, rightHandSide);
     } catch {
+      rankFailureCount += 1;
       lambda = Math.min(lambda * 10, options.maximumLambda);
       continue;
     }
@@ -347,6 +473,11 @@ export function runLevenbergMarquardt({
       projectFn(trialParameters),
       "projected parameters",
     );
+    for (const parameterIndex of indices) {
+      if (Math.abs(projectedTrial[parameterIndex] - trialParameters[parameterIndex]) > 1e-10) {
+        activeProjectionCount += 1;
+      }
+    }
     const trialEvaluation = residualFn(projectedTrial);
     const trialResiduals = objectiveResidualsFrom(trialEvaluation);
     if (trialResiduals.length !== residuals.length) {
@@ -389,8 +520,13 @@ export function runLevenbergMarquardt({
       currentSse = trialSse;
       lambda = Math.max(lambda / 3, options.minimumLambda);
 
-      if (relativeImprovement < options.tolerance || stepGenuinelySmall) {
+      const objectiveMet = relativeImprovement < options.tolerance;
+      if (objectiveMet || stepGenuinelySmall) {
         converged = true;
+        terminationReason =
+          objectiveMet && stepGenuinelySmall ? "objective_and_step"
+            : objectiveMet ? "objective_tolerance"
+              : "step_tolerance";
       }
     } else {
       const relativeDifference =
@@ -400,7 +536,11 @@ export function runLevenbergMarquardt({
         relativeDifference < options.tolerance &&
         stepGenuinelySmall
       ) {
+        // No improving step exists and the trial step is tiny: a stall at the
+        // tolerance, not a fresh objective decrease. Labelled distinctly so it
+        // is not read as a productive objective-tolerance stop.
         converged = true;
+        terminationReason = "step_stall";
       } else {
         lambda = Math.min(lambda * 10, options.maximumLambda);
       }
@@ -437,9 +577,18 @@ export function runLevenbergMarquardt({
     parameterCount: indices.length,
     iterations: iterationsPerformed,
     converged,
+    terminationReason:
+      terminationReason ?? (cancelled ? "cancelled" : maxIterationsReached ? "max_iterations" : "unknown"),
     maxIterationsReached,
     cancelled,
     finalLambda: lambda,
+    optimizerDiagnostics: {
+      maximumJacobianCondition,
+      rankFailureCount,
+      activeProjectionCount,
+      weaklyIdentified: !Number.isFinite(maximumJacobianCondition) || maximumJacobianCondition > 1e8,
+      finiteDifferenceRelativeStep: options.finiteDifferenceStep,
+    },
   };
 }
 
