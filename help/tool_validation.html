@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Does PhaseFinder match FlowJo and Flowreader on the same datasets? Phase-fraction agreement across the full pre-model QC ladder." />
+    <title>PhaseFinder &mdash; Tool-vs-Tool Validation</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" />
+      <span class="help_header_title">Tool-vs-Tool Validation</span>
+      <a class="help_back_link" href="./index.html" target="_blank" rel="noopener">All help topics</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">On this page</p>
+        <nav aria-label="Table of contents">
+          <ol>
+            <li><a href="#what">1. What this shows</a></li>
+            <li><a href="#qc">2. How the QC ladder works</a></li>
+            <li><a href="#flowjo">3. vs FlowJo (Dean-Jett-Fox)</a></li>
+            <li><a href="#isolated">4. Which gate does the work</a></li>
+            <li><a href="#flowreader">5. vs Flowreader (Watson)</a></li>
+            <li><a href="#takeaways">6. Takeaways</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_lede">
+          The question here is <em>&ldquo;does PhaseFinder agree with the tools labs already trust,
+          on the same data?&rdquo;</em> We ran all 30 samples that carry a FlowJo Dean-Jett-Fox
+          answer and all 15 that carry a Flowreader Watson answer, fitting each one under the full
+          pre-model QC ladder, and measured the gap in phase percentages. The headline: with the same
+          data cleanup FlowJo uses, PhaseFinder's Dean-Jett-Fox lands about <strong>4.4 percentage
+          points</strong> from FlowJo &mdash; and how much QC you apply matters as much as the model.
+        </p>
+
+        <section id="what" class="help_section">
+          <h2>1. What this shows</h2>
+          <p>
+            Every number below is a mean <strong>absolute difference in percentage points (pp)</strong>
+            between PhaseFinder's phase fractions and the other tool's, averaged over G1, S and G2/M
+            and over all samples. Smaller is closer. This page is about agreement <em>with other
+            tools</em>; a companion page,
+            <a href="./result_validation.html">Ground-Truth Validation</a>, asks whether we recover a
+            <em>known</em> answer on synthetic data.
+          </p>
+          <div class="callout tip">
+            <p class="callout_title">Why QC is part of the comparison</p>
+            <p>
+              A phase fraction is an area under a curve fit to a DNA histogram &mdash; and that
+              histogram depends on which events you keep. FlowJo's published numbers came from
+              <em>gated</em> data (debris and junk removed). Comparing our ungated fit to their gated
+              fit isn't apples-to-apples, so we fit every sample under each QC setting and report the
+              whole ladder.
+            </p>
+          </div>
+        </section>
+
+        <section id="qc" class="help_section">
+          <h2>2. How the QC ladder works (and yes, it's cumulative)</h2>
+          <p>
+            PhaseFinder's pre-model QC is a <strong>chain of gates</strong>, each narrowing the event
+            set the next one sees:
+          </p>
+          <ol>
+            <li><strong>Structural</strong> &mdash; drop negative, non-finite, and saturated DNA events (debris/junk).</li>
+            <li><strong>Time QC</strong> &mdash; drop time windows where acquisition drifted or stalled.</li>
+            <li><strong>Cell Gate</strong> &mdash; keep the main cell population on scatter (remove far-out artifacts).</li>
+            <li><strong>Singlet</strong> &mdash; remove doublets (two stuck cells that read as double DNA).</li>
+          </ol>
+          <p>
+            So <strong>yes</strong> &mdash; in the app, turning on a later gate keeps all the earlier
+            ones: their masks stack into one final mask. The tables below use that
+            <strong>cumulative ladder</strong> (each row adds the next gate on top of the previous),
+            which is exactly what a user gets. Section 4 breaks the stack apart to show which single
+            gate is actually doing the work.
+          </p>
+        </section>
+
+        <section id="flowjo" class="help_section">
+          <h2>3. PhaseFinder Dean-Jett-Fox vs FlowJo (30 samples)</h2>
+          <p>Cumulative ladder &mdash; each row adds the next gate:</p>
+          <table class="help_table">
+            <thead>
+              <tr><th>QC applied</th><th>|ΔG1|</th><th>|ΔS|</th><th>|ΔG2|</th><th>Mean gap</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>No QC (raw)</td><td class="warn">10.8</td><td>5.9</td><td>7.3</td><td class="warn">8.0</td></tr>
+              <tr><td>+ Structural</td><td>3.3</td><td>3.8</td><td>6.4</td><td><strong>4.5</strong></td></tr>
+              <tr><td>+ Time QC</td><td>3.3</td><td>3.7</td><td>6.3</td><td>4.4</td></tr>
+              <tr><td>+ Cell Gate</td><td>3.3</td><td>3.7</td><td>6.3</td><td>4.4</td></tr>
+              <tr><td>+ Singlet (all four)</td><td>3.9</td><td>3.4</td><td>5.8</td><td><strong>4.4</strong></td></tr>
+            </tbody>
+          </table>
+          <p>
+            The gap <strong>almost halves the moment structural QC is on</strong> (8.0 &rarr; 4.5 pp),
+            and the remaining gates barely move it. The clearest signal is G1: ungated it's
+            <strong>10.8 pp</strong> off, but with structural gating it drops to <strong>3.3 pp</strong>.
+            That swing is pure low-end junk inflating the &ldquo;one copy&rdquo; peak &mdash; exactly
+            what FlowJo would have cleaned before fitting. In other words, <strong>FlowJo's numbers
+            came from debris-cleaned data, and once we match that, we agree to ~4.4 pp.</strong>
+          </p>
+          <p>
+            The residual ~4.4 pp lives mostly in <strong>G2/M (5.8 pp)</strong> &mdash; the S-vs-G2
+            boundary &mdash; which is the genuinely ambiguous part of the histogram, not a formula
+            error (G1 and S are both within ~3.5 pp).
+          </p>
+        </section>
+
+        <section id="isolated" class="help_section">
+          <h2>4. Which single gate does the work?</h2>
+          <p>
+            To see each gate's individual contribution, we also ran every gate <em>alone</em> (not
+            stacked) against FlowJo:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Only this gate</th><th>Mean gap vs FlowJo</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>No QC</td><td>8.0</td></tr>
+              <tr><td><strong>Structural only</strong></td><td><strong>4.5</strong></td></tr>
+              <tr><td>Time QC only</td><td>6.1&ndash;8.0</td></tr>
+              <tr><td>Cell Gate only</td><td>8.0</td></tr>
+              <tr><td>Singlet only</td><td>4.9</td></tr>
+              <tr><td>All four</td><td>4.4</td></tr>
+            </tbody>
+          </table>
+          <p>
+            <strong>Structural gating alone (4.5) recovers essentially the entire benefit.</strong>
+            Singlet removal helps a little (4.9); Time QC and Cell Gate on their own barely change
+            these particular samples. So the practical rule is simple: <strong>to compare against
+            FlowJo, turn on at least Structural QC.</strong>
+          </p>
+        </section>
+
+        <section id="flowreader" class="help_section">
+          <h2>5. PhaseFinder Watson Classic vs Flowreader (15 samples)</h2>
+          <p>
+            Watson Classic is our reproduction of Flowreader's Watson model, so this is the natural
+            comparison. The QC story here is the <em>mirror image</em>:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>QC applied</th><th>|ΔG1|</th><th>|ΔS|</th><th>|ΔG2|</th><th>Mean gap</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>No QC (raw)</td><td>8.3</td><td>10.6</td><td>5.5</td><td><strong>8.2</strong></td></tr>
+              <tr><td>+ Structural</td><td>8.4</td><td>20.6</td><td>13.7</td><td class="warn">14.3</td></tr>
+              <tr><td>+ Time QC</td><td>6.4</td><td>22.0</td><td>16.5</td><td class="warn">15.0</td></tr>
+              <tr><td>+ Cell Gate</td><td>6.6</td><td>22.0</td><td>16.4</td><td class="warn">15.0</td></tr>
+              <tr><td>+ Singlet (all four)</td><td>10.5</td><td>22.7</td><td>12.4</td><td class="warn">15.2</td></tr>
+            </tbody>
+          </table>
+          <p>
+            Here <strong>no QC matches Flowreader best</strong> (8.2 pp), and gating makes it
+            <em>worse</em>. That tells us Flowreader's Watson reference was computed with little or no
+            gating &mdash; a different pipeline choice from FlowJo. It's strong evidence that
+            &ldquo;which official number you're matching&rdquo; depends on that tool's own
+            preprocessing, not just its model.
+          </p>
+        </section>
+
+        <section id="takeaways" class="help_section">
+          <h2>6. Takeaways</h2>
+          <ul>
+            <li><strong>PhaseFinder matches FlowJo to ~4.4 pp</strong> once you apply the same
+              (structural) data cleanup FlowJo uses &mdash; down from 8.0 pp on raw data.</li>
+            <li><strong>QC is half the story.</strong> The Structural gate closes most of the gap; the
+              others barely move the FlowJo comparison. To reproduce FlowJo-style numbers, keep
+              Structural QC on.</li>
+            <li><strong>The QC gates stack</strong> (a later gate keeps the earlier ones), and adding
+              gates never worsened the FlowJo agreement &mdash; it plateaus at ~4.4 pp.</li>
+            <li><strong>Different reference tools want different QC.</strong> FlowJo used gated data
+              (match it with QC on); Flowreader used ungated data (match it with QC off). This is why
+              PhaseFinder offers both model families and asks you to pick one on purpose.</li>
+            <li><strong>The last few points are inherent.</strong> The residual gap sits at the S/G2
+              boundary &mdash; the same region where FlowJo and Flowreader disagree with
+              <em>each other</em> by ~14 pp on S. There is no single 1-pp &ldquo;true&rdquo; answer to
+              hit.</li>
+          </ul>
+          <p class="help_footer">
+            See also: <a href="./result_validation.html">Ground-Truth Validation</a> (recovering a
+            known answer on synthetic data) &middot;
+            <a href="./help-cell-cycle-math-check.html">Is the math done right?</a> &middot;
+            <a href="./help-cell-cycle-accuracy.html">How accurate on real samples?</a>
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

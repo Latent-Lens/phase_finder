@@ -13,6 +13,7 @@ import base64
 import hashlib
 import html
 import json
+import os
 import sys
 import time
 from datetime import datetime
@@ -129,7 +130,11 @@ def discover_external():
         })
 
     for dataset in manifest["published_datasets"]:
-        paper = dataset["paper"]
+        paper = dataset.get("paper")
+        if not paper:
+            # Local-only comparison sets (e.g. flowjo_async_djf) carry no paper
+            # citation and are handled separately by discover_flowjo_watson().
+            continue
         citation = f'{paper["citation"]} https://doi.org/{paper["doi"]}'
         refs = dataset.get("reference_results", [])
         for artifact in dataset["artifacts"]:
@@ -1070,7 +1075,8 @@ def write_flowjo_watson_report(results, started):
     out_dir = EXTERNAL_ROOT / "datasets" / "flowjo_async_djf"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    (out_dir / f"comparison_{stamp}.json").write_text(json.dumps({"started": started, "results": results}, indent=2))
+    # pid in the name keeps parallel --shard processes from overwriting each other.
+    (out_dir / f"comparison_{stamp}_{os.getpid()}.json").write_text(json.dumps({"started": started, "results": results}, indent=2))
 
     # All (config, model) score cells across every sample.
     def cells(model_id):
@@ -1148,7 +1154,23 @@ def parse_args():
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--keep", action="store_true", help="Keep older validation reports in the output directory")
+    parser.add_argument("--shard", help="Run only shard i of n (format 'i/n', i 0-indexed). Partitions "
+                                        "all work (synthetic/external/CLOCCS/FlowJo samples) round-robin so "
+                                        "N processes can run the suite in parallel. Implies --keep and a "
+                                        "shard-specific report, and prints a 'SHARD_SUMMARY {json}' line.")
     return parser.parse_args()
+
+
+def _parse_shard(spec):
+    """'i/n' -> (i, n) with 0 <= i < n; raises SystemExit on a bad spec."""
+    try:
+        i_str, n_str = spec.split("/", 1)
+        i, n = int(i_str), int(n_str)
+    except (ValueError, AttributeError):
+        raise SystemExit(f"--shard must look like 'i/n', got {spec!r}")
+    if n < 1 or not (0 <= i < n):
+        raise SystemExit(f"--shard 'i/n' needs 0 <= i < n (n >= 1), got {spec!r}")
+    return i, n
 
 
 def main():
@@ -1175,15 +1197,37 @@ def main():
     if args.max_files is not None:
         records = records[:args.max_files]
         cloccs_series = cloccs_series[:max(0, args.max_files - len(records))]
+
+    # Round-robin sharding: keep only this shard's slice of every work list so N
+    # processes running --shard 0/N .. (N-1)/N together cover the whole suite in
+    # parallel. Round-robin (stride) rather than contiguous chunks so each shard
+    # gets a balanced mix of light (synthetic) and heavy (FlowJo) items.
+    shard = _parse_shard(args.shard) if args.shard else None
+    if shard:
+        i, n = shard
+        records = records[i::n]
+        cloccs_series = cloccs_series[i::n]
+        if flowjo_bundle and flowjo_bundle.get("records"):
+            flowjo_bundle["records"] = flowjo_bundle["records"][i::n]
+        flowjo_will_run = bool(flowjo_bundle and flowjo_bundle["records"] and args.kind in ("all", "external"))
+
     if not records and not cloccs_series and not flowjo_will_run:
+        if shard:
+            print(f"SHARD_SUMMARY {json.dumps({'shard': args.shard, 'empty': True, 'errors': False, 'counts': {}})}", flush=True)
+            return 0
         raise SystemExit("No validation files matched the selection")
 
     started = datetime.now().astimezone().isoformat(timespec="seconds")
     RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
-    report = args.report or RESULTS_ROOT / f'validation_tests_{datetime.now().strftime("%Y%m%d_%H%M%S")}.html'
+    if shard:
+        report = args.report or RESULTS_ROOT / f"validation_shard_{shard[0]}_of_{shard[1]}.html"
+    else:
+        report = args.report or RESULTS_ROOT / f'validation_tests_{datetime.now().strftime("%Y%m%d_%H%M%S")}.html'
     report = report.resolve()
     report.parent.mkdir(parents=True, exist_ok=True)
-    if not args.keep:
+    # Sharded runs share the output directory, so they must not delete each
+    # other's reports (--shard implies --keep).
+    if not args.keep and not shard:
         for old_report in report.parent.glob("validation_tests_*.html"):
             old_report.unlink()
 
@@ -1217,10 +1261,22 @@ def main():
     print(f"Validation report: {report}")
     if flowjo_results:
         write_flowjo_watson_report(flowjo_results, started)
+    from collections import Counter
+    counts = Counter()
+    for record in records:
+        for run in record.get("runs", []):
+            counts[run["status"]] += 1
+    for record in cloccs_series:
+        counts[f"cloccs:{record.get('result', {}).get('status', 'NONE')}"] += 1
+    for sample in (flowjo_results or []):
+        for cfg in sample["configs"]:
+            counts[f"flowjo:{cfg['status']}"] += 1
     errors = any(run["status"] == "ERROR" for record in records for run in record.get("runs", []))
     errors = errors or any(record.get("result", {}).get("status") == "ERROR" for record in cloccs_series)
     errors = errors or any(cfg["status"] == "ERROR"
                            for sample in (flowjo_results or []) for cfg in sample["configs"])
+    if shard:
+        print(f"SHARD_SUMMARY {json.dumps({'shard': args.shard, 'empty': False, 'errors': errors, 'counts': dict(counts)})}", flush=True)
     return 1 if errors else 0
 
 

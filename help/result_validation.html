@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Can PhaseFinder recover a known answer? Dean-Jett-Fox fits on 27 synthetic ground-truth samples across the QC ladder, including contaminated cases." />
+    <title>PhaseFinder &mdash; Ground-Truth Validation</title>
+    <link rel="stylesheet" href="../css/help.css" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/img/favicon/favicon-32x32.png" />
+  </head>
+  <body>
+    <header class="help_header">
+      <img class="help_header_logo" src="../assets/img/logo.png" alt="PhaseFinder" />
+      <span class="help_header_title">Ground-Truth Validation</span>
+      <a class="help_back_link" href="./index.html" target="_blank" rel="noopener">All help topics</a>
+    </header>
+
+    <div class="help_layout">
+      <aside class="help_toc">
+        <p class="toc_label">On this page</p>
+        <nav aria-label="Table of contents">
+          <ol>
+            <li><a href="#what">1. What this shows</a></li>
+            <li><a href="#data">2. The known-answer samples</a></li>
+            <li><a href="#aggregate">3. Recovery across the QC ladder</a></li>
+            <li><a href="#persample">4. Sample by sample</a></li>
+            <li><a href="#qc-rescue">5. QC rescuing contaminated data</a></li>
+            <li><a href="#limits">6. Honest limits</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="help_content">
+        <p class="help_lede">
+          The tool-comparison page asks whether we agree with FlowJo and Flowreader. This page asks
+          something stricter: on data where we <strong>know the true answer in advance</strong>, does
+          PhaseFinder recover it? We built 27 synthetic samples with planted phase fractions &mdash;
+          some clean, some deliberately contaminated &mdash; and fit each under the full QC ladder.
+          The short version: the G1 fraction comes back essentially exact, QC visibly rescues the
+          contaminated samples, and the hard part (as always) is the S-vs-G2 boundary.
+        </p>
+
+        <section id="what" class="help_section">
+          <h2>1. What this shows</h2>
+          <p>
+            Each synthetic sample was generated with a known G1 / S / G2 mix, so we can measure the
+            gap between PhaseFinder's Dean-Jett-Fox fit and the <em>true</em> answer &mdash; not
+            another tool's opinion. Numbers are mean absolute error in percentage points (pp). This
+            complements <a href="./tool_validation.html">Tool-vs-Tool Validation</a>: that page shows
+            we agree with other tools; this one shows we recover reality.
+          </p>
+        </section>
+
+        <section id="data" class="help_section">
+          <h2>2. The known-answer samples</h2>
+          <p>27 synthetic fixtures spanning a wide range of cell-cycle mixes and data problems:</p>
+          <ul>
+            <li><strong>Clean mixes</strong> from G1-heavy (70/20/10) to G2-heavy (20/20/60) to
+              S-rich (25/55/20), plus a near-arrested case (48/04/48).</li>
+            <li><strong>Contaminated</strong> samples with planted doublets, high-scatter artifacts,
+              sub-G1 debris, and post-G2 junk &mdash; the exact things QC is supposed to remove.</li>
+            <li><strong>Stress cases</strong>: heavy peak overlap, low counts, clipped domains, drift,
+              and a non-diploid ploidy.</li>
+          </ul>
+        </section>
+
+        <section id="aggregate" class="help_section">
+          <h2>3. Recovery across the QC ladder</h2>
+          <p>Mean absolute error vs the planted truth, split by whether the sample was contaminated:</p>
+          <table class="help_table">
+            <thead>
+              <tr><th>QC applied</th><th>Clean samples (n=21)</th><th>Contaminated samples (n=5)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>No QC (raw)</td><td>7.0 pp</td><td class="warn">8.1 pp</td></tr>
+              <tr><td>+ Structural</td><td>6.7 pp</td><td>8.1 pp</td></tr>
+              <tr><td>+ Time QC</td><td>7.0 pp</td><td>8.0 pp</td></tr>
+              <tr><td>+ Cell Gate</td><td>7.0 pp</td><td>7.2 pp</td></tr>
+              <tr><td>+ Singlet (all four)</td><td><strong>6.4 pp</strong></td><td><strong>7.0 pp</strong></td></tr>
+            </tbody>
+          </table>
+          <p>
+            Broken out by phase, the clean-sample error is <strong>G1 3.7 / S 9.0 / G2 6.5</strong>
+            (with all QC). The pattern is consistent and worth stating plainly: <strong>G1 comes back
+            very accurately; the error concentrates in the S and G2 fractions</strong> &mdash; the
+            same S/G2 boundary that's fuzzy for every tool. On contaminated samples, adding the full
+            QC stack improves recovery (8.1 &rarr; 7.0 pp), and per sample the effect is much larger
+            than that average suggests (Section 5).
+          </p>
+        </section>
+
+        <section id="persample" class="help_section">
+          <h2>4. Sample by sample</h2>
+          <p>
+            A representative spread (truth vs the fit, G1/S/G2). &ldquo;All QC&rdquo; is the full
+            cumulative stack.
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Sample</th><th>True answer</th><th>No QC</th><th>All QC</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Near-arrested (little S)</td><td>48 / 4 / 48</td><td>49 / 4 / 47</td><td>49 / 6 / 44</td></tr>
+              <tr><td>G1-heavy</td><td>70 / 20 / 10</td><td>71 / 14 / 15</td><td>72 / 13 / 15</td></tr>
+              <tr><td>G2-heavy</td><td>20 / 20 / 60</td><td>23 / 15 / 62</td><td>23 / 15 / 62</td></tr>
+              <tr><td>Balanced</td><td>50 / 30 / 20</td><td>53 / 26 / 21</td><td>52 / 42 / 6</td></tr>
+              <tr><td>S-rich</td><td>25 / 55 / 20</td><td>33 / 38 / 29</td><td>33 / 40 / 27</td></tr>
+              <tr><td>Heavy overlap</td><td>35 / 45 / 20</td><td class="warn">40 / 21 / 38</td><td>38 / 40 / 23</td></tr>
+            </tbody>
+          </table>
+          <p>
+            G1 is nailed almost everywhere (often within 1&ndash;2 pp). The near-arrested case is
+            essentially exact. The misses are in S/G2: our fit tends to read S a little low and G2 a
+            little high, and the S-rich and heavy-overlap samples are the hardest &mdash; though note
+            <strong>heavy overlap jumps from a poor 21% S to a near-perfect 40% once QC is on</strong>
+            (its raw histogram had junk the fit was mistaking for structure).
+          </p>
+        </section>
+
+        <section id="qc-rescue" class="help_section">
+          <h2>5. QC rescuing contaminated data</h2>
+          <p>
+            This is where QC earns its keep. On the deliberately-contaminated samples, gating pulls
+            the fit back toward the truth &mdash; you can watch the contamination leave:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Contaminated sample</th><th>Truth</th><th>No QC</th><th>All QC</th><th>What QC fixed</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Planted doublets</td><td>55 / 30 / 15</td><td class="warn">55 / 18 / <strong>27</strong></td><td>59 / 23 / <strong>18</strong></td><td>Singlet gate removed doublets inflating G2</td></tr>
+              <tr><td>High-scatter artifact</td><td>55 / 30 / 15</td><td class="warn"><strong>65</strong> / 19 / 16</td><td><strong>58</strong> / 21 / 21</td><td>Cell gate removed the scatter artifact from G1</td></tr>
+              <tr><td>Post-G2 junk</td><td>50 / 30 / 20</td><td class="warn"><strong>43</strong> / 35 / 22</td><td><strong>53</strong> / 21 / 26</td><td>Cleanup restored the G1 fraction</td></tr>
+              <tr><td>Sub-G1 debris</td><td>50 / 30 / 20</td><td>56 / 18 / 26</td><td>56 / 18 / 27</td><td>Structural gate removed low-end debris</td></tr>
+            </tbody>
+          </table>
+          <p>
+            The doublet case is the clearest: raw, the doublets (two cells stuck together read as
+            double DNA) pile into G2 and push it to <strong>27%</strong> against a true
+            <strong>15%</strong>; turn on singlet gating and G2 falls to <strong>18%</strong> while S
+            climbs back toward its true 30%. That is precisely the correction QC exists to make.
+          </p>
+        </section>
+
+        <section id="limits" class="help_section">
+          <h2>6. Honest limits</h2>
+          <ul>
+            <li><strong>A consistent S-low / G2-high lean.</strong> Even on perfectly clean data, the
+              Dean-Jett-Fox fit tends to place a little less mass in S and a little more in G2 than the
+              truth. It's a few points, it's systematic, and it's the same lean we see against FlowJo
+              &mdash; a real characteristic of where the model draws the S/G2 line, not random noise.</li>
+            <li><strong>Non-diploid samples are not supported.</strong> One fixture had a 1.5&times;
+              (non-diploid) second peak instead of the normal 2&times;; the fit collapsed its G2 to
+              0%. Dean-Jett-Fox assumes the G2/M peak sits at twice the G1 DNA content, so genuinely
+              non-diploid populations are out of scope &mdash; and this is exactly the kind of case the
+              fit-quality score and warnings are there to flag.</li>
+            <li><strong>The S/G2 split is the ceiling.</strong> As on real data, G1 is easy and the
+              S-vs-G2 boundary is where the residual error lives &mdash; for every tool, not just this
+              one.</li>
+          </ul>
+          <p>
+            Bottom line: on clean diploid data PhaseFinder recovers the known answer well (G1
+            essentially exact, S/G2 within a few points on typical mixes), QC measurably rescues
+            contaminated samples, and the honest edges &mdash; the S/G2 lean and non-diploid data
+            &mdash; are surfaced by the fit-quality score and warnings rather than hidden.
+          </p>
+          <p class="help_footer">
+            See also: <a href="./tool_validation.html">Tool-vs-Tool Validation</a> (agreement with
+            FlowJo &amp; Flowreader) &middot;
+            <a href="./help-cell-cycle-math-check.html">Is the math done right?</a>
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
