@@ -105,14 +105,14 @@ export const legacy_bridge_v1 = {
   /*
 
   Purpose:
-  	Runs the legacy histogram fit for the registry.
+	Runs the legacy histogram fit for the registry.
 
   Input:
-  	context [object]: { histogram (masked histogram, x/y required), config
-  	                  (overrides DEFAULT_OPTIONS) }
+	context [object]: { histogram (masked histogram, x/y required), config
+	                  (overrides DEFAULT_OPTIONS) }
 
   Output:
-  	rawResult [object]: the legacy-shaped fit result
+	rawResult [object]: the legacy-shaped fit result
 
   */
   fit(context) {

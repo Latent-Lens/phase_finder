@@ -195,17 +195,17 @@ export const watson_pragmatic = {
   /*
 
   Purpose:
-  	Runs the pragmatic decomposition: locate and area-refit G1 and G2, then take
-  	S as the residual between the peaks. No optimizer, no multi-start -- every
-  	step is closed-form.
+	Runs the pragmatic decomposition: locate and area-refit G1 and G2, then take
+	S as the residual between the peaks. No optimizer, no multi-start -- every
+	step is closed-form.
 
   Input:
-  	context [object]: { histogram (masked histogram: edges + counts/y),
-  	                  peakRegions { g1:{left,right}, g2:{left,right} },
-  	                  config (DEFAULT_CONFIG overrides) }
+	context [object]: { histogram (masked histogram: edges + counts/y),
+	                  peakRegions { g1:{left,right}, g2:{left,right} },
+	                  config (DEFAULT_CONFIG overrides) }
 
   Output:
-  	rawResult [object]: the raw decomposition result for normalizeResult()
+	rawResult [object]: the raw decomposition result for normalizeResult()
 
   */
   fit(context) {
@@ -251,15 +251,15 @@ export const watson_pragmatic = {
   /*
 
   Purpose:
-  	Not implemented, for the same reason as legacy_bridge_v1's: S here is defined
-  	from the OBSERVED counts at fit time, not a standalone function of parameters,
-  	so there is no (edges, parameters) => expectedCounts closed form to offer.
+	Not implemented, for the same reason as legacy_bridge_v1's: S here is defined
+	from the OBSERVED counts at fit time, not a standalone function of parameters,
+	so there is no (edges, parameters) => expectedCounts closed form to offer.
 
   Input:
-  	(none)
+	(none)
 
   Output:
-  	value [null]: always null
+	value [null]: always null
 
   */
   expectedCounts() {
@@ -269,17 +269,17 @@ export const watson_pragmatic = {
   /*
 
   Purpose:
-  	Packages the raw result into the generic model-neutral shape. kind:
-  	"decomposition" and comparisonGroup: null are what the UI/report/export
-  	layers must check before ever placing Watson next to a Dean-Jett/Dean-Jett-Fox
-  	AIC/BIC comparison -- this file does not enforce that at read time; it is a
-  	contract those consumers must honor.
+	Packages the raw result into the generic model-neutral shape. kind:
+	"decomposition" and comparisonGroup: null are what the UI/report/export
+	layers must check before ever placing Watson next to a Dean-Jett/Dean-Jett-Fox
+	AIC/BIC comparison -- this file does not enforce that at read time; it is a
+	contract those consumers must honor.
 
   Input:
-  	rawResult [object]: the object returned by fit()
+	rawResult [object]: the object returned by fit()
 
   Output:
-  	result [object]: the normalized, model-neutral fit result
+	result [object]: the normalized, model-neutral fit result
 
   */
   normalizeResult(rawResult) {

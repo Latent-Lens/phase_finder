@@ -349,16 +349,16 @@ export const watson_classic = {
   /*
 
   Purpose:
-  	Builds theta_0, minimizes total Poisson deviance via fit_engine.js, and returns
-  	the raw fit result plus everything normalizeResult() needs.
+	Builds theta_0, minimizes total Poisson deviance via fit_engine.js, and returns
+	the raw fit result plus everything normalizeResult() needs.
 
   Input:
-  	context [object]: { histogram (edges + counts/y),
-  	                  peakRegions { g1:{left,right}, g2:{left,right} },
-  	                  config (DEFAULT_CONFIG overrides) }
+	context [object]: { histogram (edges + counts/y),
+	                  peakRegions { g1:{left,right}, g2:{left,right} },
+	                  config (DEFAULT_CONFIG overrides) }
 
   Output:
-  	rawResult [object]: { fit, edges, counts, regions, config, initialCenters }
+	rawResult [object]: { fit, edges, counts, regions, config, initialCenters }
 
   */
   fit(context) {
@@ -405,15 +405,15 @@ export const watson_classic = {
   /*
 
   Purpose:
-  	Evaluates lambda_i(theta) at arbitrary edges for rendering a fitted curve at a
-  	resolution independent of the histogram it was fit against.
+	Evaluates lambda_i(theta) at arbitrary edges for rendering a fitted curve at a
+	resolution independent of the histogram it was fit against.
 
   Input:
-  	edges [array]: the edges to evaluate at
-  	parameters [object]: the NAMED parameters this model stores
+	edges [array]: the edges to evaluate at
+	parameters [object]: the NAMED parameters this model stores
 
   Output:
-  	counts [array]: expected count per bin at the given edges
+	counts [array]: expected count per bin at the given edges
 
   */
   expectedCounts(edges, parameters) {
@@ -428,15 +428,15 @@ export const watson_classic = {
   /*
 
   Purpose:
-  	Packages the raw fit result into the generic model-neutral shape (components
-  	G1_i, S_i, G2_i with true + observed-domain areas; phaseFractions from the
-  	total-area ratio).
+	Packages the raw fit result into the generic model-neutral shape (components
+	G1_i, S_i, G2_i with true + observed-domain areas; phaseFractions from the
+	total-area ratio).
 
   Input:
-  	rawResult [object]: the object returned by fit()
+	rawResult [object]: the object returned by fit()
 
   Output:
-  	result [object]: the normalized, model-neutral fit result
+	result [object]: the normalized, model-neutral fit result
 
   */
   normalizeResult(rawResult) {
