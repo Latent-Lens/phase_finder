@@ -56,7 +56,7 @@ def test_reset(ctx: TestContext, initial_files):
     page.press("#reset_session_button", "Enter")
     page.wait_for_timeout(100)
     ctx.check(group, "UI-05A: keyboard Reset cancellation preserves app state",
-              table_row_count(page) == before_cancel and page.locator("#reset_session_button").is_focused())
+              table_row_count(page) == before_cancel and page.locator("#reset_session_button").evaluate("element => element === document.activeElement"))
 
     # Confirm via Space: the same semantic button and confirmation path reset.
     dialog_action["accept"] = True

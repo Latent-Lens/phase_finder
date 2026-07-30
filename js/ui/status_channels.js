@@ -396,7 +396,7 @@ Output:
 export function hide_progress(delay = 500, operation_id = progress_operation) {
   hide_progress_cancel();
   window.clearTimeout(progress_hide_timer);
-  progress_hide_timer = window.setTimeout(() => {
+  const finish = () => {
     if (operation_id !== progress_operation) return;
     progress_overlay.hidden = true;
     progress_overlay.setAttribute("aria-busy", "false");
@@ -404,7 +404,9 @@ export function hide_progress(delay = 500, operation_id = progress_operation) {
     progress_inert_snapshot = null;
     if (progress_return_focus?.isConnected && !progress_return_focus.disabled) progress_return_focus.focus();
     progress_return_focus = null;
-  }, delay);
+  };
+  if (delay <= 0) finish();
+  else progress_hide_timer = window.setTimeout(finish, delay);
 }
 
 export function current_progress_operation() {
