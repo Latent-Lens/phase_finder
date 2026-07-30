@@ -251,13 +251,22 @@ function render_result(result) {
         <div class="cell_cycle_fit_fraction_row"><dt>S</dt><dd>${percent(reporting.phaseFractions?.s)}</dd></div>
         <div class="cell_cycle_fit_fraction_row"><dt>G2/M</dt><dd>${percent(reporting.phaseFractions?.g2)}</dd></div>
       </dl>`
-    : `<p class="cell_cycle_fit_not_converged">Phase fractions withheld: this diagnostic result is not valid for reporting.</p>`;
+    : `<p class="cell_cycle_fit_not_converged">No phase fractions: the fit did not produce a usable result${result.cancelled ? " (cancelled)" : ""}.</p>`;
+  // Goodness of fit (reduced deviance, the chi-square analogue). ~1 is a good
+  // fit; well above 1 means the model does not fully explain the counts. Shown
+  // so the user -- not the tool -- judges whether to trust the fractions.
+  const gof = result.goodnessOfFit;
+  const gofPoor = Number.isFinite(gof) && gof > 2;
+  const goodnessText = Number.isFinite(gof)
+    ? `<span class="cell_cycle_fit_goodness${gofPoor ? " cell_cycle_fit_goodness_poor" : ""}" title="Reduced deviance (chi-square analogue): ~1 is a good fit, well above 1 means the model does not fully explain the counts.">Fit quality: ${gof.toFixed(2)}${gofPoor ? " (poor)" : ""}</span>`
+    : "";
 
   cell_cycle_fit_result.hidden = false;
   cell_cycle_fit_result.innerHTML = `
     <div class="cell_cycle_fit_result_header">
       <span>${escape_html(result.modelLabel ?? model_label(result.modelId))}</span>
       <span class="cell_cycle_fit_convergence${result.converged ? "" : " cell_cycle_fit_not_converged"}">${convergenceText}</span>
+      ${goodnessText}
     </div>
     ${fractions}
     ${selectedNote}

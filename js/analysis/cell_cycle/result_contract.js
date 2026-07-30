@@ -330,6 +330,32 @@ export function apply_result_contract(rawResult, preflight) {
   const scientificallyValid = !cancelled && finite && diagnosticsFinite && valid_fractions(result.phaseFractions)
     && optimizerConverged !== false;
   const limitedReliability = Boolean(degeneratePeakCv);
+
+  // FlowJo-style reporting: whether to TRUST a fit is ultimately the user's call,
+  // so we always present the fractions we actually computed -- whenever they are
+  // a coherent, finite distribution that sums to 1 -- and rely on the warnings
+  // and the goodness-of-fit statistic to let the user judge. Convergence and
+  // peak-degeneracy no longer WITHHOLD the number; they ride along as warnings.
+  // Only the genuine absence of a usable number -- a cancelled fit, non-finite
+  // output, or fractions that do not form a valid distribution -- leaves nothing
+  // to report. (scientificallyValid / limitedReliability are still computed for
+  // the detailed diagnostic view and for callers that want the stricter signal.)
+  const hasReportableNumber = !cancelled && finite && diagnosticsFinite && valid_fractions(result.phaseFractions);
+  const goodnessOfFit = Number.isFinite(diagnostics.reducedDeviance) ? diagnostics.reducedDeviance : null;
+
+  // Surface the contract's own quality concerns as warnings so they travel with
+  // the reported fractions (the fit's fitQualityWarnings -- reduced deviance,
+  // autocorrelation, weak identifiability -- are already in result.warnings).
+  const warnings = [...(result.warnings ?? [])];
+  if (optimizerConverged === false) warnings.push({
+    code: RESULT_REASON.OPTIMIZER_NOT_CONVERGED, severity: "warning",
+    message: `The optimizer did not converge (${terminationReason ?? "unknown"}); treat the fractions with caution.`,
+  });
+  if (degeneratePeakCv) warnings.push({
+    code: RESULT_REASON.FIT_PEAK_DEGENERATE, severity: "warning",
+    message: `The ${degeneratePeakCv === "g1CV" ? "G1" : "G2"} peak width hit its upper CV bound — the component is a broad slab, not a resolved peak, so its phase fractions may be unreliable.`,
+  });
+
   return {
     ...result,
     converged: optimizerConverged === null ? result.converged : optimizerConverged,
@@ -337,9 +363,11 @@ export function apply_result_contract(rawResult, preflight) {
     optimizerConverged,
     scientificallyValid,
     limitedReliability,
-    validForReporting: Boolean(preflight?.passed && scientificallyValid && !limitedReliability),
+    goodnessOfFit,
+    warnings,
+    validForReporting: hasReportableNumber,
     cancelled,
-    invalid: !preflight?.passed || !scientificallyValid,
+    invalid: !hasReportableNumber,
     validityReasons: reasons,
     preflight,
   };

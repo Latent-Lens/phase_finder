@@ -1126,6 +1126,17 @@
   font-weight: 600;
 }
 
+.cell_cycle_fit_goodness {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.cell_cycle_fit_goodness.cell_cycle_fit_goodness_poor {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .cell_cycle_fit_fractions {
   display: flex;
   flex-direction: column;

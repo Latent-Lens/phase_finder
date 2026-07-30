@@ -123,18 +123,22 @@ _TESTS = r"""() => {
     };
   });
 
-  run('SCI-03: a stall termination cannot remain converged after normalization', () => {
+  run('SCI-03: a stall termination is not marked converged, but its fractions are still reported with a non-convergence warning', () => {
     const contracted = window.CellCycleResultContract.apply_result_contract({
       kind: 'generative', converged: true, convergenceReason: 'boundary_stall', cancelled: false,
       expectedCounts: [4, 5, 6], phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
       diagnostics: { deviance: 10 },
     }, { passed: true, reasons: [] });
     return {
+      // FlowJo-style report+warn: the convergence flag stays honest (false), but
+      // the coherent fractions are still reported -- the non-convergence rides
+      // along as a warning for the user to weigh, not a silent withhold.
       pass: contracted.converged === false
         && contracted.optimizerConverged === false
-        && contracted.validForReporting === false
-        && contracted.validityReasons.some((reason) => reason.code === 'optimizer_not_converged'),
-      detail: JSON.stringify({ converged: contracted.converged, reasons: contracted.validityReasons }),
+        && contracted.validForReporting === true
+        && contracted.warnings.some((warning) => warning.code === 'optimizer_not_converged'),
+      detail: JSON.stringify({ converged: contracted.converged, valid: contracted.validForReporting,
+                               warnings: contracted.warnings.map((w) => w.code) }),
     };
   });
 
@@ -154,7 +158,7 @@ _TESTS = r"""() => {
     };
   });
 
-  run('SCI-03/GATE-01: a peak CV pinned at its upper bound is limited-reliability and NOT valid for reporting', () => {
+  run('SCI-03/GATE-01: a peak CV pinned at its upper bound is flagged limited-reliability and reported with a degeneracy warning', () => {
     // The VALID-01 DJF S-overfit signature: converged, fractions sum to 1, but a
     // G2 "peak" driven to the 0.30 CV ceiling let S absorb G2 (g1=0, s=0.86).
     const contracted = window.CellCycleResultContract.apply_result_contract({
@@ -164,13 +168,16 @@ _TESTS = r"""() => {
       parameters: { g1CV: 0.05, g2CV: 0.30 }, bounds: { g1CV: [0.01, 0.30], g2CV: [0.01, 0.30] },
     }, { passed: true, reasons: [] });
     return {
+      // FlowJo-style report+warn: the degeneracy is still detected
+      // (limitedReliability) and surfaced as a warning, but the fractions are
+      // reported so the user -- not the tool -- decides whether to trust them.
       pass: contracted.optimizerConverged === true
         && contracted.scientificallyValid === true
         && contracted.limitedReliability === true
-        && contracted.validForReporting === false
-        && contracted.validityReasons.some((r) => r.code === 'fit_peak_degenerate'),
+        && contracted.validForReporting === true
+        && contracted.warnings.some((w) => w.code === 'fit_peak_degenerate'),
       detail: JSON.stringify({ limited: contracted.limitedReliability, valid: contracted.validForReporting,
-                               reasons: contracted.validityReasons.map((r) => r.code) }),
+                               warnings: contracted.warnings.map((w) => w.code) }),
     };
   });
 
@@ -570,18 +577,21 @@ _TESTS = r"""() => {
       };
     });
 
-    await runAsync('GATE-01: a nonconverged all-limit fit is retained only as a diagnostic preview', async () => {
+    await runAsync('GATE-01: a nonconverged fit is still reported (becomes the active result) with a non-convergence warning', async () => {
       const row = buildReviewedRow('fit-orch-limit-preview');
       const result = await modelingState.fit_cell_cycle_model(row, 'dean_jett', { maxIterations: 0 });
       const modeling = modelingState.get_modeling_state(row);
-      const preview = modeling.resultsByKey[modeling.lastDiagnosticResultKey];
       return {
+        // FlowJo-style report+warn: a fit that hit its iteration limit is still
+        // reported (becomes the active result) as long as it produced coherent
+        // fractions; the non-convergence is surfaced as a warning, not withheld.
         pass: result.optimizerConverged === false
-          && result.validForReporting === false
-          && result.invalid === true
-          && modeling.activeResultKey === null
-          && preview === result,
-        detail: JSON.stringify({ optimizerConverged: result.optimizerConverged, active: modeling.activeResultKey, preview: modeling.lastDiagnosticResultKey }),
+          && result.validForReporting === true
+          && modeling.activeResultKey !== null
+          && modeling.resultsByKey[modeling.activeResultKey] === result
+          && (result.warnings ?? []).some((w) => w.code === 'optimizer_not_converged'),
+        detail: JSON.stringify({ optimizerConverged: result.optimizerConverged, active: modeling.activeResultKey,
+                                 warnings: (result.warnings ?? []).map((w) => w.code) }),
       };
     });
 
