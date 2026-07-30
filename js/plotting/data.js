@@ -18,9 +18,7 @@ export const plot_title = document.querySelector("#plot_title");
 export const plot_color_by_select = document.querySelector("#plot_color_by");
 export const plot_display_mode_select = document.querySelector("#plot_display_mode");
 export const plot_view_mode_select = document.querySelector("#plot_view_mode");
-export const plot_x_scale_select = document.querySelector("#plot_x_scale");
 export const plot_bins_input = document.querySelector("#plot_bins");
-export const djf_readout = document.querySelector("#djf_readout");
 
 // Plot toolbar (plot_toolbar.js): camera + the pan/zoom mode and reset buttons.
 export const plot_toolbar = document.querySelector("#plot_toolbar");
@@ -40,6 +38,7 @@ export const axis_range_x_min_input = document.querySelector("#axis_range_x_min"
 export const axis_range_x_max_input = document.querySelector("#axis_range_x_max");
 export const axis_range_y_min_input = document.querySelector("#axis_range_y_min");
 export const axis_range_y_max_input = document.querySelector("#axis_range_y_max");
+export const axis_range_analysis_domain_input = document.querySelector("#axis_range_analysis_domain");
 
 // The Bins control is a slider over these discrete power-of-two stops. Its
 // native value is the index 0..BIN_STOPS.length-1; plot_bin_count() maps that
@@ -136,7 +135,7 @@ export function set_ridge_focus_name(name) { ridge_focus_name = name || null; }
 
 // Interactive pan/zoom VIEWPORT for the overlay plot: display-only x/y domains
 // set by drag-pan, box-zoom and wheel-zoom. null on an axis = use that axis's
-// base domain (auto or the modeling axis_range_override). This never feeds the
+// base display domain (auto or axis_range_override). This never feeds the
 // modeling histogram -- it only re-scales the axes for viewing, so panning or
 // zooming to inspect a fit never re-runs detection/modeling.
 export let plot_viewport = { x: null, y: null };
@@ -181,20 +180,31 @@ export const histograms_by_name = new Map();
 // User-entered axis bounds, set via the axis-range modal; null means "keep
 // using the auto-computed value" for that end of the axis. Mutated in place.
 export const axis_range_override = { x_min: null, x_max: null, y_min: null, y_max: null };
+// Scientific X-domain override. Unlike axis_range_override and plot_viewport,
+// this feeds histograms/model keys and therefore changes reported results.
+export const analysis_domain_override = { x_min: null, x_max: null };
+export function set_analysis_domain_override(x_min, x_max) {
+  const nextMin = Number.isFinite(x_min) ? x_min : null;
+  const nextMax = Number.isFinite(x_max) ? x_max : null;
+  if (nextMin != null && nextMax != null && nextMax <= nextMin) {
+    throw new Error("Analysis-domain maximum must be greater than its minimum.");
+  }
+  if (nextMin != null && nextMin < 0) throw new Error("Analysis-domain minimum cannot be negative.");
+  const changed = nextMin !== analysis_domain_override.x_min || nextMax !== analysis_domain_override.x_max;
+  analysis_domain_override.x_min = nextMin;
+  analysis_domain_override.x_max = nextMax;
+  return changed;
+}
 // The most recent auto-computed bounds, remembered so the modal can show
 // them as placeholders even for the axis that wasn't double-clicked.
 export let last_auto_x_range = [0, 1];
 export function set_last_auto_x_range(range) { last_auto_x_range = range; }
 
-// Clamps an auto-computed [min, max] DNA-A range to the manual x-axis override,
-// matching the plot's own x-domain logic (render.js): each end uses the
-// override when set, else the auto bound, falling back to the full auto range
-// if that would invert the range. Used to build the modeling histogram over
-// exactly the visible x-range, so events the user has zoomed/clipped out of
-// view are excluded from peak detection and fitting.
-export function clamp_range_to_axis_override([min, max]) {
-  const lo = axis_range_override.x_min != null ? axis_range_override.x_min : min;
-  const hi = axis_range_override.x_max != null ? axis_range_override.x_max : max;
+// Clamps an auto-computed DNA-A range only to the explicit scientific domain.
+// Display bounds and pan/zoom never feed this function.
+export function clamp_range_to_analysis_domain([min, max]) {
+  const lo = analysis_domain_override.x_min != null ? analysis_domain_override.x_min : min;
+  const hi = analysis_domain_override.x_max != null ? analysis_domain_override.x_max : max;
   return hi > lo ? [lo, hi] : [min, max];
 }
 export let last_auto_y_max = 1;
