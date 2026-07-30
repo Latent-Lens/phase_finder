@@ -62,6 +62,28 @@ _TESTS = r"""() => {
     return Array.from({ length: binCount + 1 }, (_, i) => i);
   }
 
+  for (const fraction of [0.25, 0.5, 0.6, 0.75]) {
+    run(`SCI-13: Gaussian sigma conversion is analytic at relative height ${fraction}`, () => {
+      const sigma = 7.25;
+      const crossingDistance = sigma * Math.sqrt(2 * Math.log(1 / (1 - fraction)));
+      const recovered = peakDetection.gaussianSigmaFromProminenceDistance(crossingDistance, fraction);
+      return { pass: Math.abs(recovered - sigma) < 1e-12, detail: recovered };
+    });
+  }
+
+  run('SCI-13: default half-height conversion remains unchanged', () => {
+    const distance = 8;
+    const before = distance / Math.sqrt(2 * Math.log(2));
+    const after = peakDetection.gaussianSigmaFromProminenceDistance(distance);
+    return { pass: Math.abs(after - before) < Number.EPSILON, detail: JSON.stringify({ before, after }) };
+  });
+
+  run('SCI-13: invalid or endpoint relative heights are rejected', () => ({
+    pass: [NaN, -0.1, 0, 1, 1.1].every(value =>
+      throws(() => peakDetection.gaussianSigmaFromProminenceDistance(1, value), /strictly between/)),
+    detail: '',
+  }));
+
   run('clean bimodal histogram detects the G1/G2 pair with high confidence', () => {
     const edges = edgesFor(256);
     const counts = addAll(
@@ -208,6 +230,27 @@ _TESTS = r"""() => {
         && g1.right <= g2.left
         && g1.left >= edges[0] && g2.right <= edges[edges.length - 1],
       detail: JSON.stringify(result.autoPeakRegions),
+    };
+  });
+
+  run('#1: autoPeakRegions are asymmetric — the inter-peak (S-facing) edge is tighter than the clean flank', () => {
+    // The DJF S-overfit fix (VALID-01): each peak's inner edge (facing the S-phase
+    // gap) reaches less far than its clean outer flank, so the region does not
+    // swallow the rising S shoulder and mis-seed the peak width.
+    const edges = edgesFor(256);
+    const counts = addAll(
+      gaussianBump(edges, 5000, 70, 4.2),
+      gaussianBump(edges, 1800, 140, 8.4),
+    );
+    const result = peakDetection.detectCellCyclePeakPair(edges, counts);
+    const { g1, g2 } = result.autoPeakRegions;
+    const g1c = result.detection.g1Candidate.x, g2c = result.detection.g2Candidate.x;
+    const g1OuterLeft = g1c - g1.left, g1InnerRight = g1.right - g1c;
+    const g2InnerLeft = g2c - g2.left, g2OuterRight = g2.right - g2c;
+    return {
+      pass: g1InnerRight < g1OuterLeft && g2InnerLeft < g2OuterRight,
+      detail: JSON.stringify({ g1: { outerLeft: +g1OuterLeft.toFixed(2), innerRight: +g1InnerRight.toFixed(2) },
+                               g2: { innerLeft: +g2InnerLeft.toFixed(2), outerRight: +g2OuterRight.toFixed(2) } }),
     };
   });
 

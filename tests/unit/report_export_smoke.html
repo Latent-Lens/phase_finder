@@ -1,0 +1,14 @@
+<!doctype html><html><head><script type="importmap">{"imports":{"d3":"/js/vendor/d3.min.js"}}</script></head><body>
+<div id="plot_area"><svg width="100" height="60" viewBox="0 0 100 60"><path d="M0 50L50 10L100 50" fill="none" stroke="#072c67"/></svg></div>
+<div id="plot_export_modal" hidden></div><select id="plot_export_scale"></select><p id="plot_export_error"></p>
+<script type="module">
+import { make_frame } from "/js/data_structs/metadata_frame.js";
+import { set_file_table } from "/js/state/app_state.js";
+set_file_table(make_frame([{ id:"sample-1", name:"sample&lt;1.fcs", "G1 Left":10, "G2/M Right":20 }]));
+const { build_analysis_report_html } = await import("/js/plotting/plot_export.js");
+const report = build_analysis_report_html();
+window.reportSmoke = {
+  ok: report.startsWith("<!doctype html>") && report.includes("<svg") && report.includes("<table") && report.includes("G1 Left") && !report.includes("sample-1") && report.includes("sample&amp;lt;1.fcs"),
+  length: report.length,
+};
+</script></body></html>

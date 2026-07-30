@@ -119,6 +119,23 @@ _FULL_SUITE = r"""() => {
        && raw.parameterMetadata.DNA_A.datatype === 'F',
        JSON.stringify({ pnr: raw.pnr, dnaMetadata: raw.parameterMetadata.DNA_A }));
 
+  push('tsv_cell: neutralizes spreadsheet formulas without changing numeric negatives',
+       tsv_cell('=1+1').startsWith("'=")
+       && tsv_cell('+cmd').startsWith("'+") && tsv_cell(-1) === '-1',
+       JSON.stringify([tsv_cell('=1+1'), tsv_cell('+cmd'), tsv_cell(-1)]));
+  const risky = ['=CMD()', '+SUM', '-1+2', '@A1', '  =SUM()', '\t@A1', '\n+CMD()', '\u0000-CMD()'];
+  const inert = risky.map(tsv_cell);
+  push('SEC-02: every ASCII formula leader remains neutralized after leading whitespace/control characters',
+       inert.every((cell) => cell.startsWith("'") || cell.startsWith('"\'')),
+       JSON.stringify(inert));
+  const quoted = tsv_cell('say "hello"');
+  push('SEC-02: quoting, ordinary negative numbers, and Unicode lookalikes retain understandable values',
+       quoted[0] === '"' && quoted.at(-1) === '"' && quoted.includes('""hello""')
+       && tsv_cell(-12.5) === '-12.5'
+       && tsv_cell('−12.5') === '−12.5'
+       && tsv_cell('＝SUM()') === '＝SUM()',
+       JSON.stringify([quoted, tsv_cell(-12.5), tsv_cell('−12.5'), tsv_cell('＝SUM()')]));
+
   return results;
 }"""
 

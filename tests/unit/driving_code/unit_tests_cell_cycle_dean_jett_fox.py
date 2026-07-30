@@ -201,6 +201,15 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     detail: JSON.stringify(autoFlatFitted.modelComparison.reasons),
   }));
 
+  run('SCI-11: 0.05 lag threshold separates generated DJ-like and Fox-broadened references', () => {
+    const waveReason = autoWaveFitted.modelComparison.reasons.find(item => item.criterion === 'residual_structure_improved');
+    const flatReason = autoFlatFitted.modelComparison.reasons.find(item => item.criterion === 'residual_structure_improved');
+    return {
+      pass: waveReason.pass === true && flatReason.pass === false,
+      detail: JSON.stringify({ wave: waveReason.detail, flat: flatReason.detail }),
+    };
+  });
+
   run("auto_dj_djf.expectedCounts routes to dean_jett_fox when parameters carry 'w'", () => {
     const recomputed = auto.expectedCounts(edges, waveFitted.parameters);
     let maxDiff = 0;
@@ -226,17 +235,27 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
   // state.
   function fixture(overrides = {}) {
     const dj = {
+      modelId: 'dean_jett',
       converged: true,
-      diagnostics: { bic: 1000, reducedDeviance: 1.3, lag1Autocorrelation: 0.4 },
-    };
-    const djf = {
-      converged: true,
-      convergenceReason: 'relative_deviance_and_step',
-      diagnostics: { bic: 950, reducedDeviance: 1.05, lag1Autocorrelation: 0.1, restarts: [{ converged: true, w: 0.28 }, { converged: true, w: 0.30 }, { converged: true, w: 0.29 }] },
-      parameters: { g1Area: 8000, sArea: 4000, g2Area: 3000, waveArea: 4000 * 0.3 },
+      diagnostics: { deviance: 900, bic: 1000, reducedDeviance: 1.3, lag1Autocorrelation: 0.4 },
+      phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
       warnings: [],
     };
-    return { djResult: { ...dj, ...(overrides.dj ?? {}) }, djfResult: { ...djf, ...(overrides.djf ?? {}) } };
+    const djf = {
+      modelId: 'dean_jett_fox',
+      converged: true,
+      convergenceReason: 'objective_and_step',
+      diagnostics: { deviance: 840, bic: 950, reducedDeviance: 1.05, lag1Autocorrelation: 0.1, restarts: [{ converged: true, w: 0.28 }, { converged: true, w: 0.30 }, { converged: true, w: 0.29 }] },
+      parameters: { g1Area: 8000, sArea: 4000, g2Area: 3000, waveArea: 4000 * 0.3 },
+      phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
+      warnings: [],
+    };
+    const djOverride = overrides.dj ?? {};
+    const djfOverride = overrides.djf ?? {};
+    return {
+      djResult: { ...dj, ...djOverride, diagnostics: { ...dj.diagnostics, ...(djOverride.diagnostics ?? {}) } },
+      djfResult: { ...djf, ...djfOverride, diagnostics: { ...djf.diagnostics, ...(djfOverride.diagnostics ?? {}) }, parameters: { ...djf.parameters, ...(djfOverride.parameters ?? {}) } },
+    };
   }
 
   run('selectAutomaticModel selects Fox when every criterion passes', () => {
@@ -245,11 +264,24 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     return { pass: selection.selectedModelId === 'dean_jett_fox' && selection.reasons.every((r) => r.pass), detail: JSON.stringify(selection.reasons) };
   });
 
+  run('SCI-10: automatic selection refuses information criteria from different histograms', () => {
+    const { djResult, djfResult } = fixture({
+      dj: { diagnostics: { observationKey: 'poisson:3:6:1' } },
+      djf: { diagnostics: { observationKey: 'poisson:3:7:2' } },
+    });
+    const selection = selectAutomaticModel({ djResult, djfResult });
+    return {
+      pass: selection.selectedModelId === null
+        && selection.comparison.policy === 'incomparable_histograms',
+      detail: JSON.stringify(selection),
+    };
+  });
+
   run('selectAutomaticModel rejects Fox when DJF did not converge, regardless of favorable metrics', () => {
     const { djResult, djfResult } = fixture({ djf: { converged: false, convergenceReason: 'max_iterations' } });
     const selection = selectAutomaticModel({ djResult, djfResult });
-    const djfConvergedReason = selection.reasons.find((r) => r.criterion === 'djf_converged');
-    return { pass: selection.selectedModelId === 'dean_jett' && djfConvergedReason.pass === false, detail: JSON.stringify(selection.reasons) };
+    const djfValidityReason = selection.reasons.find((r) => r.criterion === 'djf_valid');
+    return { pass: selection.selectedModelId === 'dean_jett' && djfValidityReason.pass === false, detail: JSON.stringify(selection.reasons) };
   });
 
   run('selectAutomaticModel rejects Fox when the BIC improvement is below threshold', () => {
@@ -257,6 +289,39 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     const selection = selectAutomaticModel({ djResult, djfResult });
     const bicReason = selection.reasons.find((r) => r.criterion === 'bic_improvement');
     return { pass: selection.selectedModelId === 'dean_jett' && bicReason.pass === false, detail: JSON.stringify(selection.reasons) };
+  });
+
+  for (const residualCase of [
+    { name: 'no change', dj: 0.2, djf: 0.2, pass: false },
+    { name: 'numerical-noise change', dj: 0.2, djf: 0.199999999, pass: false },
+    { name: 'just below threshold', dj: 0.2, djf: 0.151, pass: false },
+    { name: 'just above threshold', dj: 0.2, djf: 0.149, pass: true },
+  ]) {
+    run(`SCI-11: residual materiality — ${residualCase.name}`, () => {
+      const { djResult, djfResult } = fixture({
+        dj: { diagnostics: { lag1Autocorrelation: residualCase.dj } },
+        djf: { diagnostics: { lag1Autocorrelation: residualCase.djf } },
+      });
+      const selection = selectAutomaticModel({ djResult, djfResult });
+      const reason = selection.reasons.find(item => item.criterion === 'residual_structure_improved');
+      return {
+        pass: reason.pass === residualCase.pass
+          && reason.detail.includes('required ≥ 0.050')
+          && !reason.detail.includes('reducedDeviance'),
+        detail: reason.detail,
+      };
+    });
+  }
+
+  run('SCI-11: reference DJ-like and Fox-broadened residual cases separate at the threshold', () => {
+    const djLike = fixture({ dj: { diagnostics: { lag1Autocorrelation: 0.20 } }, djf: { diagnostics: { lag1Autocorrelation: 0.18 } } });
+    const foxLike = fixture({ dj: { diagnostics: { lag1Autocorrelation: 0.40 } }, djf: { diagnostics: { lag1Autocorrelation: 0.10 } } });
+    const first = selectAutomaticModel(djLike);
+    const second = selectAutomaticModel(foxLike);
+    return {
+      pass: first.selectedModelId === 'dean_jett' && second.selectedModelId === 'dean_jett_fox',
+      detail: JSON.stringify({ djLike: first.selectedModelId, foxLike: second.selectedModelId }),
+    };
   });
 
   run('selectAutomaticModel rejects Fox when the wave area is negligible', () => {
@@ -290,6 +355,24 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     const { djResult, djfResult } = fixture({ djf: { warnings: [{ code: 'parameter_at_lower_bound', parameter: 'g1CV', message: 'g1CV at bound.' }] } });
     const selection = selectAutomaticModel({ djResult, djfResult });
     return { pass: selection.selectedModelId === 'dean_jett_fox', detail: JSON.stringify(selection.reasons) };
+  });
+
+  run('selectAutomaticModel chooses the sole valid DJF candidate without a BIC comparison', () => {
+    const { djResult, djfResult } = fixture({ dj: { converged: false, convergenceReason: 'max_iterations' } });
+    const selection = selectAutomaticModel({ djResult, djfResult });
+    return { pass: selection.selectedModelId === 'dean_jett_fox' && selection.comparison.policy === 'sole_valid_candidate' && selection.comparison.deltaBic === null, detail: JSON.stringify(selection) };
+  });
+
+  run('selectAutomaticModel chooses the sole valid DJ candidate without a BIC comparison', () => {
+    const { djResult, djfResult } = fixture({ djf: { converged: false, convergenceReason: 'max_iterations' } });
+    const selection = selectAutomaticModel({ djResult, djfResult });
+    return { pass: selection.selectedModelId === 'dean_jett' && selection.comparison.policy === 'sole_valid_candidate' && selection.comparison.deltaBic === null, detail: JSON.stringify(selection) };
+  });
+
+  run('selectAutomaticModel returns typed no_valid_model when both candidates are invalid', () => {
+    const { djResult, djfResult } = fixture({ dj: { converged: false }, djf: { converged: false } });
+    const selection = selectAutomaticModel({ djResult, djfResult });
+    return { pass: selection.selectedModelId === null && selection.selectedResult.errorCode === 'no_valid_model' && selection.comparison.policy === 'no_valid_model', detail: JSON.stringify(selection) };
   });
 
   return results;

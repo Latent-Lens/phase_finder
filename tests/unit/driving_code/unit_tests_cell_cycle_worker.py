@@ -108,6 +108,32 @@ _TESTS = r"""() => {
       };
     });
 
+    await runAsync('pool size: scales as a fraction of logical cores, always leaving one for the UI', async () => {
+      const { compute_pool_size, fit_pool_size } = window.FitClientPool;
+      // Default 0.5 of cores, floored by "leave one for the UI", min 1.
+      const cases = [
+        [1, 1],   // single core -> 1 worker
+        [2, 1],   // round(1)=1 -> 1
+        [4, 2],   // round(2)=2
+        [8, 4],   // round(4)=4
+        [12, 6],  // round(6)=6
+        [16, 8],  // round(8)=8
+        [32, 16], // round(16)=16 -- no hard cap at 4 anymore
+      ];
+      const wrong = cases.filter(([cores, expected]) => compute_pool_size(cores) !== expected);
+      // A missing/invalid hint falls back to a modest assumed machine (>= 1).
+      const fallbackOk = compute_pool_size(undefined) >= 1 && compute_pool_size(0) >= 1
+        && compute_pool_size(NaN) >= 1;
+      // A custom fraction is honoured, and the leave-one-for-UI ceiling caps
+      // fraction 1 at cores-1.
+      const fractionOk = compute_pool_size(8, 0.25) === 2 && compute_pool_size(8, 1) === 7;
+      const liveOk = Number.isInteger(fit_pool_size()) && fit_pool_size() >= 1;
+      return {
+        pass: wrong.length === 0 && fallbackOk && fractionOk && liveOk,
+        detail: JSON.stringify({ wrong, fallbackOk, fractionOk, live: fit_pool_size() }),
+      };
+    });
+
     return results;
   })();
 }"""

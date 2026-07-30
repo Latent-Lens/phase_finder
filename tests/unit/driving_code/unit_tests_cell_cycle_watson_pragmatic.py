@@ -74,9 +74,17 @@ _WATSON_TESTS = r"""() => {
   });
 
   run('watson_pragmatic residual S is near zero when there is nothing between the peaks', () => {
+    // SCI-01 box 9: the residual left over in a genuinely bridge-free sample is
+    // numerical leakage from imperfect closed-form peak recovery, not S phase.
+    // The previous 2% bound (220 events for these peaks) would have silently
+    // accepted an implausibly large ~145-event "S" signal in a sample with no
+    // bridge. The real leakage here is ~36 events (0.33% of the biological mass),
+    // so we hold it below 0.6% of the biological peak mass (~66 events): tight
+    // enough to reject 145, with ~1.8x margin over the true leakage.
+    const biological = TRUE_CLEAN.g1Area + TRUE_CLEAN.g2Area;
     const sTotal = cleanFitted.components.find((c) => c.id === 's').observedDomainArea;
-    const pass = sTotal < 0.02 * (TRUE_CLEAN.g1Area + TRUE_CLEAN.g2Area);
-    return { pass, detail: sTotal };
+    const pass = sTotal < 0.006 * biological && sTotal < 145;
+    return { pass, detail: JSON.stringify({ sTotal, boundEvents: 0.006 * biological }) };
   });
 
   // ---- bridged case: a modest uniform S-phase bridge between the peaks ----
@@ -94,7 +102,9 @@ _WATSON_TESTS = r"""() => {
   const bridgeFitted = watson.normalizeResult(bridgeRaw);
 
   run('watson_pragmatic converges (closed-form) on a bridged histogram', () => ({
-    pass: bridgeFitted.converged === true && bridgeFitted.convergenceReason === 'closed_form',
+    pass: bridgeFitted.converged === false
+      && bridgeFitted.decompositionCompleted === true
+      && bridgeFitted.convergenceReason === 'not_applicable_closed_form',
     detail: bridgeFitted.convergenceReason,
   }));
 
@@ -111,16 +121,26 @@ _WATSON_TESTS = r"""() => {
     return { pass, detail: sCounts.length };
   });
 
-  run('watson_pragmatic recovers a clearly nonzero residual S for a real bridge', () => {
+  run('watson_pragmatic (SCI-01) quantitatively recovers a planted bridge S area within 5%', () => {
+    // SCI-01 box 8: assert QUANTITATIVE recovery of a known planted S area, not
+    // just "clearly nonzero." The bridge adds BRIDGE_HEIGHT counts to every bin
+    // whose center is in [BRIDGE_START, BRIDGE_END); the planted S event count is
+    // therefore height x (number of those bins) = height x width / binWidth. The
+    // bridge [85,125] lies entirely inside the fitted-center interval (mu_G1~70,
+    // mu_G2~140), and the asymmetric area windows exclude it, so recovery should
+    // be near-exact. Tolerance 5% covers small peak-flank residual between the
+    // means outside the bridge plus discretization (observed ~0.5% over).
+    const binWidth = edges[1] - edges[0];
+    const trueSEvents = BRIDGE_HEIGHT * (BRIDGE_END - BRIDGE_START) / binWidth;
     const sTotal = bridgeFitted.components.find((c) => c.id === 's').observedDomainArea;
-    const trueBridgeTotal = BRIDGE_HEIGHT * (BRIDGE_END - BRIDGE_START);
-    const pass = sTotal > 0.5 * trueBridgeTotal;
-    return { pass, detail: JSON.stringify({ sTotal, trueBridgeTotal }) };
+    const pass = relClose(sTotal, trueSEvents, 0.05);
+    return { pass, detail: JSON.stringify({ sTotal, trueSEvents, relError: (sTotal - trueSEvents) / trueSEvents }) };
   });
 
-  run('watson_pragmatic phase fractions sum to 1 and G1 is the largest fraction (matches the largest true area)', () => {
+  run('watson_pragmatic phase fractions are finite, nonnegative, sum to 1, and G1 is the largest (SCI-01 box 10)', () => {
     const { g1, s, g2 } = bridgeFitted.phaseFractions;
-    const pass = close(g1 + s + g2, 1, 1e-6) && g1 > s && g1 > g2;
+    const finiteNonneg = [g1, s, g2].every((f) => Number.isFinite(f) && f >= 0);
+    const pass = finiteNonneg && close(g1 + s + g2, 1, 1e-6) && g1 > s && g1 > g2;
     return { pass, detail: JSON.stringify(bridgeFitted.phaseFractions) };
   });
 
@@ -143,6 +163,43 @@ _WATSON_TESTS = r"""() => {
   run('watson_pragmatic fitted CVs are finite and positive', () => {
     const pass = [bridgeFitted.parameters.g1CV, bridgeFitted.parameters.g2CV].every((cv) => Number.isFinite(cv) && cv > 0);
     return { pass, detail: JSON.stringify({ g1CV: bridgeFitted.parameters.g1CV, g2CV: bridgeFitted.parameters.g2CV }) };
+  });
+
+  // ---- SCI-01 regression: sub-G1 debris and post-G2 aggregate must NOT become S ----
+  // Same clean G1/G2 peaks, plus a large sub-G1 debris blob (below the G1
+  // center) and a post-G2 aggregate blob (above the G2 center). Residual S is
+  // defined only strictly between the two fitted peak centers, so neither blob
+  // may inflate %S. Before the fix S was summed over the whole domain, so both
+  // blobs -- wherever they overshot the fitted peaks -- were counted as S phase.
+  const DEBRIS_HEIGHT = 40, DEBRIS_START = 10, DEBRIS_END = 45;   // centers below regions.g1.left (55)
+  const AGG_HEIGHT = 15, AGG_START = 180, AGG_END = 220;          // centers above regions.g2.right (165)
+  const contamPeaks = peakComponents(edges, TRUE_CLEAN);
+  const contamCounts = contamPeaks.g1.map((v, i) => {
+    const center = 0.5 * (edges[i] + edges[i + 1]);
+    const debris = center >= DEBRIS_START && center < DEBRIS_END ? DEBRIS_HEIGHT : 0;
+    const aggregate = center >= AGG_START && center < AGG_END ? AGG_HEIGHT : 0;
+    return Math.round(v + contamPeaks.g2[i] + debris + aggregate);
+  });
+  const contamRaw = watson.fit({ histogram: { edges, counts: contamCounts }, peakRegions: regions, config: {} });
+  const contamFitted = watson.normalizeResult(contamRaw);
+
+  run('watson_pragmatic (SCI-01) keeps residual S near zero despite strong sub-G1 debris and post-G2 aggregate', () => {
+    const sTotal = contamFitted.components.find((c) => c.id === 's').observedDomainArea;
+    // The blobs carry thousands of events; before SCI-01 they landed in S. S
+    // must instead stay at the clean-case level (< 5% of the biological peaks).
+    const pass = sTotal < 0.05 * (TRUE_CLEAN.g1Area + TRUE_CLEAN.g2Area);
+    return { pass, detail: JSON.stringify({ sTotal, biological: TRUE_CLEAN.g1Area + TRUE_CLEAN.g2Area }) };
+  });
+
+  run('watson_pragmatic (SCI-01) every nonzero residual S bin lies strictly between the fitted peak centers', () => {
+    const sCounts = contamFitted.components.find((c) => c.id === 's').counts;
+    const { g1Mean, g2Mean } = contamFitted.parameters;
+    let outsideNonzero = 0;
+    for (let i = 0; i < sCounts.length; i += 1) {
+      const center = 0.5 * (edges[i] + edges[i + 1]);
+      if ((center <= g1Mean || center >= g2Mean) && sCounts[i] > 0) outsideNonzero += 1;
+    }
+    return { pass: outsideNonzero === 0, detail: JSON.stringify({ outsideNonzero, g1Mean, g2Mean }) };
   });
 
   clear_registry();
