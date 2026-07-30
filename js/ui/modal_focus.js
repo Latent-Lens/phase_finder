@@ -10,12 +10,10 @@ function focusable(modal) {
 
 function open_modal(modal) {
   if (open_modals.some((entry) => entry.modal === modal)) return;
-  const inert = new Map();
   [...document.body.children].forEach((child) => {
-    inert.set(child, child.inert);
     child.inert = !child.contains(modal);
   });
-  open_modals.push({ modal, inert, return_focus: last_trigger });
+  open_modals.push({ modal, return_focus: last_trigger });
   if (!modal.contains(document.activeElement)) focusable(modal)[0]?.focus();
 }
 
@@ -23,10 +21,12 @@ function close_modal(modal) {
   const index = open_modals.findIndex((entry) => entry.modal === modal);
   if (index < 0) return;
   const [entry] = open_modals.splice(index, 1);
-  if (index === open_modals.length) entry.inert.forEach((value, element) => { element.inert = value; });
   const active = open_modals[open_modals.length - 1];
   if (active) {
     [...document.body.children].forEach((child) => { child.inert = !child.contains(active.modal); });
+  } else {
+    const progress = document.querySelector("#progress_overlay:not([hidden])");
+    [...document.body.children].forEach((child) => { child.inert = progress ? !child.contains(progress) : false; });
   }
   if (entry.return_focus?.isConnected && !entry.return_focus.disabled) entry.return_focus.focus();
 }

@@ -458,15 +458,15 @@ def test_plot_toolbar(ctx: TestContext):
     page.wait_for_selector("#plot_export_modal:not([hidden])", timeout=5000)
     page.focus("#plot_export_download")
     page.keyboard.press("Tab")
-    wrapped_forward = page.locator("#plot_export_close").is_focused()
+    wrapped_forward = page.locator("#plot_export_close").evaluate("element => element === document.activeElement")
     page.keyboard.press("Shift+Tab")
-    wrapped_backward = page.locator("#plot_export_download").is_focused()
+    wrapped_backward = page.locator("#plot_export_download").evaluate("element => element === document.activeElement")
     background_inert = page.eval_on_selector("main.app", "element => element.inert")
     page.keyboard.press("Escape")
     page.wait_for_selector("#plot_export_modal", state="hidden", timeout=5000)
     ctx.check(group, "UI-05E: modal traps focus, makes the background inert, and restores its trigger",
               wrapped_forward and wrapped_backward and background_inert
-              and page.locator("#plot_tool_camera").is_focused(),
+              and page.locator("#plot_tool_camera").evaluate("element => element === document.activeElement"),
               f"forward={wrapped_forward}, backward={wrapped_backward}, inert={background_inert}")
     export_guards = page.evaluate("""async () => {
       const exports = await import('./js/plotting/plot_export.js');
