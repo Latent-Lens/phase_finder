@@ -51,8 +51,8 @@
 // result (plan §4.5) packaging around fit_engine.js's optimizer.
 // ============================================================================
 
-import { peakComponents, convolvedSPhase, projectQuadraticProfile, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
-import { fitPoissonModel } from "../fit_engine.js";
+import { peakComponents, convolvedSPhase, projectQuadraticProfile, projectMeansToFeasible, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
+import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
 import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning, boundaryHitWarnings } from "../diagnostics.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
 import { clamp } from "../../math/stats.js";
@@ -100,11 +100,22 @@ function paramsToNamed(parameters) {
   };
 }
 
-/**
- * lambda_i(theta) = G1_i + S_i + G2_i. The only place this file evaluates
- * the full expected-count model; every G1_i/S_i/G2_i term is delegated to
- * shared.js so the equations exist in exactly one place.
- */
+/*
+
+Purpose:
+	Evaluates lambda_i(theta) = G1_i + S_i + G2_i -- the only place this file
+	assembles the full expected-count model; each G1_i/S_i/G2_i term is delegated
+	to shared.js so the equations live in exactly one place.
+
+Input:
+	edges [array]: histogram bin edges
+	parameters [array]: the theta parameter vector (PARAMETER_INDEX order)
+	quadratureNodes [number]: Gauss-Legendre node count for the S-phase integral
+
+Output:
+	expected [array]: expected count per bin
+
+*/
 function expected_counts_from_parameters(edges, parameters, quadratureNodes) {
   const named = paramsToNamed(parameters);
   const peaks = peakComponents(edges, named);
@@ -120,31 +131,28 @@ function expected_counts_from_parameters(edges, parameters, quadratureNodes) {
   return expected;
 }
 
-/**
- * Feasible domain for (mu1, mu2) -- plan §6.2's region + ratio-mode
- * constraints. Not part of the emission model: this is where in theta-space
- * the optimizer is allowed to look, independent of how well any particular
- * (mu1, mu2) explains the counts.
- */
-function project_means(g1Mean, g2Mean, regions, config) {
-  if (config.ratioMode === "locked") {
-    const ratio = config.lockedRatio;
-    const lo = Math.max(regions.g1.left, regions.g2.left / ratio);
-    const hi = Math.min(regions.g1.right, regions.g2.right / ratio);
-    const mu1 = clamp(g1Mean, lo, hi);
-    return { g1Mean: mu1, g2Mean: ratio * mu1 };
-  }
+/*
 
-  const mu1 = clamp(g1Mean, regions.g1.left, regions.g1.right);
-  let mu2 = clamp(g2Mean, regions.g2.left, regions.g2.right);
-  if (config.ratioMode === "bounded") {
-    const [ratioMin, ratioMax] = config.fitRatioRange;
-    const ratio = mu2 / mu1;
-    if (ratio < ratioMin) mu2 = clamp(ratioMin * mu1, regions.g2.left, regions.g2.right);
-    else if (ratio > ratioMax) mu2 = clamp(ratioMax * mu1, regions.g2.left, regions.g2.right);
-  }
-  return { g1Mean: mu1, g2Mean: mu2 };
-}
+Purpose:
+	Projects (mu1, mu2) into their feasible domain from the accepted regions and
+	ratio mode. Not part of the emission model -- this is where in theta-space the
+	optimizer is allowed to look, independent of how well a given (mu1, mu2)
+	explains the counts.
+
+Input:
+	g1Mean [number]: proposed G1 mean
+	g2Mean [number]: proposed G2 mean
+	regions [object]: the accepted { g1, g2 } peak regions
+	config [object]: model config (ratioMode, lockedRatio, fitRatioRange)
+
+Output:
+	means [object]: { g1Mean, g2Mean } constrained to the feasible domain
+
+*/
+// Joint (mu1, mu2) projection onto both peak regions and the ratio band, shared
+// verbatim with dean_jett_fox.js via shared.js (audit SCI-02) so the two models
+// can never drift apart on constraint handling.
+const project_means = projectMeansToFeasible;
 
 // Feasible domain for (b, c) -- enforces isQuadraticProfileValid(b, c), i.e.
 // min_{z in [0,1]} q(z) >= 0, per plan §5.3's explicit rejection rule. Lives
@@ -152,7 +160,21 @@ function project_means(g1Mean, g2Mean, regions, config) {
 // same (b, c) pair the same way before blending in its wave term.
 const project_quadratic = projectQuadraticProfile;
 
-/** Full theta projection: every parameter's feasible domain, all in one place. */
+/*
+
+Purpose:
+	Returns a projection function that constrains a full theta vector to every
+	parameter's feasible domain (areas >= 0, CVs in range, means via
+	project_means, quadratic (b, c) via projectQuadraticProfile) in one place.
+
+Input:
+	regions [object]: the accepted { g1, g2 } peak regions
+	config [object]: model config
+
+Output:
+	project [function]: parameters -> feasible parameters
+
+*/
 function make_project_fn(regions, config) {
   return function project(parameters) {
     const projected = [...parameters];
@@ -182,11 +204,21 @@ function make_project_fn(regions, config) {
   };
 }
 
-/** Which theta indices the optimizer may move -- a locked ratio or equal-CV
- * mode removes the derived parameter from here entirely (it still exists in
- * theta and gets set by projectFn every iteration, but the LM Jacobian never
- * probes it directly), rather than leaving it "free" and hoping projection
- * undoes the step. */
+/*
+
+Purpose:
+	Lists which theta indices the optimizer may move. A locked ratio or equal-CV
+	mode removes the derived parameter entirely (it still exists in theta and is
+	set by projectFn each iteration, but the LM Jacobian never probes it), rather
+	than leaving it "free" and hoping projection undoes the step.
+
+Input:
+	config [object]: model config (ratioMode, cvMode)
+
+Output:
+	indices [array]: the free parameter indices
+
+*/
 function free_indices(config) {
   const indices = [
     PARAMETER_INDEX.G1_AREA,
@@ -202,8 +234,34 @@ function free_indices(config) {
   return indices;
 }
 
-/** Sum of raw counts whose bin center falls strictly between the two
- * accepted peak regions -- a rough N_S seed, not itself part of the model. */
+function make_parameter_transform(regions, config) {
+  const scaled = (region) => ({
+    type: "scaled",
+    center: 0.5 * (region.left + region.right),
+    scale: Math.max(region.right - region.left, Number.EPSILON),
+  });
+  return createParameterTransform([
+    { type: "log" }, scaled(regions.g1), { type: "bounded", min: config.cvMin, max: config.cvMax },
+    { type: "log" }, scaled(regions.g2), { type: "bounded", min: config.cvMin, max: config.cvMax },
+    { type: "log" }, { type: "identity" }, { type: "identity" },
+  ]);
+}
+
+/*
+
+Purpose:
+	Sums the raw counts whose bin center falls strictly between the two accepted
+	peak regions -- a rough N_S (S-phase area) seed, not itself part of the model.
+
+Input:
+	edges [array]: histogram bin edges
+	counts [array]: per-bin counts
+	regions [object]: the accepted { g1, g2 } peak regions
+
+Output:
+	area [number]: the between-peaks count sum (at least 1)
+
+*/
 function estimate_between_peaks_area(edges, counts, regions) {
   let total = 0;
   for (let i = 0; i < counts.length; i += 1) {
@@ -213,43 +271,40 @@ function estimate_between_peaks_area(edges, counts, regions) {
   return Math.max(1, total);
 }
 
-/**
- * Checks the plan §6.2 ratio-mode feasibility conditions against the
- * accepted regions before spending any optimizer time. Mirrors the "If a
- * constraint is infeasible, disable Fit and explain it inline" rule -- this
- * is the model layer's half of that (a clear thrown error the caller
- * surfaces), not a UI concern.
- */
-function assert_ratio_feasible(regions, config) {
-  if (config.ratioMode === "locked") {
-    const ratio = config.lockedRatio;
-    const lo = Math.max(regions.g1.left, regions.g2.left / ratio);
-    const hi = Math.min(regions.g1.right, regions.g2.right / ratio);
-    if (!(lo <= hi)) {
-      throw new Error(`The locked G2:G1 ratio (${ratio}) is infeasible for the current peak regions.`);
-    }
-    return;
-  }
-  if (config.ratioMode === "bounded") {
-    const achievableLow = regions.g2.left / regions.g1.right;
-    const achievableHigh = regions.g2.right / regions.g1.left;
-    const [ratioMin, ratioMax] = config.fitRatioRange;
-    if (!(achievableLow <= ratioMax && achievableHigh >= ratioMin)) {
-      throw new Error(
-        `No G2:G1 ratio in [${ratioMin}, ${ratioMax}] is achievable from the current peak regions ` +
-          `(achievable range [${achievableLow.toFixed(3)}, ${achievableHigh.toFixed(3)}]).`,
-      );
-    }
-  }
-}
+/*
 
-/**
- * Deterministic theta_0 candidates (plan §5.7: "run deterministic multiple
- * starts for DJF and difficult DJ fits"). The base start seeds G1/G2 from
- * each region's local estimate and the flat S profile (b=c=0); the others
- * perturb the S-phase shape/area to escape the flat profile's degenerate
- * gradient near b=c=0, not because those values are more plausible a priori.
- */
+Purpose:
+	Checks the ratio-mode feasibility conditions against the accepted regions
+	before spending any optimizer time, throwing a clear error the caller can
+	surface when no valid G2:G1 ratio is achievable.
+
+Input:
+	regions [object]: the accepted { g1, g2 } peak regions
+	config [object]: model config (ratioMode, lockedRatio, fitRatioRange)
+
+Output:
+	(none) [void]: returns normally when feasible, throws otherwise
+
+*/
+/*
+
+Purpose:
+	Builds the deterministic theta_0 start candidates for the multi-start fit. The
+	base start seeds G1/G2 from each region's local estimate and the flat S
+	profile (b=c=0); the others perturb the S-phase shape/area to escape the flat
+	profile's degenerate gradient near b=c=0, not because those values are more
+	plausible a priori.
+
+Input:
+	edges [array]: histogram bin edges
+	counts [array]: per-bin counts
+	regions [object]: the accepted { g1, g2 } peak regions
+	config [object]: model config
+
+Output:
+	starts [array]: an array of theta start vectors
+
+*/
 function build_parameter_starts(edges, counts, regions, config) {
   const g1Init = estimatePeakFromRegion(edges, counts, regions.g1, { label: "G1" });
   const g2Init = estimatePeakFromRegion(edges, counts, regions.g2, { label: "G2/M" });
@@ -281,7 +336,7 @@ function build_parameter_starts(edges, counts, regions, config) {
 
 function convergence_reason(fit) {
   if (fit.cancelled) return "cancelled";
-  if (fit.converged) return "relative_deviance_and_step";
+  if (fit.converged) return fit.terminationReason ?? "converged";
   return fit.maxIterationsReached ? "max_iterations" : "unknown";
 }
 
@@ -309,14 +364,22 @@ export const dean_jett = {
   capabilities: { contaminants: false, multiplePloidy: false, autoComparison: true },
   defaultConfig: { ...DEFAULT_CONFIG },
 
-  /**
-   * context: { histogram: Stage4-shaped (edges + counts/y), peakRegions:
-   * { g1: {left,right}, g2: {left,right} }, config: DEFAULT_CONFIG overrides }.
-   * Builds theta_0, minimizes total Poisson deviance (the sum-of-squares
-   * stand-in for -logL(theta) from the formula block above) via
-   * fit_engine.js, and returns the raw fit_engine result plus everything
-   * normalizeResult() needs.
-   */
+  /*
+
+  Purpose:
+  	Builds theta_0, minimizes total Poisson deviance (the sum-of-squares
+  	stand-in for -logL(theta) from the header formula block) via fit_engine.js,
+  	and returns the raw fit result plus everything normalizeResult() needs.
+
+  Input:
+  	context [object]: { histogram (masked histogram: edges + counts/y),
+  	                  peakRegions { g1:{left,right}, g2:{left,right} },
+  	                  config (DEFAULT_CONFIG overrides) }
+
+  Output:
+  	rawResult [object]: { fit, edges, counts, regions, config, initialCenters }
+
+  */
   fit(context) {
     const { histogram, peakRegions, config: userConfig = {} } = context;
     // onProgress/shouldCancel are live closures fit_worker.js injects into
@@ -328,7 +391,7 @@ export const dean_jett = {
     const { onProgress, shouldCancel, ...restUserConfig } = userConfig;
     const config = { ...DEFAULT_CONFIG, ...restUserConfig };
     const regions = validatePeakRegions(peakRegions);
-    assert_ratio_feasible(regions, config);
+    projectMeansToFeasible(0.5 * (regions.g1.left + regions.g1.right), 0.5 * (regions.g2.left + regions.g2.right), regions, config);
 
     const edges = histogram.edges;
     const counts = Array.from(histogram.counts ?? histogram.y);
@@ -338,6 +401,7 @@ export const dean_jett = {
 
     const parameterStarts = build_parameter_starts(edges, counts, regions, config);
     const projectFn = make_project_fn(regions, config);
+    const parameterTransform = make_parameter_transform(regions, config);
     const freeIndices = free_indices(config);
 
     // Minimizing sum(poissonDevianceResiduals^2) == minimizing total Poisson
@@ -351,6 +415,7 @@ export const dean_jett = {
       freeIndices,
       expectedCountsFn: (parameters) => expected_counts_from_parameters(edges, parameters, config.sQuadratureNodes),
       projectFn,
+      parameterTransform,
       options: {
         maxIterations: config.maxIterations,
         tolerance: config.tolerance,
@@ -365,10 +430,21 @@ export const dean_jett = {
     return { fit, edges, counts, regions, config, initialCenters: { g1: parameterStarts[0][PARAMETER_INDEX.G1_MEAN], g2: parameterStarts[0][PARAMETER_INDEX.G2_MEAN] } };
   },
 
-  /** lambda_i(theta) at arbitrary edges, for rendering a fitted curve at a
-   * resolution independent of the histogram it was fit against. `parameters`
-   * is the named object this model stores in a generic result's `parameters`
-   * field (see normalizeResult()), not the raw fit array. */
+  /*
+
+  Purpose:
+  	Evaluates lambda_i(theta) at arbitrary edges, for rendering a fitted curve at
+  	a resolution independent of the histogram it was fit against.
+
+  Input:
+  	edges [array]: the edges to evaluate at
+  	parameters [object]: the NAMED parameters this model stores in a generic
+  	                     result (not the raw fit array)
+
+  Output:
+  	counts [array]: expected count per bin at the given edges
+
+  */
   expectedCounts(edges, parameters) {
     const array = [
       parameters.g1Area, parameters.g1Mean, parameters.g1CV,
@@ -378,12 +454,21 @@ export const dean_jett = {
     return expected_counts_from_parameters(edges, array, parameters.sQuadratureNodes ?? DEFAULT_S_QUADRATURE_NODES);
   },
 
-  /**
-   * Packages fit()'s raw result into the generic §4.5 shape: components are
-   * G1_i, S_i, G2_i (each with both its true area N_k and its observed-
-   * domain-truncated sum); phaseFractions is p_G1/p_S/p_G2 from the formula
-   * block's total-area ratio, not from any bin-counting shortcut.
-   */
+  /*
+
+  Purpose:
+  	Packages the raw fit result into the generic model-neutral shape: components
+  	G1_i, S_i, G2_i (each with both its true area N_k and its observed-domain
+  	sum); phaseFractions is p_G1/p_S/p_G2 from the total-area ratio, not a
+  	bin-counting shortcut.
+
+  Input:
+  	rawResult [object]: the object returned by fit()
+
+  Output:
+  	result [object]: the normalized, model-neutral fit result
+
+  */
   normalizeResult(rawResult) {
     const { fit, edges, counts, regions, config, initialCenters } = rawResult;
     const named = paramsToNamed(fit.parameters);
@@ -408,11 +493,14 @@ export const dean_jett = {
       ? { g1: named.g1Area / biologicalTotal, s: named.sArea / biologicalTotal, g2: named.g2Area / biologicalTotal }
       : { g1: 0, s: 0, g2: 0 };
 
-    const diagnostics = buildPoissonFitDiagnostics({
-      observedCounts: counts,
-      expectedCounts: fit.expectedCounts,
-      parameterCount: free_indices(config).length,
-    });
+    const diagnostics = {
+      ...buildPoissonFitDiagnostics({
+        observedCounts: counts,
+        expectedCounts: fit.expectedCounts,
+        parameterCount: free_indices(config).length,
+      }),
+      optimizer: fit.optimizerDiagnostics,
+    };
 
     const warnings = [
       ...fitQualityWarnings(diagnostics),
