@@ -31,15 +31,29 @@ export const progress_detail = document.querySelector("#progress_detail");
 // ── Channel selectors ────────────────────────────────────────────────────────
 export const channel_select = document.querySelector("#channel_select");
 export const collapsed_channel_select = document.querySelector("#collapsed_channel_select");
+export const channel_eligibility_status = document.querySelector("#channel_eligibility_status");
 
 // ── Pre-modeling QC gate toggle buttons ──────────────────────────────────────
 export const qc_gate_buttons = [
-  document.querySelector("#qc_stage0"),
-  document.querySelector("#qc_stage1"),
-  document.querySelector("#qc_stage2"),
-  document.querySelector("#qc_stage3"),
+  document.querySelector("#qc_structural"),
+  document.querySelector("#qc_time"),
+  document.querySelector("#qc_cellgate"),
+  document.querySelector("#qc_singlet"),
 ];
-export const qc_gate_run_all = document.querySelector("#qc_stage_all");
+export const qc_gate_run_all = document.querySelector("#qc_filter_all");
+
+// Structural QC's DNA saturation-ceiling settings (structural_qc_settings.js)
+// carry a "Change…" line of their own, matching Time QC's.
+export const structural_qc_line = document.querySelector("#structural_qc_line");
+export const structural_qc_summary_name = document.querySelector("#structural_qc_summary_name");
+export const structural_qc_edit = document.querySelector("#structural_qc_edit");
+
+// Time QC is the one QC filter with a choice of algorithm (robust summary vs
+// peak tracking), so it carries a method line and a result summary of its own.
+export const time_qc_method_line = document.querySelector("#time_qc_method_line");
+export const time_qc_method_name = document.querySelector("#time_qc_method_name");
+export const time_qc_method_edit = document.querySelector("#time_qc_method_edit");
+export const time_qc_summary = document.querySelector("#time_qc_summary");
 
 // ── Identify Peaks (sidebar peak-review panel) ───────────────────────────────
 export const peak_review_focus = document.querySelector("#peak_review_focus");
@@ -99,7 +113,7 @@ export const metadata_preview = document.querySelector("#metadata_preview");
 export const start_analysis_button = document.querySelector("#start_analysis_button");
 export const collapsed_plot_button = document.querySelector("#collapsed_plot_button");
 
-// ── Stage 2 (Cell Gate) diagnostics modal ───────────────────────────────────
+// ── Cell Gate diagnostics modal ─────────────────────────────────────────────
 export const djf_scatter_modal = document.querySelector("#djf_scatter_modal");
 export const djf_scatter_modal_close = document.querySelector("#djf_scatter_modal_close");
 export const djf_scatter_reset = document.querySelector("#djf_scatter_reset");
@@ -115,6 +129,25 @@ export const sidebar_content = document.querySelector("#sidebar_content");
 export const sidebar_toggle = document.querySelector("#sidebar_toggle");
 export const sidebar_toggle_icon = document.querySelector("#sidebar_toggle_icon");
 
-export const SIDEBAR_CLOSE_ICON = "./assets/img/sidepanel_close.svg";
-export const SIDEBAR_OPEN_ICON = "./assets/img/sidepanel_open.svg";
+export const SIDEBAR_CLOSE_ICON = new URL("../../assets/img/sidepanel_close.svg", import.meta.url).href;
+export const SIDEBAR_OPEN_ICON = new URL("../../assets/img/sidepanel_open.svg", import.meta.url).href;
 export const SIDEBAR_TRANSITION_MS = 220;
+
+const REQUIRED_DOM = {
+  file_input,
+  drop_zone,
+  channel_select,
+  file_table,
+  sidebar,
+  sidebar_content,
+  sidebar_toggle,
+  status_bar_message,
+  progress_overlay,
+  metadata_wizard_modal,
+  start_analysis_button,
+};
+
+export function assert_required_dom() {
+  const missing = Object.entries(REQUIRED_DOM).filter(([, element]) => !element).map(([name]) => name);
+  if (missing.length) throw new Error(`Required PhaseFinder DOM elements are missing: ${missing.join(", ")}`);
+}

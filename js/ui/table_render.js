@@ -33,6 +33,7 @@ import { unique_metadata_label } from "../data_structs/metadata_columns.js";
 import {
   DERIVED_COLUMN_GROUPS, TOTAL_EVENTS_COLUMN, TOTAL_EVENTS_HEADER,
   CELL_CYCLE_COLUMN_PREFIX, CELL_CYCLE_PHASE_LABELS, CELL_CYCLE_MODEL_LABELS,
+  format_cell_cycle_value,
 } from "../data_structs/derived_columns.js";
 import { decorate_removable_headers, handle_remove_columns_click } from "./column_remove.js";
 import {
@@ -120,9 +121,11 @@ Output:
 
 */
 export function render_file_table() {
+  const focus_key = file_table.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
   sync_color_by_options();
   const frame = get_file_table();
   if (!frame || frame.length === 0) {
+    file_table.classList.remove("has_file_table");
     file_table.innerHTML = '<p class="empty_note">Load FCS files to initialize the table.</p>';
     return;
   }
@@ -131,7 +134,7 @@ export function render_file_table() {
   // its header so remove-columns mode can span the highlight down to this cell.
   const cell = (row, field) => {
     const value = String(row[field] ?? "");
-    return `<td data-column-key="field:${escape_html(field)}"><input data-file-id="${row.id}" data-field="${field}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
+    return `<td data-column-key="field:${escape_html(field)}"><input data-file-id="${escape_html(row.id)}" data-field="${escape_html(field)}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
   };
 
   const visible_files = displayed_files();
@@ -260,7 +263,7 @@ export function render_file_table() {
   // NaN means "not computed for this file" — show a dash.
   const fmt = (v) => (v != null && !Number.isNaN(v) ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
 
-  const checkbox_th_inner = `<input type="checkbox" id="select_all_files" title="${escape_html(Tooltips.text("selectAllDisplayedFiles"))}" />`;
+  const checkbox_th_inner = `<input type="checkbox" id="select_all_files" data-focus-key="select-all" aria-label="Select all displayed FCS samples" title="${escape_html(Tooltips.text("selectAllDisplayedFiles"))}" />`;
 
   let head_html;
   if (two_row_header) {
@@ -327,7 +330,7 @@ export function render_file_table() {
             const swatch = color_info
               ? `<span class="filename_color_swatch" data-row-id="${escape_html(row.id)}" data-color-group="${escape_html(color_info.group)}" style="background:${escape_html(color_info.color)}" title="${escape_html(color_info.group)} — double-click to show only this color on the plot"></span>`
               : `<span class="filename_color_swatch filename_color_swatch_empty" data-row-id="${escape_html(row.id)}" title="Not currently plotted"></span>`;
-            return `<td class="${class_name}" title="${escape_html(title)}">${swatch}${escape_html(display_name(row.name || ""))}</td>`;
+            return `<th scope="row" class="${class_name}" title="${escape_html(title)}">${swatch}${escape_html(display_name(row.name || ""))}</th>`;
           }
           return cell(row, column.field);
         }).join("");
@@ -347,14 +350,14 @@ export function render_file_table() {
           g.columns.map((c, ci) => {
             const cls = ci === 0 ? " stats_col_start" : "";
             const key = `col:${escape_html(c.field)}`;
-            const value = row[c.field];
-            return `<td class="stats_td cell_cycle_td${cls}" data-column-key="${key}">${value ? escape_html(String(value)) : "—"}</td>`;
+            const value = format_cell_cycle_value(row[c.field]);
+            return `<td class="stats_td cell_cycle_td${cls}" data-column-key="${key}" title="${escape_html(value)}">${escape_html(value)}</td>`;
           }).join("")
         ).join("") : "";
         const focus_class = row.id === focused_file_id ? " metadata_row_focused" : "";
         return `
-        <tr class="${is_linked ? "" : "metadata_row_unlinked"}${focus_class}" data-file-id="${row.id}">
-          <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${row.id}"${selected_file_ids.has(row.id) && is_linked ? " checked" : ""}${is_linked ? "" : " disabled"} /></td>
+        <tr class="${is_linked ? "" : "metadata_row_unlinked"}${focus_class}" data-file-id="${escape_html(row.id)}">
+          <td class="checkbox_col"><input type="checkbox" class="row_select" data-file-id="${escape_html(row.id)}" data-focus-key="row:${escape_html(row.id)}" aria-label="Select ${escape_html(display_name(row.name || 'unnamed sample'))}"${selected_file_ids.has(row.id) && is_linked ? " checked" : ""}${is_linked ? "" : " disabled"} /></td>
           ${metadata_tds}
           ${derived_tds}
           ${stats_tds}
@@ -363,17 +366,25 @@ export function render_file_table() {
       }).join("")
     : `<tr><td class="empty_note" colspan="${empty_colspan}">No files match the current filters.</td></tr>`;
 
+  const selected_count = visible_files.filter((row) => selected_file_ids.has(row.id)).length;
   file_table.innerHTML = `
-    <table class="file_table">
+    <span id="file_table_status" class="visually_hidden" role="status" aria-live="polite">Showing ${visible_files.length} of ${frame.length} samples; ${selected_count} selected.</span>
+    <table class="file_table" aria-describedby="file_table_status">
+      <caption>Loaded FCS samples and analysis results</caption>
       <thead>${head_html}</thead>
       <tbody>${body}</tbody>
     </table>
   `;
+  file_table.classList.add("has_file_table");
 
   update_select_all_checkbox();
   update_start_button_state();
   sync_file_annotations();
   decorate_removable_headers();
+
+  if (focus_key) {
+    window.requestAnimationFrame(() => file_table.querySelector(`[data-focus-key="${CSS.escape(focus_key)}"]`)?.focus());
+  }
 
   if (pending_header_focus_field) {
     const field = pending_header_focus_field;
@@ -416,6 +427,7 @@ export function update_select_all_checkbox() {
   );
   checkbox.checked = displayed.length > 0 && selected_count === displayed.length;
   checkbox.indeterminate = selected_count > 0 && selected_count < displayed.length;
+  checkbox.setAttribute("aria-checked", checkbox.indeterminate ? "mixed" : String(checkbox.checked));
 }
 
 export function handle_metadata_header_input(event) {
@@ -466,6 +478,14 @@ Output:
 
 */
 export function handle_table_keydown(event) {
+  if (event.key === "Escape" && event.target.closest(".th_filter")) {
+    const field = event.target.closest(".th_filter").querySelector("[data-filter-field]")?.dataset.filterField;
+    event.preventDefault();
+    set_open_filter_field(null);
+    render_file_table();
+    window.requestAnimationFrame(() => file_table.querySelector(`[data-focus-key="filter:${CSS.escape(field || "")}"]`)?.focus());
+    return;
+  }
   if (event.key !== "Enter") return;
   const input = event.target.closest(".metadata_header_input");
   if (!input) return;
