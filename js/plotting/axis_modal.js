@@ -5,7 +5,7 @@
 // changes, and resize observers to plot redraws. It keeps axis override state
 // and calls the renderer when controls change. It also exports plot_api, which
 // main.js surfaces on window.PhaseFinder.plot so other modules or tests can
-// inspect current and cached series or histogram summaries.
+// inspect the currently drawn series and histogram summaries.
 
 import {
   axis_range_modal,
@@ -31,7 +31,7 @@ import {
   histograms_by_name,
   plot_viewport,
 } from "./data.js";
-import { render_density_plot } from "./render.js";
+import { plot_performance, render_density_plot } from "./render.js";
 import { plot_interaction_mode } from "./plot_viewport.js";
 
 const axis_range_error = document.querySelector("#axis_range_error");
@@ -198,6 +198,9 @@ Output:
 
 */
 export function init_plot_listeners() {
+  document.addEventListener("pf-open-axis-range", (event) => {
+    open_axis_range_modal(event.detail?.axis);
+  });
   // #plot_bins is handled by analysis/cell_cycle/bin_settings_sync.js instead:
   // a bin-count change must also invalidate stale peak regions/fits before
   // re-rendering, not merely redraw, so it can't share this render-only wiring.
@@ -307,4 +310,5 @@ export const plot_api = {
   get interaction_mode() {
     return plot_interaction_mode();
   },
+  performance: plot_performance,
 };

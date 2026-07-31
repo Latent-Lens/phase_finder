@@ -22,7 +22,11 @@ import {
   last_auto_x_range,
   last_auto_y_max,
 } from "./data.js";
-import { render_density_plot } from "./render.js";
+
+let render_plot = () => {};
+export function set_plot_renderer(renderer) {
+  render_plot = renderer;
+}
 
 // A box-zoom drag shorter than this (in px, either axis) is treated as a click
 // rather than a rectangle, so a slightly-shaky click never zooms to a sliver.
@@ -79,7 +83,7 @@ export function set_plot_interaction_mode(mode) {
   if (interaction_mode === mode) return;
   interaction_mode = mode;
   document.dispatchEvent(new CustomEvent("pf-plot-mode-changed"));
-  render_density_plot();
+  render_plot();
 }
 
 // Panning re-renders the whole plot (the same full redraw the bin slider drives
@@ -89,7 +93,7 @@ function schedule_render() {
   if (render_frame != null) return;
   render_frame = window.requestAnimationFrame(() => {
     render_frame = null;
-    render_density_plot();
+    render_plot();
   });
 }
 
@@ -228,7 +232,7 @@ export function autoscale_plot_viewport() {
     x: is_usable_domain(x_domain) ? x_domain : null,
     y: y_max == null ? null : [0, y_max],
   });
-  render_density_plot();
+  render_plot();
 }
 
 /*
@@ -248,7 +252,7 @@ Output:
 export function reset_plot_viewport_to_base() {
   if (!plot_viewport.x && !plot_viewport.y) return;
   reset_plot_viewport();
-  render_density_plot();
+  render_plot();
 }
 
 /*

@@ -170,12 +170,12 @@ export function get_row_color(id) {
   return row_color_by_id.get(id) || null;
 }
 
-// All series ever rendered, keyed by sample name (the metadata Filename column).
-// Entries persist across renders/deselection so a sample's histogram stays
-// available by name even after it drops off the current plot.
+// Currently rendered series, keyed by sample name (the metadata Filename
+// column). The render pass replaces these maps atomically so deselected,
+// removed, and channel-switched samples cannot retain stale event arrays.
 export const series_by_name = new Map();
-// Histogram summaries ({ binEdges, binCenters, counts, binWidth, min, max }),
-// keyed the same way as series_by_name.
+// Current histogram summaries ({ binEdges, binCenters, counts, binWidth, min,
+// max }), keyed the same way as series_by_name.
 export const histograms_by_name = new Map();
 // User-entered axis bounds, set via the axis-range modal; null means "keep
 // using the auto-computed value" for that end of the axis. Mutated in place.
@@ -240,14 +240,7 @@ Output:
 	text [string]: HTML-safe text
 
 */
-export function plot_escape_html(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+export const plot_escape_html = escape_html;
 
 /*
 
@@ -359,7 +352,7 @@ Output:
 */
 export function sample_color(index, total) {
   const hue = total > 1 ? Math.round((index * 360) / total) % 360 : 210;
-  return `hsl(${hue}, 70%, 45%)`;
+  return `hsl(${hue}, 70%, 34%)`;
 }
 
 /*

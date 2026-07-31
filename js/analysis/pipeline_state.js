@@ -467,6 +467,7 @@ export function build_filtered_view(row) {
   }
 
   data.filtered = {
+    sourceMask: mask,
     eventCount: originalIndex.length,
     originalIndex: Int32Array.from(originalIndex),
     channels: filteredChannels,

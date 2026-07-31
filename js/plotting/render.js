@@ -24,7 +24,6 @@ import {
   build_color_assigner,
   histogram_curve,
   build_histogram_summary,
-  loaded_rows_for_active_channel,
   plottable_rows,
   set_last_series,
   series_by_name,
@@ -63,21 +62,32 @@ import {
   DJF_COMPONENT_LINE_WIDTH,
   DJF_TOTAL_LINE_WIDTH,
 } from "./data.js";
-import { get_parsed_files } from "../state/files.js";
 import { set_focused_file_id } from "../data_structs/table_state.js";
 import { update_plot_title, render_fit_results_table } from "./modeling.js";
-import { open_axis_range_modal } from "./axis_modal.js";
 import { get_state as get_pipeline_state, get_active_model_result, state_matches_row } from "../analysis/pipeline_state.js";
 import { update_peak_regions, fit_cell_cycle_model } from "../analysis/cell_cycle/modeling_state.js";
 import { show_curve_tooltip, hide_curve_tooltip } from "./curve_tooltip.js";
 import { render_peak_region_overlay } from "./peak_region_overlay.js";
-import { install_plot_interactions } from "./plot_viewport.js";
+import { install_plot_interactions, set_plot_renderer } from "./plot_viewport.js";
 import { set_status_bar } from "../ui/status_channels.js";
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected. Only this render pass reads or writes them.
 let last_range = null;
 let last_y_max = null;
+const plot_compute_cache = new Map();
+const plot_performance_counts = { eventScans: 0, histogramBuilds: 0, cacheHits: 0 };
+
+export const plot_performance = {
+  reset() {
+    plot_performance_counts.eventScans = 0;
+    plot_performance_counts.histogramBuilds = 0;
+    plot_performance_counts.cacheHits = 0;
+  },
+  snapshot() {
+    return { ...plot_performance_counts, cachedSamples: plot_compute_cache.size };
+  },
+};
 
 // Ridge rows get their own axes, but at ~118px tall they cannot carry the
 // overlay plot's tick density or type size -- these are sized so each small
@@ -87,6 +97,15 @@ const RIDGE_X_AXIS_TICKS = 6;
 const RIDGE_Y_AXIS_TICKS = 3;
 const SAMPLE_LINE_STYLES = [null, "7 3", "2 2", "9 2 2 2"];
 let plot_accessibility_id = 0;
+
+function replace_plot_caches(entries) {
+  series_by_name.clear();
+  histograms_by_name.clear();
+  entries.forEach((entry) => {
+    series_by_name.set(entry.name, entry);
+    histograms_by_name.set(entry.name, entry.histogram);
+  });
+}
 
 function analysis_text(entry, fit) {
   if (!fit) {
@@ -184,6 +203,11 @@ function compact_final_values(row) {
   const values = row.data.channels?.DNA_A || row.data.dna_a || [];
   const mask = row.data.masks?.final;
   if (!mask || mask.length !== values.length) return values;
+  const filtered = row.data.filtered;
+  if (filtered?.sourceMask === mask && filtered.channels?.DNA_A) {
+    return filtered.channels.DNA_A;
+  }
+  plot_performance_counts.eventScans += values.length;
   const retained = [];
   for (let index = 0; index < values.length; index += 1) {
     if (mask[index] && Number.isFinite(values[index])) retained.push(values[index]);
@@ -203,6 +227,39 @@ function prepare_row(row) {
   return { values, stats, pipelineState, maskedHistogram: pipelineState?.histogram || null };
 }
 
+function prepared_histogram(name, prepared, opts) {
+  const source = prepared.maskedHistogram;
+  const key = source ? null : `${opts.t_lo}:${opts.t_hi}:${opts.bins}`;
+  const cached = plot_compute_cache.get(name);
+  if (cached
+      && cached.values === prepared.values
+      && cached.source === source
+      && cached.key === key) {
+    plot_performance_counts.cacheHits += 1;
+    return cached;
+  }
+  const points = source
+    ? source.x.map((x, bin) => ({ x, y: source.y[bin] }))
+    : histogram_curve(prepared.values, opts);
+  const histogram = source
+    ? masked_histogram_summary(source)
+    : build_histogram_summary(points, opts);
+  if (!source) {
+    plot_performance_counts.eventScans += prepared.values.length;
+    plot_performance_counts.histogramBuilds += 1;
+  }
+  const computed = { values: prepared.values, source, key, points, histogram };
+  plot_compute_cache.set(name, computed);
+  return computed;
+}
+
+function prune_plot_compute_cache(rows) {
+  const visible = new Set(rows.map((row) => row.name));
+  for (const name of plot_compute_cache.keys()) {
+    if (!visible.has(name)) plot_compute_cache.delete(name);
+  }
+}
+
 function masked_histogram_summary(histogram) {
   const binEdges = new Array(histogram.binCount + 1);
   for (let index = 0; index <= histogram.binCount; index += 1) {
@@ -219,6 +276,8 @@ function masked_histogram_summary(histogram) {
     overflow: histogram.overflow ?? 0,
   };
 }
+
+export const VISIBLE_HISTOGRAM_RANGE_CONTRACT = "visible-cohort-union-v1";
 
 export function visible_histogram_range(prepared_rows, is_log = false) {
   const ranges = prepared_rows
@@ -553,6 +612,7 @@ function draw_ridge_region_editor(svg, row, x_scale, top, bottom) {
 // plot maps in sync (debug API + table swatches) exactly like the overlay path.
 function render_ridge_plot() {
   const rows = plottable_rows();
+  prune_plot_compute_cache(rows);
   plot_area.innerHTML = "";
   if (!rows.length) return;
 
@@ -576,22 +636,14 @@ function render_ridge_plot() {
   const assign = build_color_assigner(rows, plot_color_by_select ? plot_color_by_select.value : "file");
   const entries = prepared_rows.map(({ row, prepared }, index) => {
     const { color, group } = assign(row, index);
-    const points = prepared.maskedHistogram
-      ? prepared.maskedHistogram.x.map((x, bin) => ({ x, y: prepared.maskedHistogram.y[bin] }))
-      : histogram_curve(prepared.values, opts);
-    const histogram = prepared.maskedHistogram
-      ? masked_histogram_summary(prepared.maskedHistogram)
-      : build_histogram_summary(points, opts);
+    const { points, histogram } = prepared_histogram(row.name, prepared, opts);
     const entry = { row, name: row.name, color, group, lineStyle: SAMPLE_LINE_STYLES[index % SAMPLE_LINE_STYLES.length], values: prepared.values, stats: { ...prepared.stats, ...clipping_stats(prepared.values, histogram) }, points, histogram, pipelineState: prepared.pipelineState };
     return { entry, color, fit: pipeline_fit_for_series(entry) };
   });
 
   set_last_series(entries.map((item) => item.entry));
   set_row_colors(entries.map((item) => ({ id: item.entry.row.id, color: item.color, group: item.entry.group })));
-  entries.forEach((item) => {
-    series_by_name.set(item.entry.name, item.entry);
-    histograms_by_name.set(item.entry.name, item.entry.histogram);
-  });
+  replace_plot_caches(entries.map((item) => item.entry));
   update_plot_title(rows, entries.reduce((sum, item) => sum + item.entry.values.length, 0));
 
   const total_width = plot_area.clientWidth || PLOT_FALLBACK_WIDTH;
@@ -668,12 +720,14 @@ function render_ridge_plot() {
 
     if (fit) {
       const area = d3.area().x((point) => x_scale(point.x)).y0(y_scale(0)).y1((point) => y_scale(point.y));
-      const component = (data, fill) => {
-        if (data) svg.append("path").attr("fill", fill).attr("fill-opacity", DJF_FILL_OPACITY).attr("stroke", "none").attr("d", area(data));
+      const component = (data, fill, line_style) => {
+        if (!data) return;
+        svg.append("path").attr("fill", fill).attr("fill-opacity", DJF_FILL_OPACITY).attr("stroke", "none").attr("d", area(data));
+        svg.append("path").attr("fill", "none").attr("stroke", AXIS_LABEL_COLOR).attr("stroke-width", DJF_COMPONENT_LINE_WIDTH).attr("stroke-dasharray", line_style).attr("d", line(data));
       };
-      component(fit.g1, DJF_G1_COLOR);
-      component(fit.s, DJF_S_COLOR);
-      component(fit.g2, DJF_G2_COLOR);
+      component(fit.g1, DJF_G1_COLOR, null);
+      component(fit.s, DJF_S_COLOR, "7 3");
+      component(fit.g2, DJF_G2_COLOR, "2 2");
     }
     // Histogram bars when the Display mode calls for them (bins-only or
     // curve+bins), using this row's own bin edges -- the same drawing the
@@ -773,6 +827,7 @@ export function render_density_plot() {
   // full plot (with its draggable region handles) is dedicated to editing it.
   let rows = plottable_rows();
   if (ridge_focus_name) rows = rows.filter((row) => row.name === ridge_focus_name);
+  prune_plot_compute_cache(rows);
 
   plot_area.innerHTML = "";
   const is_log = false;
@@ -800,12 +855,7 @@ export function render_density_plot() {
   const assign = build_color_assigner(rows, color_by);
   const series = prepared_rows.map(({ row, prepared }, index) => {
     const { color, group } = assign(row, index);
-    const points = prepared.maskedHistogram
-      ? prepared.maskedHistogram.x.map((x, bin) => ({ x, y: prepared.maskedHistogram.y[bin] }))
-      : histogram_curve(prepared.values, opts);
-    const histogram = prepared.maskedHistogram
-      ? masked_histogram_summary(prepared.maskedHistogram)
-      : build_histogram_summary(points, opts);
+    const { points, histogram } = prepared_histogram(row.name, prepared, opts);
     return { row, name: row.name, color, group, lineStyle: SAMPLE_LINE_STYLES[index % SAMPLE_LINE_STYLES.length], values: prepared.values, stats: { ...prepared.stats, ...clipping_stats(prepared.values, histogram) }, points, histogram, pipelineState: prepared.pipelineState };
   });
   set_last_series(series);
@@ -818,30 +868,7 @@ export function render_density_plot() {
     toggle_isolated_color_group(isolated_group); // same value in -> clears back to null
     isolated_group = null;
   }
-  series.forEach((entry) => {
-    series_by_name.set(entry.name, entry);
-    histograms_by_name.set(entry.name, entry.histogram);
-  });
-
-  // Also compute histograms for loaded-but-unchecked files (not drawn, so no
-  // color/group), using the same bins/range as the current plot,
-  // so window.PhaseFinder.plot.get_histogram() works for every loaded sample
-  // regardless of its table checkbox state.
-  const plotted_names = new Set(series.map((entry) => entry.name));
-  loaded_rows_for_active_channel(get_parsed_files())
-    .filter((row) => !plotted_names.has(row.name))
-    .forEach((row) => {
-      const prepared = prepare_row(row);
-      const points = prepared.maskedHistogram
-        ? prepared.maskedHistogram.x.map((x, bin) => ({ x, y: prepared.maskedHistogram.y[bin] }))
-        : histogram_curve(prepared.values, opts);
-      const histogram = prepared.maskedHistogram
-        ? masked_histogram_summary(prepared.maskedHistogram)
-        : build_histogram_summary(points, opts);
-      const entry = { row, name: row.name, color: null, group: null, values: prepared.values, stats: prepared.stats, points, histogram, pipelineState: prepared.pipelineState };
-      series_by_name.set(entry.name, entry);
-      histograms_by_name.set(entry.name, entry.histogram);
-    });
+  replace_plot_caches(series);
 
   update_plot_title(rows, series.reduce((sum, item) => sum + item.values.length, 0));
 
@@ -923,7 +950,10 @@ export function render_density_plot() {
   // viewport reset (plot_viewport.js) -- opening the range modal is the whole
   // intent of a double-click here.
   const x_axis_group = svg.append("g").attr("class", "x_axis_group")
-    .on("dblclick", (event) => { event.stopPropagation(); open_axis_range_modal("x"); });
+    .on("dblclick", (event) => {
+      event.stopPropagation();
+      document.dispatchEvent(new CustomEvent("pf-open-axis-range", { detail: { axis: "x" } }));
+    });
   x_axis_group.append("rect")
     .attr("class", "axis_hit_area")
     .attr("x", margin.left)
@@ -944,7 +974,10 @@ export function render_density_plot() {
     .text(plot_channels.dna_area || "DNA-content area");
 
   const y_axis_group = svg.append("g").attr("class", "y_axis_group")
-    .on("dblclick", (event) => { event.stopPropagation(); open_axis_range_modal("y"); });
+    .on("dblclick", (event) => {
+      event.stopPropagation();
+      document.dispatchEvent(new CustomEvent("pf-open-axis-range", { detail: { axis: "y" } }));
+    });
   y_axis_group.append("rect")
     .attr("class", "axis_hit_area")
     .attr("x", 0)
@@ -1059,7 +1092,7 @@ export function render_density_plot() {
     const overlay = svg.append("g").attr("clip-path", `url(#${clip_id})`);
     const component = (data, color, line_style) => {
       overlay.append("path").attr("fill", color).attr("fill-opacity", DJF_FILL_OPACITY).attr("stroke", "none").attr("d", area(data));
-      overlay.append("path").attr("fill", "none").attr("stroke", color).attr("stroke-width", DJF_COMPONENT_LINE_WIDTH).attr("stroke-dasharray", line_style).attr("d", line(data));
+      overlay.append("path").attr("fill", "none").attr("stroke", AXIS_LABEL_COLOR).attr("stroke-width", DJF_COMPONENT_LINE_WIDTH).attr("stroke-dasharray", line_style).attr("d", line(data));
     };
     component(fit.g1, DJF_G1_COLOR, null);
     component(fit.s, DJF_S_COLOR, "7 3");
@@ -1187,3 +1220,5 @@ function render_ridge_review_header(name) {
   const inner = plot_area.parentElement;
   inner.insertBefore(bar, plot_area);
 }
+
+set_plot_renderer(render_density_plot);

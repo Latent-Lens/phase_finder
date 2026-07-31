@@ -79,15 +79,21 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     operation_ownership = page.evaluate("""async () => {
       const progress = await import('./js/ui/status_channels.js');
       const oldId = progress.show_progress('Old operation');
+      let oldCancelled = false;
+      progress.show_progress_cancel(() => { oldCancelled = true; }, oldId);
       const newId = progress.show_progress('New operation');
+      let newCancelled = false;
+      progress.show_progress_cancel(() => { newCancelled = true; }, newId);
       const staleUpdateRejected = progress.update_progress(99, 'Stale update', '', '', oldId) === false;
       const staleStatusRejected = progress.set_status_bar('Stale status', false, null, oldId) === false;
-      progress.hide_progress(0, oldId);
+      const staleHideRejectedAtCall = progress.hide_progress(0, oldId) === false;
+      document.querySelector('#progress_cancel').click();
       await new Promise(resolve => setTimeout(resolve, 20));
       const staleHideRejected = !document.querySelector('#progress_overlay').hidden;
       progress.hide_progress(0, newId);
       await new Promise(resolve => setTimeout(resolve, 20));
-      return { staleUpdateRejected, staleStatusRejected, staleHideRejected,
+      return { staleUpdateRejected, staleStatusRejected, staleHideRejectedAtCall,
+        staleHideRejected, staleCancelRejected: !oldCancelled, currentCancelRan: newCancelled,
         finalHidden: document.querySelector('#progress_overlay').hidden };
     }""")
     ctx.check(group, "UI-10: superseded progress/status/hide updates cannot overwrite the current operation",
@@ -100,9 +106,8 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
               bar_after_plot)
 
     # --- plot inspection API (window.PhaseFinder.plot) ---
-    # series = the currently drawn (checked) samples; series_names / get_histogram
-    # cover every loaded sample, checked or not, so tests/tools can read any
-    # sample's binned histogram by name.
+    # The inspection API retains only currently drawn samples. This keeps
+    # unchecked samples from being rescanned or retained on every redraw.
     plot_api = page.evaluate(
         """() => {
             const p = window.PhaseFinder.plot;
@@ -118,9 +123,23 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     ctx.check(group, "Plot inspection API exposes the drawn series (window.PhaseFinder.plot.series)",
               plot_api["seriesIsArray"] and plot_api["seriesLen"] == subset_count,
               str(plot_api))
-    ctx.check(group, "Plot inspection API exposes a binned histogram for every loaded sample",
-              plot_api["namesLen"] >= total_rows and plot_api["histHasBins"],
+    ctx.check(group, "PERF-UI-04: plot inspection caches only drawn samples",
+              plot_api["namesLen"] == subset_count and plot_api["histHasBins"],
               str(plot_api))
+    redraw_profile = page.evaluate("""async () => {
+      const { render_density_plot } = await import('./js/plotting/render.js');
+      window.PhaseFinder.plot.performance.reset();
+      const started = performance.now();
+      for (let index = 0; index < 5; index += 1) render_density_plot();
+      return { elapsedMs: performance.now() - started, ...window.PhaseFinder.plot.performance.snapshot() };
+    }""")
+    ctx.check(group, "PERF-UI-04: repeated redraws do not rescan events or retain unchecked samples",
+              redraw_profile["eventScans"] == 0
+              and redraw_profile["histogramBuilds"] == 0
+              and redraw_profile["cacheHits"] >= subset_count * 5
+              and redraw_profile["cachedSamples"] == subset_count
+              and redraw_profile["elapsedMs"] < 1500,
+              str(redraw_profile))
 
     # --- re-select all rows and plot all ---
     select_all_visible_rows(page)
@@ -166,6 +185,12 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
               and "events" in accessible_plot["text"].lower()
               and accessible_plot["decorativeHidden"],
               str(accessible_plot))
+    accessibility_tree = page.locator("#plot_area").aria_snapshot()
+    ctx.check(group, "UI-05D: browser accessibility tree exposes the histogram and data summary",
+              "img" in accessibility_tree
+              and f"{total_rows} samples" in accessibility_tree.lower()
+              and "x axis" in accessibility_tree.lower(),
+              accessibility_tree)
 
     # --- turn rows off, verify curves decrease ---
     checkboxes = page.query_selector_all(".file_table tbody .row_select")
@@ -173,8 +198,9 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     checkboxes[1].uncheck()
     wait_for_render(page)
     ctx.check(group, "Turning rows off removes plot lines",
-              density_curve_count(page) == total_rows - 2,
-              f"curves={density_curve_count(page)}")
+              density_curve_count(page) == total_rows - 2
+              and page.evaluate("window.PhaseFinder.plot.histogram_names.length") == total_rows - 2,
+              f"curves={density_curve_count(page)}, cached={page.evaluate('window.PhaseFinder.plot.histogram_names.length')}")
 
     # Data should still be cached
     ctx.check(group, "Unchecked rows retain loaded data",
@@ -217,6 +243,10 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
                           "els => els.some(t => t.textContent === 'Number of Events')"
                       ),
                       f"curves={density_curve_count(page)}, title={plot_title(page)}")
+            empty_tree = page.locator("#plot_area").aria_snapshot()
+            ctx.check(group, "UI-05D: browser accessibility tree exposes the empty plot state",
+                      "img" in empty_tree and "0 samples" in empty_tree.lower()
+                      and "empty histogram" in empty_tree.lower(), empty_tree)
             bar = status_bar_text(page)
             ctx.check(group, "Changing channel shows progress/status during reload",
                       "ready" in bar.lower() or "loading" in bar.lower() or bar != "",
@@ -315,14 +345,58 @@ def test_plot_toolbar(ctx: TestContext):
                   """() => {
                     const svg = document.querySelector('#plot_area svg');
                     const surface = svg.querySelector('.plot_interaction_surface');
-                    return svg.firstElementChild === surface || svg.children[0] === surface;
+                    const graphical = [...svg.children]
+                      .filter(child => !['title', 'desc', 'defs'].includes(child.localName));
+                    return graphical[0] === surface;
                   }"""),
-              "surface must be the first child so curves/handles stay on top")
+              "surface must be the first graphical child so curves/handles stay on top")
 
     _reset_view(page)
     base = _viewport(page)
     ctx.check(group, "A freshly drawn plot has no pan/zoom viewport",
               base["x"] is None and base["y"] is None, str(base))
+
+    # The axis dialog is a real form: Enter in a numeric field or on Apply is
+    # the only submit path; Reset, Cancel, Close, and the checkbox retain their
+    # native keyboard behavior without accidentally applying the draft.
+    axis_hit = "#plot_area .x_axis_group .axis_hit_area"
+    page.dblclick(axis_hit)
+    page.focus("#axis_range_reset")
+    page.press("#axis_range_reset", "Enter")
+    reset_safe = page.locator("#axis_range_modal").is_hidden() and _override(page) == BLANK_OVERRIDE
+    page.dblclick(axis_hit)
+    page.focus("#axis_range_cancel")
+    page.press("#axis_range_cancel", "Space")
+    cancel_safe = page.locator("#axis_range_modal").is_hidden() and _override(page) == BLANK_OVERRIDE
+    page.dblclick(axis_hit)
+    page.focus("#axis_range_close")
+    page.press("#axis_range_close", "Enter")
+    close_safe = page.locator("#axis_range_modal").is_hidden() and _override(page) == BLANK_OVERRIDE
+    page.dblclick(axis_hit)
+    page.focus("#axis_range_analysis_domain")
+    page.press("#axis_range_analysis_domain", "Space")
+    checkbox_safe = page.is_checked("#axis_range_analysis_domain") and page.locator("#axis_range_modal").is_visible()
+    page.press("#axis_range_analysis_domain", "Space")
+    page.fill("#axis_range_x_min", "1")
+    page.fill("#axis_range_x_max", "2")
+    page.focus("#axis_range_x_max")
+    page.press("#axis_range_x_max", "Enter")
+    input_submit = page.locator("#axis_range_modal").is_hidden() and _override(page)["x_min"] == 1 and _override(page)["x_max"] == 2
+    page.dblclick(axis_hit)
+    page.focus("#axis_range_reset")
+    page.press("#axis_range_reset", "Space")
+    page.dblclick(axis_hit)
+    page.fill("#axis_range_x_min", "1")
+    page.fill("#axis_range_x_max", "2")
+    page.focus("#axis_range_apply")
+    page.press("#axis_range_apply", "Space")
+    apply_submit = page.locator("#axis_range_modal").is_hidden() and _override(page)["x_min"] == 1 and _override(page)["x_max"] == 2
+    page.dblclick(axis_hit)
+    page.press("#axis_range_reset", "Enter")
+    ctx.check(group, "UI-15: axis form controls have safe Enter/Space behavior",
+              reset_safe and cancel_safe and close_safe and checkbox_safe and input_submit and apply_submit,
+              str({"reset": reset_safe, "cancel": cancel_safe, "close": close_safe,
+                   "checkbox": checkbox_safe, "input": input_submit, "apply": apply_submit}))
 
     box = _plot_box(page)
     cx = box["x"] + box["width"] / 2
@@ -456,11 +530,14 @@ def test_plot_toolbar(ctx: TestContext):
     page.focus("#plot_tool_camera")
     page.press("#plot_tool_camera", "Enter")
     page.wait_for_selector("#plot_export_modal:not([hidden])", timeout=5000)
-    page.focus("#plot_export_download")
+    page.wait_for_function("() => document.querySelector('main.app').inert")
+    page.focus("#plot_export_modal .stats_modal_position_reset")
     page.keyboard.press("Tab")
     wrapped_forward = page.locator("#plot_export_close").evaluate("element => element === document.activeElement")
     page.keyboard.press("Shift+Tab")
-    wrapped_backward = page.locator("#plot_export_download").evaluate("element => element === document.activeElement")
+    wrapped_backward = page.locator("#plot_export_modal .stats_modal_position_reset").evaluate(
+        "element => element === document.activeElement"
+    )
     background_inert = page.eval_on_selector("main.app", "element => element.inert")
     page.keyboard.press("Escape")
     page.wait_for_selector("#plot_export_modal", state="hidden", timeout=5000)
