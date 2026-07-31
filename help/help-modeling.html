@@ -52,7 +52,7 @@
             <li><strong>Cell Gate</strong> fits an FSC/SSC cell-cloud gate. Drag the teal ellipse or its center marker to reposition it, hold Shift or Ctrl while dragging (or Ctrl plus Left/Right arrow when focused) to rotate it around its center, or change <span class="ui_label">Gate coverage</span> to resize it. Each edit immediately updates the mask and invalidates the histogram and any peak regions so they can be rerun with the edited gate. <span class="ui_label">Reset fitted gate</span> restores the fitted center, coverage, and rotation.</li>
             <li><strong>Singlet Gate</strong> applies DNA pulse-geometry singlet/doublet discrimination when the required channels exist.</li>
           </ol>
-          <p>The masked histogram is rebuilt automatically whenever QC changes, and only events within the visible x-axis range are modeled.</p>
+          <p>The masked histogram is rebuilt automatically whenever QC changes. Pan and zoom remain display-only; to intentionally restrict histogram and model inputs, open the axis-range dialog and select <span class="ui_label">Use the X limits as the scientific analysis domain</span>. A required QC failure or degraded outcome blocks authoritative modeling and remains visible for review.</p>
 
           <div class="callout">
             <p class="callout_title">Works offline</p>

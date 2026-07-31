@@ -44,13 +44,13 @@
             <li><strong>Sidebar</strong> (left) &mdash; drop zone for FCS files, the DNA-content channel selector, and the main action buttons (<span class="ui_label">Plot Channel Events</span>, <span class="ui_label">Cell Cycle Modeling</span>, <span class="ui_label">Calculate Statistics</span>). <span class="ui_label">Cell Cycle Modeling</span> switches the sidebar into a modeling view that holds the Pre-modeling QC filters, the Identify Peaks panel, and the Model &amp; Fit controls; <span class="ui_label">Back</span> returns it to the file/channel controls.</li>
             <li><strong>Plot panel</strong> (top of the workspace) &mdash; appears once you plot a channel; shows the overlaid event histogram, its controls, and (once modeling starts) the DJF fit overlay and results table.</li>
             <li><strong>Metadata table panel</strong> (bottom of the workspace) &mdash; one row per loaded FCS file with editable annotations, sorting, filtering, and optional summary-statistics columns.</li>
-            <li><strong>Header</strong> (top) &mdash; the PhaseFinder logo plus <span class="ui_label">Help</span>, <span class="ui_label">Load session</span>, and <span class="ui_label">Save session</span>.</li>
+            <li><strong>Header</strong> (top) &mdash; the PhaseFinder logo plus <span class="ui_label">Load</span>, <span class="ui_label">Save</span>, <span class="ui_label">Storage</span>, and <span class="ui_label">Reset</span>. <span class="ui_label">Get Help</span> is in the bottom status bar.</li>
             <li><strong>Status bar</strong> (bottom) &mdash; progress, completion messages, warnings, and copyright information.</li>
           </ul>
-          <p>The header also has <span class="ui_label">Load session</span> and <span class="ui_label">Save session</span> buttons for saving your work to a file and restoring it later (see <a href="./help-sessions.html#sessions">Saving &amp; Loading Sessions</a>).</p>
+          <p>The header also has <span class="ui_label">Load</span> and <span class="ui_label">Save</span> buttons for saving your work to a file and restoring it later (see <a href="./help-sessions.html#sessions">Saving &amp; Loading Sessions</a>).</p>
           <figure class="help_figure">
             <div class="screenshot_frame annotated_screenshot">
-              <img src="../assets/img/help/overview.png" alt="PhaseFinder app with loaded FCS files, a plotted histogram, computed statistics in the metadata table, and header/session controls." />
+              <img src="../assets/img/help/overview.png" width="1920" height="1080" loading="lazy" decoding="async" alt="PhaseFinder app with loaded FCS files, a plotted histogram, computed statistics in the metadata table, and header/session controls." />
               <span class="overview_marker overview_marker_header" aria-hidden="true"></span>
               <span class="overview_label overview_label_header">Header and session buttons</span>
               <span class="overview_marker overview_marker_sidebar" aria-hidden="true"></span>
@@ -73,7 +73,7 @@
           </figure>
           <div class="callout warn">
             <p class="callout_title">Everything lives in memory</p>
-            <p>PhaseFinder keeps all loaded files, annotations, selections, and plots in the browser tab's memory only. Reloading or closing the page clears everything. Use <span class="ui_label">Save session</span> before you navigate away if you want to pick up where you left off.</p>
+            <p>PhaseFinder keeps current analysis state in the browser tab and optional private cached FCS copies in browser storage. Use <span class="ui_label">Save</span> before you navigate away if you want to pick up where you left off.</p>
           </div>
         </section>
 
@@ -98,7 +98,7 @@
           <h2>4. Choosing a Channel</h2>
           <figure class="help_figure help_figure_sidebar">
             <div class="screenshot_frame">
-              <img src="../assets/img/help/channel-selection.png" alt="Sidebar channel selector with GFP/FITC-A selected after FCS files have been loaded." />
+              <img src="../assets/img/help/channel-selection.png" width="320" height="545" loading="lazy" decoding="async" alt="Sidebar channel selector with GFP/FITC-A selected after FCS files have been loaded." />
             </div>
             <figcaption>Choose the FCS parameter/channel to plot from the sidebar before clicking <span class="ui_label">Plot Channel Events</span>.</figcaption>
           </figure>
@@ -121,7 +121,7 @@
             <li>Click <span class="ui_label">Plot Channel Events</span>. Adjust <strong>Color by</strong>, <strong>Display</strong>, and <strong>Bins</strong>.</li>
             <li>Click <span class="ui_label">Cell Cycle Modeling</span> to open the modeling controls in the sidebar. Apply the Pre-modeling QC filters you want, then use <span class="ui_label">Identify Peaks</span> to detect and, if needed, adjust the G1 and G2/M peak regions for the sample you're reviewing.</li>
             <li>Optionally, use <span class="ui_label">Calculate Statistics</span> to compute per-file summary statistics for any channel, and export the table to TSV for use elsewhere.</li>
-            <li>Click <span class="ui_label">Save session</span> before closing the tab so you (or a collaborator) can resume this same analysis later.</li>
+            <li>Click <span class="ui_label">Save</span> before closing the tab so you (or a collaborator) can resume this same analysis later.</li>
           </ol>
         </section>
 

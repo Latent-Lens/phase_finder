@@ -60,6 +60,8 @@ module.exports = defineConfig({
         helpMetadata: path.resolve(__dirname, "help/help-metadata.html"),
         helpPlotting: path.resolve(__dirname, "help/help-plotting.html"),
         helpModeling: path.resolve(__dirname, "help/help-modeling.html"),
+        helpCellCycleMathCheck: path.resolve(__dirname, "help/help-cell-cycle-math-check.html"),
+        helpCellCycleAccuracy: path.resolve(__dirname, "help/help-cell-cycle-accuracy.html"),
         helpStatistics: path.resolve(__dirname, "help/help-statistics.html"),
         helpSessions: path.resolve(__dirname, "help/help-sessions.html"),
         helpTroubleshooting: path.resolve(__dirname, "help/help-troubleshooting.html"),

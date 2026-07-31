@@ -41,7 +41,7 @@
           <h2>5. Plotting Events</h2>
           <figure class="help_figure">
             <div class="screenshot_frame">
-              <img src="../assets/img/help/plotting-events.png" alt="PhaseFinder plot panel showing overlaid channel histograms, plot controls, and legend." />
+              <img src="../assets/img/help/plotting-events.png" width="1553" height="577" loading="lazy" decoding="async" alt="PhaseFinder plot panel showing overlaid channel histograms, plot controls, and legend." />
             </div>
             <figcaption>The plot panel overlays the checked samples for the selected channel and keeps the plot controls above the chart.</figcaption>
           </figure>
@@ -89,7 +89,7 @@
             <p>These are a practical, conservative guideline, not a formally published statistical standard specific to flow cytometry histograms. The underlying idea &mdash; that sparse bins introduce counting noise &mdash; is well established (a classical rule of thumb for count-based histograms calls for at least around 5 events per bin for the statistics to behave); PhaseFinder's floor of 20 is intentionally well above that minimum. Treat the colour coding as guidance, not proof, and use your own judgment about whether a fit looks right.</p>
           </div>
 
-          <p>Above the plot, a toolbar (camera, pan, zoom in, zoom out, autoscale, home) lets you download the plot as an image (SVG, PDF, PNG, or JPEG), or download a printable HTML analysis report containing the plot and metadata/results table. Drag to pan, hold Shift and drag to zoom into a rectangle, use the mouse wheel to zoom, and double-click empty space to reset. Panning and zooming only change the view &mdash; they never re-run detection or a fit.</p>
+          <p>Above the plot, a toolbar (camera, pan, zoom in, zoom out, autoscale, home) lets you download the plot as an image (SVG, PDF, PNG, or JPEG), or download a printable HTML analysis report. Image formats contain the complete visible graphical plot: axes, labels, legends, event/model curves, every ordered ridge row with its sample label and status badge, and a footer identifying the PhaseFinder version/commit, channel, view, bin/range settings, samples, models, and QC versions. SVG also embeds that provenance as machine-readable JSON. They do not include the separate HTML results table. The HTML report adds the same machine-readable provenance, selected-region/model status summary, phase fractions, transform/compensation status, and the full metadata/results table. Download names identify the overlay/ridge view, the single model or mixed-model state, and a timestamp; they never include a local path. Drag to pan, hold Shift and drag to zoom into a rectangle, use the mouse wheel to zoom, and double-click empty space to reset. Panning and zooming only change the view &mdash; they never re-run detection or a fit.</p>
           <p>Event-quality masks and contamination terms are controlled by the pre-modeling QC filters below, so every correction has a visible control and diagnostic readout.</p>
         </section>
 

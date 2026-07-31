@@ -39,8 +39,8 @@
 
 <section id="sessions" class="help_section">
           <h2>8. Saving &amp; Loading Sessions</h2>
-          <p>Because PhaseFinder keeps no server-side state, a <strong>session file</strong> (a human-readable <a href="https://en.wikipedia.org/wiki/TOML" target="_blank" rel="noopener"><code>.toml</code> file</a>) is how you resume work later or share a configured analysis with someone else. Use <span class="ui_label">Save session</span> before closing the tab, refreshing the page, or switching to another dataset.</p>
-          <p><span class="ui_label">Save session</span> writes the analysis state needed to rebuild your workspace:</p>
+          <p>Because PhaseFinder keeps no server-side state, a <strong>session file</strong> (a human-readable <a href="https://en.wikipedia.org/wiki/TOML" target="_blank" rel="noopener"><code>.toml</code> file</a>) is how you resume work later or share a configured analysis with someone else. Use <span class="ui_label">Save</span> before closing the tab, refreshing the page, or switching to another dataset.</p>
+          <p><span class="ui_label">Save</span> writes the analysis state needed to rebuild your workspace:</p>
           <ul>
             <li>The list of loaded filenames and per-file reconnect metadata such as size, content digest, modified time, and app-private cache paths.</li>
             <li>Every metadata column and its values, plus the active filename-splitting template.</li>
@@ -53,7 +53,7 @@
             <p class="callout_title">The session file is not a data archive</p>
             <p>The <code>.toml</code> file does <strong>not</strong> embed the original FCS event data. It stores enough information to reconnect those FCS files later. Keep the session file near the FCS folder, or avoid renaming/moving the source files after saving.</p>
           </div>
-          <p><span class="ui_label">Load session</span> reads the TOML file, restores the saved table, filename parsing, plot, statistics, and layout settings, and then tries to reconnect the original FCS files. What you see next depends on browser support and whether the files are still available:</p>
+          <p><span class="ui_label">Load</span> reads the TOML file, restores the saved table, filename parsing, plot, statistics, and layout settings, and then tries to reconnect the original FCS files. What you see next depends on browser support and whether the files are still available:</p>
           <ul>
             <li><strong>Fast path: local browser cache.</strong> When supported, PhaseFinder keeps app-private working copies of loaded FCS files in persistent browser storage. Before restore, it verifies a bounded-memory SHA-256 chunk-tree digest of the complete file; filename and size are only quick prefilters.</li>
             <li><strong>Chromium browsers with folder access.</strong> If cached copies are missing, Chrome/Edge can ask you to choose the folder containing the FCS files. PhaseFinder remembers that folder handle in browser storage; future loads may only need you to grant permissions instead of a fresh folder search.</li>
