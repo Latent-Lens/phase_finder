@@ -22,8 +22,25 @@ const stats_channel_select = document.querySelector("#stats_channel_select");
 const stats_progress_indicator = document.querySelector("#stats_progress_indicator");
 const stats_progress_bar = document.querySelector("#stats_progress_bar");
 const stats_progress_label = document.querySelector("#stats_progress_label");
+const stats_cancel_button = document.querySelector("#stats_cancel_button");
+let active_stats_abort = null;
 
 const STAT_LABELS = { mean: "Mean", stddev: "Std Dev", median: "Median", min: "Min", max: "Max" };
+const FILE_CONCURRENCY = Math.max(1, Math.min(4, navigator.hardwareConcurrency || 2));
+
+export async function map_with_concurrency(items, mapper, limit = FILE_CONCURRENCY, signal = null) {
+  const results = Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      if (signal?.aborted) throw new DOMException("Statistics calculation cancelled.", "AbortError");
+      const index = next++;
+      results[index] = await mapper(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));
+  return results;
+}
 
 // ── In-memory stats session ─────────────────────────────────────────────────
 // Tracks which (channel, metrics) combos have been computed so newly loaded
@@ -82,12 +99,12 @@ async function compute_stats_for_new_files(new_names) {
   for (const [channel, metrics_set] of stats_session) {
     const metrics = [...metrics_set];
 
-    const loaded = await Promise.all(new_rows.map(async (row) => {
+    const loaded = await map_with_concurrency(new_rows, async (row) => {
       try {
         const data = await load_analysis_row(row, { dna_area: channel }, { activate: false });
         return (data?.dna_a?.length) ? { name: row.name, array: data.dna_a } : null;
       } catch (_) { return null; }
-    }));
+    });
 
     const valid = loaded.filter(Boolean);
     if (!valid.length) continue;
@@ -131,23 +148,21 @@ export function compute_column_stats(typed_array, selected_stats) {
   // invalid acquisition values. Summary statistics must therefore select the
   // structurally usable scalar values instead of allowing one NaN/Infinity to
   // poison every result. Zero is intentionally valid; negative values are not.
-  const values = [];
+  const needs_median = selected_stats.includes("median");
+  const values = needs_median ? [] : null;
+  let n = 0, sum = 0, min = Infinity, max = -Infinity;
   for (let index = 0; index < typed_array.length; index += 1) {
     const value = Number(typed_array[index]);
-    if (Number.isFinite(value) && value >= 0) values.push(value);
+    if (!Number.isFinite(value) || value < 0) continue;
+    n += 1;
+    sum += value;
+    if (value < min) min = value;
+    if (value > max) max = value;
+    values?.push(value);
   }
-
-  const n = values.length;
   if (!n) return null;
 
   const results = { n };
-  let sum = 0, min = values[0], max = values[0];
-  for (let i = 0; i < n; i++) {
-    const v = values[i];
-    sum += v;
-    if (v < min) min = v;
-    if (v > max) max = v;
-  }
   const mean = sum / n;
 
   if (selected_stats.includes("mean")) results.mean = mean;
@@ -156,14 +171,17 @@ export function compute_column_stats(typed_array, selected_stats) {
 
   if (selected_stats.includes("stddev")) {
     let variance = 0;
-    for (let i = 0; i < n; i++) { const d = values[i] - mean; variance += d * d; }
+    for (let index = 0; index < typed_array.length; index += 1) {
+      const value = Number(typed_array[index]);
+      if (Number.isFinite(value) && value >= 0) { const d = value - mean; variance += d * d; }
+    }
     results.stddev = Math.sqrt(variance / n);
   }
 
-  if (selected_stats.includes("median")) {
-    const sorted = values.sort((a, b) => a - b);
+  if (needs_median) {
+    values.sort((a, b) => a - b);
     const mid = Math.floor(n / 2);
-    results.median = n % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    results.median = n % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
   }
 
   return results;
@@ -192,6 +210,7 @@ export function open_stats_modal() {
 }
 
 export function close_stats_modal() {
+  active_stats_abort?.abort();
   if (stats_modal) stats_modal.hidden = true;
 }
 
@@ -263,76 +282,74 @@ async function run_stats_calculation(calculate_button) {
   }
   if (stats_progress_bar) stats_progress_bar.style.width = "0%";
   calculate_button.disabled = true;
+  stats_cancel_button.hidden = false;
+  const controller = new AbortController();
+  active_stats_abort?.abort();
+  active_stats_abort = controller;
 
-  // Phase 1: load all file data in parallel (results cached for phase 2).
-  if (stats_progress_label) stats_progress_label.textContent = `Loading ${channel_label} data for ${rows.length} file${rows.length === 1 ? "" : "s"}…`;
-  const loaded_data = await Promise.all(rows.map(async (row) => {
-    try {
-      const data = await load_analysis_row(row, { dna_area: channel_label }, { activate: false });
-      return data?.dna_a?.length ? { name: row.name, array: data.dna_a } : null;
-    } catch { return null; }
-  }));
-  const valid_data = loaded_data.filter(Boolean);
+  try {
+    if (stats_progress_label) stats_progress_label.textContent = `Loading ${channel_label} data for ${rows.length} file${rows.length === 1 ? "" : "s"}…`;
+    const loaded_data = await map_with_concurrency(rows, async (row) => {
+      try {
+        const data = await load_analysis_row(row, { dna_area: channel_label }, { activate: false });
+        return data?.dna_a?.length
+          ? { name: row.name, array: data.dna_a, error: null }
+          : { name: row.name, array: null, error: "channel data is empty" };
+      } catch (error) {
+        return { name: row.name, array: null, error: error?.message || String(error) };
+      }
+    }, FILE_CONCURRENCY, controller.signal);
+    const valid_data = loaded_data.filter(({ array }) => array);
+    const failures = loaded_data.filter(({ error }) => error);
+    if (!valid_data.length) throw new Error(`No data available for "${channel_label}".`);
 
-  if (!valid_data.length) {
+    const valid = [];
+    for (let index = 0; index < valid_data.length; index += 1) {
+      if (controller.signal.aborted) throw new DOMException("Statistics calculation cancelled.", "AbortError");
+      const { name, array } = valid_data[index];
+      if (stats_progress_label) stats_progress_label.textContent = `Calculating ${new_stats.map((stat) => STAT_LABELS[stat] || stat).join(", ")} for file ${index + 1} of ${valid_data.length}`;
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+      const stats = compute_column_stats(array, new_stats);
+      if (stats) valid.push({ name, stats });
+      if (stats_progress_bar) stats_progress_bar.style.width = `${Math.round(((index + 1) / valid_data.length) * 100)}%`;
+    }
+    if (!valid.length) throw new Error(`No data computed for "${channel_label}".`);
+
+    const results_by_name = new Map(valid.map(({ name, stats }) => [name, stats]));
+    const current_frame = get_file_table();
+    if (current_frame) {
+      const ids = current_frame.col("id");
+      for (const stat of new_stats) {
+        const col_name = `${channel_label}:${stat}`;
+        current_frame.setCol(col_name, ids.map((id) => {
+          const entry = get_file_by_id(id);
+          return results_by_name.get(entry?.name)?.[stat] ?? null;
+        }));
+      }
+    }
+
+    render_file_table();
+    stats_modal.hidden = true;
+    const stat_names = new_stats.map((s) => STAT_LABELS[s] || s).join(", ");
+    const partial = failures.length > 0;
+    const message = partial
+      ? `${stat_names} for ${channel_label} partially complete (${valid.length}/${rows.length} files).`
+      : `${stat_names} for ${channel_label} added to the table (${valid.length} file${valid.length === 1 ? "" : "s"}).`;
+    set_status_bar(message, partial, null, null,
+      partial ? new Error(failures.map(({ name, error }) => `${name}: ${error}`).join("\n")) : null);
+    document.dispatchEvent(new CustomEvent("pf-stats-complete", {
+      detail: { channel: channel_label, stats: new_stats, files: valid.length, failures },
+    }));
+  } catch (error) {
+    const cancelled = error?.name === "AbortError";
+    const message = cancelled ? "Statistics calculation cancelled." : error?.message || "Statistics calculation failed.";
+    show_stats_error(message);
+    set_status_bar(message, !cancelled, null, null, error);
+  } finally {
     calculate_button.disabled = false;
-    show_stats_error(`No data available for "${channel_label}".`);
-    return;
+    stats_cancel_button.hidden = true;
+    if (active_stats_abort === controller) active_stats_abort = null;
   }
-
-  // Phase 2: compute each new stat one at a time, yielding between files.
-  const results_by_file = new Map(valid_data.map(({ name, array }) => [name, { n: array.length }]));
-  const total_stats = new_stats.length;
-
-  for (let si = 0; si < new_stats.length; si++) {
-    const stat = new_stats[si];
-    const stat_label = STAT_LABELS[stat] || stat;
-
-    for (let fi = 0; fi < valid_data.length; fi++) {
-      if (stats_progress_label) stats_progress_label.textContent = `Calculating ${stat_label} for file ${fi + 1} of ${valid_data.length}`;
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      const { name, array } = valid_data[fi];
-      const sr = compute_column_stats(array, [stat]);
-      if (sr?.[stat] != null) results_by_file.get(name)[stat] = sr[stat];
-    }
-
-    if (stats_progress_bar) stats_progress_bar.style.width = `${Math.round(((si + 1) / total_stats) * 100)}%`;
-  }
-  calculate_button.disabled = false;
-
-  const valid = [...results_by_file.entries()]
-    .map(([name, stats]) => ({ name, stats }))
-    .filter(({ stats }) => new_stats.some((s) => stats[s] != null));
-
-  if (!valid.length) {
-    show_stats_error(`No data computed for "${channel_label}".`);
-    return;
-  }
-
-  // Add each new stat as a column "CHANNEL:metric" in the table frame.
-  // Rows without computed data (e.g. files that failed to load) get null.
-  const results_by_name = new Map(valid.map(({ name, stats }) => [name, stats]));
-  const current_frame = get_file_table();
-  if (current_frame) {
-    const ids = current_frame.col("id");
-    for (const stat of new_stats) {
-      const col_name = `${channel_label}:${stat}`;
-      const col_values = ids.map((id) => {
-        const entry = get_file_by_id(id);
-        return results_by_name.get(entry?.name)?.[stat] ?? null;
-      });
-      current_frame.setCol(col_name, col_values);
-    }
-  }
-
-  render_file_table();
-  close_stats_modal();
-  const stat_names = new_stats.map((s) => STAT_LABELS[s] || s).join(", ");
-  set_status_bar(`${stat_names} for ${channel_label} added to the table (${valid.length} file${valid.length === 1 ? "" : "s"}).`);
-  document.dispatchEvent(new CustomEvent("pf-stats-complete", {
-    detail: { channel: channel_label, stats: new_stats, files: valid.length },
-  }));
 }
 
 /*
@@ -385,6 +402,7 @@ export function init_stats() {
 
     const calculate_button = stats_modal.querySelector("#stats_calculate_button");
     calculate_button.addEventListener("click", () => { run_stats_calculation(calculate_button); });
+    stats_cancel_button?.addEventListener("click", () => active_stats_abort?.abort());
   }
 
   [calculate_stats_button, collapsed_calculate_stats_button].forEach((btn) => {

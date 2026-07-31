@@ -26,6 +26,7 @@
     import { guess_annotations_from_filename, timepoint_sort_value, annotation_input_size } from "/js/ui/table_support.js";
     import { display_name, metadata_filename_key } from "/js/util/names.js";
     import { escape_html } from "/js/util/html.js";
+    import { plot_escape_html } from "/js/plotting/data.js";
     import { parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key, tsv_cell, metadata_import_preview } from "/js/io/metadata_io.js";
     import { qc_completion_message, qc_ui_outcome } from "/js/analysis/pipeline_ui.js";
     import { parameter_map, find_param_index, unique_indexes } from "/js/io/parameter_map.js";
@@ -38,6 +39,8 @@
     import * as DJFPipeline from "/js/analysis/cell_cycle_pipeline.js";
     import * as DJFPipelineState from "/js/analysis/pipeline_state.js";
     import * as DJFStats from "/js/analysis/math/stats.js";
+    import * as SummaryStats from "/js/analysis/stats.js";
+    import * as ScatterModal from "/js/analysis/scatter_modal.js";
     import * as DJFGaussian from "/js/analysis/math/gaussian.js";
     import * as DJFIntegrate from "/js/analysis/math/integrate.js";
     import * as DJFLinearAlgebra from "/js/analysis/math/linalg2d.js";
@@ -77,7 +80,7 @@
       metadata_field_from_label, normalize_metadata_columns,
       split_filename_metadata, parse_fixed_breaks,
       guess_annotations_from_filename, timepoint_sort_value, annotation_input_size,
-      display_name, metadata_filename_key, escape_html,
+      display_name, metadata_filename_key, escape_html, plot_escape_html,
       parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key, tsv_cell, metadata_import_preview,
       qc_completion_message,
       qc_ui_outcome,
@@ -102,6 +105,8 @@
       lm: DJFLMSolver,
       components: DJFComponents,
     };
+    window.SummaryStats = SummaryStats;
+    window.ScatterModal = ScatterModal;
     window.CellCycleGaussianBinMass = CellCycleGaussianBinMass;
     window.CellCycleQuadrature = CellCycleQuadrature;
     window.CellCyclePoisson = CellCyclePoisson;
