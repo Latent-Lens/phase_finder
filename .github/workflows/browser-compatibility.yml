@@ -14,6 +14,8 @@ jobs:
     name: Linux / ${{ matrix.browser }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
     strategy:
       fail-fast: false
       matrix:
@@ -24,9 +26,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ github.workspace }}/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('requirements-dev.txt') }}
       - run: python -m pip install --requirement requirements-dev.txt
       - run: python -m playwright install --with-deps "${{ matrix.browser }}"
-      - run: python tests/e2e/driving_code/drive_flow.py --browser "${{ matrix.browser }}" --limited-media
+      - run: python tests/e2e/driving_code/drive_flow.py --browser "${{ matrix.browser }}" --skip-modeling --limited-media
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -40,6 +46,8 @@ jobs:
     name: ${{ matrix.os }} / ${{ matrix.browser }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +62,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ github.workspace }}/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('requirements-dev.txt') }}
+      - if: matrix.browser == 'edge'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
       - shell: bash
         run: python -m pip install --requirement requirements-dev.txt
       - shell: bash
@@ -69,8 +86,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y brave-browser
           echo "BRAVE_PATH=/usr/bin/brave-browser" >> "$GITHUB_ENV"
+      - if: matrix.browser == 'edge'
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+          npm run check:dist
+      - if: matrix.browser == 'edge'
+        shell: bash
+        run: python tests/e2e/driving_code/dist_smoke.py
       - shell: bash
-        run: python tests/e2e/driving_code/drive_flow.py --browser "${{ matrix.browser }}" --limited-media
+        run: python tests/e2e/driving_code/drive_flow.py --browser "${{ matrix.browser }}" --skip-modeling --limited-media
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -78,3 +104,30 @@ jobs:
           path: tests/e2e/results/
           if-no-files-found: warn
           retention-days: 14
+
+  compatibility-report:
+    if: always()
+    needs: [engines, browser-channels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: phasefinder-*
+          path: compatibility-evidence
+      - name: Generate compatibility table
+        env:
+          FULL_MATRIX: ${{ github.event_name != 'pull_request' }}
+        run: |
+          expected=(chromium firefox webkit)
+          if [[ "$FULL_MATRIX" == "true" ]]; then expected+=(edge brave); fi
+          python tests/e2e/driving_code/compatibility_evidence.py compatibility-evidence browser-compatibility.md "${expected[@]}"
+      - if: always()
+        run: test ! -f browser-compatibility.md || cat browser-compatibility.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-compatibility-table
+          path: browser-compatibility.md
+          if-no-files-found: error
+          retention-days: 30
