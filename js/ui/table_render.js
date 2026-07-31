@@ -134,7 +134,8 @@ export function render_file_table() {
   // its header so remove-columns mode can span the highlight down to this cell.
   const cell = (row, field) => {
     const value = String(row[field] ?? "");
-    return `<td data-column-key="field:${escape_html(field)}"><input data-file-id="${escape_html(row.id)}" data-field="${escape_html(field)}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" /></td>`;
+    const label = TABLE_COLUMNS.find((column) => column.field === field)?.label || field;
+    return `<td data-column-key="field:${escape_html(field)}"><input data-file-id="${escape_html(row.id)}" data-field="${escape_html(field)}" type="text" size="${annotation_input_size(value)}" value="${escape_html(value)}" aria-label="${escape_html(`${label} for ${row.name}`)}" /></td>`;
   };
 
   const visible_files = displayed_files();
@@ -677,3 +678,5 @@ export function handle_document_click(event) {
   set_open_filter_field(null);
   render_file_table();
 }
+
+document.addEventListener("pf-render-file-table", render_file_table);

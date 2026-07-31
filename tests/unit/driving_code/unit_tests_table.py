@@ -222,6 +222,8 @@ _FULL_SUITE = """() => {
   push('SEC-03: HTML/script-like filenames, annotations, TSV cells, and model labels are escaped',
        escapedFixtures.every((value) => !value.includes('<') && !value.includes('>') && !value.includes('"')),
        JSON.stringify(escapedFixtures));
+  push('MAINT-03: plotting and application markup share one HTML escaper',
+       plot_escape_html(hostile) === escape_html(hostile), plot_escape_html(hostile));
 
   const preview = metadata_import_preview(parsedTsv, 'samples.tsv');
   push('DATA-05: import preview shows row count, final columns, and the reject-not-rename policy',

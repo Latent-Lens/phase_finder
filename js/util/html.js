@@ -3,9 +3,7 @@
 // wizard markup by hand. It escapes HTML-special characters so untrusted values
 // (filenames, imported metadata, channel labels) can be safely interpolated into
 // markup strings. It deliberately pulls in no DOM or app state and imports
-// nothing, so any module can import it without creating a dependency cycle. The
-// plotting layer keeps its own copy (plot_escape_html) so it never has to reach
-// across into the UI utilities.
+// nothing, so any module can import it without creating a dependency cycle.
 
 /*
 

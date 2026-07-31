@@ -7,7 +7,7 @@
 // not own table selection, filters, or column editing rules; those live in the
 // neighboring data_structs modules.
 
-import { normalize_metadata_columns } from "./metadata_columns.js";
+import { normalize_metadata_columns } from "./metadata_column_schema.js";
 import { loaded_file_by_metadata_key, metadata_unlinked_row_id } from "./table_state.js";
 import { metadata_filename_key } from "../util/names.js";
 

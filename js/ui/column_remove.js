@@ -14,7 +14,6 @@
 import { get_file_table } from "../state/app_state.js";
 import { TABLE_COLUMNS, set_metadata_table_columns } from "../data_structs/table_state.js";
 import { escape_html } from "../util/html.js";
-import { render_file_table } from "./table_render.js";
 import {
   file_table,
   metadata_remove_column_button,
@@ -67,7 +66,7 @@ function enter_mode() {
   if (remove_columns_panel) remove_columns_panel.hidden = false;
   file_table?.classList.add("remove_columns_active");
   update_panel();
-  render_file_table(); // re-render so decorate_removable_headers tags the headers
+  document.dispatchEvent(new CustomEvent("pf-render-file-table"));
   if (!resize_listener_attached) {
     window.addEventListener("resize", on_viewport_change);
     file_table?.addEventListener("scroll", on_viewport_change, { passive: true });
@@ -89,7 +88,7 @@ function exit_mode() {
   }
   document.removeEventListener("click", on_outside_click);
   overlay_layer = null; // the table re-render below discards the old layer element
-  render_file_table(); // clears the removable decorations and any overlay boxes
+  document.dispatchEvent(new CustomEvent("pf-render-file-table"));
 }
 
 // Tag every removable header and body cell (and mark the currently selected

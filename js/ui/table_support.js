@@ -26,7 +26,6 @@ import { get_file_table, set_file_table } from "../state/app_state.js";
 import { TABLE_COLUMNS, column_filters, sort_state, open_filter_field } from "../data_structs/table_state.js";
 import { PhaseFinderFrame } from "../data_structs/metadata_frame.js";
 import { frame_to_rows, unique_column_values, populate_channel_controls, update_start_button_state } from "./status_channels.js";
-import { render_file_table } from "./table_render.js";
 
 /*
 
@@ -345,7 +344,7 @@ Output:
 
 */
 export function update_views() {
-  render_file_table();
+  document.dispatchEvent(new CustomEvent("pf-render-file-table"));
   populate_channel_controls();
   collapsed_channel_select.value = channel_select.value;
   update_start_button_state();

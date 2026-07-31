@@ -110,7 +110,7 @@ async function restore_session_files(session, options = {}, preflight = null) {
       return summary;
     }
     set_status_bar(`Session loaded. Opening folder picker for ${names.length} FCS file${names.length === 1 ? '' : 's'}…`);
-    await auto_load_session_files(names);
+    await auto_load_session_files(names, load_files);
     return summary;
   }
 

@@ -9,7 +9,6 @@
 
 import { supports_opfs, request_persistent_storage } from "./opfs_fs.js";
 import { set_status_bar } from "../ui/status_channels.js";
-import { load_files } from "../io/metadata_io.js";
 
 // ── IndexedDB directory handle cache (Chromium — persists across page loads) ─
 
@@ -241,7 +240,7 @@ export async function fetch_files_from_url(base_url, names) {
 }
 
 // Entry point: route to the right picker, then pass found files to load_files.
-export async function auto_load_session_files(names) {
+export async function auto_load_session_files(names, load) {
   if (!names?.length) return;
 
   set_status_bar('Select the folder containing your FCS files…');
@@ -268,7 +267,7 @@ export async function auto_load_session_files(names) {
   }
 
   const missing = names.filter((n) => !files.some((f) => f.name === n));
-  await load_files(files);
+  await load(files);
 
   if (missing.length) {
     set_status_bar(
@@ -476,7 +475,7 @@ const cache_idle_waiters = [];
 
 export function wait_for_cache_idle() {
   if (!cache_running && !cache_queue.length) return Promise.resolve();
-  return new Promise((resolve) => cache_idle_waiters.push(resolve));
+  return new Promise((resolve) => { cache_idle_waiters.push(resolve); });
 }
 
 function enqueue_opfs_cache(items) {
