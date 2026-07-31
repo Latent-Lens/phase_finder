@@ -16,17 +16,22 @@
     "dev": "vite",
     "build": "vite build && npm run provenance",
     "preview": "vite preview",
+    "test:ci": "python3 -m unittest discover -s tests/ci",
     "test:unit": "python3 tests/unit/driving_code/run_standalone.py --limited-media",
     "test:e2e": "python3 tests/e2e/driving_code/drive_flow.py",
+    "test:audit": "python3 tests/e2e/driving_code/drive_flow.py --skip-modeling --limited-media && npm run build && npm run test:dist",
     "test:dist": "python3 tests/e2e/driving_code/dist_smoke.py",
-    "test": "npm run test:unit",
+    "test": "npm run test:ci && npm run test:unit",
     "check:dist": "node scripts/verify-dist.cjs",
+    "check:docs": "python3 scripts/check_documents.py",
     "check:dom": "node scripts/check-dom-bindings.mjs",
+    "check:imports": "python3 scripts/check_import_graph.py",
     "check:privacy": "git ls-files -z | node scripts/check-privacy.cjs",
+    "lint:js": "eslint js scripts vite.config.js",
     "check:base": "BASE_PATH=/phasefinder/ vite build --outDir dist-base --emptyOutDir && DIST_DIR=dist-base npm run provenance && BASE_PATH=/phasefinder/ DIST_DIR=dist-base npm run check:dist",
     "report:size": "node scripts/report-artifact-delta.cjs",
     "provenance": "node scripts/generate-provenance.cjs",
-    "check": "npm run preflight && npm run check:dom && npm run check:privacy && npm test && npm run build && npm run check:dist && npm run check:privacy"
+    "check": "npm run preflight && npm run lint:js && npm run check:dom && npm run check:docs && npm run check:imports && npm run check:privacy && npm test && npm run build && npm run check:dist && npm run check:privacy"
   },
   "repository": {
     "type": "git",
@@ -41,6 +46,9 @@
   },
   "homepage": "https://github.com/Latent-Lens/PhaseFinder#readme",
   "devDependencies": {
+    "axe-core": "^4.12.1",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
     "vite": "^8.1.5"
   }
 }

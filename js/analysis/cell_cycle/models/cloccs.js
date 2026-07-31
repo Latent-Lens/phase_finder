@@ -672,7 +672,7 @@ export async function fitCloccsForStrainAsync(series, userConfig = {}, { onProgr
     let step = generator.next();
     while (!step.done) {
       if (onProgress) onProgress({ phase: "fit", start: s, starts: startInits.length, round: step.value.round, objective: step.value.objective });
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
       if (shouldCancel && shouldCancel()) return { cancelled: true, strain: series.strain };
       step = generator.next();
     }
