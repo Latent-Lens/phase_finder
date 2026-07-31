@@ -82,8 +82,11 @@
 }
 
 .status_bar_copyright {
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
   padding-left: 14px;
+  text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0.9;
 }

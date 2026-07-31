@@ -28,11 +28,14 @@ def test_reset(ctx: TestContext, initial_files):
     # engine exposes OPFS/quota APIs or falls back to uncached analysis.
     page.click("#cache_manager_button")
     page.wait_for_selector("#cache_manager_modal:not([hidden])", timeout=10000)
+    page.locator("#cache_manager_modal .stats_modal_backdrop").dispatch_event("click")
+    destructive_modal_stays_open = page.locator("#cache_manager_modal").is_visible()
     storage_state = page.evaluate(
         """() => ({
           summary: document.querySelector('#cache_manager_summary')?.textContent.trim(),
           opfs: Boolean(navigator.storage?.getDirectory),
           automatic: document.querySelector('#cache_manager_automatic')?.checked,
+          description: document.querySelector('#cache_manager_modal')?.getAttribute('aria-describedby'),
         })"""
     )
     page.uncheck("#cache_manager_automatic")
@@ -42,6 +45,12 @@ def test_reset(ctx: TestContext, initial_files):
         group,
         "SES-04: storage controls work in an isolated/private browser profile with or without OPFS",
         bool(storage_state["summary"]) and storage_state["automatic"] is True,
+        str(storage_state),
+    )
+    ctx.check(
+        group,
+        "UI-05E: destructive storage dialog is described and ignores accidental backdrop clicks",
+        destructive_modal_stays_open and storage_state["description"] == "cache_manager_description",
         str(storage_state),
     )
 

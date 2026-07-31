@@ -231,19 +231,10 @@ def test_pipeline(ctx: TestContext):
                     }""",
                     sample_name,
                 )
-                center = page.locator("#djf_scatter_plot .djf_scatter_gate_center")
-                center_box = center.bounding_box()
-                page.mouse.move(
-                    center_box["x"] + center_box["width"] / 2,
-                    center_box["y"] + center_box["height"] / 2,
-                )
-                page.mouse.down()
-                page.mouse.move(
-                    center_box["x"] + center_box["width"] / 2 + 42,
-                    center_box["y"] + center_box["height"] / 2,
-                    steps=8,
-                )
-                page.mouse.up()
+                gate_handle = page.locator("#djf_scatter_plot .djf_scatter_gate_handle")
+                gate_handle.focus()
+                gate_tree = gate_handle.aria_snapshot()
+                gate_handle.press("ArrowRight")
                 page.wait_for_function(
                     """(sampleName) => Boolean(
                       window.PhaseFinder.pipeline.get_state(sampleName)
@@ -280,7 +271,7 @@ def test_pipeline(ctx: TestContext):
                 )
                 ctx.check(
                     group,
-                    "Dragging the Cell Gate ellipse applies a new authoritative scatter mask",
+                    "Moving the Cell Gate by keyboard applies a new authoritative scatter mask",
                     gate_moved["source"] == "manual"
                     and gate_moved["mean"] != gate_before["mean"]
                     and gate_moved["indexSum"] != gate_before["indexSum"]
@@ -332,7 +323,17 @@ def test_pipeline(ctx: TestContext):
                 fitted_ellipse_box = page.locator(
                     "#djf_scatter_plot .djf_scatter_gate_visible"
                 ).bounding_box()
-                page.locator("#djf_scatter_coverage").fill("80")
+                page.eval_on_selector("#djf_scatter_coverage", """element => {
+                  element.dispatchEvent(new PointerEvent('pointerdown', {
+                    bubbles: true, pointerId: 72, pointerType: 'touch', isPrimary: true,
+                  }));
+                  element.value = '80';
+                  element.dispatchEvent(new Event('input', { bubbles: true }));
+                  element.dispatchEvent(new PointerEvent('pointerup', {
+                    bubbles: true, pointerId: 72, pointerType: 'touch', isPrimary: true,
+                  }));
+                  element.dispatchEvent(new Event('change', { bubbles: true }));
+                }""")
                 page.wait_for_function(
                     """(sampleName) => Math.abs(
                       window.PhaseFinder.pipeline.get_state(sampleName)
@@ -365,7 +366,7 @@ def test_pipeline(ctx: TestContext):
                 )
                 ctx.check(
                     group,
-                    "Changing Cell Gate coverage resizes the ellipse and applies its mask",
+                    "UI-18: touch-operable Cell Gate coverage resizes the ellipse and applies its mask",
                     gate_resized["mean"] == gate_before["mean"]
                     and abs(gate_resized["threshold"] - (-2 * math.log(0.2))) < 1e-9
                     and abs(gate_resized["coverage"] - 0.8) < 1e-9
@@ -378,25 +379,16 @@ def test_pipeline(ctx: TestContext):
                     and "coverage 80.0%" in gate_resized["caption"],
                     f"before={gate_before}, resized={gate_resized}, boxes={fitted_ellipse_box, resized_ellipse_box}",
                 )
+                ctx.check(
+                    group,
+                    "UI-18: scatter gate handle is exposed in the browser accessibility tree",
+                    "button" in gate_tree and "cell gate" in gate_tree.lower(),
+                    gate_tree,
+                )
 
-                # Holding Shift while dragging the ellipse rotates it around its
-                # center (a modifier held anywhere during the gesture, checked
-                # once at drag start) instead of moving it.
-                rotate_center = page.locator("#djf_scatter_plot .djf_scatter_gate_center")
-                rotate_box = rotate_center.bounding_box()
-                rotate_cx = rotate_box["x"] + rotate_box["width"] / 2
-                rotate_cy = rotate_box["y"] + rotate_box["height"] / 2
-                # mousedown lands exactly on the center handle (small hit
-                # radius); the subsequent moves trace an arc around it, which
-                # is what actually produces a rotation (a straight-line drag
-                # starting from the center itself is degenerate).
-                page.mouse.move(rotate_cx, rotate_cy)
-                page.keyboard.down("Shift")
-                page.mouse.down()
-                page.mouse.move(rotate_cx + 60, rotate_cy, steps=4)
-                page.mouse.move(rotate_cx, rotate_cy - 60, steps=8)
-                page.mouse.up()
-                page.keyboard.up("Shift")
+                gate_handle = page.locator("#djf_scatter_plot .djf_scatter_gate_handle")
+                gate_handle.focus()
+                gate_handle.press("Control+ArrowRight")
                 page.wait_for_function(
                     """(sampleName) => Math.abs(
                       window.PhaseFinder.pipeline.get_state(sampleName)
@@ -421,7 +413,7 @@ def test_pipeline(ctx: TestContext):
                 )
                 ctx.check(
                     group,
-                    "Shift-dragging the Cell Gate ellipse rotates it around its center and applies a new mask",
+                    "Rotating the Cell Gate by keyboard applies a new mask",
                     gate_rotated["mean"] == gate_resized["mean"]
                     and abs(gate_rotated["rotation"]) > 1e-6
                     and gate_rotated["manualRotation"] == gate_rotated["rotation"]
@@ -456,19 +448,9 @@ def test_pipeline(ctx: TestContext):
                 # Leave a manual gate active so the Singlet Gate proves that
                 # downstream processing consumes the edited mask rather than
                 # the fitted one.
-                center = page.locator("#djf_scatter_plot .djf_scatter_gate_center")
-                center_box = center.bounding_box()
-                page.mouse.move(
-                    center_box["x"] + center_box["width"] / 2,
-                    center_box["y"] + center_box["height"] / 2,
-                )
-                page.mouse.down()
-                page.mouse.move(
-                    center_box["x"] + center_box["width"] / 2 - 32,
-                    center_box["y"] + center_box["height"] / 2,
-                    steps=8,
-                )
-                page.mouse.up()
+                gate_handle = page.locator("#djf_scatter_plot .djf_scatter_gate_handle")
+                gate_handle.focus()
+                gate_handle.press("ArrowLeft")
                 page.wait_for_function(
                     """(sampleName) => Boolean(
                       window.PhaseFinder.pipeline.get_state(sampleName)
@@ -482,7 +464,7 @@ def test_pipeline(ctx: TestContext):
             elif stage == 3:
                 # Toggling the Singlet Gate on re-applies every checked QC
                 # stage from scratch (apply_qc_selection resets all state
-                # first), so the earlier manual scatter-gate drag doesn't
+                # first), so the earlier manual scatter-gate edit doesn't
                 # survive -- Cell Gate reruns fresh. Compare against that
                 # fresh retained count rather than the stale dragged one.
                 current_scatter_retained = page.evaluate(
@@ -682,16 +664,28 @@ def test_time_qc_methods(ctx: TestContext):
 
         page.click("#qc_time")
         page.wait_for_selector("#time_qc_method_modal:not([hidden])", timeout=10000)
-        event_rate_round_trip = page.evaluate(
-            """() => {
-              const eventRate = document.querySelector('#time_qc_event_rate');
-              const robust = eventRate.checked;
-              document.querySelector("input[value='peak-tracking']").click();
-              const peak = eventRate.checked;
-              document.querySelector("input[value='robust-summary']").click();
-              return { robust, peak, robustAgain: eventRate.checked };
-            }"""
-        )
+        robust = page.is_checked("#time_qc_event_rate")
+        page.check("input[name='time_qc_method'][value='peak-tracking']")
+        peak = page.is_checked("#time_qc_event_rate")
+        page.check("input[name='time_qc_method'][value='robust-summary']")
+        event_rate_round_trip = {
+            "robust": robust,
+            "peak": peak,
+            "robustAgain": page.is_checked("#time_qc_event_rate"),
+        }
+        advanced = page.locator("#time_qc_advanced")
+        if not advanced.evaluate("element => element.open"):
+            advanced.locator("summary").click()
+        if not page.locator("#time_qc_robust_settings").is_visible():
+            state = page.evaluate(
+                """() => ({
+                  modalHidden: document.querySelector('#time_qc_method_modal').hidden,
+                  advancedOpen: document.querySelector('#time_qc_advanced').open,
+                  robustHidden: document.querySelector('#time_qc_robust_settings').hidden,
+                  method: document.querySelector("input[name='time_qc_method']:checked")?.value,
+                })"""
+            )
+            raise RuntimeError(f"Advanced robust settings did not open: {state}")
         page.fill("#time_qc_target_bin_size", "900")
         page.click("#time_qc_method_cancel")
         after_edit_cancel = page.evaluate("() => JSON.stringify(window.PhaseFinder.time_qc.state)")
@@ -798,7 +792,9 @@ def test_time_qc_methods(ctx: TestContext):
         # actually rendered -- checking the `hidden` property alone would miss a
         # CSS `display` rule overriding it, which is exactly how these blocks
         # once stayed visible for both methods at the same time.
-        page.click("#time_qc_advanced summary")
+        advanced = page.locator("#time_qc_advanced")
+        if not advanced.evaluate("element => element.open"):
+            advanced.locator("summary").click()
         dialog = page.evaluate(
             """() => {
               const visible = (selector) => {

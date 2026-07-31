@@ -85,12 +85,23 @@ def test_metadata_table_actions(ctx: TestContext):
 
     page.click("#metadata_remove_column_button")
     choice = page.locator('#file_table th[role="checkbox"][data-column-key]').first
+    touch_selected = choice.evaluate("""element => {
+      const touch = () => element.dispatchEvent(new PointerEvent('click', {
+        bubbles: true, pointerId: 71, pointerType: 'touch', isPrimary: true,
+      }));
+      touch();
+      const selected = element.getAttribute('aria-checked') === 'true';
+      touch();
+      return selected && element.getAttribute('aria-checked') === 'false';
+    }""")
     choice.focus()
     choice.press("Space")
-    ctx.check(group, "UI-18: removable columns are named keyboard-operable choices",
-              choice.get_attribute("aria-checked") == "true"
+    choice_tree = choice.aria_snapshot()
+    ctx.check(group, "UI-18: removable columns are named keyboard/touch-operable choices",
+              touch_selected and choice.get_attribute("aria-checked") == "true"
               and choice.get_attribute("aria-label").startswith("Remove ")
-              and not page.eval_on_selector("#remove_columns_confirm", "e => e.disabled"))
+              and not page.eval_on_selector("#remove_columns_confirm", "e => e.disabled")
+              and "checkbox" in choice_tree and "Remove " in choice_tree)
     page.click("#remove_columns_cancel")
 
     sort_button = page.locator(".th_sort").first

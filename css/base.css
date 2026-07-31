@@ -59,6 +59,7 @@
 
 html {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -152,7 +153,7 @@ label {
   }
 }
 
-.visually_hidden_file {
+input.visually_hidden_file {
   position: absolute;
   width: 1px;
   height: 1px;

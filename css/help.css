@@ -16,7 +16,7 @@
   --logo_teal: #01a5af;
   --teal_action: #007780;
   --logo_blue: #072c67;
-  --success: #059669;
+  --success: #047857;
   --restart: #dc2626;
   --code_bg: #eef1f8;
 }
@@ -226,7 +226,7 @@ kbd {
 
 .help_topic_number {
   grid-row: 1 / span 3;
-  color: var(--logo_teal);
+  color: var(--teal_action);
   font-size: 0.78rem;
   font-weight: 850;
   letter-spacing: 0.08em;

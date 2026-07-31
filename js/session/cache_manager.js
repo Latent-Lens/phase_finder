@@ -81,7 +81,6 @@ export function init_cache_manager() {
     button('cache_manager_close')?.focus();
   });
   button('cache_manager_close')?.addEventListener('click', () => { modal.hidden = true; });
-  modal.querySelector('.stats_modal_backdrop')?.addEventListener('click', () => { modal.hidden = true; });
   button('cache_manager_clear_session')?.addEventListener('click', async () => {
     if (!window.confirm('Clear cached FCS copies owned only by this session? Shared copies will be kept.')) return;
     await release_session_cache(logical_session_id, delete_opfs_path);

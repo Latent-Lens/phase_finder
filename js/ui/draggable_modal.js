@@ -11,7 +11,7 @@
 // a card already dragged near an edge never ends up offscreen after the
 // window shrinks.
 
-const NON_DRAG_SELECTOR = "input, button, select, textarea, a[href], label, [role='button'], [contenteditable='true']";
+const NON_DRAG_SELECTOR = "input, button, select, textarea, summary, a[href], label, [role='button'], [contenteditable='true']";
 
 // Cards that have been dragged at least once (position: fixed with explicit
 // left/top) -- these are the ones a resize can push offscreen; a still

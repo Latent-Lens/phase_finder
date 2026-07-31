@@ -8,6 +8,10 @@
     min-height: 100dvh;
   }
 
+  html {
+    overflow: auto;
+  }
+
   body {
     display: block;
     overflow-x: hidden;

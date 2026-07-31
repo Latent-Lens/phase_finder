@@ -222,10 +222,14 @@ export function init_plot_listeners() {
   });
 
   if (axis_range_modal) {
+    const form = axis_range_modal.querySelector("#axis_range_form");
     axis_range_modal.querySelector(".stats_modal_backdrop").addEventListener("click", close_axis_range_modal);
     axis_range_modal.querySelector("#axis_range_close").addEventListener("click", close_axis_range_modal);
     axis_range_modal.querySelector("#axis_range_cancel").addEventListener("click", close_axis_range_modal);
-    axis_range_modal.querySelector("#axis_range_apply").addEventListener("click", apply_axis_range_modal);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      apply_axis_range_modal();
+    });
     axis_range_modal.querySelector("#axis_range_reset").addEventListener("click", () => {
       const analysisChanged = analysis_domain_override.x_min != null || analysis_domain_override.x_max != null;
       axis_range_override.x_min = null;
@@ -240,8 +244,7 @@ export function init_plot_listeners() {
       if (analysisChanged) document.dispatchEvent(new CustomEvent("pf-analysis-domain-changed"));
     });
     axis_range_modal.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && event.target.matches("input[type='number']")) apply_axis_range_modal();
-      else if (event.key === "Escape") close_axis_range_modal();
+      if (event.key === "Escape") close_axis_range_modal();
     });
 
     // Drag-to-move now lives in ui/draggable_modal.js, wired generically for

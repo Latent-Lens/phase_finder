@@ -6,9 +6,9 @@
     <meta name="description" content="PhaseFinder: A browser-based tool for inspecting and plotting flow cytometry FCS files with Dean-Jett-Fox cell-cycle modeling." />
     <title>PhaseFinder</title>
     <!--
-      Native ES modules, no build step. d3 is a locally vendored ESM bundle
-      mapped to its bare specifier, so the app has no runtime CDN dependency.
-      The app must be served over HTTP — ES modules cannot load over file://.
+      Source development uses native ES modules. Vite builds the reviewed
+      production artifact. d3 is vendored locally, so neither mode needs a
+      runtime CDN. Both modes require HTTP; ES modules cannot load over file://.
     -->
     <script type="importmap">
       {
@@ -18,9 +18,9 @@
       }
     </script>
     <!--
-      Resource hints ordered by when the app is likely to need each file. There
-      is no build step, so these paths are the exact files the browser fetches.
-      main.js (above) and its static import graph load first. d3 is the single
+      Resource hints ordered by when the app is likely to need each file. In
+      source mode these are the exact paths fetched; Vite rewrites them to
+      hashed production assets. main.js and its static graph load first. d3 is the single
       largest dependency (~280 kB) and every render needs it, so preload it up
       front to fetch it in parallel with main.js instead of after discovery.
       Workers and the lazily-imported modeling pipeline are pulled in only by
@@ -85,7 +85,7 @@
       </div>
     </header>
 
-    <div id="cache_manager_modal" class="stats_modal" hidden role="dialog" aria-modal="true" aria-labelledby="cache_manager_title">
+    <div id="cache_manager_modal" class="stats_modal" hidden role="dialog" aria-modal="true" aria-labelledby="cache_manager_title" aria-describedby="cache_manager_description">
       <div class="stats_modal_backdrop"></div>
       <div class="stats_modal_card cache_manager_card">
         <div class="stats_modal_header">
@@ -93,7 +93,7 @@
           <button id="cache_manager_close" class="stats_modal_close" type="button" aria-label="Close">&times;</button>
         </div>
         <div class="stats_modal_body">
-          <p>PhaseFinder keeps browser-private FCS copies for fast session reload. They are not uploaded. Reloading the logo retains catalogued copies; Reset releases this session's copies.</p>
+          <p id="cache_manager_description">PhaseFinder keeps browser-private FCS copies for fast session reload. They are not uploaded. Reloading the logo retains catalogued copies; Reset releases this session's copies.</p>
           <p>Your browser may grant PhaseFinder persistent storage to reduce automatic eviction. Its current usage and quota appear below.</p>
           <label><input id="cache_manager_automatic" type="checkbox" /> Automatically cache newly loaded FCS files</label>
           <p id="cache_manager_summary" aria-live="polite">Checking browser storage…</p>
@@ -430,7 +430,7 @@
           <div id="metadata_panel_body" class="metadata_panel_body">
             <div id="file_table" class="table_wrap"></div>
           </div>
-          <input id="metadata_import_input" class="visually_hidden_file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" />
+          <input id="metadata_import_input" class="visually_hidden_file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" aria-label="Choose a metadata table to import" />
         </section>
       </section>
     </main>
@@ -507,6 +507,7 @@
             </div>
           </div>
           <div class="stats_modal_actions">
+            <button id="stats_cancel_button" type="button" class="secondary_button" hidden>Cancel</button>
             <button id="stats_calculate_button" type="button">Calculate</button>
           </div>
           <div id="stats_progress_indicator" class="stats_progress" hidden>
@@ -563,7 +564,7 @@
           </div>
           <span class="axis_range_title_rule"></span>
         </div>
-        <div class="stats_modal_body">
+        <form id="axis_range_form" class="stats_modal_body">
           <div class="axis_range_columns">
             <div class="axis_range_column">
               <div class="axis_range_column_title">X-Axis</div>
@@ -597,9 +598,9 @@
           <div class="stats_modal_actions axis_range_actions">
             <button id="axis_range_reset" type="button" class="secondary_button">Reset</button>
             <button id="axis_range_cancel" type="button" class="secondary_button">Cancel</button>
-            <button id="axis_range_apply" type="button">Apply</button>
+            <button id="axis_range_apply" type="submit">Apply</button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
 
