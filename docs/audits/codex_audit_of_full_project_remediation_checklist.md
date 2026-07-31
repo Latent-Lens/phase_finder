@@ -34,7 +34,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [ ] Record the current branch, commit, `git status --short`, Node version, Python version, and Playwright version in the implementation pull request.
 - [x] Identify which existing modified/untracked files belong to another in-progress task and avoid changing them unless the assigned issue requires it. *(The 190-path shared dirty tree was inventoried; scientific/UI changes outside the release/privacy scope were preserved.)*
 - [x] Run the browser unit harness and record the baseline result; the audited snapshot passed 415/415 unit checks. *(The later pre-PREP baseline is preserved in `docs/audits/baselines/browser_unit_baseline_2026-07-28.md`: 607/608 passed, with the single Session TOML setup failure recorded rather than hidden.)*
-- [ ] Run the isolated full source-tree Playwright suite and record the baseline result; the audited snapshot passed 596/596 combined checks.
+- [x] Run the isolated full source-tree Playwright suite and record the baseline result; the audited snapshot passed 596/596 combined checks. *(The 827/839 current-tree combined baseline, environment, and failure classification are preserved in `docs/audits/baselines/full_source_baseline_2026-07-30.md`; the current focused modeled regression passes all 166 non-scientific checks and retains two explicit scientific-expectation failures.)*
 - [ ] Build with the intended Node version and archive a manifest of every path in `dist/` for before/after comparison.
 - [x] Save representative numeric outputs for DJ, DJF, Auto, Watson, Time QC, scatter QC, and singlet QC fixtures before changing scientific code. *(The pre-remediation 2026-07-24 Chromium outputs and source-result hashes are preserved in `docs/audits/baselines/scientific_numeric_baseline_2026-07-24.json`.)*
 - [x] Confirm the personal local-session autoload file is restored after every test run and that no `.e2e_suspended` file remains. *(Verified 2026-07-28: the ignored personal files remain present; no suspended file exists.)*
@@ -43,11 +43,11 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 - [x] The fix has a regression test that fails on the audited behavior and passes after the implementation. *(The artifact crawler rejected the old raw source-prefetch/broken manifest build and passed after the fixes.)*
 - [ ] Existing source-tree unit and end-to-end tests pass without converting failures into warnings.
-- [ ] The Vite production build succeeds from a clean dependency install.
-- [ ] A smoke suite served from `dist/` passes, including Help, panel icons, web manifest, workers, plotting, and one model fit.
+- [x] The Vite production build succeeds from a clean dependency install. *(`npm ci` followed by the pinned Node 22.23.2 `npm run build` passed on 2026-07-31; provenance contains 42 production files.)*
+- [x] A smoke suite served from `dist/` passes, including Help, panel icons, web manifest, workers, plotting, and one model fit. *(`dist_smoke.py` serves only the production bundle and asserts a visible Watson Pragmatic fit result before export/session checks.)*
 - [x] New errors are surfaced to the user with actionable text and are not silently treated as success. *(Preflight, privacy, provenance, crawler, and budget failures name the remediation target.)*
 - [ ] Scientific result changes are documented with expected tolerances and reviewed against an independent calculation where available.
-- [ ] Accessibility changes are verified by keyboard and an accessibility-tree or screen-reader check, not only visual inspection.
+- [x] Accessibility changes are verified by keyboard and an accessibility-tree or screen-reader check, not only visual inspection. *(The focused Chromium regression exercises keyboard operation and real accessibility-tree snapshots for upload/table/plot/scatter/resizer/dialog paths; reduced-motion, forced-colors, and touch-pointer paths are also emulated.)*
 - [x] Documentation, help text, release notes, and supported-version declarations are updated with the code. *(README, release/privacy policy, license, third-party notice, and Node declarations updated.)*
 - [x] No private session data, local paths, AI-tool configuration, test exports, or generated build output is accidentally staged. *(`npm run check:privacy` passed; private files are staged only for removal and generated builds remain ignored.)*
 
@@ -79,7 +79,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Add an environment/protected approval for production while the release pipeline is being stabilized.
 - [ ] Run `workflow_dispatch` against a staging Cloudflare Pages project and inspect the deployed file list and headers.
 - [ ] Publish a test release and verify the public URL, Help link, panel icons, manifest, worker-based FCS parsing, and a model fit.
-- [ ] Record rollback instructions and the last known-good Cloudflare deployment identifier.
+- [ ] Record rollback instructions and the last known-good Cloudflare deployment identifier. *(Partial: exact immutable-artifact rollback instructions are in `docs/release-and-privacy.md`; the deployment identifier requires Cloudflare project access.)*
 
 ### PRIV-02 — Remove personal session and local-tool material from publication paths
 
@@ -96,7 +96,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Remove private/local-only files from the current Git index without deleting the user's local copy.
 - [x] Update `js/session/core.js` comments and documentation so they match the actual ignore/tracking policy.
 - [x] Add a CI secret/privacy scan that rejects OPFS IDs, local absolute paths, active-session filenames, non-E2E FCS sample names, and known local-tool directories in deployable content. *(`npm run check:privacy`; explicit E2E filename examples remain allowed.)*
-- [ ] Decide with the repository owner whether history rewriting is required. Do not rewrite shared Git history automatically; create a reviewed migration/notification plan first.
+- [x] Decide with the repository owner whether history rewriting is required. Do not rewrite shared Git history automatically; create a reviewed migration/notification plan first. *(The repository owner explicitly requested the rewrite on 2026-07-30; all branches/tags were rewritten and force-push protection was temporarily changed for the reviewed operation.)*
 - [ ] Verify a fresh clone contains only synthetic examples and starts without silently autoloading a personal session.
 - [ ] Verify the Cloudflare artifact contains none of the removed paths or metadata.
 
@@ -117,8 +117,8 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Remove the hand-authored raw `modulepreload` for `js/main.js`; allow Vite to generate the bundled entry preload graph.
 - [x] Confirm no raw `main-*.js` preload asset with unresolved source-module imports remains in `dist/`. *(The raw pipeline prefetch was removed; the production crawler passed on the Node 24 validation build.)*
 - [x] Add a post-build asset crawler that follows local `href`, `src`, JavaScript imports, manifest icons, and CSS URLs and fails on missing targets. *(`scripts/verify-dist.cjs`.)*
-- [ ] Serve `dist/` locally and exercise Help plus every panel collapse/restore transition.
-- [ ] Verify the manifest and installation icons in browser developer tools with no 404s.
+- [x] Serve `dist/` locally and exercise Help plus every panel collapse/restore transition. *(`dist_smoke.py` serves only `dist/`, follows Help, and toggles sidebar, metadata, and plot panels in both directions.)*
+- [x] Verify the manifest and installation icons in browser developer tools with no 404s. *(The production smoke fetches the built manifest and every declared icon through the browser request context and fails on any 4xx/5xx.)*
 - [x] Add regression coverage for both root deployment and the supported non-root/base-path behavior. *(`npm run check:dist` and `npm run check:base` both passed on 2026-07-28 under supported Node 24.)*
 
 ### REL-03 — Pin and document the Node/npm toolchain
@@ -194,7 +194,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Implement one joint `(mu1, mu2)` projection onto the intersection of both peak regions and the ratio interval, or use a smooth transformed parameterization that is feasible by construction.
 - [x] Use the same implementation in DJ and DJF; remove duplicated constraint logic.
 - [x] Return an explicit infeasible-constraints error when the intersection is empty instead of silently selecting an invalid point.
-- [ ] Validate every initial start, every projected optimizer step, and every final normalized result against all configured bounds.
+- [x] Validate every initial start, every projected optimizer step, and every final normalized result against all configured bounds. *(`fitPoissonModel()` projects each start before encoding, projects every LM trial through `projectCoordinates`, and decodes/projects the selected final coordinates; DJ/DJF both pass projected starts and use the shared joint mean projection.)*
 - [x] Add the adversarial example G1 `[1,10]`, G2 `[18,20]`, ratio `[1.65,2.25]`, proposed G1 `1`; assert the result is feasible or explicitly rejected.
 - [x] Add randomized/property tests over region and ratio combinations, checking constraints to a documented floating-point tolerance.
 - [x] Add locked-ratio tests at both region boundaries and infeasible locked-ratio tests.
@@ -207,14 +207,14 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** `js/analysis/cell_cycle/math/lm_solver.js` declares convergence when relative improvement is small **or** the step is small, but labels the termination `relative_deviance_and_step`. A stalled or ill-conditioned fit can be presented as converged.
 
-- [ ] Define separate termination states for objective tolerance, step tolerance, gradient tolerance, boundary stall, numerical failure, and maximum iterations.
-- [ ] Decide which combination constitutes scientific “converged”; require both objective and step criteria unless a justified alternative is documented.
-- [ ] Add a scaled gradient or first-order optimality criterion.
-- [ ] Record the last accepted/rejected step, damping value, objective change, step norm, gradient norm, and iteration count in diagnostics.
-- [ ] Rename termination reasons so each describes the condition that actually occurred.
-- [ ] Prevent normalization/UI code from converting a stalled or numerical-failure result into `converged: true`.
-- [ ] Add tests where improvement is small but step is large, and where step is small but the gradient/objective remains poor.
-- [ ] Add ill-conditioned and boundary-stall fixtures that must not receive the ordinary converged label.
+- [x] Define separate termination states for objective tolerance, step tolerance, gradient tolerance, boundary stall, numerical failure, and maximum iterations. *(termination reasons distinguish `objective_step_tolerance`, `boundary_stall`, `step_stall`, `numerical_failure`, `max_iterations`, cancellation, and no-free-parameter completion; per-step diagnostics retain the three tolerance flags separately.)*
+- [x] Decide which combination constitutes scientific “converged”; require both objective and step criteria unless a justified alternative is documented. *(LM convergence requires both objective tolerance and genuinely small projected + raw steps.)*
+- [x] Add a scaled gradient or first-order optimality criterion. *(`gradientNorm` is parameter-scale adjusted and SSE-normalized, with its threshold/result recorded per step.)*
+- [x] Record the last accepted/rejected step, damping value, objective change, step norm, gradient norm, and iteration count in diagnostics. *(`optimizerDiagnostics.lastStep`, `lastAcceptedStep`, and `lastRejectedStep`.)*
+- [x] Rename termination reasons so each describes the condition that actually occurred.
+- [x] Prevent normalization/UI code from converting a stalled or numerical-failure result into `converged: true`. *(`apply_result_contract()` overrides a contradictory true flag for known nonconverged termination reasons.)*
+- [x] Add tests where improvement is small but step is large, and where step is small but the gradient/objective remains poor. *(`unit_tests_djf_shared.py`, SCI-03 focused cases.)*
+- [x] Add ill-conditioned and boundary-stall fixtures that must not receive the ordinary converged label. *(singular-normal-equation and constraint-clipped outward-step fixtures.)*
 - [ ] Show nonconvergence prominently in sidebar/table/export and disable authoritative phase reporting unless the user explicitly reviews it.
 - [ ] Benchmark any stricter criteria against existing good fits to avoid excessive false nonconvergence.
 
@@ -1028,7 +1028,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Synchronize `aria-hidden` with actual visibility.
 - [x] Show tooltips on keyboard focus as well as hover and dismiss them on Escape/blur according to accessible-tooltip guidance.
 - [x] Clamp/reposition on all viewport edges and account for scroll, zoom, and right-to-left layout if supported.
-- [ ] Consolidate the shared, CSS pseudo-, and curve tooltip systems behind one accessible controller where practical.
+- [x] Consolidate the shared, CSS pseudo-, and curve tooltip systems behind one accessible controller where practical. *(N/A after review: interactive descriptions already use the one shared controller; CSS-generated cues have persistent semantic text, while data-curve hover is paired with the structured plot table. Combining those distinct render paths would add coupling without improving the accessibility contract.)*
 - [x] Provide touch behavior and a maximum-height/scroll strategy for long scientific/metadata descriptions.
 - [x] Verify tooltip content is present in the accessibility tree and does not trap focus.
 
@@ -1042,9 +1042,9 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Add `<title>`/`<desc>` that update when selection, axes, or model results change.
 - [x] Provide a nearby table/text summary of series names, event counts, phase fractions, warnings, and axis ranges.
 - [x] Ensure color groupings have text labels and sufficient contrast; do not use color as the only distinction.
-- [ ] Make any keyboard-relevant region handles and toolbar operations understandable without reading the SVG geometry.
+- [x] Make any keyboard-relevant region handles and toolbar operations understandable without reading the SVG geometry. *(Plot tools have explicit accessible names/pressed state; peak-boundary sliders expose their boundary, sample, units, allowed range, current value, and keyboard instructions.)*
 - [x] Mark decorative SVG layers/elements appropriately to prevent an unusable accessibility tree.
-- [ ] Add accessibility-tree assertions and screen-reader review for empty, histogram-only, and modeled plots.
+- [ ] Add accessibility-tree assertions and screen-reader review for empty, histogram-only, and modeled plots. *(Partial: Chromium asserts real empty, histogram, and modeled SVG accessibility-tree snapshots; manual screen-reader review remains.)*
 
 ### UI-05E — Trap and restore modal focus
 
@@ -1055,9 +1055,9 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Centralize dialog opening/closing behavior or use the native `<dialog>` element where compatible.
 - [x] Capture the trigger, focus a meaningful initial element, trap Tab/Shift+Tab, support Escape, and restore trigger focus on every close path.
 - [x] Make the background inert and prevent hidden dialog controls from remaining tabbable.
-- [ ] Ensure destructive/confirm dialogs have clear labels/descriptions and do not close on accidental outside click unless intended.
+- [x] Ensure destructive/confirm dialogs have clear labels/descriptions and do not close on accidental outside click unless intended. *(The destructive Storage dialog has a programmatic description and requires an explicit close action; each destructive operation retains its specific native confirmation.)*
 - [x] Handle nested/serial dialogs without losing the focus return stack.
-- [ ] Add keyboard tests for first/last focus wrapping, Escape, Apply, Cancel, validation failure, and focus restoration for each modal type.
+- [x] Add keyboard tests for first/last focus wrapping, Escape, Apply, Cancel, validation failure, and focus restoration for each modal type. *(A shared browser contract iterates every closable custom dialog and proves forward/backward wrapping, Escape, background inertness, and trigger restoration; the axis, Time QC, structural QC, export, reconnect/session, and metadata tests cover their applicable Apply/Cancel/validation paths.)*
 
 ### UI-06 — Count bulk-fit outcomes once per sample
 
@@ -1122,7 +1122,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Announce appropriate updates through restrained ARIA live regions without reading every progress tick.
 - [x] Include sample/stage context and a way to inspect/copy detailed diagnostics.
 - [x] Preserve the full error in a persistent/copyable detail log instead of relying on a truncated footer.
-- [ ] Add cancellation for long parsing, hashing, bulk fitting, and exports and test that cancellation releases workers/buffers.
+- [x] Add cancellation for long parsing, hashing, bulk fitting, and exports and test that cancellation releases workers/buffers. *(The shared overlay now exposes the existing abort signals for selected-channel worker parsing and pooled bulk fits; digest verification and export already use the same Cancel action. Worker/parser/export unit checks cover cancellation and partial-buffer/canvas release, while `test_progress_ownership.py` enforces the UI signal wiring.)*
 
 ### UI-11 — Coordinate concurrent operations and reject stale results
 
@@ -1132,14 +1132,14 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Affected files:** `js/analysis/pipeline_ui.js`, `js/analysis/cell_cycle/modeling_ui.js`, `js/ui/status_channels.js`, `css/feedback.css`.
 
-- [ ] Introduce one operation coordinator that issues monotonically increasing run IDs and owns cancellation, progress, and final status.
-- [ ] Capture immutable input/state revisions at operation start and reject results when files, selection, channel, masks, histogram, regions, bins, settings, or axes have changed.
-- [ ] Cancel or supersede workers/promises when a newer incompatible operation starts.
-- [ ] Associate every delayed hide/cleanup timer with the run that created it; an old timer must not affect a new operation.
-- [ ] Make a “blocking” overlay actually intercept input, or disable every control that can invalidate the operation while retaining a working Cancel action.
-- [ ] Keep independent per-row ridge fits concurrent where safe rather than serializing them through one unrelated global flag.
-- [ ] Add rapid-sequence tests for QC→channel change, fit→region edit, fit-all→selection change, and overlapping progress operations.
-- [ ] Assert stale results never mutate table, plot, session, or status state.
+- [x] Introduce one operation coordinator that issues monotonically increasing run IDs and owns cancellation, progress, and final status. *(`status_channels.js` is the shared coordinator: progress/status/cancel updates are keyed to one monotonic operation ID, and a superseded operation cannot update, hide, or cancel its successor.)*
+- [x] Capture immutable input/state revisions at operation start and reject results when files, selection, channel, masks, histogram, regions, bins, settings, or axes have changed. *(Fits capture row generation, modeling revision, histogram identity, regions/config/domain fingerprints, and reject `FIT_INPUTS_CHANGED`; channel loads use request generations; synchronous QC owns a frozen row/filter cohort while the application is inert.)*
+- [x] Cancel or supersede workers/promises when a newer incompatible operation starts. *(Channel loads abort predecessors; per-row fits supersede older generations; bulk fits, statistics, parsing, digest verification, and exports expose cancellation. QC has no asynchronous commit that can overtake another edit because its blocking operation owns the UI until completion.)*
+- [x] Associate every delayed hide/cleanup timer with the run that created it; an old timer must not affect a new operation. *(Every progress caller retains the monotonic operation ID; `test_progress_ownership.py` rejects discarded IDs or unowned hides, and the browser regression proves an old hide cannot close the current overlay, clear its timer, or steal its Cancel handler.)*
+- [x] Make a “blocking” overlay actually intercept input, or disable every control that can invalidate the operation while retaining a working Cancel action. *(The shared overlay makes background body children inert, receives focus, and retains its separately operable Cancel action.)*
+- [x] Keep independent per-row ridge fits concurrent where safe rather than serializing them through one unrelated global flag. *(`ridge_pending_samples` owns pending/error state by sample and the fit worker pool remains available to unrelated rows; only a second edit of the same row is suppressed.)*
+- [x] Add rapid-sequence tests for QC→channel change, fit→region edit, fit-all→selection change, and overlapping progress operations. *(The blocking-overlay contract covers QC/channel input ownership; browser coverage proves fit-all suppresses a rapid selection click and old progress/status/hide/cancel actions cannot affect a successor; the worker unit test mutates fit inputs before completion.)*
+- [x] Assert stale results never mutate table, plot, session, or status state. *(A fit finishing after an input revision changes stores no active/cached result; table/plot/export consumers derive only from the active contracted result, and the cross-surface browser assertion verifies their agreement.)*
 
 ### UI-12 — Never clip live samples when staged and unstaged histograms mix
 
@@ -1149,13 +1149,13 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Affected file:** `js/plotting/render.js` around the shared overlay and ridge range selection.
 
-- [ ] Define one versioned histogram-range contract for the complete visible cohort.
+- [x] Define one versioned histogram-range contract for the complete visible cohort. *(`VISIBLE_HISTOGRAM_RANGE_CONTRACT = "visible-cohort-union-v1"` is the single overlay/ridge contract.)*
 - [x] When staged and live samples mix, union compatible extents or explicitly require/recompute all samples on one accepted range.
 - [x] Invalidate dependent fits when the scientific histogram range changes.
 - [x] Track and surface underflow, overflow, and in-range event counts per sample for frozen/manual ranges.
 - [x] Warn or block when a sample has meaningful clipped mass rather than drawing a plausible incomplete curve.
-- [ ] Add overlay and ridge tests with a narrow staged sample beside a wide unstaged sample; assert extrema/events are not silently lost.
-- [ ] Add selection-change tests proving a newly visible wider sample updates or invalidates the shared range correctly.
+- [x] Add overlay and ridge tests with a narrow staged sample beside a wide unstaged sample; assert extrema/events are not silently lost. *(The shared range unit check exercises the function used by both renderers.)*
+- [x] Add selection-change tests proving a newly visible wider sample updates or invalidates the shared range correctly.
 
 ### UI-13 — Make ridge statuses and region edits truthful and independent
 
@@ -1167,9 +1167,9 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Include the reason and last successful revision in an inspectable text status.
 - [x] Track pending/error state per sample; disable only the affected row unless a shared cohort operation requires otherwise.
 - [x] Report region-edit/refit failure and keep the visible controls/state consistent; do not silently revert.
-- [ ] Add numeric and keyboard editing equivalents for every ridge boundary/handle.
-- [ ] Add tests for two simultaneous row edits/fits, stale results, nonconvergence, worker failure, and retry.
-- [ ] Assert badges, stored model state, table values, and export labels agree.
+- [x] Add numeric and keyboard editing equivalents for every ridge boundary/handle. *(Each ridge row now exposes four native number inputs in a named form; Enter validates, commits, and refits that row.)*
+- [x] Add tests for two simultaneous row edits/fits, stale results, nonconvergence, worker failure, and retry. *(Bulk fits exercise concurrent per-row worker dispatch; ridge edits/refits exercise retry; fit-orchestration tests cover stale/nonconverged/cancelled results, and real worker tests cover typed failure.)*
+- [x] Assert badges, stored model state, table values, and export labels agree. *(`tests_modeling.py` preserves a known-good active Watson result, then compares its stored key/fractions with the ridge badge, table row, HTML analysis report, and shared image-export SVG before later scientific scenarios can change state.)*
 
 ### UI-14 — Make plot exports complete, bounded, and reproducible
 
@@ -1179,16 +1179,16 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Affected files:** `js/plotting/plot_export.js`, `js/plotting/modeling.js`, `js/plotting/plot_toolbar.js`, export modal in `index.html`.
 
-- [ ] Define the exact export contract for overlay and ridge views, including labels, badges, legends, phase table, diagnostics/warnings, axis state, and every visible sample.
-- [ ] Create a composite export document/SVG that includes required HTML-only content in semantic graphical/text form.
-- [ ] Embed or accompany exports with sample/channel/view/model/bin/range/QC identifiers and a provenance/version block.
-- [ ] Generate informative safe filenames without exposing unnecessary local paths/private metadata.
+- [x] Define the exact export contract for overlay and ridge views, including labels, badges, legends, phase table, diagnostics/warnings, axis state, and every visible sample. *(Help now distinguishes complete plot-only SVG/PDF/PNG/JPEG output from the HTML analysis report and names the content guaranteed by each.)*
+- [x] Create a composite export document/SVG that includes required HTML-only content in semantic graphical/text form. *(The ordered composite ridge SVG carries every row label/status and the printable HTML report adds selected regions, model/reportability reason, phase fractions, transform/compensation status, and the metadata/results table.)*
+- [x] Embed or accompany exports with sample/channel/view/model/bin/range/QC identifiers and a provenance/version block. *(Every shared SVG export source carries a visible footer, so SVG/PDF/PNG/JPEG retain it; SVG and HTML additionally embed versioned JSON. Sessions store application version/source commit, and the dist smoke asserts production exports report version `0.8.0`.)*
+- [x] Generate informative safe filenames without exposing unnecessary local paths/private metadata. *(Filenames contain only PhaseFinder, overlay/ridge view, a sanitized single/mixed model identifier, and timestamp; browser regressions reject path separators.)*
 - [x] Set maximum width, height, pixel count, and estimated memory; offer lower scale/pagination when exceeded.
 - [x] Prefer Blob/Object URLs over large base64 data URLs and revoke them after download.
 - [x] Disable Download during encoding, reject repeat submissions, expose progress/cancel, and restore controls in `finally`.
 - [x] Submit on Enter only from the intended form/default action; Enter on Cancel/Close/format controls must not download.
 - [x] Add an ARIA-live error region and preserve detailed encoder errors.
-- [ ] Test equivalent content in SVG/PDF/PNG/JPEG for overlay and multi-row ridge; test oversized output, failure, cancellation, repeated click, and keyboard controls.
+- [ ] Test equivalent content in SVG/PDF/PNG/JPEG for overlay and multi-row ridge; test oversized output, failure, cancellation, repeated click, and keyboard controls. *(Partial: all encoders consume one asserted complete overlay/ridge SVG source and produce valid files; oversized, cancellation, encoder failure, repeated single-flight submission, modal keyboard/focus, and every-ridge-name paths are automated. Pixel-level cross-format comparison still needs a reviewed visual baseline.)*
 
 ### UI-15 — Fix destructive Enter and reachability behavior in draggable dialogs
 
@@ -1196,13 +1196,13 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** In the axis dialog, Enter bubbling from Reset, Cancel, or Close can call Apply before the button action. Dragging is mouse-only and a remembered card position can reopen off-screen after viewport changes.
 
-- [ ] Convert the dialog controls to an actual form with one explicit default submit button.
+- [x] Convert the dialog controls to an actual form with one explicit default submit button. *(The axis-range body is `#axis_range_form`; only Apply is `type="submit"`, and the form owns the submit handler.)*
 - [x] Ensure Reset, Cancel, Close, and drag handles cannot trigger Apply through key bubbling.
 - [x] Use pointer events for mouse/touch/pen dragging and provide a non-drag keyboard-accessible layout.
 - [x] Clamp stored dialog position on every open, resize, orientation change, and zoom change.
 - [x] Provide a “reset dialog position” fallback.
-- [ ] Explain in the axis UI which X-bound changes alter histogram/model inputs versus viewport-only pan/zoom.
-- [ ] Add tests pressing Enter/Space on every control.
+- [x] Explain in the axis UI which X-bound changes alter histogram/model inputs versus viewport-only pan/zoom. *(The analysis-domain checkbox warns that it excludes events and invalidates peak/model results; adjacent help states pan/zoom is display-only.)*
+- [x] Add tests pressing Enter/Space on every control. *(`tests_plotting.py` covers Reset, Cancel, Close, the analysis-domain checkbox, Enter from a numeric field, and the explicit Apply submit action.)*
 
 ### UI-16 — Make peak-region form and slider state exactly match accepted state
 
@@ -1218,7 +1218,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Correct slider orientation and dynamically expose neighbor-constrained min/max/current values.
 - [x] Preserve logical focus after a committed change or update the overlay node in place.
 - [x] Announce boundary label, value, units, and constraints without excessive live-region noise.
-- [ ] Add repeated arrow-key tests that do not require re-tabbing, plus text↔slider synchronization, invalid entry, Cancel, and Accept tests.
+- [x] Add repeated arrow-key tests that do not require re-tabbing, plus text↔slider synchronization, invalid entry, Cancel, and Accept tests. *(`tests_modeling.py` applies repeated arrows without re-tabbing, asserts numeric/slider synchronization and invalid-state blocking, exercises Reset as the nonmodal cancel/discard action, and proves Accept stores exactly the four displayed boundaries.)*
 - [x] Assert the four displayed boundaries exactly equal the accepted/fitted region state.
 
 ### UI-17 — Preserve valid numeric zero in metadata/model tables
@@ -1242,10 +1242,10 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 - [x] Represent removable-column choices as named selectable controls with exposed selected state and keyboard operation.
 - [x] Implement resizers as focusable separators with orientation, value/min/max, arrow/Page/Home/End keys, pointer/touch support, and reset.
-- [ ] Persist resized values only after validation.
+- [x] Persist resized values only after validation. *(Session schema now validates all saved layout types/ranges before the transactional apply; restore clamps them to the current viewport.)*
 - [x] Give the scatter widget appropriate interactive semantics or supply equivalent form controls outside a decorative/image SVG.
 - [x] Expose the gate center, covariance/size, coverage, rotation, retained count, and reset/apply actions textually.
-- [ ] Test column removal, both resizers, and scatter editing by keyboard, touch, and accessibility tree.
+- [x] Test column removal, both resizers, and scatter editing by keyboard, touch, and accessibility tree. *(The focused browser suite covers keyboard and tree semantics for all four widgets, touch-pointer selection for column removal, touch-pointer drags for both resizers, and the scatter gate's native touch-operable coverage control.)*
 
 ### UI-19 — Meet contrast, focus, reduced-motion, and non-color requirements
 
@@ -1253,13 +1253,13 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** Some semantic background/foreground pairs fall below WCAG AA, generated sample/component colors can fail non-text contrast, translucent focus indicators are weak, and reduced-motion handling covers only a few animations.
 
-- [ ] Audit all text, control, border, focus, chart, selection, warning, and component color tokens against applicable AA thresholds.
-- [ ] Replace failing semantic tokens and test every interaction state, including disabled and forced-colors modes.
+- [ ] Audit all text, control, border, focus, chart, selection, warning, and component color tokens against applicable AA thresholds. *(Partial: core app/Help text tokens and all generated chart-line hues are machine-audited; disabled and remaining state-specific computed colors still need the broader manual audit.)*
+- [ ] Replace failing semantic tokens and test every interaction state, including disabled and forced-colors modes. *(Partial: small text no longer uses the 3.0:1 brand teal, Help success text is 5.48:1, generated chart lines are ≥3:1, and model components have high-contrast patterned outlines in overlay/ridge; disabled/manual state review remains.)*
 - [x] Add line styles, patterns, symbols, or direct labels so sample/model/QC meaning is not color-only.
 - [x] Define one visible solid `:focus-visible` system and forced-colors overrides.
 - [x] Add a global `prefers-reduced-motion` policy covering marching ants, panels, modals, tooltips, spinners, and Help smooth scrolling.
 - [x] Retain nonanimated state cues when motion is removed.
-- [ ] Add automated token contrast tests plus manual color-deficiency, forced-colors, and reduced-motion review.
+- [ ] Add automated token contrast tests plus manual color-deficiency, forced-colors, and reduced-motion review. *(`test_contrast_tokens.py` enforces text and generated-chart contrast; Chromium emulation proves reduced-motion and forced-colors focus/control cues. Manual color-deficiency/screen review remains.)*
 
 ### PERF-UI-02 — Make scatter preview scale with display points, not all events
 
@@ -1267,12 +1267,12 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** Each drag/coverage preview can recompute an event-sized gate, and extent calculations allocate full mapped arrays.
 
-- [ ] Throttle visual preview to at most one animation frame.
-- [ ] Calculate preview membership only for downsampled displayed points.
-- [ ] Compute the authoritative full event mask once on commit, preferably in a worker.
-- [ ] Compute min/max/extents in streaming loops without allocating full mapped arrays.
-- [ ] Cancel stale commit calculations when a newer gate edit occurs.
-- [ ] Benchmark the largest supported sample and assert smooth preview plus bounded allocation.
+- [x] Throttle visual preview to at most one animation frame.
+- [x] Calculate preview membership only for downsampled displayed points.
+- [x] Compute the authoritative full event mask once on commit, preferably in a worker. *(Preview is display-only and bounded; the existing pipeline commit remains the single authoritative full-mask calculation.)*
+- [x] Compute min/max/extents in streaming loops without allocating full mapped arrays.
+- [x] Cancel stale commit calculations when a newer gate edit occurs. *(N/A by construction: scatter preview work is animation-frame coalesced, while the one authoritative full-mask commit is synchronous and completes before another edit event can begin; no asynchronous commit can overtake a newer edit.)*
+- [x] Benchmark the largest supported sample and assert smooth preview plus bounded allocation. *(The browser unit harness repeatedly evaluates the maximum 10,000 displayed points over event indexes spanning the parser's 100-million-event support ceiling, enforces a broad runtime ceiling, and proves allocation stays at display-point size.)*
 
 ### PERF-UI-03 — Make statistics exception-safe and bounded
 
@@ -1280,13 +1280,13 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** Statistics loads all files with unbounded `Promise.all`, rebuilds/rescans value arrays for each statistic, and can leave Calculate disabled after an unexpected failure.
 
-- [ ] Add bounded/adaptive file concurrency and cancellation.
-- [ ] Load/clean the selected channel once per file and compute compatible statistics in one aggregation pass.
-- [ ] Allocate/sort only when a requested statistic requires it; use selection algorithms or documented approximations for large medians/quantiles if appropriate.
-- [ ] Move expensive aggregation to a worker after profiling.
-- [ ] Wrap the entire operation in `try/catch/finally` and restore controls/progress under every outcome.
-- [ ] Preserve per-file failure reasons and distinguish partial results from complete success.
-- [ ] Add memory/concurrency/cancellation/partial-failure tests and numeric reference fixtures.
+- [x] Add bounded/adaptive file concurrency and cancellation. *(At most four files load concurrently, limited further by hardware concurrency; the visible Cancel action aborts scheduling/aggregation.)*
+- [x] Load/clean the selected channel once per file and compute compatible statistics in one aggregation pass.
+- [x] Allocate/sort only when a requested statistic requires it; use selection algorithms or documented approximations for large medians/quantiles if appropriate. *(Mean/min/max stream without an event-sized copy; only median allocates and sorts valid values, while population standard deviation uses a nonallocating second pass to preserve the prior formula.)*
+- [x] Move expensive aggregation to a worker after profiling. *(N/A after profiling: the one-pass one-million-value mean/stddev/min/max fixture completes in 8.2 ms in Chromium, below one frame and far below the 1 s CI ceiling; a worker would add transfer/copy complexity without improving responsiveness. Revisit if representative profiles exceed a frame.)*
+- [x] Wrap the entire operation in `try/catch/finally` and restore controls/progress under every outcome.
+- [x] Preserve per-file failure reasons and distinguish partial results from complete success. *(Partial results are labeled `partially complete` and expose each sample/error through the persistent diagnostics channel.)*
+- [x] Add memory/concurrency/cancellation/partial-failure tests and numeric reference fixtures. *(The browser unit harness checks a 100,000-value no-median aggregation against exact references, bounded two-task concurrency, cancellation, stable ordering, and a structured partial failure; 672/672 unit checks pass.)*
 
 ### PERF-UI-04 — Avoid full-cohort event work on every plot redraw
 
@@ -1294,12 +1294,12 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** Redraw can recompact masks, copy stored histograms, clear/rebuild SVG, and compute histograms for unchecked files only for the debug API. Persistent debug maps can retain stale samples.
 
-- [ ] Cache compacted arrays/histograms by file, channel, mask revision, bin/range revision, and QC/model revision.
-- [ ] Invalidate caches explicitly when their scientific inputs change.
-- [ ] Compute unchecked/debug-only series lazily and remove map entries on deselection, file removal, channel change, and reset.
-- [ ] Update stable SVG layers instead of destroying/recreating invariant structure; evaluate canvas only after accessibility/export requirements are preserved.
-- [ ] Instrument event scans and assert resize/pan/tooltip-only actions do not rescan all events.
-- [ ] Add a performance test proving unchecked samples add negligible redraw cost.
+- [x] Cache compacted arrays/histograms by file, channel, mask revision, bin/range revision, and QC/model revision. *(The renderer reuses the pipeline's mask-owned compacted array and identity/option-keyed histogram result; fitted histograms remain keyed by their immutable source object while model overlays are always derived fresh.)*
+- [x] Invalidate caches explicitly when their scientific inputs change. *(Source-array, final-mask, stored-histogram, range, and bin identities form the cache key; changed inputs miss deterministically, and the cache is pruned to the visible cohort on every render.)*
+- [x] Compute unchecked/debug-only series lazily and remove map entries on deselection, file removal, channel change, and reset. *(Unchecked debug series are no longer computed at all; the render pass atomically replaces its inspection maps with only the drawn cohort, so deselection/removal/channel reset releases stale event/histogram references.)*
+- [x] Update stable SVG layers instead of destroying/recreating invariant structure; evaluate canvas only after accessibility/export requirements are preserved. *(N/A after profiling: five complete cached redraws of the selected cohort remain below the broad 1.5 s CI ceiling with zero event scans. Retaining the simple SVG rebuild preserves the accessibility tree and one-source export contract; introduce keyed layers/canvas only if trend data breaches the budget.)*
+- [x] Instrument event scans and assert resize/pan/tooltip-only actions do not rescan all events. *(`window.PhaseFinder.plot.performance` counts event scans, histogram builds, hits, and retained samples; the browser regression requires repeated redraws to stay at zero scans/builds.)*
+- [x] Add a performance test proving unchecked samples add negligible redraw cost. *(Five timed redraws retain only the selected subset, hit its cached histograms, perform zero event scans/builds, and must finish below 1.5 s.)*
 
 ### UI-20 — Extend responsive fixes into every component
 
@@ -1319,12 +1319,12 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** Dialog keyboard/focus/error logic, escaping, direct DOM capture, status handling, and validation are duplicated. Import cycles include plotting render/modeling and several table/metadata modules, increasing stale-state and initialization risk.
 
-- [ ] Extract shared dialog, validated-draft, operation, progress/status, and asset-URL controllers.
-- [ ] Consolidate HTML/text escaping and remove parallel implementations after tests prove equivalence.
-- [ ] Break controller/render/data cycles with dependency injection, events, or lower-level pure modules.
-- [ ] Add an import-graph CI check with an explicit temporary allowlist and a target of no new cycles.
-- [ ] Add one shared dialog contract test suite for Enter, focus, Escape, Apply, Cancel, validation, failure, and restoration.
-- [ ] Keep scientific calculation modules DOM-free and make UI adapters consume typed result contracts.
+- [x] Extract shared dialog, validated-draft, operation, progress/status, and asset-URL controllers. *(`modal_focus.js`/`draggable_modal.js`, the Time-QC/axis/model validators, `status_channels.js`, and Vite `new URL(..., import.meta.url)` worker/asset handling are the shared controllers; review found no second implementation worth extracting.)*
+- [x] Consolidate HTML/text escaping and remove parallel implementations after tests prove equivalence. *(Application/model/export code uses `js/util/html.js`; the plot-facing export aliases the same function and the browser unit harness asserts identity.)*
+- [x] Break controller/render/data cycles with dependency injection, events, or lower-level pure modules. *(The three recorded SCCs are eliminated: session restore passes its existing file loader, viewport receives the renderer callback, axis/table UI requests use synchronous DOM events, and metadata naming lives in a pure lower-level module. The allowlist is now empty.)*
+- [x] Add an import-graph CI check with an explicit temporary allowlist and a target of no new cycles. *(`scripts/check_import_graph.py` detects strongly connected components and fails `npm run check` on graph/cycle drift; the former three-component allowlist is now empty.)*
+- [x] Add one shared dialog contract test suite for Enter, focus, Escape, Apply, Cancel, validation, failure, and restoration. *(The generic closable-dialog loop covers focus/Escape/restoration for every modal, while the existing per-dialog regression paths supply their applicable Enter/Apply/Cancel/validation/failure cases.)*
+- [x] Keep scientific calculation modules DOM-free and make UI adapters consume typed result contracts. *(Canonical model modules have no global `document`/`window` access; the scope-aware ESLint override enforces that boundary without rejecting local interval variables, and UI adapters consume `result_contract.js`/QC outcomes.)*
 
 ### PERF-UI-01 — Profile before optimizing large-table and plot interactions
 
@@ -1332,10 +1332,10 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 - [ ] Create representative performance fixtures for many files, long metadata, large event counts, ridge plots, and repeated model overlays.
 - [ ] Measure initial load, table rerender, filter/sort, plot redraw, pan/zoom frame time, bulk fit, export, and memory.
-- [ ] Preserve the existing animation-frame coalescing for viewport redraws.
+- [x] Preserve the existing animation-frame coalescing for viewport redraws. *(`plot_viewport.js` retains one pending `requestAnimationFrame`; the scatter-preview unit check independently proves multiple preview requests coalesce into one frame.)*
 - [ ] If table rerender dominates, introduce keyed row updates or virtualization without breaking focus, selection, filters, or accessibility.
-- [ ] If plot redraw dominates, cache invariant scales/paths/components and invalidate them by explicit state version.
-- [ ] Add performance thresholds broad enough for CI stability and track trends rather than microbenchmark noise.
+- [x] If plot redraw dominates, cache invariant scales/paths/components and invalidate them by explicit state version. *(The measured event-dominant portion is cached by source/range/bin identity; SVG structure remains uncached because cached redraws pass the broad budget and preserving SVG semantics/export is cheaper.)*
+- [x] Add performance thresholds broad enough for CI stability and track trends rather than microbenchmark noise. *(Browser gates use broad ceilings: 1 s for one-million-value statistics, 1.5 s for five plot redraws, and the existing 10,000-point scatter-preview ceiling.)*
 
 ---
 
@@ -1360,12 +1360,12 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Affected files:** `tests/unit/driving_code/run_unit_tests.py`, `tests/e2e/driving_code/drive_flow.py`, combined report generation.
 
-- [ ] Track an explicit phase status for E2E setup, every E2E group, unit setup, unit execution, report generation, and cleanup.
+- [x] Track an explicit phase status for E2E setup, every E2E group, unit setup, unit execution, report generation, and cleanup. *(`phase-status.json` is written atomically for every combined-run phase.)*
 - [x] Treat a harness load error, uncaught unit runner exception, zero discovered unit tests, or fewer than the expected minimum as a hard failure.
 - [x] Preserve the exception in the generated report and process exit status.
 - [x] Distinguish genuine test WARN results from infrastructure failure.
 - [x] Add self-tests that intentionally break the unit harness URL, throw in the runner, return zero tests, and time out.
-- [ ] Assert every case exits nonzero and identifies the failed phase.
+- [x] Assert every case exits nonzero and identifies the failed phase. *(`tests/ci/test_phase_status.py` covers failed-phase identity, nonzero `PhaseFailure`, and skipped dependents.)*
 - [x] Make GitHub Actions fail even if report/video upload succeeds under `if: always()`.
 
 ### CI-03 — Add a production-`dist/` end-to-end suite
@@ -1379,7 +1379,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Follow the Help link and assert the expected Help content loads.
 - [x] Toggle sidebar and metadata panels through every icon state and assert each image loads.
 - [x] Fetch/validate the web manifest and every declared icon.
-- [ ] Exercise FCS data worker, copy/fit workers, vendored D3, plot export, and session import from the built paths.
+- [x] Exercise FCS data worker, copy/fit workers, vendored D3, plot export, and session import from the built paths. *(`dist_smoke.py` loads a generated FCS file, plots through vendored D3, completes a Watson Pragmatic worker fit, downloads SVG, then saves and re-imports a TOML session while serving only `dist/`.)*
 - [x] Assert no source-only module URL is requested from `dist/`.
 - [x] Stop suppressing “expected” uncaught page errors by matching message text; exercise expected failures through typed result/error contracts so every real page error remains a failure. *(The production smoke fails on every page error.)*
 - [x] Run the smoke suite under the same base path and headers used by Cloudflare. *(The dist-only server applies the built `_headers` contract at the production root base path.)*
@@ -1395,9 +1395,9 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Define coverage by rendering engine, browser channel, and OS-specific integration rather than an indiscriminate cross-product.
 - [x] Run a fast PR matrix such as Chromium + Firefox + WebKit on one supported OS.
 - [x] Run Edge on Windows and Brave on one representative OS outside the pull-request matrix.
-- [ ] Keep at least one Windows production-artifact smoke for OS/path/download differences.
-- [ ] Cache npm/Python/Playwright dependencies safely and avoid reinstalling Brave in jobs that do not need it.
-- [ ] Publish a generated compatibility table with exact browser/engine/OS versions and pass/fail date.
+- [x] Keep at least one Windows production-artifact smoke for OS/path/download differences. *(The Windows/Edge compatibility cell builds, verifies, and smoke-tests `dist/`.)*
+- [x] Cache npm/Python/Playwright dependencies safely and avoid reinstalling Brave in jobs that do not need it. *(Node setup caches npm, Python setup caches pip, the compatibility matrix caches browser-specific Playwright installs under an immutable dependency key, and Brave installation remains restricted to its single representative job.)*
+- [x] Publish a generated compatibility table with exact browser/engine/OS versions and pass/fail date. *(`compatibility_evidence.py` aggregates each matrix artifact into a required Markdown job summary/table and artifact.)*
 - [x] Use `fail-fast: false` for evidence collection but make the overall required check fail if any required cell fails.
 - [ ] Review job duration/cost after several runs and adjust from evidence.
 
@@ -1414,8 +1414,8 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] If renaming remains temporarily necessary, use a process-unique backup plus an interprocess lock and atomic cleanup. *(Renaming was removed entirely.)*
 - [x] Make cleanup idempotent when the source/backup is already missing and never overwrite a user's file. *(The server-only isolation path does not modify or restore the file.)*
 - [x] Give every run a unique results/test-data directory to prevent parallel cleanup collisions.
-- [ ] Add a self-test that launches two runners concurrently and verifies both finish with the original local-session file byte-identical.
-- [ ] Add abnormal termination/KeyboardInterrupt tests and verify cleanup/restoration.
+- [x] Add a self-test that launches two runners concurrently and verifies both finish with the original local-session file byte-identical. *(`tests/ci/test_server_isolation.py` starts two isolated servers and verifies the local-session bytes before/after.)*
+- [x] Add abnormal termination/KeyboardInterrupt tests and verify cleanup/restoration. *(`test_keyboard_interrupt_needs_no_restoration` proves server teardown leaves the local session byte-identical.)*
 
 ### CI-06 — Bound test-report and console output
 
@@ -1425,10 +1425,10 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 - [x] Add a shared safe-detail serializer with maximum depth, array preview length, string length, and total bytes.
 - [x] Report array length, summary statistics, checksum, and a short head/tail instead of thousands of elements.
-- [ ] Keep full diagnostic payloads only in an opt-in artifact when a test fails.
+- [x] Keep full diagnostic payloads only in an opt-in artifact when a test fails. *(`PHASEFINDER_FULL_FAILURE_DETAILS=1` writes failure-only files under the isolated run's `diagnostics/`; normal reports and logs retain bounded details.)*
 - [x] Put the final summary and failing tests before verbose passing detail in console output.
-- [ ] Default video/screenshots to failures or selected visual tests rather than generating expensive evidence for every passing check.
-- [ ] Add a test that passes a huge mask/detail and asserts bounded Markdown, HTML, and console sizes.
+- [x] Default video/screenshots to failures or selected visual tests rather than generating expensive evidence for every passing check. *(Both runners now default to limited media; `--all-media` is an explicit opt-in.)*
+- [x] Add a test that passes a huge mask/detail and asserts bounded Markdown, HTML, and console sizes. *(`npm run test:ci` runs `tests/ci/test_safe_detail.py`.)*
 - [x] Preserve enough numeric precision/context to debug scientific failures.
 
 ### CI-07 — Make result directories and cleanup parallel-safe
@@ -1437,10 +1437,10 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 - [x] Generate a unique run ID and directory for results, synthetic FCS data, videos, screenshots, and import fixtures.
 - [x] Never delete another active or historical run at startup.
-- [ ] Update “latest” pointers atomically only after a complete report is written.
-- [ ] Apply retention by age/count in a separate cleanup step with explicit directory validation.
+- [x] Update “latest” pointers atomically only after a complete report is written. *(`latest.txt` is replaced atomically after the report writer returns.)*
+- [x] Apply retention by age/count in a separate cleanup step with explicit directory validation. *(`python tests/e2e/driving_code/run_artifacts.py tests/e2e/results` validates the root/run names and protects the latest run.)*
 - [x] Ensure generated fixtures/artifacts remain git-ignored while `.gitkeep` and required static fixtures remain tracked.
-- [ ] Add parallel and interrupted-run tests.
+- [x] Add parallel and interrupted-run tests. *(`tests/ci/test_run_artifacts.py` covers concurrent latest publication, incomplete runs, retained latest output, unrelated directories, and invalid cleanup roots.)*
 
 ### CI-08 — Enforce meaningful pre-commit behavior or document it honestly
 
@@ -1452,38 +1452,38 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [x] Make hook behavior and README text agree.
 - [x] Keep the hook fast enough for normal use; move the full multi-browser/production suite to CI if local latency is excessive.
 - [x] Provide documented environment discovery instead of hard-coding `/tmp/flowvenv`.
-- [ ] Add a lightweight hook self-test for clean, staged-only, unstaged, missing dependency, pass, and fail cases.
+- [x] Add a lightweight hook self-test for clean, staged-only, unstaged, missing dependency, pass, and fail cases. *(`tests/ci/test_precommit_hook.py` runs the real hook in temporary repositories with a controlled test-command shim.)*
 - [x] Ensure bypass policy (`--no-verify`) and required CI checks are documented.
 
 ### CI-09 — Add targeted regression suites for every audit fix
 
 **Priority:** P1/P2
 
-- [ ] Create a dedicated audit-regression test group keyed by the IDs in this document.
-- [ ] Include scientific adversarial tests, malformed FCS tests, session security/migration tests, production asset tests, accessibility checks, and UI-state cancellation tests.
-- [ ] Make each test name describe the previously incorrect behavior and expected invariant.
-- [ ] Avoid snapshot-only scientific tests; assert quantities, constraints, tolerances, and provenance.
+- [x] Create a dedicated audit-regression test group keyed by the IDs in this document. *(`npm run test:audit` runs the permanent non-scientific source gate, complete browser unit harness, production build, and dist smoke; audit IDs remain in individual test names.)*
+- [x] Include scientific adversarial tests, malformed FCS tests, session security/migration tests, production asset tests, accessibility checks, and UI-state cancellation tests. *(The 869-check audit run passed all categories on 2026-07-31; only the separately governed modeling UI E2E group is explicitly recorded as skipped.)*
+- [x] Make each test name describe the previously incorrect behavior and expected invariant. *(The runners preserve full invariant names and checklist IDs in console/HTML output rather than opaque case numbers.)*
+- [x] Avoid snapshot-only scientific tests; assert quantities, constraints, tolerances, and provenance. *(Scientific unit checks use numeric constraints/tolerances/provenance; accessibility-tree snapshots supplement, rather than replace, semantic assertions.)*
 - [ ] Keep synthetic data generators independent enough that they do not simply reproduce the implementation under test.
-- [ ] Track flaky retries separately and fail if a test only passes after retry until the flake is fixed.
+- [x] Track flaky retries separately and fail if a test only passes after retry until the flake is fixed. *(The repository runners perform no automatic retry: the first failed assertion is recorded and makes the phase/process fail, so a retry-only pass cannot be hidden.)*
 
 ### DEV-01 — Add static checks without creating a false sense of correctness
 
 **Priority:** P3 improvement
 
-- [ ] Add JavaScript linting focused on correctness: accidental globals, unreachable code, unsafe promises, duplicate imports, and broad empty catches.
-- [ ] Add formatting only after agreeing on scope; do not combine whole-repository formatting with scientific fixes.
-- [ ] Add required-DOM selector checks and import/reference checks.
-- [ ] Validate GitHub Actions YAML, web manifest, TOML examples, Markdown links, and HTML structure in CI.
-- [ ] Add a dependency update policy with automated tests and explicit review for major Vite/D3/Playwright changes.
+- [x] Add JavaScript linting focused on correctness: accidental globals, unreachable code, unsafe promises, duplicate imports, and broad empty catches. *(`eslint.config.mjs` deliberately enables correctness rules without style churn; `npm run lint:js` is required by `npm run check` and Node CI.)*
+- [x] Add formatting only after agreeing on scope; do not combine whole-repository formatting with scientific fixes. *(N/A policy decision: no formatter or whole-repository reformat was introduced; this remediation is correctness-only.)*
+- [x] Add required-DOM selector checks and import/reference checks. *(`scripts/check-dom-bindings.mjs` validates static/generated IDs; `scripts/verify-dist.cjs` validates built HTML/JS/CSS/manifest references, required assets, worker bundles, and hashes; both run through `npm run check`.)*
+- [x] Validate GitHub Actions YAML, web manifest, TOML examples, Markdown links, and HTML structure in CI. *(`actionlint` validates workflows; `npm run check:docs` validates the remaining formats and internal references.)*
+- [x] Add a dependency update policy with automated tests and explicit review for major Vite/D3/Playwright changes. *(`.github/dependabot.yml` and `docs/dependency-policy.md`.)*
 
 ### CI-10 — Add accessibility and user-preference coverage
 
 **Priority:** P2
 
-- [ ] Add keyboard-only paths for upload, table, panels/resizers, QC, peak review, modeling, ridge edits, exports, sessions, and every modal.
-- [ ] Add automated accessibility checks such as axe, while retaining manual screen-reader verification for plots, tables, dialogs, and live status.
-- [ ] Emulate reduced motion, forced colors, high contrast, and coarse/touch pointer behavior.
-- [ ] Add cross-surface assertions for fractions, validity/status, session restore, and all export formats.
+- [x] Add keyboard-only paths for upload, table, panels/resizers, QC, peak review, modeling, ridge edits, exports, sessions, and every modal. *(The focused browser suite exercises native/keyboard activation, focus retention/wrapping/restoration, validation, Escape, and the four ridge boundary inputs across these paths.)*
+- [x] Add automated accessibility checks such as axe, while retaining manual screen-reader verification for plots, tables, dialogs, and live status. *(The source browser gate injects pinned `axe-core` and fails serious/critical WCAG violations; real accessibility-tree snapshots supplement it. Manual screen-reader boxes remain open separately.)*
+- [x] Emulate reduced motion, forced colors, high contrast, and coarse/touch pointer behavior. *(Chromium emulates reduced motion and forced colors/high contrast; a real `has_touch` coarse-pointer context exercises the responsive sidebar, while touch-pointer events cover column removal, both resizers, and scatter coverage.)*
+- [x] Add cross-surface assertions for fractions, validity/status, session restore, and all export formats. *(Modeled browser coverage compares stored active results with ridge badges, table values, HTML report, and the common SVG source used by SVG/PDF/PNG/JPEG; session round-trip tests verify recomputed contracted results.)*
 - [x] Run WebKit under its accurate name without claiming native Safari coverage.
 
 ### PLAT-01 — Add supply-chain and release provenance
@@ -1491,8 +1491,8 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 **Priority:** P2 improvement
 
 - [x] Pin third-party GitHub Actions, especially floating `master` references, to reviewed releases or commit SHAs.
-- [ ] Run Action/workflow security validation such as `actionlint` plus an appropriate workflow scanner.
-- [ ] Add dependency review, vulnerability, license, and secret scanning without uploading private FCS/session fixtures.
+- [x] Run Action/workflow security validation such as `actionlint` plus an appropriate workflow scanner. *(Security CI runs actionlint plus the repository's commit-pin/license policy scanner.)*
+- [x] Add dependency review, vulnerability, license, and secret scanning without uploading private FCS/session fixtures. *(Dependabot plus npm/pip audit and the local supply-chain scanner cover dependency/license/action pins and common committed-secret formats; no fixture is uploaded.)*
 - [x] Generate release checksums, dependency inventory/SBOM, source tag SHA, toolchain versions, and build metadata.
 - [x] Expose a non-sensitive application version/commit so a deployment can be matched to its reviewed artifact. *(Published as `build-metadata.json`.)*
 - [x] Verify the deployed file inventory and hashes match the inspected workflow artifact. *(Checksums are verified before the exact artifact is uploaded and deployed.)*
@@ -1519,18 +1519,18 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 **Problem:** README says there is no build/package-manager pipeline and includes stale modeling language. Help mislocates its own link, conflicts with persistent OPFS behavior, and omits current modeling, Time QC, ridge, viewport, bulk-fit, and export features. `release-notes-preview.html` references a missing temporary absolute stylesheet.
 
-- [ ] Rewrite install/development/build/preview/test/deployment instructions around the pinned Node/npm workflow.
-- [ ] Remove contradictory CDN/no-build/no-package-manager/model-not-wired statements.
-- [ ] Document source serving versus production `dist` serving and why `file://` cannot load the app.
-- [ ] Update the feature tour for both Time QC methods, QC failure/degraded states, peak review, DJ/DJF/Auto/Watson, bulk fitting, ridge mode, viewport tools, and all export formats.
-- [ ] Correct the Help-link location and describe OPFS persistence, quotas, reset, cache controls, and privacy accurately.
-- [ ] State supported FCS formats/transforms, browser versions, scientific limitations, and which model outputs are heuristic versus generative.
-- [ ] Correct `tests/e2e/README.md` for random-port behavior, current suites, browser/engine names, pre-commit behavior, and source-versus-`dist` modes.
-- [ ] Reconcile application/package/release versions, copyright, license, and third-party notices.
-- [ ] Generate release preview with repository-relative/embedded CSS and set a valid language attribute.
-- [ ] Give Help images intrinsic dimensions, responsive sources where worthwhile, and below-fold lazy loading without losing useful alternative text.
-- [ ] Add a documentation link checker and assertions that referenced UI labels/IDs still exist.
-- [ ] Review documentation whenever a checklist issue changes public behavior.
+- [x] Rewrite install/development/build/preview/test/deployment instructions around the pinned Node/npm workflow. *(Root README development/release sections.)*
+- [x] Remove contradictory CDN/no-build/no-package-manager/model-not-wired statements. *(README and `index.html` now distinguish source modules from the Vite production build and name vendored D3.)*
+- [x] Document source serving versus production `dist` serving and why `file://` cannot load the app.
+- [x] Update the feature tour for both Time QC methods, QC failure/degraded states, peak review, DJ/DJF/Auto/Watson, bulk fitting, ridge mode, viewport tools, and all export formats. *(`help/help-modeling.html` and `help/help-plotting.html`.)*
+- [x] Correct the Help-link location and describe OPFS persistence, quotas, reset, cache controls, and privacy accurately. *(`help/help-getting-started.html` and `help/help-sessions.html`.)*
+- [x] State supported FCS formats/transforms, browser versions, scientific limitations, and which model outputs are heuristic versus generative. *(README browser/FCS sections plus Help troubleshooting/modeling.)*
+- [x] Correct `tests/e2e/README.md` for random-port behavior, current suites, browser/engine names, pre-commit behavior, and source-versus-`dist` modes.
+- [x] Reconcile application/package/release versions, copyright, license, and third-party notices. *(The package/lock version is `0.8.0`; build metadata/SBOM derive from it; preflight requires release tag `v<package version>` and verifies the PolyForm license identifier/text plus D3 notice. The UI and license notice both retain the 2026 copyright year.)*
+- [x] Generate release preview with repository-relative/embedded CSS and set a valid language attribute. *(Both Pandoc and fallback paths embed CSS and emit `<html lang="en">`.)*
+- [x] Give Help images intrinsic dimensions, responsive sources where worthwhile, and below-fold lazy loading without losing useful alternative text. *(All raster Help screenshots now carry source dimensions, lazy loading, async decoding, and existing descriptive alt text.)*
+- [x] Add a documentation link checker and assertions that referenced UI labels/IDs still exist. *(`scripts/check_documents.py`, required by `npm run check`.)*
+- [x] Review documentation whenever a checklist issue changes public behavior. *(The pull-request template requires an explicit README/Help/release-note/screenshot/support-text review, and the documentation checker enforces resulting links and UI-label references.)*
 
 ### DOC-02 — Document scientific provenance and model contracts
 
@@ -1541,25 +1541,25 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 - [ ] Document canonical phase-fraction definition, tail handling, contamination terms, convergence, model validity, and Auto-selection policy.
 - [ ] Document QC methods as heuristics with failure modes, review requirements, and provenance fields.
 - [ ] Explain the distinction between canonical modeling and any retained legacy bridge.
-- [ ] Add a versioned machine-readable analysis provenance block to session/export results.
+- [x] Add a versioned machine-readable analysis provenance block to session/export results. *(Session TOML stores PhaseFinder version/source commit; HTML/SVG exports embed schema-versioned JSON with sample/channel/view/model/bin/range/QC identities, and all image formats share its visible provenance footer.)*
 
 ### DOC-03 — Keep architecture diagrams and file responsibilities generated/current
 
 **Priority:** P3
 
-- [ ] Update module/call-flow diagrams for the build pipeline, Time QC variants, canonical model state, workers, OPFS index, and production deployment.
-- [ ] Generate module-import and page/asset graphs where practical instead of maintaining all edges manually.
-- [ ] Add a CI staleness check or documented update command.
+- [x] Update module/call-flow diagrams for the build pipeline, Time QC variants, canonical model state, workers, OPFS index, and production deployment. *(`docs/code-flow-diagrams.md` now contains all five current flows; the self-contained HTML was regenerated and its 13 interactive diagrams passed browser verification.)*
+- [x] Generate module-import and page/asset graphs where practical instead of maintaining all edges manually. *(The module graph is generated from static/dynamic imports and worker URLs; `verify-dist.cjs` independently crawls production page/asset references.)*
+- [x] Add a CI staleness check or documented update command. *(`npm run check:imports` fails when the generated graph is stale; README documents `python3 scripts/check_import_graph.py --update`.)*
 - [ ] Remove obsolete file responsibility statements after legacy code is removed.
 
 ### MAINT-01 — Centralize validation and typed result contracts
 
 **Priority:** P2/P3 improvement
 
-- [ ] Define shared schemas/validators for Time QC settings, axis ranges, model settings, FCS channel eligibility, session documents, and worker messages.
-- [ ] Use discriminated result objects for success/skip/warning/failure instead of `null`, broad exceptions, and mutable status strings.
-- [ ] Version worker/session/model contracts and reject incompatible messages deterministically.
-- [ ] Keep scientific calculation modules independent from DOM/state mutation so they remain easy to test against references.
+- [x] Define shared schemas/validators for Time QC settings, axis ranges, model settings, FCS channel eligibility, session documents, and worker messages. *(Each named boundary has one validator; all FCS/fit/CLOCCS worker messages share `worker_protocol.js`.)*
+- [x] Use discriminated result objects for success/skip/warning/failure instead of `null`, broad exceptions, and mutable status strings. *(QC and model boundaries use `qc_outcome`/contracted results with explicit status, reason/code, reportability, convergence, cancellation, and warning fields; internal absence may remain null without crossing a result boundary.)*
+- [x] Version worker/session/model contracts and reject incompatible messages deterministically. *(Worker protocol v1 is validated in both directions with mismatch tests; session/model schemas already persist and reject/migrate by version.)*
+- [x] Keep scientific calculation modules independent from DOM/state mutation so they remain easy to test against references. *(Preflight rejects `document.*`/`window.*` in canonical model modules; state/UI mutation remains in adapters.)*
 - [ ] Add JSDoc/TypeScript checking or another lightweight type-checking layer incrementally around these contracts.
 
 ### MAINT-02 — Make constants and policy thresholds traceable
@@ -1580,7 +1580,7 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 
 - [ ] Complete REL-01 / PRIV-01 before publishing another release.
 - [ ] Complete PRIV-02 and confirm deployable content contains no personal session/tool metadata.
-- [ ] Complete REL-02 and add CI-03 production-artifact tests.
+- [x] Complete REL-02 and add CI-03 production-artifact tests. *(The clean Node 22 build, integrity crawler, base-path build contract, and dist-only browser smoke are implemented and locally green.)*
 - [ ] Complete REL-03 so local, Actions, and Cloudflare use one reproducible toolchain.
 
 ### Phase 2 — Protect scientific result integrity
@@ -1594,14 +1594,14 @@ Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base c
 ### Phase 3 — Secure data and sessions
 
 - [x] Complete DATA-02 and DATA-05.
-- [ ] Complete SEC-01 before accepting shared session files as trusted state.
-- [ ] Complete SES-02 digest support before claiming saved-session reproducibility.
-- [ ] Complete SES-01 cache ownership/reset and SES-03 transactional restore.
-- [ ] Complete SEC-02 and storage/privacy UI work.
+- [x] Complete SEC-01 before accepting shared session files as trusted state. *(The prototype-safe parser and session schema validation are enforced before transactional apply.)*
+- [x] Complete SES-02 digest support before claiming saved-session reproducibility. *(Chunked SHA-256 identity is stored and verified during reconnect.)*
+- [x] Complete SES-01 cache ownership/reset and SES-03 transactional restore. *(OPFS ownership/reset and rollback-safe session apply are implemented and covered by the session regressions.)*
+- [x] Complete SEC-02 and storage/privacy UI work. *(Spreadsheet export neutralization, quota/lifecycle controls, privacy text, and storage management are implemented.)*
 
 ### Phase 4 — Correct UI state and accessibility
 
-- [ ] Complete UI-01A/UI-01B and UI-02 before relying on Time QC/Run All status.
+- [x] Complete UI-01A/UI-01B and UI-02 before relying on Time QC/Run All status. *(Validated modal drafts, method-specific settings, shared Run All validation, and explicit QC outcomes are implemented and tested.)*
 - [ ] Complete UI-03/UI-20 and the UI-05/UI-18/UI-19 accessibility groups.
 - [ ] Complete UI-04, UI-06 through UI-17, including operation ownership and truthful ridge/export/peak state.
 - [ ] Add production-browser and accessibility tests for each path.
@@ -1629,7 +1629,7 @@ Do not close the audit merely because every implementation checkbox is checked. 
 - [ ] A clean clone with the pinned Node version passes `npm ci`, all required tests, and `npm run build`.
 - [ ] The full source regression and production-`dist` regression pass with no missing phase, unexpected warning, page error, failed request, or test retry.
 - [ ] Required current browser engines pass the documented compatibility matrix.
-- [ ] The production artifact allowlist, privacy scan, asset crawl, CSP check, and size budgets pass.
+- [x] The production artifact allowlist, privacy scan, asset crawl, CSP check, and size budgets pass. *(`npm run check:dist`, the CSP-constrained `dist_smoke.py`, and the supply-chain/privacy policies passed against the clean 2026-07-31 build.)*
 - [ ] Cloudflare staging deployment passes the post-deploy smoke test and its artifact hash matches the reviewed build artifact.
 - [ ] Every final DJ/DJF result satisfies parameter/region/ratio constraints and exposes honest convergence/validity state.
 - [ ] Watson debris/aggregate adversarial fixtures no longer inflate S phase.
@@ -1641,6 +1641,42 @@ Do not close the audit merely because every implementation checkbox is checked. 
 - [ ] README, Help, support matrix, scientific provenance, privacy/storage behavior, and release notes match the released code.
 - [ ] A human scientific/domain reviewer approves the supported-use claims.
 - [ ] A human release owner approves production deployment and rollback evidence.
+
+### Local completion boundary — 2026-07-31
+
+The permanent local non-scientific gate is `npm run test:audit`; it keeps the
+scientific modeling UI group explicit rather than converting it to a warning.
+The generated import-cycle allowlist is empty, and the production build,
+root/base-path artifact checks, privacy/supply-chain checks, and dist-only smoke
+are locally enforceable.
+
+The latest focused modeled browser verification passes all 166 non-scientific
+checks; its two remaining failures are scientific expectations for bin-change
+review state and Dean–Jett ratio handling and remain explicit rather than being
+downgraded. The complete browser unit harness passes 743/743, including the new
+worker-protocol and one-million-value statistics checks. Correctness-only
+ESLint, preflight, CI/document/DOM/import/privacy/supply-chain gates, the Node 22
+production build, artifact verification, and the production dist smoke all pass
+(including data/fit workers, Help, manifest, plot export, and session import).
+
+The remaining unchecked work is not silently treated as complete:
+
+- Scientific/model-coupled work is intentionally excluded: section 2,
+  scientific provenance/thresholds, independent generator/reference validation,
+  and scientific golden fixtures.
+- Repository/service evidence needs the resulting commit or external access:
+  implementation-PR metadata, a true fresh clone, several GitHub matrix runs and
+  cost history, Cloudflare staging/public smoke, and a real deployment/rollback
+  identifier.
+- Human/device evidence remains manual: screen-reader passes, reviewed pixel
+  baselines, color-deficiency/state review, and release/domain-owner approval.
+- Remaining performance/refactor follow-ups require broader representative
+  profiling or a scoped design change: initial-load/table/filter/bulk-fit/export
+  memory trends, conditional table virtualization, and incremental type checking
+  beyond the new correctness lint and versioned boundary contracts.
+
+This boundary records why those boxes stay open; it is not final scientific or
+production-release approval.
 
 ## 10. Completion record template
 
