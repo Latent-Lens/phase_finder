@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+from pathlib import Path
 
 MAX_DETAIL_BYTES = 4096
 
@@ -51,3 +52,15 @@ def safe_detail(value):
     suffix = f"… <truncated, sha256={hashlib.sha256(raw).hexdigest()[:12]}>"
     keep = MAX_DETAIL_BYTES - len(suffix.encode())
     return raw[:keep].decode("utf-8", errors="ignore") + suffix
+
+
+def write_full_failure_detail(results_dir, number, name, detail, enabled=False):
+    """Write an unbounded failure payload only after explicit opt-in."""
+    if not enabled or detail in (None, ""):
+        return ""
+    diagnostics = Path(results_dir) / "diagnostics"
+    diagnostics.mkdir(parents=True, exist_ok=True)
+    path = diagnostics / f"failure-{number:03d}.txt"
+    payload = detail if isinstance(detail, str) else json.dumps(detail, default=str, ensure_ascii=False, indent=2)
+    path.write_text(f"{name}\n\n{payload}\n", encoding="utf-8")
+    return path.relative_to(results_dir).as_posix()

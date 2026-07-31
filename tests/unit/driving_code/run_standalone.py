@@ -32,6 +32,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_pla
 from helpers import TestContext, prepare_results_dir, results_asset_dirs, write_combined_report
 from run_unit_tests import run_unit_tests
 from test_server import start_test_server
+from run_artifacts import publish_latest
 
 RESULTS_DIR = _TESTS_ROOT / "e2e" / "results"
 
@@ -73,6 +74,7 @@ def run(args) -> int:
         browser.close()
 
     html_path = write_combined_report(e2e_ctx, unit_ctx, results_dir, report_stem)
+    publish_latest(RESULTS_DIR, results_dir, html_path)
 
     total = len(unit_ctx.results)
     failed = [r for r in unit_ctx.results if r.status == "FAIL"]
@@ -95,8 +97,10 @@ def main():
     parser = argparse.ArgumentParser(description="PhaseFinder standalone unit test runner")
     parser.add_argument("--url", default=None, help="App URL. If omitted, uses the first open port from 8000 through 9000.")
     parser.add_argument("--headed", action="store_true")
-    parser.add_argument("--limited-media", action="store_true",
+    parser.add_argument("--limited-media", dest="limited_media", action="store_true", default=True,
                         help="keep one representative image per unit group instead of one per eligible check")
+    parser.add_argument("--all-media", dest="limited_media", action="store_false",
+                        help="capture media for every eligible check")
     parser.add_argument("--keep", action="store_true", help="keep older standalone unit reports instead of deleting them before the run")
     args = parser.parse_args()
 

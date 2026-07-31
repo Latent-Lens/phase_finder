@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from playwright.sync_api import Page
-from safe_detail import safe_detail
+from safe_detail import safe_detail, write_full_failure_detail
 
 STATUS_PASS = "PASS"
 STATUS_FAIL = "FAIL"
@@ -70,6 +70,13 @@ class TestContext:
 
         number = len(self.results) + 1 + self.number_offset
         shot_rel = ""
+        full_detail_rel = write_full_failure_detail(
+            self.results_dir,
+            number,
+            name,
+            detail,
+            status == STATUS_FAIL and os.environ.get("PHASEFINDER_FULL_FAILURE_DETAILS") == "1",
+        )
 
         # Limited-media mode keeps one representative image per group.
         # Failures always get evidence in either mode.
@@ -87,12 +94,15 @@ class TestContext:
                     status = STATUS_WARN
                 detail = join_detail(detail, f"screenshot failed: {error}")
 
+        bounded_detail = safe_detail(detail)
+        if full_detail_rel:
+            bounded_detail = join_detail(bounded_detail, f"full diagnostic: {full_detail_rel}")
         result = TestResult(
             number=number,
             group=group,
             name=name,
             status=status,
-            detail=safe_detail(detail),
+            detail=bounded_detail,
             screenshot=shot_rel,
             video_start_sec=start_sec,
             video_end_sec=end_sec,

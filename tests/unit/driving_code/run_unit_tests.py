@@ -23,8 +23,8 @@ HARNESS_PATH = "/tests/unit/test_harness.html"
 LIBS_READY_TIMEOUT = 60000  # ms to wait for harness ES modules
 
 
-def run_unit_tests(ctx: TestContext, app_url: str):
-    """Navigate ctx.page to the test harness and run all unit test suites."""
+def setup_unit_harness(ctx: TestContext, app_url: str):
+    """Navigate to the harness and wait until its modules are ready."""
     page = ctx.page
     load_diagnostics = []
 
@@ -62,6 +62,9 @@ def run_unit_tests(ctx: TestContext, app_url: str):
         detail = " | ".join([str(err), *load_diagnostics])
         raise unit_phase_failure("unit_setup", RuntimeError(detail)) from err
 
+
+def execute_unit_tests(ctx: TestContext):
+    """Run every browser-hosted unit suite and enforce the result floor."""
     before = len(ctx.results)
 
     from unit_tests_parser import run_parser_tests
@@ -128,3 +131,9 @@ def run_unit_tests(ctx: TestContext, app_url: str):
     run_cloccs_tests(ctx)
 
     return require_unit_result_count(len(ctx.results) - before)
+
+
+def run_unit_tests(ctx: TestContext, app_url: str):
+    """Compatibility entry point used by standalone callers."""
+    setup_unit_harness(ctx, app_url)
+    return execute_unit_tests(ctx)

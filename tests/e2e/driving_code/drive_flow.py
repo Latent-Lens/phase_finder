@@ -46,6 +46,9 @@ from helpers import (
     write_combined_report,
 )
 from test_server import start_test_server
+from run_artifacts import publish_latest
+from phase_status import PhaseFailure, PhaseTracker
+from compatibility_evidence import write_compatibility_evidence
 from tests_io import test_file_loading, test_libraries
 from tests_filtering import test_table_filtering_sorting
 from tests_plotting import test_plotting, test_plot_toolbar
@@ -115,6 +118,7 @@ def run(args):
     else:
         print("Preparing isolated test output:", flush=True)
         _, vid_dir = prepare_results_dir(results_dir)
+    phases = PhaseTracker(results_dir / "phase-status.json")
     
     test_data_dir = prepare_test_data_dir(test_data_root)
     print(f"Run directory: {results_dir}\n", flush=True)
@@ -141,46 +145,76 @@ def run(args):
     unit_ctx = None
 
     with sync_playwright() as p:
-        browser = launch_browser(p, args.browser, args.headed)
-
         # ----------------------------------------------------------------
         # E2E phase — recorded to WebM
         # ----------------------------------------------------------------
-        e2e_context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            record_video_dir=str(vid_dir),
-            record_video_size={"width": 1920, "height": 1080},
-        )
-        video_record_start = time.monotonic()
-        e2e_page = e2e_context.new_page()
-        e2e_ctx = TestContext(
-            page=e2e_page,
-            results_dir=results_dir,
-            report_stem=report_stem,
-            all_media=not args.limited_media,
-        )
-        e2e_ctx.video_record_start = video_record_start
-        e2e_ctx._last_test_end = e2e_ctx.video_record_start
+        def setup_e2e():
+            browser = launch_browser(p, args.browser, args.headed)
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                record_video_dir=str(vid_dir),
+                record_video_size={"width": 1920, "height": 1080},
+            )
+            video_record_start = time.monotonic()
+            page = context.new_page()
+            context_results = TestContext(
+                page=page,
+                results_dir=results_dir,
+                report_stem=report_stem,
+                all_media=not args.limited_media,
+            )
+            context_results.video_record_start = video_record_start
+            context_results._last_test_end = video_record_start
+            page.on("pageerror", lambda err: context_results.page_errors.append(str(err)))
+            page.goto(args.url)
+            page.wait_for_load_state("domcontentloaded")
+            return browser, context, page, context_results
 
-        e2e_page.on("pageerror", lambda err: e2e_ctx.page_errors.append(str(err)))
-        e2e_page.goto(args.url)
-        e2e_page.wait_for_load_state("domcontentloaded")
+        browser, e2e_context, e2e_page, e2e_ctx = phases.run("e2e_setup", setup_e2e)
+        browser_version = browser.version
 
-        test_libraries(e2e_ctx)
-        test_file_loading(e2e_ctx, drag_drop_files, file_browser_files, additional_files)
-        test_table_filtering_sorting(e2e_ctx)
-        test_plotting(e2e_ctx, args.channel)
-        test_plot_toolbar(e2e_ctx)
-        test_pipeline(e2e_ctx)
-        test_time_qc_methods(e2e_ctx)
-        test_modeling(e2e_ctx)
-        test_sidebar_icons(e2e_ctx)
-        test_sidebar_modeling_mode(e2e_ctx)
-        test_responsive_reachability(e2e_ctx)
-        test_summary_statistics(e2e_ctx)
-        test_metadata_wizard(e2e_ctx)
-        test_metadata_table_actions(e2e_ctx)
-        test_reset(e2e_ctx, reset_files)
+        def run_e2e_group(name, operation):
+            before = len(e2e_ctx.results)
+            try:
+                operation()
+            except Exception as error:
+                e2e_ctx.check(
+                    "Runner / Phases",
+                    f"{name} phase completed",
+                    False,
+                    f"{type(error).__name__}: {error}",
+                    screenshot=False,
+                )
+            new_results = e2e_ctx.results[before:]
+            failures = [result for result in new_results if result.status == "FAIL"]
+            phases.record(
+                f"e2e:{name}",
+                "failed" if failures else "passed",
+                f"{len(failures)} failed check(s)" if failures else "",
+            )
+
+        groups = (
+            ("libraries", lambda: test_libraries(e2e_ctx)),
+            ("file_loading", lambda: test_file_loading(e2e_ctx, drag_drop_files, file_browser_files, additional_files)),
+            ("table_filtering_sorting", lambda: test_table_filtering_sorting(e2e_ctx)),
+            ("plotting", lambda: test_plotting(e2e_ctx, args.channel)),
+            ("plot_toolbar", lambda: test_plot_toolbar(e2e_ctx)),
+            ("pipeline", lambda: test_pipeline(e2e_ctx)),
+            ("time_qc_methods", lambda: test_time_qc_methods(e2e_ctx)),
+            ("modeling", lambda: test_modeling(e2e_ctx)),
+            ("sidebar_icons", lambda: test_sidebar_icons(e2e_ctx)),
+            ("sidebar_modeling_mode", lambda: test_sidebar_modeling_mode(e2e_ctx)),
+            ("responsive_reachability", lambda: test_responsive_reachability(e2e_ctx)),
+            ("summary_statistics", lambda: test_summary_statistics(e2e_ctx)),
+            ("metadata_wizard", lambda: test_metadata_wizard(e2e_ctx)),
+            ("metadata_table_actions", lambda: test_metadata_table_actions(e2e_ctx)),
+            ("reset", lambda: test_reset(e2e_ctx, reset_files)),
+        )
+        if args.skip_modeling:
+            groups = tuple(group for group in groups if group[0] != "modeling")
+            phases.skip("e2e:modeling", "excluded from the non-scientific audit/compatibility gate")
+        for group_name, group_operation in groups:
+            run_e2e_group(group_name, group_operation)
         # Filter out expected channel-not-found errors (arise from channel change tests
         # when some loaded FCS files lack data for the selected secondary channel)
         unexpected_errors = [
@@ -195,6 +229,11 @@ def run(args):
                          f"Expected channel-not-found errors: {e2e_ctx.page_errors}", screenshot=False)
         else:
             e2e_ctx.check("Input/Output", "No uncaught page errors", True, screenshot=False)
+        phases.record(
+            "e2e:page_errors",
+            "failed" if unexpected_errors else "passed",
+            str(unexpected_errors) if unexpected_errors else "",
+        )
 
         # ----------------------------------------------------------------
         # Unit test phase — use a new tab in the same context so browser state
@@ -210,42 +249,73 @@ def run(args):
             capture_media=False,
         )
 
+        from run_unit_tests import execute_unit_tests, setup_unit_harness
         try:
-            from run_unit_tests import run_unit_tests
-            run_unit_tests(unit_ctx, args.url)
-        except Exception as unit_err:
-            from unit_phase import unit_phase_failure
-            failure = unit_phase_failure("unit_execution", unit_err)
+            phases.run("unit_setup", lambda: setup_unit_harness(unit_ctx, args.url))
+        except PhaseFailure as unit_err:
+            phases.skip("unit_execution", "unit setup failed")
             unit_ctx.check(
                 "Unit / Infrastructure",
                 "Unit phase completed with the expected minimum result count",
                 False,
-                str(failure),
+                str(unit_err),
                 screenshot=False,
             )
+        else:
+            try:
+                phases.run("unit_execution", lambda: execute_unit_tests(unit_ctx))
+            except PhaseFailure as unit_err:
+                unit_ctx.check(
+                    "Unit / Infrastructure",
+                    "Unit phase completed with the expected minimum result count",
+                    False,
+                    str(unit_err),
+                    screenshot=False,
+                )
 
-        # Close context to finalise the video file (after unit tests)
-        e2e_context.close()
+        def cleanup_browser():
+            try:
+                # Closing the context finalises the video file.
+                e2e_context.close()
+                try:
+                    if e2e_page.video:
+                        full_video = e2e_page.video.path()
+                        if full_video and Path(full_video).exists():
+                            extract_video_clips(e2e_ctx, full_video, results_dir, report_stem)
+                except Exception as video_error:
+                    print(f"[WARN] Video clip extraction failed: {video_error}", flush=True)
+            finally:
+                browser.close()
 
-        # Extract per-test WebM clips with ffmpeg
         try:
-            if e2e_page.video:
-                full_video = e2e_page.video.path()
-                if full_video and Path(full_video).exists():
-                    extract_video_clips(e2e_ctx, full_video, results_dir, report_stem)
-        except Exception as vid_err:
-            print(f"[WARN] Video clip extraction failed: {vid_err}", flush=True)
-
-        browser.close()
+            phases.run("cleanup", cleanup_browser)
+        except PhaseFailure as cleanup_error:
+            e2e_ctx.check(
+                "Runner / Phases",
+                "Browser cleanup completed",
+                False,
+                str(cleanup_error),
+                screenshot=False,
+            )
 
     # ----------------------------------------------------------------
     # Combined report
     # ----------------------------------------------------------------
-    html_path = write_combined_report(e2e_ctx, unit_ctx, results_dir, report_stem)
+    html_path = phases.run(
+        "report_generation",
+        lambda: write_combined_report(e2e_ctx, unit_ctx, results_dir, report_stem),
+    )
 
     all_results = e2e_ctx.results + (unit_ctx.results if unit_ctx else [])
     total_tests = len(all_results)
     failed = [r for r in all_results if r.status == "FAIL"]
+    write_compatibility_evidence(
+        results_dir / "compatibility.json",
+        args.browser,
+        browser_version,
+        "failed" if failed or phases.failed else "passed",
+    )
+    publish_latest(RESULTS_DIR, results_dir, html_path)
 
     print(f"\nTest summary: {total_tests - len(failed)}/{total_tests} passed, {len(failed)} FAILED")
     print("Test Execution Results (failures first):")
@@ -257,7 +327,7 @@ def run(args):
 
     print(f"Report html      → {html_path}", flush=True)
 
-    return 1 if failed else 0
+    return 1 if failed or phases.failed else 0
 
 
 def main():
@@ -279,9 +349,22 @@ def main():
     )
     parser.add_argument("--headed", action="store_true")
     parser.add_argument(
-        "--limited-media",
+        "--skip-modeling",
         action="store_true",
+        help="run the audit regression outside the scientific modeling UI group",
+    )
+    parser.add_argument(
+        "--limited-media",
+        dest="limited_media",
+        action="store_true",
+        default=True,
         help="keep one representative image/video per group instead of media for every eligible check",
+    )
+    parser.add_argument(
+        "--all-media",
+        dest="limited_media",
+        action="store_false",
+        help="capture media for every eligible check",
     )
     parser.add_argument("--keep", action="store_true", help="keep older E2E/unit reports instead of deleting them before the run")
     args = parser.parse_args()
