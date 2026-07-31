@@ -21,8 +21,9 @@ import {
   release_cache_path,
   logical_session_id,
 } from "./file_cache.js";
-import { set_status_bar, next_frame } from "../ui/status_channels.js";
 import {
+  set_status_bar,
+  next_frame,
   show_progress,
   update_progress,
   hide_progress,
@@ -294,7 +295,7 @@ export async function apply_reconnected_files(files) {
   const digest_cache = new Map();
   const controller = new AbortController();
   let cancelled = false;
-  show_progress('Verifying FCS identity');
+  const progress_operation = show_progress('Verifying FCS identity');
   show_progress_cancel(() => controller.abort());
   try {
     for (const [record_index, record] of reconnect_ctx.records.entries()) {
@@ -309,6 +310,7 @@ export async function apply_reconnected_files(files) {
           'Verifying FCS identity',
           `Checking file ${record_index + 1} of ${reconnect_ctx.records.length}`,
           file.name,
+          progress_operation,
         );
         let identity = digest_cache.get(file);
         if (!identity) {
@@ -316,7 +318,7 @@ export async function apply_reconnected_files(files) {
             signal: controller.signal,
             on_progress: ({ bytes_done, bytes_total }) => update_progress(
               ((record_index + (bytes_total ? bytes_done / bytes_total : 1)) / reconnect_ctx.records.length) * 100,
-              'Verifying FCS identity', 'Computing bounded-memory content digest', file.name),
+              'Verifying FCS identity', 'Computing bounded-memory content digest', file.name, progress_operation),
           });
           digest_cache.set(file, identity);
         }
@@ -346,7 +348,7 @@ export async function apply_reconnected_files(files) {
     }
     else throw error;
   } finally {
-    hide_progress(0);
+    hide_progress(0, progress_operation);
   }
   if (cancelled) { render_reconnect_list(); return; }
 

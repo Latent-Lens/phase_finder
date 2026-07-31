@@ -222,6 +222,7 @@ async function run_manual_stage(
   button,
   { keepOverlay = false, openScatter = true, managedByRunAll = false } = {},
 ) {
+  let progress_operation = null;
   if (pipeline_busy && !managedByRunAll) return [];
   const rows = plottable_rows();
   if (!rows.length) {
@@ -252,7 +253,7 @@ async function run_manual_stage(
     await ensure_companions_loaded(rows);
     // Let the lazy-loader's hide timer settle before reusing the overlay for
     // per-sample progress.
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => { window.setTimeout(resolve, 0); });
     // Identify Peaks and Model DJF both read the stored Stage 4 histogram;
     // rebuild it now at the current Bins value so it's never stale — whether
     // Pre-model QC already refreshed it, or this is the first model stage run
@@ -260,7 +261,7 @@ async function run_manual_stage(
     if (stage === 5 || stage === 6) {
       regenerate_histograms(rows, pipeline);
     }
-    show_progress(`Running DJF Stage ${stage}`);
+    progress_operation = show_progress(`Running DJF Stage ${stage}`);
     const outputs = [];
     const failures = [];
     const stageOptions = {};
@@ -272,6 +273,7 @@ async function run_manual_stage(
         `Running DJF Stage ${stage}`,
         `Sample ${index + 1} of ${rows.length}`,
         row.name,
+        progress_operation,
       );
       await next_frame();
       // Isolate each sample: one file's failure must not abort the batch or
@@ -286,7 +288,7 @@ async function run_manual_stage(
       }
     }
 
-    update_progress(100, `Running DJF Stage ${stage}`, `Finished ${rows.length} sample(s).`);
+    update_progress(100, `Running DJF Stage ${stage}`, `Finished ${rows.length} sample(s).`, "", progress_operation);
     // Every stage can invalidate downstream state, so redraw even for stages
     // without their own visual output to remove stale histograms/fits/reports.
     render_density_plot();
@@ -322,8 +324,8 @@ async function run_manual_stage(
     // Every sample failed — surface it as a stage failure so Run All stops.
     if (failures.length === rows.length) {
       set_status_bar(`DJF Stage ${stage} failed for all ${rows.length} sample(s): ${failures[0].error}`, true);
-      update_progress(100, `DJF Stage ${stage} failed`, failures[0].error);
-      hide_progress(1200);
+      update_progress(100, `DJF Stage ${stage} failed`, failures[0].error, "", progress_operation);
+      hide_progress(1200, progress_operation);
       return [];
     }
 
@@ -350,14 +352,16 @@ async function run_manual_stage(
     } else if (stage === 8) {
       write_fraction_columns(rows, pipeline);
     }
-    if (!keepOverlay) hide_progress(350);
+    if (!keepOverlay) hide_progress(350, progress_operation);
     return outputs;
   } catch (error) {
     const message = `DJF Stage ${stage} failed: ${error.message}`;
     if (djf_readout) djf_readout.textContent = message;
     set_status_bar(message, true);
-    update_progress(100, `DJF Stage ${stage} failed`, error.message);
-    hide_progress(1200);
+    if (progress_operation != null) {
+      update_progress(100, `DJF Stage ${stage} failed`, error.message, "", progress_operation);
+      hide_progress(1200, progress_operation);
+    }
     return [];
   } finally {
     button.classList.remove("djf_stage_running");
@@ -475,6 +479,7 @@ async function apply_qc_selection() {
 
   qc_busy = true;
   set_qc_controls_disabled(true);
+  let progress_operation = null;
   try {
     const pipeline = await load_pipeline();
     // Stages 2 and 3 need the companion channels; wait if they are still loading.
@@ -485,10 +490,10 @@ async function apply_qc_selection() {
       await ensure_companions_loaded(rows);
     }
 
-    show_progress("Applying pre-model QC");
+    progress_operation = show_progress("Applying pre-model QC");
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
-      update_progress((100 * index) / rows.length, "Applying pre-model QC", row.name);
+      update_progress((100 * index) / rows.length, "Applying pre-model QC", row.name, "", progress_operation);
       await next_frame();
       pipeline.reset_qc_gates(row);
       for (const stage of checked) {
@@ -517,10 +522,10 @@ async function apply_qc_selection() {
     set_status_bar(checked.length
       ? `Pre-model QC applied: ${checked.map((stage) => QC_LOST_COLUMNS[stage].label.replace(/ lost$/, "")).join(", ")}.`
       : "Pre-model QC cleared.");
-    hide_progress(300);
+    hide_progress(300, progress_operation);
   } catch (error) {
     set_status_bar(`Pre-model QC failed: ${error.message}`, true);
-    hide_progress(800);
+    if (progress_operation != null) hide_progress(800, progress_operation);
   } finally {
     qc_busy = false;
     set_qc_controls_disabled(false);

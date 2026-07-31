@@ -683,6 +683,11 @@ async function apply_qc_selection() {
   set_qc_controls_disabled(true);
   let progress_operation = null;
   try {
+    const progress_label = qc_progress_label(checked);
+    progress_operation = show_progress(progress_label);
+    set_status_bar(`Working: ${progress_label}`, false, null, progress_operation);
+    update_progress(0, progress_label, "Preparing QC inputs…", "", progress_operation);
+    await next_frame();
     const pipeline = await load_pipeline();
     // Time, Cell, and Singlet QC need companion channels; wait if they are still loading.
     if (checked.some((filterIndex) => filterIndex >= 1)) {
@@ -692,8 +697,6 @@ async function apply_qc_selection() {
       await ensure_companions_loaded(rows);
     }
 
-    const progress_label = qc_progress_label(checked);
-    progress_operation = show_progress(progress_label);
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
       update_progress((100 * index) / rows.length, progress_label, row.name, "", progress_operation);

@@ -342,6 +342,7 @@ Output:
 export function show_progress(label = "Loading FCS Metadata") {
   progress_operation += 1;
   window.clearTimeout(progress_hide_timer);
+  hide_progress_cancel();
   if (!progress_inert_snapshot) progress_return_focus = document.activeElement;
   progress_inert_snapshot ??= new Map([...document.body.children].map((child) => [child, child.inert]));
   [...document.body.children].forEach((child) => { child.inert = !child.contains(progress_overlay); });
@@ -394,6 +395,7 @@ Output:
 
 */
 export function hide_progress(delay = 500, operation_id = progress_operation) {
+  if (operation_id !== progress_operation) return false;
   hide_progress_cancel();
   window.clearTimeout(progress_hide_timer);
   const finish = () => {
@@ -407,6 +409,7 @@ export function hide_progress(delay = 500, operation_id = progress_operation) {
   };
   if (delay <= 0) finish();
   else progress_hide_timer = window.setTimeout(finish, delay);
+  return true;
 }
 
 export function current_progress_operation() {
@@ -426,17 +429,19 @@ Output:
 	(none) [void]
 
 */
-export function show_progress_cancel(handler) {
+export function show_progress_cancel(handler, operation_id = progress_operation) {
   const button = document.querySelector("#progress_cancel");
-  if (!button) return;
+  if (!button || operation_id !== progress_operation) return false;
   button.hidden = false;
   button.disabled = false;
   button.textContent = "Cancel";
   button.onclick = () => {
+    if (operation_id !== progress_operation) return;
     button.disabled = true;
     button.textContent = "Cancelling…";
     handler?.();
   };
+  return true;
 }
 
 /*
@@ -472,7 +477,7 @@ Output:
 
 */
 export function next_frame() {
-  return new Promise((resolve) => window.requestAnimationFrame(resolve));
+  return new Promise((resolve) => { window.requestAnimationFrame(resolve); });
 }
 
 /*

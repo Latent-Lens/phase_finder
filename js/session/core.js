@@ -43,7 +43,7 @@ import {
   get_reconnect_records,
 } from "./reconnect.js";
 import { load_files } from "../io/metadata_io.js";
-import { set_status_bar } from "../ui/status_channels.js";
+import { set_status_bar, show_progress, update_progress, hide_progress } from "../ui/status_channels.js";
 import { save_filename_metadata_template } from "../ui/metadata_wizard.js";
 import { get_stats_plan, restore_stats_plan } from "../analysis/stats.js";
 import { get_file_table, get_file_map } from "../state/app_state.js";
@@ -61,7 +61,6 @@ import {
 } from "../analysis/structural_qc_settings.js";
 import { start_analysis } from "../analysis/start.js";
 import { apply_saved_qc_filters } from "../analysis/pipeline_ui.js";
-import { show_progress, update_progress, hide_progress } from "../ui/status_channels.js";
 import { render_density_plot } from "../plotting/render.js";
 import { suppress_next_unload_warning } from "./unload_guard.js";
 import { init_cache_manager } from "./cache_manager.js";
@@ -424,15 +423,16 @@ Output:
 
 */
 async function run_modeling_restore(config) {
+  let progress_operation = null;
   try {
     if (config.qc_filters?.length) {
       // apply_saved_qc_filters runs its own progress overlay.
       await apply_saved_qc_filters(config.qc_filters);
     }
-    show_progress('Restoring modeling');
+    progress_operation = show_progress('Restoring modeling');
     const result = await apply_modeling_session(config, {
       onProgress: (index, total, name) =>
-        update_progress(total ? (100 * index) / total : 0, 'Restoring modeling', name),
+        update_progress(total ? (100 * index) / total : 0, 'Restoring modeling', name, '', progress_operation),
     });
     document.dispatchEvent(new CustomEvent('cell-cycle-fit-changed'));
     if (last_restore_summary?.status === 'restored') {
@@ -448,10 +448,10 @@ async function run_modeling_restore(config) {
         `${result.failed ? `, ${result.failed} failed` : ''}.`,
       result.failed > 0 && result.restored === 0,
     );
-    hide_progress(300);
+    hide_progress(300, progress_operation);
   } catch (error) {
-    set_status_bar(`Modeling restore failed: ${error.message}`, true);
-    hide_progress(800);
+    set_status_bar(`Modeling restore failed: ${error.message}`, true, null, progress_operation);
+    if (progress_operation != null) hide_progress(800, progress_operation);
   }
 }
 

@@ -28,18 +28,18 @@ Output:
 export function load_pipeline() {
   if (pipeline_promise) return pipeline_promise;
 
-  show_progress("Loading cell-cycle modeling");
-  update_progress(30, "Loading cell-cycle modeling", "Fetching the analysis modules…");
+  const progress_operation = show_progress("Loading cell-cycle modeling");
+  update_progress(30, "Loading cell-cycle modeling", "Fetching the analysis modules…", "", progress_operation);
   pipeline_promise = import("./cell_cycle_pipeline.js")
     .then((module) => {
       pipeline_module = module;
-      update_progress(100, "Loading cell-cycle modeling", "Ready.");
-      hide_progress(0);
+      update_progress(100, "Loading cell-cycle modeling", "Ready.", "", progress_operation);
+      hide_progress(0, progress_operation);
       return module;
     })
     .catch((error) => {
       pipeline_promise = null;
-      hide_progress(200);
+      hide_progress(200, progress_operation);
       throw error;
     });
   return pipeline_promise;

@@ -30,12 +30,12 @@ import {
   show_progress,
   update_progress,
   hide_progress,
+  show_progress_cancel,
   next_frame,
   update_start_button_state,
 } from "../ui/status_channels.js";
 import { is_analysis_data_loaded, activate_analysis_data } from "../data_structs/channel_cache.js";
 import { plot_channels } from "../plotting/data.js";
-import { init_plot } from "../plotting/modeling.js";
 import { render_density_plot } from "../plotting/render.js";
 import {
   analysis_file_concurrency,
@@ -142,6 +142,7 @@ async function prepare_selected_channel_for_plotting() {
   const label = `Loading ${selected.dna_area} Channel FCS Data`;
   set_plot_action_controls_disabled(true);
   const progress_operation = show_progress(label);
+  show_progress_cancel(() => controller.abort());
   set_status_bar(`Working: ${label}`, false, null, progress_operation);
   update_progress(0, label, `Preparing ${missing_rows.length} file(s)...`, "", progress_operation);
   await next_frame();
@@ -173,7 +174,9 @@ async function prepare_selected_channel_for_plotting() {
       update_progress(100, label, `Finished loading data for ${missing_rows.length} file(s).`, "", progress_operation);
     }
   } catch (error) {
-    if (error?.code !== "FCS_LOAD_CANCELLED") {
+    if (error?.code === "FCS_LOAD_CANCELLED") {
+      set_status_bar("Channel loading cancelled; no partial channel was activated.", "warning", null, progress_operation);
+    } else {
       error.progressOperation = progress_operation;
       throw error;
     }

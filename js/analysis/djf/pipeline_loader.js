@@ -9,18 +9,18 @@ let pipeline_module = null;
 export function load_pipeline() {
   if (pipeline_promise) return pipeline_promise;
 
-  show_progress("Loading DJF pipeline");
-  update_progress(30, "Loading DJF pipeline", "Fetching staged cell-cycle analysis modules…");
+  const progress_operation = show_progress("Loading DJF pipeline");
+  update_progress(30, "Loading DJF pipeline", "Fetching staged cell-cycle analysis modules…", "", progress_operation);
   pipeline_promise = import("./index.js")
     .then((module) => {
       pipeline_module = module;
-      update_progress(100, "Loading DJF pipeline", "Ready.");
-      hide_progress(0);
+      update_progress(100, "Loading DJF pipeline", "Ready.", "", progress_operation);
+      hide_progress(0, progress_operation);
       return module;
     })
     .catch((error) => {
       pipeline_promise = null;
-      hide_progress(200);
+      hide_progress(200, progress_operation);
       throw error;
     });
   return pipeline_promise;
