@@ -834,6 +834,27 @@ def test_modeling(ctx: TestContext):
             str({"before": region_before, "after": region_after}),
         )
 
+        # The same four boundaries are available as native number inputs, so
+        # keyboard/touch users do not need to manipulate SVG geometry.
+        numeric_editor = page.locator("#plot_area .ridge_row .ridge_region_numeric").first
+        numeric_editor.locator("summary").click()
+        numeric_before = float(numeric_editor.locator("input[name='g1_left']").input_value())
+        numeric_right = float(numeric_editor.locator("input[name='g1_right']").input_value())
+        numeric_target = (numeric_before + numeric_right) / 2
+        numeric_editor.locator("input[name='g1_left']").fill(str(numeric_target))
+        numeric_editor.locator("input[name='g1_left']").press("Enter")
+        page.wait_for_function(
+            """(arg) => Math.abs(window.PhaseFinder.pipeline.get_state(arg.name).modeling.peakSelection.regions.g1.left - arg.value) < 1e-6""",
+            arg={"name": region_before["name"], "value": numeric_target},
+            timeout=30000,
+        )
+        ctx.check(
+            group,
+            "UI-13: native numeric controls edit every ridge boundary by keyboard",
+            numeric_editor.locator("input").count() == 4,
+            f"g1_left={numeric_target}",
+        )
+
         # Phase 2: a per-row Review blows that sample up to the full plot (badge
         # "Under manual review", Accept button, ridge hidden, only that sample
         # rendered); Accept returns to the ridge (render.js review flow).

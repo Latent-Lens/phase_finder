@@ -605,6 +605,63 @@ function draw_ridge_region_editor(svg, row, x_scale, top, bottom) {
   redraw();
 }
 
+function ridge_region_form(row, domain_min, domain_max) {
+  const regions = get_pipeline_state(row.name)?.modeling?.peakSelection?.regions;
+  if (!regions?.g1 || !regions?.g2) return null;
+  const details = document.createElement("details");
+  details.className = "ridge_region_numeric";
+  const summary = document.createElement("summary");
+  summary.textContent = "Edit peak boundaries numerically";
+  const form = document.createElement("form");
+  const fields = [
+    ["g1_left", "G1 left", regions.g1.left],
+    ["g1_right", "G1 right", regions.g1.right],
+    ["g2_left", "G2/M left", regions.g2.left],
+    ["g2_right", "G2/M right", regions.g2.right],
+  ];
+  const inputs = new Map();
+  fields.forEach(([name, label_text, value]) => {
+    const label = document.createElement("label");
+    label.textContent = label_text;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.name = name;
+    input.min = String(domain_min);
+    input.max = String(domain_max);
+    input.step = "any";
+    input.value = String(value);
+    label.appendChild(input);
+    form.appendChild(label);
+    inputs.set(name, input);
+  });
+  const error = document.createElement("span");
+  error.className = "ridge_region_numeric_error";
+  error.setAttribute("role", "alert");
+  error.hidden = true;
+  const apply = document.createElement("button");
+  apply.type = "submit";
+  apply.textContent = "Apply boundaries";
+  form.append(error, apply);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries([...inputs].map(([name, input]) => [name, Number(input.value)]));
+    const valid = Object.values(values).every(Number.isFinite)
+      && values.g1_left >= domain_min && values.g2_right <= domain_max
+      && values.g1_left < values.g1_right
+      && values.g1_right <= values.g2_left
+      && values.g2_left < values.g2_right;
+    error.hidden = valid;
+    error.textContent = valid ? "" : "Enter ordered boundaries within the visible X range: G1 left < G1 right ≤ G2/M left < G2/M right.";
+    if (!valid) return inputs.get("g1_left").focus();
+    commit_ridge_regions(row, {
+      g1: { left: values.g1_left, right: values.g1_right },
+      g2: { left: values.g2_left, right: values.g2_right },
+    });
+  });
+  details.append(summary, form);
+  return details;
+}
+
 // Ridge view: each plotted sample rendered as its own small histogram (with its
 // fit overlay) stacked vertically for side-by-side multi-sample review. All
 // rows share one x-scale so peaks line up. Each row shows its current modeling
@@ -686,6 +743,8 @@ function render_ridge_plot() {
     review_btn.addEventListener("click", () => enter_ridge_review(entry.row));
     header.append(name_el, badge, review_btn);
     row_el.appendChild(header);
+    const numeric_editor = ridge_region_form(entry.row, x_domain[0], x_domain[1]);
+    if (numeric_editor) row_el.appendChild(numeric_editor);
 
     const svg = d3.select(document.createElementNS("http://www.w3.org/2000/svg", "svg"))
       .attr("class", "ridge_svg")
