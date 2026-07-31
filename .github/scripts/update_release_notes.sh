@@ -19,8 +19,9 @@ PREV_TAG="$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)"
 # Temporary files.
 TMP_FILE="$(mktemp --suffix=.md)"
 CSS_FILE="$(mktemp --suffix=.css)"
+BODY_FILE="$(mktemp --suffix=.html)"
 
-trap 'rm -f "$TMP_FILE" "$CSS_FILE"' EXIT
+trap 'rm -f "$TMP_FILE" "$CSS_FILE" "$BODY_FILE"' EXIT
 
 {
   echo '<table width="100%" style="width: 100%; border-collapse: collapse; border: none; margin: 0; table-layout: fixed;">'
@@ -109,10 +110,23 @@ EOF
     pandoc "$TMP_FILE" \
       --from=markdown \
       --to=html5 \
-      --standalone \
-      --metadata pagetitle="PhaseFinder ${TAG}" \
-      --css "$CSS_FILE" \
-      --output "$HTML_FILE"
+      --output "$BODY_FILE"
+    {
+      echo '<!doctype html>'
+      echo '<html lang="en">'
+      echo '<head>'
+      echo '  <meta charset="utf-8">'
+      echo '  <meta name="viewport" content="width=device-width, initial-scale=1">'
+      echo "  <title>PhaseFinder ${TAG}</title>"
+      echo '  <style>'
+      cat "$CSS_FILE"
+      echo '  </style>'
+      echo '</head>'
+      echo '<body>'
+      cat "$BODY_FILE"
+      echo '</body>'
+      echo '</html>'
+    } > "$HTML_FILE"
   else
     {
       echo '<!doctype html>'
