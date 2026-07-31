@@ -67,6 +67,7 @@ import { suppress_next_unload_warning } from "./unload_guard.js";
 import { init_cache_manager } from "./cache_manager.js";
 import { validate_session_draft } from './session_schema.js';
 import { run_restore_stages } from './session_transaction.js';
+import { PHASEFINDER_SOURCE_COMMIT, PHASEFINDER_VERSION } from '../util/build_info.js';
 
 // ── Session-file restore orchestration ───────────────────────────────────────
 
@@ -222,6 +223,9 @@ function collect_session() {
       created: new Date().toISOString(),
       logical_id: logical_session_id,
       schema_version: 1,
+      application: 'PhaseFinder',
+      application_version: PHASEFINDER_VERSION,
+      source_commit: PHASEFINDER_SOURCE_COMMIT,
     },
     files:   { names, records: build_file_records_for(names) },
     stats_plan: get_stats_plan(),

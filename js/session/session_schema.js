@@ -44,6 +44,9 @@ export function validate_session_draft(parsed) {
   const version = session.schema_version ?? 0;
   if (!Number.isInteger(version) || version < 0 || version > 1) fail('session.schema_version', 'supported version 0 or 1');
   if (session.logical_id != null && typeof session.logical_id !== 'string') fail('session.logical_id', 'a string');
+  for (const field of ['application', 'application_version', 'source_commit']) {
+    if (session[field] != null && typeof session[field] !== 'string') fail(`session.${field}`, 'a string');
+  }
 
   const files = object(parsed.files, 'files');
   strings(files.names || [], 'files.names');

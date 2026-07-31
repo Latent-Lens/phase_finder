@@ -27,6 +27,9 @@ export function serialize_session(s) {
   p('[session]', `created = ${toml_str(s.session.created)}`);
   if (s.session.logical_id) p(`logical_id = ${toml_str(s.session.logical_id)}`);
   if (s.session.schema_version != null) p(`schema_version = ${Number(s.session.schema_version)}`);
+  if (s.session.application) p(`application = ${toml_str(s.session.application)}`);
+  if (s.session.application_version) p(`application_version = ${toml_str(s.session.application_version)}`);
+  if (s.session.source_commit) p(`source_commit = ${toml_str(s.session.source_commit)}`);
   p('');
 
   p('[files]', '# Re-drop or auto-load these files to restore event data and plotted curves.');

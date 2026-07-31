@@ -22,7 +22,10 @@ _FULL_SUITE = r"""() => {
   const push = (name, pass, detail) => results.push({ name, pass: Boolean(pass), detail: detail ?? '' });
 
   const session = {
-    session: { created: '2026-07-09T00:00:00.000Z', logical_id: 'logical-test', schema_version: 1 },
+    session: {
+      created: '2026-07-09T00:00:00.000Z', logical_id: 'logical-test', schema_version: 1,
+      application: 'PhaseFinder', application_version: '0.8.0', source_commit: 'abc123',
+    },
     files: { names: ['A.fcs', 'B.fcs'], records: [{
       id: 'file-a', original_name: 'A.fcs', relative_path: 'A.fcs', size: 4,
       last_modified: 1234, mime_type: 'application/octet-stream',
@@ -101,6 +104,11 @@ _FULL_SUITE = r"""() => {
        parsed.session && parsed.session.created);
   push('SES-01: logical session identity and schema version survive the session round-trip',
        parsed.session.logical_id === 'logical-test' && parsed.session.schema_version === 1,
+       JSON.stringify(parsed.session));
+  push('DOC-02: versioned application provenance survives the session round-trip',
+       parsed.session.application === 'PhaseFinder'
+       && parsed.session.application_version === '0.8.0'
+       && parsed.session.source_commit === 'abc123',
        JSON.stringify(parsed.session));
   push('round-trip: files.names is preserved in order',
        JSON.stringify(parsed.files && parsed.files.names) === JSON.stringify(['A.fcs', 'B.fcs']),
