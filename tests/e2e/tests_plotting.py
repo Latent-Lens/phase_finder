@@ -76,9 +76,8 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
               bar_after_plot)
 
     # --- plot inspection API (window.PhaseFinder.plot) ---
-    # series = the currently drawn (checked) samples; series_names / get_histogram
-    # cover every loaded sample, checked or not, so tests/tools can read any
-    # sample's binned histogram by name.
+    # The inspection API retains only currently drawn samples so unchecked
+    # samples are not rescanned or retained on every redraw.
     plot_api = page.evaluate(
         """() => {
             const p = window.PhaseFinder.plot;
@@ -94,8 +93,8 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     ctx.check(group, "Plot inspection API exposes the drawn series (window.PhaseFinder.plot.series)",
               plot_api["seriesIsArray"] and plot_api["seriesLen"] == subset_count,
               str(plot_api))
-    ctx.check(group, "Plot inspection API exposes a binned histogram for every loaded sample",
-              plot_api["namesLen"] >= total_rows and plot_api["histHasBins"],
+    ctx.check(group, "PERF-UI-04: plot inspection caches only drawn samples",
+              plot_api["namesLen"] == subset_count and plot_api["histHasBins"],
               str(plot_api))
 
     # --- re-select all rows and plot all ---
@@ -125,8 +124,9 @@ def test_plotting(ctx: TestContext, preferred_channel: str):
     checkboxes[1].uncheck()
     wait_briefly(0.4)
     ctx.check(group, "Turning rows off removes plot lines",
-              density_curve_count(page) == total_rows - 2,
-              f"curves={density_curve_count(page)}")
+              density_curve_count(page) == total_rows - 2
+              and page.evaluate("window.PhaseFinder.plot.histogram_names.length") == total_rows - 2,
+              f"curves={density_curve_count(page)}, cached={page.evaluate('window.PhaseFinder.plot.histogram_names.length')}")
 
     # Data should still be cached
     ctx.check(group, "Unchecked rows retain loaded data",

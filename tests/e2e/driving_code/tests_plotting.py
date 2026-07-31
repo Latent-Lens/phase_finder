@@ -559,6 +559,27 @@ def test_plot_toolbar(ctx: TestContext):
     ctx.check(group, "UI-14: export cancellation and raster memory bounds fail safely before download",
               export_guards["cancelName"] == "AbortError"
               and "too large" in export_guards["sizeMessage"].lower(), str(export_guards))
+    export_resilience = page.evaluate("""async () => {
+      const exports = await import('./js/plotting/plot_export.js');
+      const originalClick = HTMLAnchorElement.prototype.click;
+      let downloads = 0;
+      HTMLAnchorElement.prototype.click = function () { downloads += 1; };
+      exports.open_plot_export_modal();
+      document.querySelector('input[name="plot_export_format"][value="svg"]').checked = true;
+      await Promise.all([exports.submit_plot_export(), exports.submit_plot_export()]);
+      HTMLAnchorElement.prototype.click = originalClick;
+
+      const originalToBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (callback) { callback(null); };
+      let failure = '';
+      try { await exports.export_plot_image('png', 1); }
+      catch (error) { failure = error.message; }
+      finally { HTMLCanvasElement.prototype.toBlob = originalToBlob; }
+      return { downloads, failure, hidden: document.querySelector('#plot_export_modal').hidden };
+    }""")
+    ctx.check(group, "UI-14: repeated submission is single-flight and encoder failure is recoverable",
+              export_resilience["downloads"] == 1 and export_resilience["hidden"]
+              and "could not encode" in export_resilience["failure"].lower(), str(export_resilience))
     for fmt, (magic, extension) in signatures.items():
         try:
             page.click("#plot_tool_camera")
@@ -577,14 +598,23 @@ def test_plot_toolbar(ctx: TestContext):
             report_ok = fmt != "html" or (
                 "Metadata and results" in saved.read_text(encoding="utf-8")
                 and "Plots and modeled areas" in saved.read_text(encoding="utf-8")
+                and "phasefinder-analysis-provenance" in saved.read_text(encoding="utf-8")
+                and "applicationVersion" in saved.read_text(encoding="utf-8")
                 and "<svg" in saved.read_text(encoding="utf-8")
                 and "<table" in saved.read_text(encoding="utf-8")
             )
+            svg_provenance_ok = fmt != "svg" or (
+                "phasefinder-analysis-provenance" in saved.read_text(encoding="utf-8")
+                and "applicationVersion" in saved.read_text(encoding="utf-8")
+                and "phasefinder_export_provenance" in saved.read_text(encoding="utf-8")
+            )
             ctx.check(group, f"Camera exports a valid {fmt.upper()} file",
-                      download.suggested_filename.endswith(extension)
+                      download.suggested_filename.startswith("phasefinder_overlay_")
+                      and download.suggested_filename.endswith(extension)
+                      and "/" not in download.suggested_filename and "\\" not in download.suggested_filename
                       and head.startswith(magic)
                       and saved.stat().st_size > 1000
-                      and report_ok,
+                      and report_ok and svg_provenance_ok,
                       f"{download.suggested_filename}, {saved.stat().st_size} bytes, head={head!r}")
         except Exception as error:
             ctx.check(group, f"Camera exports a valid {fmt.upper()} file", False, str(error))
@@ -595,6 +625,15 @@ def test_plot_toolbar(ctx: TestContext):
     page.select_option("#plot_view_mode", "ridge")
     page.wait_for_function("document.querySelectorAll('.ridge_row').length >= 3")
     ridge_names = page.eval_on_selector_all(".ridge_row_name", "nodes => nodes.map(node => node.textContent.trim())")
+    ridge_source = page.evaluate("""async () => {
+      const exports = await import('./js/plotting/plot_export.js');
+      return new XMLSerializer().serializeToString(exports.exportable_plot_svg());
+    }""")
+    ctx.check(group, "UI-14: every ridge encoder shares one complete provenance-bearing source",
+              all(name in ridge_source for name in ridge_names)
+              and "phasefinder-analysis-provenance" in ridge_source
+              and "phasefinder_export_provenance" in ridge_source,
+              f"rows={len(ridge_names)}, source_bytes={len(ridge_source)}")
     for fmt in ("svg", "pdf", "png", "jpeg"):
         extension = {"svg": ".svg", "pdf": ".pdf", "png": ".png", "jpeg": ".jpg"}[fmt]
         try:
@@ -607,7 +646,8 @@ def test_plot_toolbar(ctx: TestContext):
             page.wait_for_selector("#plot_export_modal", state="hidden", timeout=5000)
             svg_has_every_name = fmt != "svg" or all(name in saved.read_text(encoding="utf-8") for name in ridge_names)
             ctx.check(group, f"UI-04: {fmt.upper()} exports all {len(ridge_names)} ridge rows",
-                      saved.stat().st_size > 1000 and svg_has_every_name,
+                      download_info.value.suggested_filename.startswith("phasefinder_ridge_")
+                      and saved.stat().st_size > 1000 and svg_has_every_name,
                       f"rows={len(ridge_names)}, bytes={saved.stat().st_size}")
         except Exception as error:
             ctx.check(group, f"UI-04: {fmt.upper()} exports every ridge row", False, str(error))

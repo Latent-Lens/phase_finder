@@ -13,6 +13,13 @@ import {
   plot_export_scale_select,
   plot_export_error,
   plottable_rows,
+  plot_view_mode_select,
+  plot_display_mode_select,
+  plot_channels,
+  plot_bin_count,
+  axis_range_override,
+  analysis_domain_override,
+  plot_viewport,
 } from "./data.js";
 import { svg_to_pdf_blob } from "./svg_to_pdf.js";
 import { filename_timestamp } from "../util/names.js";
@@ -20,6 +27,11 @@ import { get_file_table } from "../state/app_state.js";
 import { get_state } from "../analysis/pipeline_state.js";
 import { escape_html } from "../util/html.js";
 import { result_reporting_summary } from "../analysis/cell_cycle/result_contract.js";
+import {
+  PHASEFINDER_SOURCE_COMMIT,
+  PHASEFINDER_VERSION,
+  phasefinder_provenance,
+} from "../util/build_info.js";
 
 // Presentation properties that must survive the trip out of the document.
 const INLINED_STYLE_PROPERTIES = [
@@ -35,10 +47,107 @@ const EXPORT_ONLY_REMOVED = ".plot_interaction_surface, .plot_zoom_band";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const RIDGE_HEADER_HEIGHT = 28;
 const RIDGE_ROW_GAP = 12;
+const PROVENANCE_HEADER_HEIGHT = 58;
+const PROVENANCE_ROW_HEIGHT = 17;
 const MAX_VECTOR_EXPORT_HEIGHT = 16384;
 const MAX_RASTER_DIMENSION = 16384;
 const MAX_RASTER_PIXELS = 64_000_000;
 let export_controller = null;
+
+function analysis_export_provenance() {
+  const samples = plottable_rows().map((row) => {
+    const state = get_state(row.name);
+    const modeling = state?.modeling;
+    const resultKey = modeling?.activeResultKey || modeling?.lastDiagnosticResultKey || null;
+    const result = resultKey ? modeling?.resultsByKey?.[resultKey] : null;
+    const qc = {};
+    for (const [name, value] of Object.entries({
+      structural: state?.structuralQC,
+      time: state?.timeQC,
+      scatter: state?.scatterGate,
+      singlet: state?.singletResult,
+    })) {
+      if (value) qc[name] = value.algorithmVersion || value.version || value.status || "present";
+    }
+    return {
+      sample: row.name,
+      modelId: result?.modelId || null,
+      modelVersion: result?.modelVersion || result?.version || null,
+      resultKey,
+      histogramFingerprint: modeling?.histogramFingerprint || null,
+      qc,
+    };
+  });
+  return phasefinder_provenance("analysis-export", {
+    channel: plot_channels?.dna_area || null,
+    view: plot_view_mode_select?.value === "ridge" ? "ridge" : "overlay",
+    displayMode: plot_display_mode_select?.value || null,
+    bins: plot_bin_count(),
+    displayRange: { ...axis_range_override, viewport: plot_viewport },
+    analysisRange: { ...analysis_domain_override },
+    samples,
+  });
+}
+
+function append_export_provenance(svg) {
+  const provenance = analysis_export_provenance();
+  const width = Number(svg.getAttribute("width")) || svg.viewBox?.baseVal?.width || 0;
+  const oldHeight = Number(svg.getAttribute("height")) || svg.viewBox?.baseVal?.height || 0;
+  if (!(width > 0) || !(oldHeight > 0)) return svg;
+  const footerHeight = PROVENANCE_HEADER_HEIGHT + provenance.samples.length * PROVENANCE_ROW_HEIGHT;
+  if (oldHeight + footerHeight > MAX_VECTOR_EXPORT_HEIGHT) {
+    throw new Error("The complete plot plus provenance is too tall. Use the paginated HTML report.");
+  }
+  svg.setAttribute("height", oldHeight + footerHeight);
+  svg.setAttribute("viewBox", `0 0 ${width} ${oldHeight + footerHeight}`);
+
+  const metadata = document.createElementNS(SVG_NS, "metadata");
+  metadata.setAttribute("id", "phasefinder-analysis-provenance");
+  metadata.textContent = JSON.stringify(provenance);
+  svg.insertBefore(metadata, svg.firstChild);
+
+  const group = document.createElementNS(SVG_NS, "g");
+  group.setAttribute("class", "phasefinder_export_provenance");
+  group.setAttribute("transform", `translate(0 ${oldHeight})`);
+  const background = document.createElementNS(SVG_NS, "rect");
+  background.setAttribute("width", width);
+  background.setAttribute("height", footerHeight);
+  background.setAttribute("fill", "#ffffff");
+  background.setAttribute("stroke", "#94a3b8");
+  group.appendChild(background);
+  const line = (text, y, weight = "400") => {
+    const node = document.createElementNS(SVG_NS, "text");
+    node.setAttribute("x", "8");
+    node.setAttribute("y", y);
+    node.setAttribute("fill", "#172033");
+    node.setAttribute("font-family", "Arial, sans-serif");
+    node.setAttribute("font-size", "11");
+    node.setAttribute("font-weight", weight);
+    node.textContent = text;
+    group.appendChild(node);
+  };
+  line(`PhaseFinder ${PHASEFINDER_VERSION} • source ${PHASEFINDER_SOURCE_COMMIT.slice(0, 12)}`, 17, "700");
+  line(`View ${provenance.view} • channel ${provenance.channel || "unspecified"} • ${provenance.bins} bins • generated ${provenance.generatedAt}`, 35);
+  line(`Analysis range ${JSON.stringify(provenance.analysisRange)} • display range ${JSON.stringify(provenance.displayRange)}`, 51);
+  provenance.samples.forEach((sample, index) => {
+    const qc = Object.entries(sample.qc).map(([name, value]) => `${name}:${value}`).join(",") || "none";
+    line(`${sample.sample} • model ${sample.modelId || "none"} • QC ${qc}`, PROVENANCE_HEADER_HEIGHT + index * PROVENANCE_ROW_HEIGHT + 12);
+  });
+  svg.appendChild(group);
+  return svg;
+}
+
+function export_filename_stem() {
+  const view = plot_view_mode_select?.value === "ridge" ? "ridge" : "overlay";
+  const models = new Set(plottable_rows().map((row) => {
+    const modeling = get_state(row.name)?.modeling;
+    const result = modeling?.activeResultKey ? modeling.resultsByKey?.[modeling.activeResultKey] : null;
+    return result?.modelId;
+  }).filter(Boolean));
+  const model = models.size === 1 ? [...models][0] : models.size ? "mixed-models" : "events";
+  const safe_model = model.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "events";
+  return `phasefinder_${view}_${safe_model}_${filename_timestamp()}`;
+}
 
 function throw_if_cancelled(signal) {
   if (signal?.aborted) throw new DOMException("Plot export was cancelled.", "AbortError");
@@ -103,7 +212,7 @@ export function exportable_plot_svg() {
   const ridge_rows = plot_area ? [...plot_area.querySelectorAll(".ridge_row")] : [];
   if (!ridge_rows.length) {
     const svg = current_plot_svg();
-    return svg ? inline_styled_clone(svg) : null;
+    return svg ? append_export_provenance(inline_styled_clone(svg)) : null;
   }
 
   const entries = ridge_rows.map((row) => {
@@ -155,7 +264,7 @@ export function exportable_plot_svg() {
     composite.appendChild(group);
     y += RIDGE_HEADER_HEIGHT + entry.height + RIDGE_ROW_GAP;
   });
-  return composite;
+  return append_export_provenance(composite);
 }
 
 function serialize(svg_clone) {
@@ -240,11 +349,15 @@ function report_plot_html() {
 
 export function build_analysis_report_html() {
   const generated = new Date().toLocaleString();
+  const provenance = analysis_export_provenance();
+  const provenance_json = JSON.stringify(provenance).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PhaseFinder analysis report</title><style>
-body{margin:32px;color:#172033;background:#fff;font:14px/1.45 Arial,sans-serif}h1,h2{color:#072c67}h1{margin-bottom:4px}.generated{color:#5b6472;margin-top:0}.plot{margin:18px 0 30px}.plot svg{max-width:100%;height:auto}.ridge_row{break-inside:avoid;margin:0 0 16px}.ridge_row_header{font-weight:700;margin-bottom:4px}.ridge_badge{margin-left:10px;color:#087f86}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}th{background:#e7f3f5;color:#072c67}.empty{color:#5b6472}@media print{body{margin:12mm}.table-wrap{overflow:visible}tr,.plot svg{break-inside:avoid}}
+body{margin:32px;color:#172033;background:#fff;font:14px/1.45 Arial,sans-serif}h1,h2{color:#072c67}h1{margin-bottom:4px}.generated{color:#5b6472;margin-top:0}.plot{margin:18px 0 30px}.plot svg{max-width:100%;height:auto}.ridge_row{break-inside:avoid;margin:0 0 16px}.ridge_row_header{font-weight:700;margin-bottom:4px}.ridge_badge{margin-left:10px;color:#087f86}.provenance{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px}.provenance dt{font-weight:700}.provenance dd{margin:0}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}th{background:#e7f3f5;color:#072c67}.empty{color:#5b6472}@media print{body{margin:12mm}.table-wrap{overflow:visible}tr,.plot svg{break-inside:avoid}}
 </style></head><body><h1>PhaseFinder analysis report</h1><p class="generated">Generated ${escape_html(generated)}</p>
+<h2>Analysis provenance</h2><dl class="provenance"><dt>Application</dt><dd>PhaseFinder ${escape_html(provenance.applicationVersion)}</dd><dt>Source</dt><dd>${escape_html(provenance.sourceCommit)}</dd><dt>View/channel</dt><dd>${escape_html(provenance.view)} / ${escape_html(provenance.channel || "unspecified")}</dd><dt>Bins</dt><dd>${provenance.bins}</dd></dl>
+<script type="application/json" id="phasefinder-analysis-provenance">${provenance_json}</script>
 <h2>Plots and modeled areas</h2><div class="plot">${report_plot_html()}</div>
 ${(() => { const summary = report_fit_summary_html(); return summary ? `<h2>Selected regions and modeled fractions</h2>${summary}` : ""; })()}
 <h2>Metadata and results</h2>${report_table_html()}</body></html>`;
@@ -252,7 +365,7 @@ ${(() => { const summary = report_fit_summary_html(); return summary ? `<h2>Sele
 
 function export_analysis_report() {
   const html = build_analysis_report_html();
-  download_blob(new Blob([html], { type: "text/html;charset=utf-8" }), `phasefinder_report_${filename_timestamp()}.html`);
+  download_blob(new Blob([html], { type: "text/html;charset=utf-8" }), `${export_filename_stem()}_report.html`);
 }
 
 /*
@@ -302,9 +415,15 @@ function rasterize(svg_clone, format, scale, signal = null) {
       finish(reject, new DOMException("Plot export was cancelled.", "AbortError"));
     };
     signal?.addEventListener("abort", abort, { once: true });
-    if (signal?.aborted) return abort();
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
     image.onload = () => {
-      if (signal?.aborted) return abort();
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
       canvas = document.createElement("canvas");
       canvas.width = pixel_width;
       canvas.height = pixel_height;
@@ -349,7 +468,7 @@ export async function export_plot_image(format, scale = 2, signal = null) {
   }
   const clone = exportable_plot_svg();
   if (!clone) throw new Error("There is no plot to export yet.");
-  const name = `phasefinder_plot_${filename_timestamp()}`;
+  const name = export_filename_stem();
   throw_if_cancelled(signal);
 
   if (format === "svg") {
@@ -358,7 +477,16 @@ export async function export_plot_image(format, scale = 2, signal = null) {
     return;
   }
   if (format === "pdf") {
-    download_blob(svg_to_pdf_blob(clone), `${name}.pdf`);
+    // The vector converter reads computed styles. Keep the export clone in the
+    // document just long enough for those values to resolve.
+    clone.style.position = "fixed";
+    clone.style.left = "-100000px";
+    document.body.append(clone);
+    try {
+      download_blob(svg_to_pdf_blob(clone), `${name}.pdf`);
+    } finally {
+      clone.remove();
+    }
     return;
   }
   if (format === "png" || format === "jpeg") {
