@@ -152,6 +152,8 @@ export function init_panel_resize() {
     panel_observer.observe(plot_panel,     { attributes: true, attributeFilter: ['hidden', 'class'] });
     panel_observer.observe(metadata_panel, { attributes: true, attributeFilter: ['class'] });
     sync_resizer_state();
+    workspace_resizer.addEventListener('focus', sync_resizer_state);
+    window.addEventListener('resize', sync_resizer_state);
 
     workspace_resizer.addEventListener('pointerdown', (e) => {
       if (!workspace_resizer.classList.contains('draggable')) return;

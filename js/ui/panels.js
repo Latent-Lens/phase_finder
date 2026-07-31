@@ -62,6 +62,8 @@ export function set_sidebar_modeling_mode(on) {
 
   const apply = () => {
     app_shell.classList.toggle("sidebar_modeling_mode", on);
+    if (sidebar_modeling_section) sidebar_modeling_section.hidden = !on;
+    if (sidebar_back_button) sidebar_back_button.hidden = !on;
     if (sidebar_title) {
       sidebar_title.textContent = on ? SIDEBAR_TITLE_MODELING : SIDEBAR_TITLE_FILES;
     }

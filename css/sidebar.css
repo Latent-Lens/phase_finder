@@ -460,9 +460,9 @@
 
 .app.sidebar_modeling_mode #sidebar_modeling_section {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 12px;
-  min-height: 0;
   overflow-y: visible;
   /* It becomes the top-most visible section, so drop the
      .sidebar_section + .sidebar_section separator it would otherwise inherit

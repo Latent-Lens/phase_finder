@@ -66,6 +66,8 @@ import { suppress_next_unload_warning } from "./unload_guard.js";
 import { init_cache_manager } from "./cache_manager.js";
 import { validate_session_draft } from './session_schema.js';
 import { run_restore_stages } from './session_transaction.js';
+import { set_sidebar_collapsed } from '../ui/table_support.js';
+import { set_metadata_panel_collapsed, set_plot_panel_collapsed } from '../ui/panels.js';
 import { PHASEFINDER_SOURCE_COMMIT, PHASEFINDER_VERSION } from '../util/build_info.js';
 
 // ── Session-file restore orchestration ───────────────────────────────────────
@@ -494,8 +496,26 @@ function apply_session_view(session) {
   }
 
   const app_shell = document.querySelector('.app');
-  if (app_shell && session.ui?.sidebar_width_px > 0) {
-    app_shell.style.setProperty('--sidebar_width', `${session.ui.sidebar_width_px}px`);
+  const ui = session.ui || {};
+  if (app_shell && ui.sidebar_width_px) {
+    const maximum = Math.max(150, Math.floor(window.innerWidth * 0.5));
+    app_shell.style.setProperty('--sidebar_width', `${Math.min(ui.sidebar_width_px, maximum)}px`);
+  }
+  if (typeof ui.sidebar_collapsed === 'boolean') set_sidebar_collapsed(ui.sidebar_collapsed);
+  if (typeof ui.plot_panel_collapsed === 'boolean') set_plot_panel_collapsed(ui.plot_panel_collapsed);
+  if (typeof ui.metadata_panel_collapsed === 'boolean') set_metadata_panel_collapsed(ui.metadata_panel_collapsed);
+
+  const plot_panel = document.getElementById('plot_panel');
+  const metadata_panel = document.getElementById('metadata_panel');
+  if (plot_panel && metadata_panel && ui.plot_panel_height_px && ui.metadata_panel_height_px) {
+    const saved_total = ui.plot_panel_height_px + ui.metadata_panel_height_px;
+    const available = document.querySelector('.workspace')?.clientHeight || saved_total;
+    const total = Math.max(100, Math.min(saved_total, available));
+    const plot_height = Math.min(Math.max(ui.plot_panel_height_px, 50), total - 50);
+    plot_panel.style.minHeight = '0';
+    metadata_panel.style.minHeight = '0';
+    plot_panel.style.flex = `0 0 ${plot_height}px`;
+    metadata_panel.style.flex = `0 0 ${total - plot_height}px`;
   }
 }
 

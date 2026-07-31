@@ -26,6 +26,16 @@ function strings(value, path) {
   });
 }
 
+function optional_boolean(value, path) {
+  if (value != null && typeof value !== 'boolean') fail(path, 'a boolean');
+}
+
+function optional_layout_number(value, path, minimum) {
+  if (value != null && (!Number.isFinite(value) || value < minimum || value > 100000)) {
+    fail(path, `a finite number from ${minimum} to 100000`);
+  }
+}
+
 function clone_and_freeze(value) {
   if (!value || typeof value !== 'object') return value;
   const copy = Array.isArray(value) ? [] : Object.create(null);
@@ -81,7 +91,15 @@ export function validate_session_draft(parsed) {
     }
   }
   if (parsed.plot) object(parsed.plot, 'plot');
-  if (parsed.ui) object(parsed.ui, 'ui');
+  if (parsed.ui) {
+    const ui = object(parsed.ui, 'ui');
+    optional_boolean(ui.sidebar_collapsed, 'ui.sidebar_collapsed');
+    optional_boolean(ui.plot_panel_collapsed, 'ui.plot_panel_collapsed');
+    optional_boolean(ui.metadata_panel_collapsed, 'ui.metadata_panel_collapsed');
+    optional_layout_number(ui.sidebar_width_px, 'ui.sidebar_width_px', 150);
+    optional_layout_number(ui.plot_panel_height_px, 'ui.plot_panel_height_px', 50);
+    optional_layout_number(ui.metadata_panel_height_px, 'ui.metadata_panel_height_px', 50);
+  }
   if (parsed.stats_plan) object(parsed.stats_plan, 'stats_plan');
   if (parsed.structural_qc) object(parsed.structural_qc, 'structural_qc');
   if (parsed.time_qc) object(parsed.time_qc, 'time_qc');

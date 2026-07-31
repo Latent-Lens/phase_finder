@@ -339,9 +339,12 @@ def run_session_tests(ctx: TestContext):
             files: { ...validLegacy.files, records: [{ ...validLegacy.files.records[0], opfs_path: 'foreign/private.fcs' }] },
           });
         } catch (_) { pathRejected = true; }
-        push('SEC-01: schema rejects unknown critical sections, type mismatches, and machine/foreign paths before apply',
-          unknownRejected && typeRejected && pathRejected,
-          JSON.stringify({ unknownRejected, typeRejected, pathRejected }));
+        let layoutRejected = false;
+        try { schema.validate_session_draft({ ...validLegacy, ui: { sidebar_width_px: -1 } }); }
+        catch (_) { layoutRejected = true; }
+        push('SEC-01/UI-18: schema rejects unknown sections, type/path errors, and invalid persisted layout before apply',
+          unknownRejected && typeRejected && pathRejected && layoutRejected,
+          JSON.stringify({ unknownRejected, typeRejected, pathRejected, layoutRejected }));
 
         const migrated = sessionCore.prepare_session_draft({
           session: { created: '2026-01-01T00:00:00Z', schema_version: 0 },
