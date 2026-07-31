@@ -47,11 +47,15 @@ python3 -m playwright install chromium
 npm test
 npm run build
 npm run check:dist
+npm run preview
 ```
 
-`npm run dev` starts the source development server. `npm run preview` serves
-the built `dist/` artifact. The combined `npm run check` command runs the
-browser unit suite, production build, and artifact integrity checks.
+`npm run dev` serves the source module graph for development. `npm run build`
+creates the reviewed production artifact under `dist/`, and `npm run preview`
+serves only that artifact. Opening either entry point with `file://` does not
+work because browser module and worker loading requires HTTP. The combined
+`npm run check` command runs CI contract tests, the browser unit suite,
+production build, privacy checks, and artifact integrity checks.
 Use `BASE_PATH=/phasefinder/ npm run build` for a non-root deployment; run
 `npm run check:base` to build and verify that supported base path locally.
 Release containment, rollback, artifact URL, and privacy policy are documented
@@ -114,6 +118,9 @@ save/load, and layout controls); see it for an up-to-date feature tour. For the
 module dependency layers and the key event-flow / user-decision paths as mermaid
 diagrams, open [`docs/code-flow-diagrams.html`](docs/code-flow-diagrams.html) and
 [`docs/function-call-and-user-decision-graphs.html`](docs/function-call-and-user-decision-graphs.html).
+The generated [`docs/module-import-graph.md`](docs/module-import-graph.md) is
+checked in CI; update it after an intentional import change with
+`python3 scripts/check_import_graph.py --update`.
 Both pages provide fit-to-screen, zoom, drag-pan, keyboard, and full-screen
 controls; their canonical Mermaid sources remain beside them as `.md` files.
 
@@ -148,10 +155,10 @@ runtime:
 6. `js/analysis/pipeline_loader.js` dynamically imports the QC + modeling
    pipeline orchestrator on the first QC or modeling action.
 
-The only runtime third-party library is:
+The only runtime third-party library is vendored in the repository:
 
 ```text
-https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js     # plotting
+js/vendor/d3.min.js  # D3 v7 plotting bundle
 ```
 
 D3 is vendored locally and resolved through the import map. Peak detection and
@@ -498,9 +505,9 @@ Useful flags are `--files N`, `--extra-files N`, `--data DIR`, `--url`,
 git-ignored directory under `tests/e2e/results/`, so concurrent runs never
 delete one another's output. One self-contained HTML report with E2E and Unit
 tabs is written inside that run directory; screenshots and videos are embedded
-and their temporary files are removed. By default the report retains media for
-every eligible check; pass `--limited-media` to keep one representative
-image/video per test group plus evidence for every failure. Full-media E2E
+and their temporary files are removed. By default the report keeps one
+representative image/video per test group plus evidence for every failure;
+pass `--all-media` to retain media for every eligible check. Full-media E2E
 clips include two seconds of lead-in so related assertions retain the action
 that produced them. Local test servers use the first open
 port from 8000 through 9000. Run only the unit suites with:

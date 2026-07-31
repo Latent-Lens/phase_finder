@@ -1,7 +1,7 @@
 # PhaseFinder Code Flow Diagrams
 
-These diagrams document the current ES-module browser application on the
-`djf-pipeline` branch. They separate module topology, state ownership, FCS data
+These diagrams document the current ES-module browser application. They
+separate module topology, state ownership, FCS data
 loading, the staged Dean–Jett–Fox pipeline, rendering, and session restore so
 each diagram remains useful at a readable scale.
 
@@ -353,4 +353,86 @@ flowchart TD
   MODAL --> COPY["copy_file_to_opfs()<br/>load_files()"]
   MISS -- "no" --> READY["session restored"]
   COPY --> READY
+```
+
+## 9. Production build and deployment
+
+The reviewed Vite artifact is the deployment unit. Release jobs do not rebuild
+after inspection: checksums, manifest, SBOM, build metadata, and deployed files
+all describe the same `dist/` tree.
+
+```mermaid
+flowchart LR
+  SRC["Source + package-lock<br/>pinned Node/npm"] --> CI["npm ci + npm check"]
+  CI --> VITE["vite build<br/>root/base-path pages + workers"]
+  VITE --> PROV["generate-provenance.cjs<br/>metadata · SBOM · manifest · SHA256SUMS"]
+  PROV --> VERIFY["verify-dist.cjs<br/>crawl links · hashes · privacy · budgets"]
+  VERIFY --> SMOKE["dist_smoke.py<br/>serve only dist with production headers"]
+  SMOKE --> ARTIFACT["immutable reviewed artifact"]
+  ARTIFACT --> APPROVE{"protected production<br/>environment approved?"}
+  APPROVE -- no --> HOLD["artifact retained; no deployment"]
+  APPROVE -- yes --> CF["Cloudflare Pages<br/>deploy exact artifact"]
+```
+
+## 10. Time QC variants and effective settings
+
+Both Time QC methods use one validated settings contract, but retain independent
+drafts and algorithm identities. Apply commits atomically; Cancel never changes
+live settings or masks.
+
+```mermaid
+flowchart TD
+  OPEN["time_qc_modal.open()"] --> CLONE["clone live settings into modal draft"]
+  CLONE --> METHOD{"selected method"}
+  METHOD --> ROBUST["robustSummaryOptions<br/>robust-summary-v2"]
+  METHOD --> PEAK["peakTrackingOptions<br/>peak-tracking-v2"]
+  ROBUST --> VALIDATE["validate_time_qc_settings()"]
+  PEAK --> VALIDATE
+  VALIDATE -- invalid --> FIELD["field error + focus<br/>live state unchanged"]
+  VALIDATE -- Cancel --> DISCARD["discard draft"]
+  VALIDATE -- Apply --> COMMIT["atomic effective settings commit"]
+  COMMIT --> HASH["method + algorithm + channels + options identity"]
+  HASH --> RUN["cell_cycle_pipeline.run_time_qc()"]
+  RUN --> MASK["typed outcome + time mask + provenance"]
+```
+
+## 11. Canonical model state and worker boundary
+
+Per-sample modeling state owns reviewed regions, settings, histogram identity,
+revision, and versioned results. A fit worker returns calculation output only;
+the shared state entry point rejects cancelled, superseded, or stale input
+before mutating active/cached results.
+
+```mermaid
+flowchart LR
+  INPUTS["row bytes/channel + final mask<br/>histogram/domain/bins<br/>reviewed regions + settings"] --> KEY["fingerprint + modeling revision<br/>fitRequestId"]
+  KEY --> PREFLIGHT["canonical preflight/result contract"]
+  PREFLIGHT --> POOL["fit_worker pool<br/>module worker"]
+  POOL --> RESULT["typed candidate result"]
+  RESULT --> CURRENT{"same request, revision,<br/>histogram, and signal?"}
+  CURRENT -- no --> DROP["FIT_INPUTS_CHANGED / cancelled<br/>no state mutation"]
+  CURRENT -- yes --> STORE["resultsByKey + activeResultKey<br/>reporting contract"]
+  STORE --> CONSUMERS["plot · ridge badges · table<br/>session recompute · exports"]
+```
+
+## 12. OPFS index and cache lifecycle
+
+The cache index is versioned and atomically written. Each logical session owns
+references to content-verified files; Reset/release removes only objects no
+longer referenced by another session.
+
+```mermaid
+flowchart TD
+  LOAD["load_files()"] --> RECORD["file_cache record<br/>id · metadata · digest"]
+  RECORD --> COPY["copy_worker.js<br/>stream into sessions/&lt;id&gt;/files"]
+  COPY --> INDEX["versioned OPFS cache index<br/>atomic replace"]
+  SAVE["collect_session()"] --> REFS["logical session + file records<br/>digest algorithm/value"]
+  REFS --> INDEX
+  RESTORE["session restore"] --> LOOKUP["index lookup + OPFS read"]
+  LOOKUP --> VERIFY["size + content digest verification"]
+  VERIFY -- valid --> INGEST["same load_files() path as fresh input"]
+  VERIFY -- missing/mismatch --> RECONNECT["explicit local reconnect"]
+  RESET["Reset / cache manager release"] --> OWNERS{"other session references?"}
+  OWNERS -- yes --> KEEP["keep shared cached object"]
+  OWNERS -- no --> DELETE["delete owned file/index entry"]
 ```
