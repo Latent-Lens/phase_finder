@@ -1,18 +1,35 @@
 const path = require("node:path");
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const { defineConfig } = require("vite");
+const pkg = require("./package.json");
 let outDir = path.resolve("dist");
 let base = "/";
 
+function sourceCommit() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch (_) {
+    return "unknown";
+  }
+}
+
 module.exports = defineConfig({
   base: process.env.BASE_PATH || "/",
+  define: {
+    __PHASEFINDER_VERSION__: JSON.stringify(pkg.version),
+    __PHASEFINDER_SOURCE_COMMIT__: JSON.stringify(sourceCommit()),
+  },
   plugins: [{
     name: "copy-stable-runtime-assets",
     configResolved(config) {
       outDir = path.resolve(config.root, config.build.outDir);
       base = config.base;
     },
-    closeBundle() {
+    writeBundle() {
       fs.cpSync("assets/img/favicon", path.join(outDir, "assets/img/favicon"), { recursive: true });
       const indexPath = path.join(outDir, "index.html");
       const index = fs.readFileSync(indexPath, "utf8").replace(

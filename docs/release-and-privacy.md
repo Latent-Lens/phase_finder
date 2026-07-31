@@ -17,6 +17,12 @@ must approve the deployment and the repository/environment variable
 still run while deployment is disabled, allowing the exact artifact to be
 reviewed safely.
 
+`package.json` is the application-version source of truth. Preflight requires
+the lockfile to match it and requires a release tag to be exactly `v<version>`.
+Production `build-metadata.json` and the SBOM derive their version from the same
+package field. The package license identifier, root license text, and vendored
+D3 notice are checked together before a release build.
+
 ## Artifact URL policy
 
 HTML entry assets and module imports are Vite-managed and hashed. The favicon
