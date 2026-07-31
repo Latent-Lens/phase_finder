@@ -4,6 +4,7 @@
 import importlib.metadata
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,7 +38,7 @@ for name in [] if static_only else requirements:
         errors.append(f"Python dependency is not installed: {name}")
         continue
     classifiers = metadata.get_all("Classifier") or []
-    if not metadata.get("License") and not any("License ::" in item for item in classifiers):
+    if not metadata.get("License") and not metadata.get("License-Expression") and not any("License ::" in item for item in classifiers):
         errors.append(f"Python package has no declared license: {name}")
 
 action_ref = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)")
@@ -50,6 +51,25 @@ for workflow in (root / ".github/workflows").glob("*.yml"):
         if not re.fullmatch(r"[0-9a-f]{40}", ref):
             errors.append(f"GitHub Action is not commit-pinned: {workflow.name}:{number}")
 
+secret_patterns = {
+    "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    "GitHub token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"),
+    "AWS access key": re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
+    "Slack token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+}
+text_suffixes = {".cjs", ".css", ".html", ".js", ".json", ".md", ".mjs", ".py", ".sh", ".toml", ".txt", ".webmanifest", ".yaml", ".yml"}
+tracked = subprocess.run(
+    ["git", "ls-files", "-z"], cwd=root, check=True, capture_output=True,
+).stdout.decode().split("\0")
+for relative in tracked:
+    path = root / relative
+    if not relative or path.suffix.lower() not in text_suffixes or not path.is_file():
+        continue
+    text = path.read_text(encoding="utf-8", errors="replace")
+    for label, pattern in secret_patterns.items():
+        if pattern.search(text):
+            errors.append(f"possible {label} in tracked file: {relative}")
+
 if errors:
     raise SystemExit("\n".join(errors))
-print(f"Supply-chain policy passed: {len(lock.get('packages', {})) - 1} npm and {len(requirements)} Python packages; Actions commit-pinned.")
+print(f"Supply-chain policy passed: {len(lock.get('packages', {})) - 1} npm and {len(requirements)} Python packages; Actions commit-pinned; tracked text secret-scanned.")
