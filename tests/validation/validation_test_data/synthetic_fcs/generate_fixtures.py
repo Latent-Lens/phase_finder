@@ -36,7 +36,7 @@ DEFAULT_OUTPUT = Path(__file__).resolve().parent
 NORMAL = NormalDist()
 
 CHANNELS = ("DNA-A", "DNA-H", "DNA-W", "FSC-A", "SSC-A", "Time")
-MODEL_IDS = ("dean_jett", "dean_jett_fox", "watson_pragmatic", "auto_dj_djf")
+MODEL_IDS = ("dean_jett", "dean_jett_fox", "watson_pragmatic", "watson_classic")
 PHASE_CODE = {"G1": "1", "S": "S", "G2M": "2", None: "."}
 CLASS_CODE = {
     "biological_singlet": "B",
@@ -674,7 +674,6 @@ SCIENTIFIC_CASES: list[dict[str, Any]] = [
             "dean_jett": {"kind": "diagnostic"},
             "watson_pragmatic": {"kind": "diagnostic"},
             "dean_jett_fox": {"kind": "recovery", "minimum_wave_weight": 0.10},
-            "auto_dj_djf": {"kind": "recovery", "expected_selected_model": "dean_jett_fox"},
         },
     },
     {
@@ -687,7 +686,6 @@ SCIENTIFIC_CASES: list[dict[str, Any]] = [
             "dean_jett": {"kind": "diagnostic"},
             "watson_pragmatic": {"kind": "diagnostic"},
             "dean_jett_fox": {"kind": "recovery", "minimum_wave_weight": 0.10},
-            "auto_dj_djf": {"kind": "recovery", "expected_selected_model": "dean_jett_fox"},
         },
     },
     {
@@ -738,6 +736,14 @@ SCIENTIFIC_CASES: list[dict[str, Any]] = [
         "category": "scientific_adversarial",
         "description": "Peak ratio 1.50 lies outside the default bounded diploid interval.",
         "audit_findings": ["SCI-02"], "tags": ["ratio", "aneuploid", "constraint"],
+        "tolerance_pp": 8.0,
+    },
+    {
+        "id": "arrest_g1_95_04_01", "seed": 2008, "biological_events": 12_000,
+        "fractions": (0.95, 0.04, 0.01),
+        "category": "scientific_adversarial",
+        "description": "Deep diploid G1 arrest at a true 2.0 peak ratio: G2/M exists but is far too small for the detector to resolve as a peak, so detection falls back to an inferred G2.",
+        "audit_findings": [], "tags": ["arrest", "g1-arrest", "diploid", "low-g2", "inferred-g2"],
         "tolerance_pp": 8.0,
     },
     {

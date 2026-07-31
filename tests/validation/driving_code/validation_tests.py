@@ -47,7 +47,6 @@ EXTERNAL_ROOT = REPO_ROOT / "tests" / "validation" / "validation_test_data" / "e
 RESULTS_ROOT = REPO_ROOT / "tests"
 
 MODELS = {
-    "auto_dj_djf": "Automatic — Dean–Jett / Dean–Jett–Fox",
     "dean_jett": "Dean–Jett",
     "dean_jett_fox": "Dean–Jett–Fox",
     "watson_pragmatic": "Watson Pragmatic",
@@ -278,6 +277,28 @@ def apply_qc(page, qc_ids, time_method=None):
             page.wait_for_selector("#djf_scatter_modal", state="hidden", timeout=10000)
 
 
+def waive_structural_qc(page, sample_name):
+    """Record an on-the-record structural-QC waiver for a raw-data run.
+
+    model_preflight fails closed: a required stage counts only when it applied
+    cleanly or was deliberately waived, and a waiver counts only when it carries
+    a reason. Validation model runs fit unfiltered events on purpose, so waive
+    the stage rather than applying it, which would change what the "raw" view
+    means. Without this the fit throws, no result is stored, and the caller's
+    wait on activeResultKey never resolves.
+    """
+    page.evaluate(
+        """name => {
+          const state = window.PhaseFinder.pipeline.get_state(name);
+          state.qcWaivers = { ...(state.qcWaivers ?? {}), structural: {
+            reason: "Validation run fits raw events by design.",
+            approvedAt: new Date().toISOString(),
+          } };
+        }""",
+        sample_name,
+    )
+
+
 def image_data(page):
     page.wait_for_function(
         """() => [...document.querySelectorAll('[role="dialog"]')].every((modal) => {
@@ -347,6 +368,8 @@ def one_run(page, record, label, model_id=None, qc=(), time_method=None):
         if qc:
             apply_qc(page, qc, time_method)
             bins = use_recommended_bins(page)
+        if "qc_structural" not in qc:
+            waive_structural_qc(page, sample_name)
         regions, peak_image, source, confidence = detect_peaks(page, sample_name)
         result.update({"status": "PASS", "error": "", "regions": regions,
                        "peak_image": peak_image, "channel": channel,

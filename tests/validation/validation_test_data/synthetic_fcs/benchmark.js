@@ -14,7 +14,7 @@ const DEFAULT_MODELS = [
   "dean_jett",
   "dean_jett_fox",
   "watson_pragmatic",
-  "auto_dj_djf",
+  "watson_classic",
 ];
 
 const state = {
@@ -665,7 +665,7 @@ async function fitOne(entry, view, modelId) {
   const fittedPeakRatio = Number.isFinite(fitted.parameters?.g2Mean) && Number.isFinite(fitted.parameters?.g1Mean)
     ? fitted.parameters.g2Mean / fitted.parameters.g1Mean
     : null;
-  const boundedModel = ["dean_jett", "dean_jett_fox", "auto_dj_djf"].includes(modelId);
+  const boundedModel = ["dean_jett", "dean_jett_fox", "watson_classic"].includes(modelId);
   const ratioConstraintViolation = boundedModel && Number.isFinite(fittedPeakRatio)
     && (fittedPeakRatio < 1.65 - 1e-8 || fittedPeakRatio > 2.25 + 1e-8);
   const selected = fitted.modelComparison?.selectedModelId;

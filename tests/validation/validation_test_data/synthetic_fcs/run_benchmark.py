@@ -51,7 +51,7 @@ KNOWN_MODELS = (
     "dean_jett",
     "dean_jett_fox",
     "watson_pragmatic",
-    "auto_dj_djf",
+    "watson_classic",
 )
 PARSER_PHASE_BY_OUTCOME = {
     "LOAD_OK": "data_load",
@@ -673,7 +673,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--models",
-        default="dean_jett,dean_jett_fox,watson_pragmatic,auto_dj_djf",
+        default="dean_jett,dean_jett_fox,watson_pragmatic,watson_classic",
         help="Comma-separated model IDs.",
     )
     parser.add_argument(

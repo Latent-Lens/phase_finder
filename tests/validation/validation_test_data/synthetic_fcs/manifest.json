@@ -1,6 +1,104 @@
 {
-  "case_count": 59,
+  "case_count": 60,
   "cases": [
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "auto_dj_djf": {
+            "kind": "diagnostic"
+          },
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 8.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [],
+      "category": "scientific_adversarial",
+      "description": "Deep diploid G1 arrest at a true 2.0 peak ratio: G2/M exists but is far too small for the detector to resolve as a peak, so detection falls back to an inferred G2.",
+      "fcs": {
+        "bytes": 288706,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "08be3c91149410345f48417cb2ab424513ace13ac2e6278a2c96f2d3039330fe"
+      },
+      "file": "files/arrest_g1_95_04_01.fcs",
+      "id": "arrest_g1_95_04_01",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "arrest",
+        "g1-arrest",
+        "diploid",
+        "low-g2",
+        "inferred-g2"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 11400,
+            "g2": 120,
+            "s": 480
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.95,
+            "g2": 0.01,
+            "s": 0.04
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 11400,
+            "g2": 120,
+            "s": 480
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.95,
+            "g2": 0.01,
+            "s": 0.04
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/arrest_g1_95_04_01.truth.json",
+      "truth_sha256": "c06482bc0ab9bf9a4208eb2fa098a450ca334152f0cdd6b236c11673c5a8f4a4"
+    },
     {
       "analysis": {
         "benchmark_models": true,
