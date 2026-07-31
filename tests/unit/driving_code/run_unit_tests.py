@@ -73,6 +73,12 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_table import run_table_tests
     run_table_tests(ctx)
 
+    from unit_tests_summary_stats import run_summary_stats_tests
+    run_summary_stats_tests(ctx)
+
+    from unit_tests_scatter_preview import run_scatter_preview_tests
+    run_scatter_preview_tests(ctx)
+
     from unit_tests_io import run_io_tests
     run_io_tests(ctx)
 

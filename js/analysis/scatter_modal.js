@@ -12,12 +12,13 @@ import {
   djf_scatter_plot,
   djf_scatter_caption,
 } from "../ui/dom.js";
-import { createScatterGateMask } from "./scatter_gmm_gate.js";
+import { mahalanobisSquared } from "./scatter_gmm_gate.js";
 import { eigenDecomposition2D, rotateCovariance2D } from "./math/linalg2d.js";
 
 const MAX_SCATTER_POINTS = 10000;
 let listeners_initialized = false;
 let active_context = null;
+let preview_frame = 0;
 
 function clone_component(component) {
   return {
@@ -52,12 +53,21 @@ function ellipse_points(component, threshold, count = 120) {
   return points;
 }
 
-function padded_extent(values) {
-  let [minimum, maximum] = d3.extent(values);
+export function padded_point_extent(points, coordinate) {
+  let minimum = Infinity, maximum = -Infinity;
+  for (const entry of points) {
+    const value = entry.point[coordinate];
+    if (value < minimum) minimum = value;
+    if (value > maximum) maximum = value;
+  }
   if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return [0, 1];
   if (!(maximum > minimum)) maximum = minimum + 1;
   const padding = 0.04 * (maximum - minimum);
   return [minimum - padding, maximum + padding];
+}
+
+export function preview_mask_for_points(points, component, threshold) {
+  return points.map((entry) => mahalanobisSquared(entry.point, component) <= threshold);
 }
 
 function count_retained(mask) {
@@ -87,15 +97,6 @@ function set_coverage_display(coverage) {
     djf_scatter_coverage_value.value = `${percent.toFixed(1)}%`;
     djf_scatter_coverage_value.textContent = `${percent.toFixed(1)}%`;
   }
-}
-
-function gate_for_component(row, result, component, threshold) {
-  return createScatterGateMask(
-    row.data.eventCount,
-    result.scatterPoints,
-    component,
-    threshold,
-  );
 }
 
 function set_caption({
@@ -128,7 +129,9 @@ function set_caption({
   djf_scatter_caption.textContent = [
     row?.name || "Sample",
     source,
-    `${retained.toLocaleString()} of ${points.length.toLocaleString()} eligible events retained`,
+    preview
+      ? `${retained.toLocaleString()} of ${sampled.length.toLocaleString()} displayed points retained in preview`
+      : `${retained.toLocaleString()} of ${points.length.toLocaleString()} eligible events retained`,
     `center (${component.mean[0].toFixed(2)}, ${component.mean[1].toFixed(2)})`,
     `covariance [[${component.covariance[0][0].toFixed(3)}, ${component.covariance[0][1].toFixed(3)}], [${component.covariance[1][0].toFixed(3)}, ${component.covariance[1][1].toFixed(3)}]]`,
     `coverage ${(100 * coverage_for_threshold(threshold)).toFixed(1)}%`,
@@ -148,6 +151,8 @@ function set_caption({
 
 function commit_active_gate(edit, { restoreFocus = false } = {}) {
   if (!active_context?.onGateChange) return null;
+  if (preview_frame) cancelAnimationFrame(preview_frame);
+  preview_frame = 0;
   const output = active_context.onGateChange(edit);
   const updated_result = output?.result ?? output ?? active_context.result;
   active_context.result = updated_result;
@@ -168,6 +173,8 @@ export function render_scatter_gate(
   { onGateChange = active_context?.onGateChange ?? null } = {},
 ) {
   if (!djf_scatter_plot) return;
+  if (preview_frame) cancelAnimationFrame(preview_frame);
+  preview_frame = 0;
   active_context = { row, result, onGateChange };
   djf_scatter_plot.innerHTML = "";
   if (djf_scatter_reset) djf_scatter_reset.disabled = !result?.manualOverride;
@@ -193,11 +200,11 @@ export function render_scatter_gate(
   const height = 390;
   const margin = { top: 14, right: 24, bottom: 48, left: 66 };
   const x = d3.scaleLinear()
-    .domain(padded_extent(points.map((entry) => entry.point[0])))
+    .domain(padded_point_extent(points, 0))
     .nice()
     .range([margin.left, width - margin.right]);
   const y = d3.scaleLinear()
-    .domain(padded_extent(points.map((entry) => entry.point[1])))
+    .domain(padded_point_extent(points, 1))
     .nice()
     .range([height - margin.bottom, margin.top]);
 
@@ -257,10 +264,6 @@ export function render_scatter_gate(
   // absolute angle (never compounded onto an already-rotated matrix), the
   // same pattern update_cell_gate uses server-side -- see its docstring.
   const fitted_covariance = clone_component(result.fittedMainComponent ?? result.mainComponent).covariance;
-  let preview_gate = {
-    mask: result.scatterMask || result.mask,
-    mahalanobisDistanceSquared: result.mahalanobisDistanceSquared,
-  };
   let drag_mode = "move";
   let drag_offset = [0, 0];
   let rotate_start_angle = 0;
@@ -286,11 +289,27 @@ export function render_scatter_gate(
     .attr("r", 5.5)
     .attr("aria-hidden", "true");
 
+  const paint_preview = ({ component, threshold, rotation, preview }) => {
+    const mask = preview
+      ? preview_mask_for_points(sampled, component, threshold)
+      : result.scatterMask || result.mask;
+    const path = line(ellipse_points(component, threshold));
+    visible_gate.attr("d", path);
+    gate_handle.attr("d", path)
+      .attr("aria-valuetext", `FSC-A ${component.mean[0].toFixed(2)}, SSC-A ${component.mean[1].toFixed(2)}, rotation ${(rotation * 180 / Math.PI).toFixed(1)}°`);
+    center_handle.attr("cx", x(component.mean[0])).attr("cy", y(component.mean[1]));
+    circles
+      .attr("fill", (entry, index) => (preview ? mask[index] : mask[entry.eventIndex]) ? "#01a5af" : "#9ca3af")
+      .attr("fill-opacity", (entry, index) => (preview ? mask[index] : mask[entry.eventIndex]) ? 0.5 : 0.22);
+    set_caption({ row, result, points, sampled, mask, component, threshold, rotation, preview });
+  };
+
   const update_preview = (
     mean,
     threshold = selected_threshold,
     preview = true,
     rotation = selected_rotation,
+    immediate = false,
   ) => {
     selected_rotation = rotation;
     selected_component = {
@@ -299,25 +318,17 @@ export function render_scatter_gate(
       covariance: rotateCovariance2D(fitted_covariance, rotation),
     };
     selected_threshold = threshold;
-    preview_gate = gate_for_component(row, result, selected_component, selected_threshold);
-    const path = line(ellipse_points(selected_component, selected_threshold));
-    visible_gate.attr("d", path);
-    gate_handle.attr("d", path)
-      .attr("aria-valuetext", `FSC-A ${mean[0].toFixed(2)}, SSC-A ${mean[1].toFixed(2)}, rotation ${(rotation * 180 / Math.PI).toFixed(1)}°`);
-    center_handle.attr("cx", x(mean[0])).attr("cy", y(mean[1]));
-    circles
-      .attr("fill", (entry) => preview_gate.mask[entry.eventIndex] ? "#01a5af" : "#9ca3af")
-      .attr("fill-opacity", (entry) => preview_gate.mask[entry.eventIndex] ? 0.5 : 0.22);
-    set_caption({
-      row,
-      result,
-      points,
-      sampled,
-      mask: preview_gate.mask,
-      component: selected_component,
-      threshold: selected_threshold,
-      rotation: selected_rotation,
-      preview,
+    const next = { component: selected_component, threshold: selected_threshold, rotation: selected_rotation, preview };
+    if (immediate) {
+      if (preview_frame) cancelAnimationFrame(preview_frame);
+      preview_frame = 0;
+      paint_preview(next);
+      return;
+    }
+    active_context.pendingPreview = next;
+    if (!preview_frame) preview_frame = requestAnimationFrame(() => {
+      preview_frame = 0;
+      if (active_context?.pendingPreview) paint_preview(active_context.pendingPreview);
     });
   };
 
@@ -421,7 +432,7 @@ export function render_scatter_gate(
       commit_current_gate({ restoreFocus: true });
     });
 
-  update_preview(selected_component.mean, selected_threshold, false);
+  update_preview(selected_component.mean, selected_threshold, false, selected_rotation, true);
 }
 
 export function open_scatter_modal(row, result, options = {}) {
@@ -433,6 +444,8 @@ export function open_scatter_modal(row, result, options = {}) {
 }
 
 export function close_scatter_modal() {
+  if (preview_frame) cancelAnimationFrame(preview_frame);
+  preview_frame = 0;
   if (djf_scatter_modal) djf_scatter_modal.hidden = true;
   active_context = null;
 }
