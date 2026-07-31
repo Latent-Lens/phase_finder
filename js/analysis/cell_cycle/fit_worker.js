@@ -12,10 +12,10 @@
 //
 // peakRegions is optional -- legacy_bridge_v1 (the only model that predates
 // the canonical DJ/DJF/Watson contract) reads only {histogram, config} and
-// simply ignores an extra field; Dean-Jett, Dean-Jett-Fox, Watson Pragmatic,
-// and auto_dj_djf all require it.
+// simply ignores an extra field; every canonical model requires it.
 
 import { register_default_models, get_model } from "./model_registry.js";
+import { is_worker_message, worker_message } from "../../util/worker_protocol.js";
 
 register_default_models();
 
@@ -23,6 +23,15 @@ const cancelled_requests = new Set();
 
 self.addEventListener("message", (event) => {
   const message = event.data || {};
+
+  if (!is_worker_message(message, ["fit", "cancel"])) {
+    self.postMessage(worker_message("result", Number.isInteger(message.request_id) ? message.request_id : -1, {
+      ok: false,
+      code: "WORKER_PROTOCOL_MISMATCH",
+      error: "Unsupported fit-worker message protocol.",
+    }));
+    return;
+  }
 
   if (message.type === "cancel") {
     cancelled_requests.add(message.request_id);
@@ -44,7 +53,7 @@ self.addEventListener("message", (event) => {
       config: {
         ...config,
         onProgress: ({ iteration, maxIterations, sse }) => {
-          self.postMessage({ type: "progress", request_id, iteration, maxIterations, sse });
+          self.postMessage(worker_message("progress", request_id, { iteration, maxIterations, sse }));
         },
         shouldCancel: () => cancelled_requests.has(request_id),
       },
@@ -63,14 +72,13 @@ self.addEventListener("message", (event) => {
     }
 
     const result = entry.normalizeResult(rawResult);
-    self.postMessage({ type: "result", request_id, ok: true, result });
+    self.postMessage(worker_message("result", request_id, { ok: true, result }));
   } catch (error) {
     cancelled_requests.delete(request_id);
-    self.postMessage({
-      type: "result",
-      request_id,
+    self.postMessage(worker_message("result", request_id, {
       ok: false,
+      code: error.code || "FIT_WORKER_FAILED",
       error: error.message || String(error),
-    });
+    }));
   }
 });

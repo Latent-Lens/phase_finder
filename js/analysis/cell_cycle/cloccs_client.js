@@ -5,6 +5,8 @@
 // run_cloccs_fit(series, config, { onProgress }) -> { promise, cancel }
 //   promise resolves with the fit result, or { cancelled: true } if cancelled.
 
+import { is_worker_message, worker_message } from "../../util/worker_protocol.js";
+
 let worker = null;
 let nextRequestId = 1;
 const pending = new Map(); // request_id -> { resolve, reject, onProgress }
@@ -18,6 +20,13 @@ function ensure_worker() {
     const message = event.data || {};
     const request = pending.get(message.request_id);
     if (!request) return;
+    if (!is_worker_message(message, ["progress", "result", "cancelled", "error"])) {
+      pending.delete(message.request_id);
+      const error = new Error("CLOCCS worker protocol mismatch.");
+      error.code = "WORKER_PROTOCOL_MISMATCH";
+      request.reject(error);
+      return;
+    }
     if (message.type === "progress") {
       request.onProgress?.(message.progress);
       return;
@@ -52,9 +61,9 @@ export function run_cloccs_fit(series, config, { onProgress } = {}) {
   const promise = new Promise((resolve, reject) => {
     pending.set(request_id, { resolve, reject, onProgress });
   });
-  active.postMessage({ type: "fit", request_id, series, config });
+  active.postMessage(worker_message("fit", request_id, { series, config }));
   return {
     promise,
-    cancel: () => active.postMessage({ type: "cancel", request_id }),
+    cancel: () => active.postMessage(worker_message("cancel", request_id)),
   };
 }

@@ -8,11 +8,21 @@
 // instantiated as a module worker so it can import the shared parser directly.
 
 import { FCSParser } from "./parser.js";
+import { is_worker_message, worker_message } from "../util/worker_protocol.js";
 
 const active = new Map();
 
 self.addEventListener("message", async (event) => {
-  const { type = "parse", request_id, file, summary, selected_indexes } = event.data || {};
+  const message = event.data || {};
+  const { type, request_id, file, summary, selected_indexes } = message;
+  if (!is_worker_message(message, ["parse", "cancel"])) {
+    self.postMessage(worker_message("result", Number.isInteger(request_id) ? request_id : -1, {
+      ok: false,
+      code: "WORKER_PROTOCOL_MISMATCH",
+      error: "Unsupported FCS-worker message protocol.",
+    }));
+    return;
+  }
   if (type === "cancel") {
     active.get(request_id)?.abort();
     return;
@@ -29,11 +39,11 @@ self.addEventListener("message", async (event) => {
       { signal: controller.signal },
     );
     self.postMessage(
-      { request_id, ok: true, columns, metrics },
+      worker_message("result", request_id, { ok: true, columns, metrics }),
       Object.values(columns).map((values) => values.buffer),
     );
   } catch (error) {
-    self.postMessage({ request_id, ok: false, code: error.code, error: error.message || String(error) });
+    self.postMessage(worker_message("result", request_id, { ok: false, code: error.code, error: error.message || String(error) }));
   } finally {
     active.delete(request_id);
   }

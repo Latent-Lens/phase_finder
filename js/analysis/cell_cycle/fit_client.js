@@ -12,6 +12,8 @@
 // number of samples actually being fit, so a big machine only spins up as many
 // workers as there is work.
 
+import { is_worker_message, worker_message } from "../../util/worker_protocol.js";
+
 // Fraction of the machine's logical cores to devote to parallel fits. Kept below
 // 1 so the main/UI thread (and other tabs/apps) keep headroom. Tune here: 0.5
 // (default) is conservative and leaves half the cores free, 0.75 uses most of
@@ -96,6 +98,15 @@ function make_worker_entry() {
     const request = fit_worker_requests.get(message.request_id);
     if (!request) return;
 
+    if (!is_worker_message(message, ["progress", "result"])) {
+      fit_worker_requests.delete(message.request_id);
+      entry.inFlight = Math.max(0, entry.inFlight - 1);
+      const error = new Error("Fit worker protocol mismatch.");
+      error.code = "WORKER_PROTOCOL_MISMATCH";
+      request.reject(error);
+      return;
+    }
+
     if (message.type === "progress") {
       request.onProgress?.({
         iteration: message.iteration,
@@ -110,7 +121,9 @@ function make_worker_entry() {
       if (message.ok) {
         request.resolve(message.result);
       } else {
-        request.reject(new Error(message.error || "Fit worker failed."));
+        const error = new Error(message.error || "Fit worker failed.");
+        error.code = message.code || "FIT_WORKER_FAILED";
+        request.reject(error);
       }
     }
   });
@@ -206,7 +219,7 @@ export function run_fit_in_worker(modelId, histogram, config, { onProgress, peak
 
   try {
     entry.inFlight += 1;
-    entry.worker.postMessage({ type: "fit", request_id, modelId, histogram, peakRegions, config });
+    entry.worker.postMessage(worker_message("fit", request_id, { modelId, histogram, peakRegions, config }));
   } catch (_) {
     fit_worker_requests.delete(request_id);
     entry.inFlight = Math.max(0, entry.inFlight - 1);
@@ -215,7 +228,7 @@ export function run_fit_in_worker(modelId, histogram, config, { onProgress, peak
 
   const cancel = () => {
     try {
-      entry.worker.postMessage({ type: "cancel", request_id });
+      entry.worker.postMessage(worker_message("cancel", request_id));
     } catch (_) {
       // Worker already gone; nothing to cancel.
     }

@@ -30,9 +30,9 @@ import {
   hide_progress,
   next_frame,
 } from "../ui/status_channels.js";
-import { plot_channels } from "../plotting/data.js";
-import { init_plot } from "../plotting/modeling.js";
+import { plot_channels, set_plot_channels } from "../plotting/data.js";
 import { render_density_plot } from "../plotting/render.js";
+import { is_worker_message, worker_message } from "../util/worker_protocol.js";
 
 export const ANALYSIS_FILE_CONCURRENCY = 4;
 export function analysis_file_concurrency(rows, device_memory_gb = globalThis.navigator?.deviceMemory ?? 4) {
@@ -83,6 +83,12 @@ function get_fcs_data_worker() {
 
       fcs_data_worker_requests.delete(request_id);
       request.signal?.removeEventListener("abort", request.abort);
+      if (!is_worker_message(event.data, ["result"])) {
+        const failure = new Error("FCS worker protocol mismatch.");
+        failure.code = "WORKER_PROTOCOL_MISMATCH";
+        request.reject(failure);
+        return;
+      }
       if (ok) {
         Object.defineProperty(columns, "__loadMetrics", { value: metrics, enumerable: false });
         request.resolve(columns);
@@ -133,13 +139,13 @@ function load_selected_fcs_columns_in_worker(file, summary, selected_indexes, si
 
   const request_id = ++fcs_data_worker_request_id;
   const request = new Promise((resolve, reject) => {
-    const abort = () => worker.postMessage({ type: "cancel", request_id });
+    const abort = () => worker.postMessage(worker_message("cancel", request_id));
     fcs_data_worker_requests.set(request_id, { resolve, reject, signal, abort });
     signal?.addEventListener("abort", abort, { once: true });
   });
 
   try {
-    worker.postMessage({ type: "parse", request_id, file, summary, selected_indexes });
+    worker.postMessage(worker_message("parse", request_id, { file, summary, selected_indexes }));
   } catch (error) {
     const pending = fcs_data_worker_requests.get(request_id);
     pending?.signal?.removeEventListener("abort", pending.abort);
@@ -643,7 +649,8 @@ export async function load_analysis_data() {
     set_status("Data loaded for all files. Curves shown for checked rows.");
     set_status_bar(`Loaded event data for all ${rows.length} file(s).`, false, null, progress_operation);
     update_progress(100, "Loading FCS Data", `Finished loading data for ${rows.length} file(s).`, "", progress_operation);
-    init_plot(selected);
+    set_plot_channels(selected);
+    render_density_plot();
     hide_progress(700, progress_operation);
   } catch (error) {
     error.progressOperation = progress_operation;
@@ -678,7 +685,8 @@ export async function refresh_analysis_after_metadata_change({ redraw_if_no_miss
   if (!missing_rows.length) {
     if (redraw_if_no_missing && should_activate_plot) {
       rows.forEach((row) => activate_analysis_data(row, selected));
-      init_plot(selected);
+      set_plot_channels(selected);
+      render_density_plot();
     }
     return { refreshed: redraw_if_no_missing && should_activate_plot, loaded_rows: 0 };
   }
@@ -709,7 +717,8 @@ export async function refresh_analysis_after_metadata_change({ redraw_if_no_miss
   }
 
   if (should_activate_plot) {
-    init_plot(selected);
+    set_plot_channels(selected);
+    render_density_plot();
   }
   hide_progress(700, progress_operation);
   return { refreshed: should_activate_plot, loaded_rows: missing_rows.length, progress_operation };

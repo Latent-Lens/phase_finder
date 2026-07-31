@@ -425,7 +425,7 @@ def run_parser_tests(ctx: TestContext):
           worker.onmessage = (event) => { clearTimeout(timer); resolve(event.data); };
           worker.onerror = (event) => { clearTimeout(timer); reject(new Error(event.message)); };
           worker.postMessage({
-            type: 'parse', request_id: 1, file: new File([buf], 'chunked.fcs'), summary, selected_indexes: [1, 4],
+            protocolVersion: 1, type: 'parse', request_id: 1, file: new File([buf], 'chunked.fcs'), summary, selected_indexes: [1, 4],
           });
         });
         return {
@@ -447,12 +447,31 @@ def run_parser_tests(ctx: TestContext):
           const timer = setTimeout(() => reject(new Error('worker timeout')), 3000);
           worker.onmessage = (event) => { clearTimeout(timer); resolve(event.data); };
           worker.onerror = (event) => { clearTimeout(timer); reject(new Error(event.message)); };
-          worker.postMessage({ type: 'parse', request_id: 2, file: new File([buf], 'bad-map.fcs'), summary, selected_indexes: [999] });
+          worker.postMessage({ protocolVersion: 1, type: 'parse', request_id: 2, file: new File([buf], 'bad-map.fcs'), summary, selected_indexes: [999] });
         });
         return { pass: !response.ok && response.code === 'FCS_PARAMETER_SELECTION_INVALID', detail: JSON.stringify(response) };
       } finally { worker.terminate(); }
     }""")
     ctx.check(GROUP, "DATA-04: wrong mapped indexes and worker exceptions retain a typed per-channel failure",
+              result["pass"], result["detail"], screenshot=False)
+
+    result = page.evaluate("""async () => {
+      const worker = new Worker(new URL('/js/fcs/data_worker.js', location.origin), { type: 'module' });
+      try {
+        const response = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('worker timeout')), 3000);
+          worker.onmessage = (event) => { clearTimeout(timer); resolve(event.data); };
+          worker.onerror = (event) => { clearTimeout(timer); reject(new Error(event.message)); };
+          worker.postMessage({ protocolVersion: 999, type: 'parse', request_id: 3 });
+        });
+        return {
+          pass: response.protocolVersion === 1 && response.type === 'result'
+            && !response.ok && response.code === 'WORKER_PROTOCOL_MISMATCH',
+          detail: JSON.stringify(response),
+        };
+      } finally { worker.terminate(); }
+    }""")
+    ctx.check(GROUP, "MAINT-01: FCS worker rejects incompatible protocol versions deterministically",
               result["pass"], result["detail"], screenshot=False)
 
     result = page.evaluate("""async () => {

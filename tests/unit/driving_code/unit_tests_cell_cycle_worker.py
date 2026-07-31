@@ -80,6 +80,23 @@ _TESTS = r"""() => {
       }
     });
 
+    await runAsync('MAINT-01: fit worker rejects incompatible protocol versions deterministically', async () => {
+      const worker = new Worker(new URL('/js/analysis/cell_cycle/fit_worker.js', location.origin), { type: 'module' });
+      try {
+        const response = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('worker timeout')), 3000);
+          worker.onmessage = (event) => { clearTimeout(timer); resolve(event.data); };
+          worker.onerror = (event) => { clearTimeout(timer); reject(new Error(event.message)); };
+          worker.postMessage({ protocolVersion: 999, type: 'fit', request_id: 17 });
+        });
+        return {
+          pass: response.protocolVersion === 1 && response.type === 'result'
+            && response.ok === false && response.code === 'WORKER_PROTOCOL_MISMATCH',
+          detail: JSON.stringify(response),
+        };
+      } finally { worker.terminate(); }
+    });
+
     await runAsync('fit worker: concurrent requests are routed back to the correct caller by request id', async () => {
       const narrowHistogram = window.TestUtils.buildDJFHistogram(64);
       const wideHistogram = window.TestUtils.buildDJFHistogram(512);
