@@ -11,6 +11,8 @@
 // invalidate_model_results(), and invalidate_model_config_result() clear
 // downstream products when an upstream input changes.
 
+import { is_reportable_result } from "./cell_cycle/result_contract.js";
+
 export const pipeline_states = new Map();
 
 // Maps each operation index to the state field it produces, so invalidate_after
@@ -231,12 +233,17 @@ export function get_state(name) {
 // The sole authoritative model result. Legacy stage 6-8 compatibility slots
 // are deliberately excluded; a legacy bridge is authoritative only when it
 // was explicitly fitted through modeling.resultsByKey like any other model.
+//
+// GATE-01: is_reportable_result() requires the contract stamp as well as the
+// verdict, so a raw registry normalizeResult() output written straight into
+// resultsByKey -- by a test, a debug call, or a future code path that forgot the
+// validator -- cannot become the authoritative result.
 export function get_active_model_result(state) {
   const modeling = state?.modeling;
   const result = modeling?.activeResultKey
     ? modeling.resultsByKey?.[modeling.activeResultKey] ?? null
     : null;
-  return result?.validForReporting === true ? result : null;
+  return is_reportable_result(result) ? result : null;
 }
 
 /*

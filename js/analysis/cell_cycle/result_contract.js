@@ -27,6 +27,59 @@ export const RESULT_REASON = Object.freeze({
   FIT_PEAK_DEGENERATE: "fit_peak_degenerate",
 });
 
+// GATE-01. apply_result_contract() is the ONLY function that stamps a result
+// with this version, and it refuses to run without a preflight bundle. A result
+// therefore carries the stamp if and only if it went through both halves of the
+// contract, so a consumer can positively verify that -- rather than relying on
+// `validForReporting` being absent-and-therefore-falsy on a raw model output,
+// which is indistinguishable from a result whose validator simply never ran.
+export const RESULT_CONTRACT_VERSION = 1;
+
+/*
+
+Purpose:
+	Whether a result object carries the current contract stamp, i.e. it was
+	produced by apply_result_contract() with a real preflight rather than being a
+	raw registry normalizeResult() output handed straight to a consumer.
+
+Input:
+	result [object]: any candidate result
+
+Output:
+	contracted [boolean]: true when the result went through the contract
+
+*/
+export function is_contracted_result(result) {
+  return result?.contractVersion === RESULT_CONTRACT_VERSION;
+}
+
+/*
+
+Purpose:
+	GATE-01 enforcement for a consumer boundary: refuses a result that never went
+	through the shared preflight/validator, with a structured error naming the
+	offending entry point. Use at any place that is about to treat a result as a
+	scientific answer (activate it, display fractions, export it).
+
+Input:
+	result [object]: the candidate result
+	context [string]: the entry point's name, for the error message
+
+Output:
+	result [object]: the same result, when it is contracted (throws otherwise)
+
+*/
+export function assert_result_contracted(result, context = "result consumer") {
+  if (is_contracted_result(result)) return result;
+  const error = new Error(
+    `${context} received a model result that never went through the shared preflight/result validator. `
+    + "Every UI, worker, session-restore, and direct model entry point must call model_preflight() + apply_result_contract().",
+  );
+  error.code = "RESULT_NOT_CONTRACTED";
+  error.detail = { modelId: result?.modelId ?? null, context };
+  throw error;
+}
+
 const NONCONVERGED_TERMINATIONS = new Set([
   "boundary_stall",
   "cancelled",
@@ -290,6 +343,17 @@ function peak_cv_at_upper_bound(result) {
 }
 
 export function apply_result_contract(rawResult, preflight) {
+  // GATE-01: the validator half cannot run without the preflight half. Passing
+  // no preflight used to silently produce a stamped-looking result with an empty
+  // reason list -- exactly the "computed therefore valid" shortcut this contract
+  // exists to prevent.
+  if (!preflight || typeof preflight !== "object" || typeof preflight.passed !== "boolean") {
+    const error = new TypeError(
+      "apply_result_contract() requires the model_preflight() bundle for this fit; a result cannot be validated without its input preconditions.",
+    );
+    error.code = "PREFLIGHT_MISSING";
+    throw error;
+  }
   const result = { ...rawResult };
   const reasons = [...(preflight?.reasons ?? [])];
   const cancelled = result.cancelled === true;
@@ -358,6 +422,7 @@ export function apply_result_contract(rawResult, preflight) {
 
   return {
     ...result,
+    contractVersion: RESULT_CONTRACT_VERSION,
     converged: optimizerConverged === null ? result.converged : optimizerConverged,
     computed: !cancelled,
     optimizerConverged,
@@ -374,12 +439,18 @@ export function apply_result_contract(rawResult, preflight) {
 }
 
 export function is_reportable_result(result) {
-  return result?.validForReporting === true;
+  // GATE-01: reportable requires BOTH the contract stamp and the verdict. An
+  // un-contracted object cannot be reportable no matter what fields it carries.
+  return is_contracted_result(result) && result.validForReporting === true;
 }
 
 export function result_reporting_summary(result) {
   if (!result) return { reportable: false, status: "No result", reason: "", phaseFractions: null };
-  const reportable = result.validForReporting === true;
+  // GATE-01: an un-contracted result is summarized as not reportable, but its
+  // own recorded reasons are still shown -- several tests and diagnostic views
+  // build a bare summary object deliberately, and they should read honestly
+  // rather than throw.
+  const reportable = is_reportable_result(result);
   const reason = result.validityReasons?.map((entry) => entry.message || entry.code).join("; ")
     || result.convergenceReason
     || "No reason recorded";

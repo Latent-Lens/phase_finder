@@ -814,11 +814,14 @@ _SHARED_HELPERS = r"""() => {
     };
     state.clear_state(row.name);
     const pipelineState = state.get_or_create_state(row);
-    pipelineState.modeling.resultsByKey['dean_jett|summary'] = {
-      modelId: 'dean_jett',
-      validForReporting: true,
-      phaseFractions: { g1: 0.5, s: 0.25, g2: 0.25 },
-    };
+    // GATE-01: the stored result must carry the contract stamp -- an object that
+    // merely claims validForReporting is no longer authoritative anywhere.
+    pipelineState.modeling.resultsByKey['dean_jett|summary'] =
+      window.CellCycleResultContract.apply_result_contract({
+        kind: 'generative', modelId: 'dean_jett', converged: true, cancelled: false,
+        expectedCounts: [1, 2, 3], phaseFractions: { g1: 0.5, s: 0.25, g2: 0.25 },
+        diagnostics: { deviance: 1 },
+      }, { passed: true, reasons: [] });
     pipelineState.modeling.activeResultKey = 'dean_jett|summary';
     const summary = pipeline.pipeline_table_stats(row);
     return {

@@ -130,6 +130,9 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_stat_constraints import run_stat_constraint_tests
     run_stat_constraint_tests(ctx)
 
+    from unit_tests_gate_contract import run_gate_contract_tests
+    run_gate_contract_tests(ctx)
+
     from unit_tests_time_qc_peak_tracking import run_time_qc_peak_tracking_tests
     run_time_qc_peak_tracking_tests(ctx)
 

@@ -88,15 +88,31 @@ _TESTS = r"""() => {
       report: { fractions: { biologicalSinglets: { oneC: 0, sPhase: 0, twoC: 1 } } },
       modeling: { activeResultKey: null, resultsByKey: {} },
     };
-    const canonical = { modelId: 'dean_jett', validForReporting: true, phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 } };
+    // GATE-01: the canonical result must carry the contract stamp, not just the
+    // verdict field -- get_active_model_result() now requires both, so a raw
+    // object claiming validForReporting can no longer become authoritative.
+    const canonical = window.CellCycleResultContract.apply_result_contract({
+      kind: 'generative', modelId: 'dean_jett', converged: true, cancelled: false,
+      expectedCounts: [4, 5, 6], phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
+      diagnostics: { deviance: 10 },
+    }, { passed: true, reasons: [] });
+    const uncontracted = { modelId: 'dean_jett', validForReporting: true, phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 } };
     const canonicalState = {
       ...legacyOnly,
       modeling: { activeResultKey: 'canonical', resultsByKey: { canonical } },
     };
+    const uncontractedState = {
+      ...legacyOnly,
+      modeling: { activeResultKey: 'u', resultsByKey: { u: uncontracted } },
+    };
     return {
       pass: window.DJFPipelineState.get_active_model_result(legacyOnly) === null
+        && window.DJFPipelineState.get_active_model_result(uncontractedState) === null
         && window.DJFPipelineState.get_active_model_result(canonicalState) === canonical,
-      detail: JSON.stringify(window.DJFPipelineState.get_active_model_result(canonicalState)),
+      detail: JSON.stringify({
+        canonical: !!window.DJFPipelineState.get_active_model_result(canonicalState),
+        uncontracted: window.DJFPipelineState.get_active_model_result(uncontractedState),
+      }),
     };
   });
 
