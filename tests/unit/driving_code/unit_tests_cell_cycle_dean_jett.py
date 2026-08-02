@@ -52,13 +52,13 @@ _DEAN_JETT_TESTS = r"""() => {
   const TRUE = {
     g1Area: 8000, g1Mean: 70, g1CV: 0.06,
     g2Area: 3000, g2Mean: 140, g2CV: 0.07,
-    sArea: 4000, b: 0.5, c: -0.3,
+    sArea: 4000, shape1: 0.5, shape2: -0.3,
   };
   function syntheticCounts(truth, forEdges) {
     const peaks = peakComponents(forEdges, truth);
     const sCounts = convolvedSPhase(forEdges, {
       sArea: truth.sArea, g1Mean: truth.g1Mean, g2Mean: truth.g2Mean,
-      broadeningCV: truth.g1CV, b: truth.b, c: truth.c,
+      broadeningCV: truth.g1CV, shape1: truth.shape1, shape2: truth.shape2,
     }, 64);
     return peaks.g1.map((value, i) => Math.round(value + sCounts[i] + peaks.g2[i]));
   }

@@ -3,8 +3,8 @@
 // S-phase profile). Pure functions of already-resolved numeric parameters --
 // which parameters are free, bounded, or locked (G2:G1 ratio mode, CV mode) is
 // an initialization/fit-engine concern, not this module's. Exposes the
-// quadratic S-phase profile helpers (quadraticProfile, quadraticProfileMinimum,
-// isQuadraticProfileValid, projectQuadraticProfile), the area-parameterized
+// Bernstein S-phase profile helpers (sPhaseProfileWeights, sPhaseProfile,
+// sPhaseProfileMinimum), the area-parameterized
 // G1/G2 peaks (peakComponents), and the broadened S-phase integrators
 // (convolvedSPhaseWithProfile and its Dean-Jett specialization convolvedSPhase).
 //
@@ -21,101 +21,127 @@ import { clamp } from "../../math/stats.js";
 const EPS = 1e-12;
 export const DEFAULT_S_QUADRATURE_NODES = 64;
 
+// ---------------------------------------------------------------------------
+// S-phase occupancy profile q(z), z in [0, 1].
+//
+// SCI-07/SCI-08: expressed in the quadratic BERNSTEIN basis
+//
+//     q(z) = w0*(1-z)^2 + 2*w1*z*(1-z) + w2*z^2
+//
+// which is nonnegative across [0, 1] for ANY nonnegative weights -- the
+// nonnegativity constraint is satisfied BY CONSTRUCTION rather than repaired
+// after the fact. The previous direct form q(z) = a + b*z + c*z^2 could go
+// negative mid-optimization and needed projectQuadraticProfile() to pull it
+// back, which put a nonsmooth repair inside the optimizer's search surface.
+// This is the form the reference DJF implementation specifies
+// (docs/audits/baselines/dean_jett_fox_javascript_implementation.html §3).
+//
+// The two free shape parameters are unconstrained real numbers mapped through a
+// softmax, so the weights are strictly positive and sum to PROFILE_WEIGHT_SUM:
+//
+//     (v0, v1, v2) = (1, exp(shape1), exp(shape2))
+//     w_i          = 3 * v_i / (v0 + v1 + v2)
+//
+// The 3 makes integral(q) over [0, 1] exactly 1 for every (shape1, shape2), so q
+// is a density and the S component's area parameter IS its area -- the same
+// contract the previous parameterization provided. (0, 0) gives w = (1, 1, 1),
+// i.e. the flat profile q(z) = 1, so the neutral start is still the origin.
+// ---------------------------------------------------------------------------
+
+// Weights sum to 3 because integral over [0,1] of the Bernstein basis is 1/3 each.
+export const PROFILE_WEIGHT_SUM = 3;
+
+// The shape logits are bounded so the softmax cannot underflow a weight to
+// exactly zero. At +-30 the extreme weight ratio is e^60 ~ 1e26, far beyond any
+// physically meaningful S-phase occupancy contrast, while every weight stays
+// comfortably above the float64 floor -- so "strictly positive" is a property
+// the parameterization actually guarantees rather than one it usually has.
+// A concentrated cohort is what the Fox wave term models; it is not this
+// polynomial's job to represent one.
+export const PROFILE_SHAPE_LIMIT = 30;
+
 /*
 
 Purpose:
-	Literal normalized quadratic profile q(z) = a + b·z + c·z^2 with
-	a = 1 - b/2 - c/3, so its integral over [0, 1] is 1 for any b, c.
+	The three Bernstein weights for a shape pair: strictly positive and summing
+	to PROFILE_WEIGHT_SUM, via a numerically stable softmax (the max is
+	subtracted before exponentiating so a large shape value cannot overflow).
 
 Input:
-	z [number]: the latent position in [0, 1]
-	b [number]: linear coefficient
-	c [number]: quadratic coefficient
+	shape1 [number]: unconstrained logit controlling the mid-S weight
+	shape2 [number]: unconstrained logit controlling the late-S weight
 
 Output:
-	q [number]: the profile value at z
+	weights [array]: [w0, w1, w2] -- density near G1, mid S, and near G2/M
 
 */
-export function quadraticProfile(z, b, c) {
-  const a = 1 - b / 2 - c / 3;
-  return a + b * z + c * z * z;
+export function sPhaseProfileWeights(shape1, shape2) {
+  if (!Number.isFinite(shape1) || !Number.isFinite(shape2)) {
+    throw new RangeError("S-phase profile shape parameters must be finite.");
+  }
+  const s1 = Math.min(PROFILE_SHAPE_LIMIT, Math.max(-PROFILE_SHAPE_LIMIT, shape1));
+  const s2 = Math.min(PROFILE_SHAPE_LIMIT, Math.max(-PROFILE_SHAPE_LIMIT, shape2));
+  const largest = Math.max(0, s1, s2);
+  const v0 = Math.exp(-largest);
+  const v1 = Math.exp(s1 - largest);
+  const v2 = Math.exp(s2 - largest);
+  const total = v0 + v1 + v2;
+  return [
+    (PROFILE_WEIGHT_SUM * v0) / total,
+    (PROFILE_WEIGHT_SUM * v1) / total,
+    (PROFILE_WEIGHT_SUM * v2) / total,
+  ];
 }
 
 /*
 
 Purpose:
-	Analytic minimum of q(z) on [0, 1]: checked at both endpoints and, when
-	c > 0 and the vertex z = -b/(2c) lies inside (0, 1), at the vertex too (a
-	downward-opening or monotonic quadratic's minimum is always at an endpoint).
+	The S-phase occupancy density q(z) at one latent position.
 
 Input:
-	b [number]: linear coefficient
-	c [number]: quadratic coefficient
+	z [number]: the latent position in [0, 1]
+	shape1 [number]: mid-S shape logit
+	shape2 [number]: late-S shape logit
+
+Output:
+	q [number]: the profile value at z (always >= 0)
+
+*/
+export function sPhaseProfile(z, shape1, shape2) {
+  const [w0, w1, w2] = sPhaseProfileWeights(shape1, shape2);
+  const oneMinusZ = 1 - z;
+  return w0 * oneMinusZ * oneMinusZ + 2 * w1 * z * oneMinusZ + w2 * z * z;
+}
+
+/*
+
+Purpose:
+	Analytic minimum of q(z) on [0, 1]. With nonnegative Bernstein weights this is
+	always >= 0, so it exists as EVIDENCE rather than as a gate: STAT-01's
+	constraint audit reports it, and a negative value would mean the
+	parameterization itself is broken rather than that the fit wandered.
+
+Input:
+	shape1 [number]: mid-S shape logit
+	shape2 [number]: late-S shape logit
 
 Output:
 	minimum [number]: the smallest value of q on [0, 1]
 
 */
-export function quadraticProfileMinimum(b, c) {
-  const a = 1 - b / 2 - c / 3;
-  let minimum = Math.min(a, a + b + c); // q(0), q(1)
-  if (c > 0) {
-    const vertexZ = -b / (2 * c);
+export function sPhaseProfileMinimum(shape1, shape2) {
+  const [w0, w1, w2] = sPhaseProfileWeights(shape1, shape2);
+  // Monomial form: q(z) = w0 + 2(w1 - w0) z + (w0 - 2 w1 + w2) z^2.
+  const linear = 2 * (w1 - w0);
+  const quadratic = w0 - 2 * w1 + w2;
+  let minimum = Math.min(w0, w2); // q(0), q(1)
+  if (quadratic > 0) {
+    const vertexZ = -linear / (2 * quadratic);
     if (vertexZ > 0 && vertexZ < 1) {
-      minimum = Math.min(minimum, quadraticProfile(vertexZ, b, c));
+      minimum = Math.min(minimum, sPhaseProfile(vertexZ, shape1, shape2));
     }
   }
   return minimum;
-}
-
-/*
-
-Purpose:
-	Whether q(z) stays nonnegative over [0, 1] -- the explicit rejection rule for
-	an invalid S-phase profile.
-
-Input:
-	b [number]: linear coefficient
-	c [number]: quadratic coefficient
-
-Output:
-	valid [boolean]: true when q(z) >= 0 across [0, 1]
-
-*/
-export function isQuadraticProfileValid(b, c) {
-  return quadraticProfileMinimum(b, c) >= 0;
-}
-
-/*
-
-Purpose:
-	Projects (b, c) exactly along the ray from the always-valid flat profile.
-	For coefficients (t*b,t*c), q_t(z)=1+t*(q(z)-1), so when the proposed
-	minimum m is negative, t=1/(1-m) makes the new minimum exactly zero.
-	Validity is a joint condition on the pair; no arbitrary coefficient bounds,
-	shrink factor, or iterative repair is involved.
-	Shared by every model whose latent profile includes this quadratic term
-	(Dean-Jett uses it as q(z); Dean-Jett-Fox projects the same (b, c) before
-	blending in the wave, since q_F = (1-w)·q + w·T stays nonnegative only when q
-	itself does).
-
-Input:
-	b [number]: linear coefficient
-	c [number]: quadratic coefficient
-Output:
-	pair [array]: a feasible [b, c], unchanged when already feasible
-
-*/
-export function projectQuadraticProfile(b, c) {
-  if (!Number.isFinite(b) || !Number.isFinite(c)) {
-    throw new RangeError("Quadratic profile coefficients must be finite.");
-  }
-  const minimum = quadraticProfileMinimum(b, c);
-  if (minimum >= 0) return [b, c];
-  // Stay a few ulps inside the boundary so recomputing the vertex cannot turn
-  // mathematical zero into a tiny negative value through roundoff.
-  const scale = (1 - 16 * Number.EPSILON) / (1 - minimum);
-  return [b * scale, c * scale];
 }
 
 /*
@@ -273,13 +299,12 @@ export function convolvedSPhaseWithProfile(
 /*
 
 Purpose:
-	Dean-Jett S phase: convolvedSPhaseWithProfile specialized to the quadratic
-	occupancy profile q(z). Returns all zeros for an invalid quadratic profile in
-	addition to the generic non-positive-area/span cases.
+	Dean-Jett S phase: convolvedSPhaseWithProfile specialized to the Bernstein
+	occupancy profile q(z).
 
 Input:
 	edges [array]: histogram bin edges
-	parameters [object]: { sArea, g1Mean, g2Mean, broadeningCV, b, c }
+	parameters [object]: { sArea, g1Mean, g2Mean, broadeningCV, shape1, shape2 }
 	quadratureNodes [number]: Gauss-Legendre node count
 
 Output:
@@ -288,13 +313,14 @@ Output:
 */
 export function convolvedSPhase(
   edges,
-  { sArea, g1Mean, g2Mean, broadeningCV, b, c },
+  { sArea, g1Mean, g2Mean, broadeningCV, shape1, shape2 },
   quadratureNodes = DEFAULT_S_QUADRATURE_NODES,
 ) {
-  if (!isQuadraticProfileValid(b, c)) return new Array(edges.length - 1).fill(0);
+  // No validity gate: the Bernstein parameterization cannot produce a negative
+  // profile, so there is no infeasible case left to reject here.
   return convolvedSPhaseWithProfile(
     edges,
-    { sArea, g1Mean, g2Mean, broadeningCV, profileFn: (z) => quadraticProfile(z, b, c) },
+    { sArea, g1Mean, g2Mean, broadeningCV, profileFn: (z) => sPhaseProfile(z, shape1, shape2) },
     quadratureNodes,
   );
 }

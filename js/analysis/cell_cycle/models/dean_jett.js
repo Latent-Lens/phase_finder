@@ -34,7 +34,7 @@
 //
 //   u(z) = mu1 + z*(mu2-mu1),                          z in [0,1]
 //   q(z) = a + b*z + c*z^2,    a = 1 - b/2 - c/3        (integral(q,0..1)=1)
-//   reject theta when min_{z in [0,1]} q(z) < 0         (isQuadraticProfileValid)
+//   q(z) >= 0 holds by construction (Bernstein basis, shared.js)
 //   S_i = N_S * integral_0^1 q(z) *
 //           [ Phi((b_{i+1}-u(z))/(CV1*u(z))) - Phi((b_i-u(z))/(CV1*u(z))) ] dz
 //
@@ -51,7 +51,7 @@
 // result (plan §4.5) packaging around fit_engine.js's optimizer.
 // ============================================================================
 
-import { peakComponents, convolvedSPhase, projectQuadraticProfile, projectMeansToFeasible, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
+import { peakComponents, convolvedSPhase, projectMeansToFeasible, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
 import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
 import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning, boundaryHitWarnings } from "../diagnostics.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
@@ -66,8 +66,8 @@ const PARAMETER_INDEX = Object.freeze({
   G2_MEAN: 4, // mu2
   G2_CV: 5,   // CV2
   S_AREA: 6,  // N_S
-  B: 7,       // b
-  C: 8,       // c
+  SHAPE1: 7,  // mid-S Bernstein shape logit
+  SHAPE2: 8,  // late-S Bernstein shape logit
 });
 const PARAMETER_COUNT = 9;
 
@@ -95,8 +95,8 @@ function paramsToNamed(parameters) {
     g2Mean: parameters[PARAMETER_INDEX.G2_MEAN],
     g2CV: parameters[PARAMETER_INDEX.G2_CV],
     sArea: parameters[PARAMETER_INDEX.S_AREA],
-    b: parameters[PARAMETER_INDEX.B],
-    c: parameters[PARAMETER_INDEX.C],
+    shape1: parameters[PARAMETER_INDEX.SHAPE1],
+    shape2: parameters[PARAMETER_INDEX.SHAPE2],
   };
 }
 
@@ -121,7 +121,7 @@ function expected_counts_from_parameters(edges, parameters, quadratureNodes) {
   const peaks = peakComponents(edges, named);
   const sCounts = convolvedSPhase(
     edges,
-    { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, b: named.b, c: named.c },
+    { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, shape1: named.shape1, shape2: named.shape2 },
     quadratureNodes,
   );
   const expected = new Array(peaks.g1.length);
@@ -154,18 +154,15 @@ Output:
 // can never drift apart on constraint handling.
 const project_means = projectMeansToFeasible;
 
-// Feasible domain for (b, c) -- enforces isQuadraticProfileValid(b, c), i.e.
-// min_{z in [0,1]} q(z) >= 0, per plan §5.3's explicit rejection rule. Lives
-// in shared.js (projectQuadraticProfile) since Dean-Jett-Fox projects the
-// same (b, c) pair the same way before blending in its wave term.
-const project_quadratic = projectQuadraticProfile;
+// (b, c) had a feasible-domain projection here; the Bernstein shape parameters
+// are unconstrained, so no projection is needed.
 
 /*
 
 Purpose:
 	Returns a projection function that constrains a full theta vector to every
 	parameter's feasible domain (areas >= 0, CVs in range, means via
-	project_means, quadratic (b, c) via projectQuadraticProfile) in one place.
+	project_means; the Bernstein shape parameters need no projection) in one place.
 
 Input:
 	regions [object]: the accepted { g1, g2 } peak regions
@@ -197,9 +194,6 @@ function make_project_fn(regions, config) {
     projected[PARAMETER_INDEX.G1_MEAN] = g1Mean;
     projected[PARAMETER_INDEX.G2_MEAN] = g2Mean;
 
-    const [b, c] = project_quadratic(projected[PARAMETER_INDEX.B], projected[PARAMETER_INDEX.C]);
-    projected[PARAMETER_INDEX.B] = b;
-    projected[PARAMETER_INDEX.C] = c;
     return projected;
   };
 }
@@ -226,8 +220,8 @@ function free_indices(config) {
     PARAMETER_INDEX.G1_CV,
     PARAMETER_INDEX.G2_AREA,
     PARAMETER_INDEX.S_AREA,
-    PARAMETER_INDEX.B,
-    PARAMETER_INDEX.C,
+    PARAMETER_INDEX.SHAPE1,
+    PARAMETER_INDEX.SHAPE2,
   ];
   if (config.cvMode !== "equal") indices.push(PARAMETER_INDEX.G2_CV);
   if (config.ratioMode !== "locked") indices.push(PARAMETER_INDEX.G2_MEAN);
@@ -324,8 +318,8 @@ function build_parameter_starts(edges, counts, regions, config) {
 
   return [
     base,
-    [...base.slice(0, PARAMETER_INDEX.B), 0.8, -0.5],
-    [...base.slice(0, PARAMETER_INDEX.B), -0.8, -0.5],
+    [...base.slice(0, PARAMETER_INDEX.SHAPE1), 0.8, -0.5],
+    [...base.slice(0, PARAMETER_INDEX.SHAPE1), -0.8, -0.5],
     (() => {
       const wider = [...base];
       wider[PARAMETER_INDEX.S_AREA] = sAreaGuess * 1.5;
@@ -449,7 +443,7 @@ export const dean_jett = {
     const array = [
       parameters.g1Area, parameters.g1Mean, parameters.g1CV,
       parameters.g2Area, parameters.g2Mean, parameters.g2CV,
-      parameters.sArea, parameters.b, parameters.c,
+      parameters.sArea, parameters.shape1, parameters.shape2,
     ];
     return expected_counts_from_parameters(edges, array, parameters.sQuadratureNodes ?? DEFAULT_S_QUADRATURE_NODES);
   },
@@ -475,7 +469,7 @@ export const dean_jett = {
     const peaks = peakComponents(edges, named);
     const sCounts = convolvedSPhase(
       edges,
-      { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, b: named.b, c: named.c },
+      { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, shape1: named.shape1, shape2: named.shape2 },
       config.sQuadratureNodes,
     );
 

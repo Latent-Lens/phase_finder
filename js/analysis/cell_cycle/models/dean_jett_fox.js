@@ -31,7 +31,7 @@
 //
 //   u(z) = mu1 + z*(mu2-mu1),                          z in [0,1]   (same as DJ)
 //   q(z) = a + b*z + c*z^2,    a = 1 - b/2 - c/3        (same as DJ)
-//   reject theta when min_{z in [0,1]} q(z) < 0         (same as DJ, projectQuadraticProfile)
+//   q(z) >= 0 holds by construction (Bernstein basis, same as DJ)
 //
 //   T(z; m_W, s_W) = phi(z; m_W, s_W) / [Phi((1-m_W)/s_W) - Phi((-m_W)/s_W)],  z in [0,1]
 //     (phi = normal PDF, Phi = normal CDF -- a Gaussian renormalized to
@@ -65,8 +65,7 @@
 import {
   peakComponents,
   convolvedSPhaseWithProfile,
-  quadraticProfile,
-  projectQuadraticProfile,
+  sPhaseProfile,
   projectMeansToFeasible,
   DEFAULT_S_QUADRATURE_NODES,
 } from "./shared.js";
@@ -90,7 +89,7 @@ const EPS = 1e-12;
 const PARAMETER_INDEX = Object.freeze({
   G1_AREA: 0, G1_MEAN: 1, G1_CV: 2,
   G2_AREA: 3, G2_MEAN: 4, G2_CV: 5,
-  S_AREA: 6, B: 7, C: 8,
+  S_AREA: 6, SHAPE1: 7, SHAPE2: 8,
   W: 9,          // w
   WAVE_MEAN: 10, // m_W
   WAVE_SIGMA: 11, // s_W
@@ -134,8 +133,8 @@ function paramsToNamed(parameters) {
     g2Mean: parameters[PARAMETER_INDEX.G2_MEAN],
     g2CV: parameters[PARAMETER_INDEX.G2_CV],
     sArea: parameters[PARAMETER_INDEX.S_AREA],
-    b: parameters[PARAMETER_INDEX.B],
-    c: parameters[PARAMETER_INDEX.C],
+    shape1: parameters[PARAMETER_INDEX.SHAPE1],
+    shape2: parameters[PARAMETER_INDEX.SHAPE2],
     w: parameters[PARAMETER_INDEX.W],
     waveMean: parameters[PARAMETER_INDEX.WAVE_MEAN],
     waveSigma: parameters[PARAMETER_INDEX.WAVE_SIGMA],
@@ -181,7 +180,7 @@ Output:
 
 */
 function combined_profile(z, named) {
-  const base = (1 - named.w) * quadraticProfile(z, named.b, named.c);
+  const base = (1 - named.w) * sPhaseProfile(z, named.shape1, named.shape2);
   if (!(named.w > 0)) return base; // w=0 nesting: skip evaluating T(z) entirely, not just multiply by 0
   return base + named.w * wave_profile(z, named.waveMean, named.waveSigma);
 }
@@ -262,11 +261,6 @@ function make_project_fn(regions, config, fixedPeaks = null) {
     projected[PARAMETER_INDEX.G1_MEAN] = g1Mean;
     projected[PARAMETER_INDEX.G2_MEAN] = g2Mean;
 
-    // q(z) must stay valid on its own (see shared.js's projectQuadraticProfile
-    // doc): q_F only stays nonnegative when q does, since T(z) >= 0 already.
-    const [b, c] = projectQuadraticProfile(projected[PARAMETER_INDEX.B], projected[PARAMETER_INDEX.C]);
-    projected[PARAMETER_INDEX.B] = b;
-    projected[PARAMETER_INDEX.C] = c;
 
     // The wave's own feasible domain -- not part of the emission model, the
     // region the optimizer may search for w, m_W, s_W.
@@ -294,14 +288,14 @@ function free_indices(config) {
   // clean_flank fixes the peaks; only the S phase is optimized.
   if (config.peakFitMode === "clean_flank") {
     return [
-      PARAMETER_INDEX.S_AREA, PARAMETER_INDEX.B, PARAMETER_INDEX.C,
+      PARAMETER_INDEX.S_AREA, PARAMETER_INDEX.SHAPE1, PARAMETER_INDEX.SHAPE2,
       PARAMETER_INDEX.W, PARAMETER_INDEX.WAVE_MEAN, PARAMETER_INDEX.WAVE_SIGMA,
     ];
   }
   const indices = [
     PARAMETER_INDEX.G1_AREA, PARAMETER_INDEX.G1_MEAN, PARAMETER_INDEX.G1_CV,
     PARAMETER_INDEX.G2_AREA, PARAMETER_INDEX.S_AREA,
-    PARAMETER_INDEX.B, PARAMETER_INDEX.C,
+    PARAMETER_INDEX.SHAPE1, PARAMETER_INDEX.SHAPE2,
     PARAMETER_INDEX.W, PARAMETER_INDEX.WAVE_MEAN, PARAMETER_INDEX.WAVE_SIGMA,
   ];
   if (config.cvMode !== "equal") indices.push(PARAMETER_INDEX.G2_CV);
@@ -394,16 +388,16 @@ function build_parameter_starts(edges, counts, regions, config, djHint = null) {
 
   const starts = [
     base,
-    [...base.slice(0, PARAMETER_INDEX.B), 0.8, -0.5, 0, 0.5, 0.15],
-    [...base.slice(0, PARAMETER_INDEX.B), -0.8, -0.5, 0, 0.5, 0.15],
-    ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => [...base.slice(0, PARAMETER_INDEX.B), 0, 0, 0.25, waveMean, waveSigma]),
+    [...base.slice(0, PARAMETER_INDEX.SHAPE1), 0.8, -0.5, 0, 0.5, 0.15],
+    [...base.slice(0, PARAMETER_INDEX.SHAPE1), -0.8, -0.5, 0, 0.5, 0.15],
+    ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => [...base.slice(0, PARAMETER_INDEX.SHAPE1), 0, 0, 0.25, waveMean, waveSigma]),
   ];
 
   if (djHint) {
     const fromDj = [
       djHint.g1Area, djHint.g1Mean, djHint.g1CV,
       djHint.g2Area, djHint.g2Mean, djHint.g2CV,
-      djHint.sArea, djHint.b, djHint.c,
+      djHint.sArea, djHint.shape1, djHint.shape2,
       0, 0.5, 0.15, // w=0: identically DJ's own optimum, the nesting guarantee
     ];
     starts.push(

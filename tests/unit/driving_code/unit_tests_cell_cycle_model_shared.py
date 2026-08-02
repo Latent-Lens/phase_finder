@@ -16,8 +16,9 @@ GROUP = "Unit / Cell Cycle Model Shared"
 
 _MODEL_SHARED_TESTS = r"""() => {
   const {
-    quadraticProfile, quadraticProfileMinimum, isQuadraticProfileValid,
-    projectQuadraticProfile, peakComponents, convolvedSPhase, projectMeansToFeasible,
+    sPhaseProfile, sPhaseProfileWeights, sPhaseProfileMinimum,
+    PROFILE_WEIGHT_SUM, PROFILE_SHAPE_LIMIT,
+    peakComponents, convolvedSPhase, projectMeansToFeasible,
   } = window.CellCycleModelShared;
   const { integrateGaussLegendre } = window.CellCycleQuadrature;
   const results = [];
@@ -38,88 +39,92 @@ _MODEL_SHARED_TESTS = r"""() => {
   const evenEdges = (start, end, count) =>
     Array.from({ length: count + 1 }, (_, i) => start + ((end - start) * i) / count);
 
-  // ---- quadraticProfile / validity ------------------------------------------
-  run('quadraticProfile integrates to 1 over [0,1] for arbitrary b, c', () => {
-    const b = 1.4, c = -0.6;
-    const integral = integrateGaussLegendre((z) => quadraticProfile(z, b, c), 0, 1, 64);
-    return { pass: close(integral, 1, 1e-9), detail: integral };
+  // ---- Bernstein S-phase profile (SCI-08) ---------------------------------
+  // The basis change is the point: nonnegativity is now a property of the
+  // parameterization, so there is no validity predicate and no repair step to
+  // test -- there is instead an obligation to prove NOTHING can make it fail.
+
+  run('sPhaseProfile integrates to 1 over [0,1] for arbitrary shape parameters', () => {
+    const cases = [[0, 0], [1.4, -0.6], [-3, 2.5], [7, -7], [0.2, 9]];
+    const integrals = cases.map(([s1, s2]) =>
+      integrateGaussLegendre((z) => sPhaseProfile(z, s1, s2), 0, 1, 64));
+    return {
+      pass: integrals.every((value) => close(value, 1, 1e-9)),
+      detail: JSON.stringify(integrals),
+    };
   });
 
-  run('quadraticProfile(z, 0, 0) is the flat profile q=1 everywhere', () => {
-    const values = [0, 0.25, 0.5, 0.75, 1].map((z) => quadraticProfile(z, 0, 0));
+  run('sPhaseProfile(z, 0, 0) is the flat profile q=1 everywhere', () => {
+    const values = [0, 0.25, 0.5, 0.75, 1].map((z) => sPhaseProfile(z, 0, 0));
     return { pass: values.every((value) => close(value, 1, 1e-12)), detail: values };
   });
 
-  run('quadraticProfileMinimum finds the interior vertex when c>0 and it lies in [0,1]', () => {
-    // b=-2, c=2 gives a=1-(-1)-2/3=4/3, vertex z=-b/2c=0.5, q(0.5)=4/3-1+0.5=5/6.
-    const value = quadraticProfileMinimum(-2, 2);
-    return { pass: close(value, 5 / 6, 1e-9), detail: value };
+  run('the Bernstein weights are strictly positive and sum to PROFILE_WEIGHT_SUM', () => {
+    const cases = [[0, 0], [12, -12], [-40, 40], [1e3, 1e3], [-1e3, 0]];
+    const bad = cases.filter(([s1, s2]) => {
+      const weights = sPhaseProfileWeights(s1, s2);
+      return weights.some((w) => !(w > 0)) || !close(weights[0] + weights[1] + weights[2], PROFILE_WEIGHT_SUM, 1e-9);
+    });
+    return { pass: bad.length === 0, detail: JSON.stringify(bad) };
   });
 
-  run('quadraticProfileMinimum ignores a vertex outside [0,1] (uses endpoints)', () => {
-    // b=-10, c=2 has vertex z=2.5, outside [0,1], so the minimum is at an endpoint.
-    const a = 1 - (-10) / 2 - 2 / 3;
-    const q0 = a;
-    const q1 = a - 10 + 2;
-    const value = quadraticProfileMinimum(-10, 2);
-    return { pass: close(value, Math.min(q0, q1), 1e-9), detail: { value, q0, q1 } };
-  });
-
-  run('isQuadraticProfileValid accepts the flat profile and rejects a profile that dips negative', () => {
-    const flatOk = isQuadraticProfileValid(0, 0);
-    // b=0, c=-6 (downward-opening, so the vertex check doesn't apply -- its
-    // minimum is at an endpoint): a=1-0-(-2)=3, q(0)=3, q(1)=3+0-6=-3.
-    const bBad = 0, cBad = -6;
-    const badRejected = isQuadraticProfileValid(bBad, cBad) === false;
+  run('extreme shape values neither overflow nor underflow the softmax', () => {
+    // Two separate hazards. Overflow: without subtracting the max, exp(1000) is
+    // Infinity and every weight becomes NaN. Underflow: without PROFILE_SHAPE_LIMIT,
+    // exp(-2000) is exactly 0 and a weight silently leaves the open interval,
+    // so "strictly positive" would be true in practice but not by construction.
+    const weights = sPhaseProfileWeights(1000, -1000);
+    const clamped = sPhaseProfileWeights(PROFILE_SHAPE_LIMIT, -PROFILE_SHAPE_LIMIT);
     return {
-      pass: flatOk === true && badRejected,
-      detail: { flatOk, minimum: quadraticProfileMinimum(bBad, cBad) },
+      pass: weights.every(Number.isFinite) && weights.every((w) => w > 0)
+        && JSON.stringify(weights) === JSON.stringify(clamped),
+      detail: JSON.stringify({ weights, clamped }),
     };
   });
 
-  run('projectQuadraticProfile leaves strictly positive profiles unchanged', () => {
-    const proposed = [0.6, -0.4];
-    const projected = projectQuadraticProfile(...proposed);
-    return {
-      pass: projected[0] === proposed[0] && projected[1] === proposed[1]
-        && quadraticProfileMinimum(...projected) > 0,
-      detail: JSON.stringify({ proposed, projected, minimum: quadraticProfileMinimum(...projected) }),
-    };
-  });
-
-  run('projectQuadraticProfile analytically places negative endpoint and interior minima on zero', () => {
-    const endpoint = projectQuadraticProfile(0, -6);
-    const interior = projectQuadraticProfile(-12, 12);
-    return {
-      pass: close(quadraticProfileMinimum(...endpoint), 0, 1e-12)
-        && close(quadraticProfileMinimum(...interior), 0, 1e-12)
-        && isQuadraticProfileValid(...endpoint)
-        && isQuadraticProfileValid(...interior),
-      detail: JSON.stringify({ endpoint, interior }),
-    };
-  });
-
-  run('randomized projected quadratic profiles stay normalized and nonnegative', () => {
+  run('NO shape pair can drive the profile negative (nonnegativity by construction)', () => {
+    // The whole reason for the basis change. A wide sweep of shape pairs,
+    // including extremes the optimizer could never reach, must all stay >= 0 --
+    // the direct a + b*z + c*z^2 form failed this for many of these values and
+    // needed an explicit repair step.
     let failures = 0;
-    for (let index = 0; index < 100; index += 1) {
-      const b = ((index * 37) % 41) - 20;
-      const c = ((index * 53) % 47) - 23;
-      const projected = projectQuadraticProfile(b, c);
-      const integral = integrateGaussLegendre(
-        (z) => quadraticProfile(z, ...projected), 0, 1, 64,
-      );
-      if (!isQuadraticProfileValid(...projected) || !close(integral, 1, 1e-9)) failures += 1;
+    let worst = Infinity;
+    for (let i = -20; i <= 20; i += 1) {
+      for (let j = -20; j <= 20; j += 1) {
+        const minimum = sPhaseProfileMinimum(i, j);
+        if (minimum < worst) worst = minimum;
+        if (!(minimum >= 0)) failures += 1;
+      }
     }
-    return { pass: failures === 0, detail: `failures=${failures}` };
+    return { pass: failures === 0 && worst >= 0, detail: `failures=${failures} worstMinimum=${worst}` };
   });
 
-  run('randomized feasible quadratic shapes yield nonnegative, normalized S expected counts', () => {
+  run('sPhaseProfileMinimum finds an interior minimum when the profile is U-shaped', () => {
+    // w1 far below w0 and w2 puts the minimum strictly inside (0, 1).
+    const [s1, s2] = [-3, 0];
+    const minimum = sPhaseProfileMinimum(s1, s2);
+    let scanned = Infinity;
+    for (let k = 0; k <= 1000; k += 1) scanned = Math.min(scanned, sPhaseProfile(k / 1000, s1, s2));
+    return {
+      pass: close(minimum, scanned, 1e-6) && minimum < Math.min(sPhaseProfile(0, s1, s2), sPhaseProfile(1, s1, s2)),
+      detail: JSON.stringify({ minimum, scanned }),
+    };
+  });
+
+  run('the shape parameters actually reshape the profile (they are not inert)', () => {
+    const early = sPhaseProfile(0.1, -4, -4); // weight pushed toward G1
+    const late = sPhaseProfile(0.9, -4, -4);
+    return { pass: early > late * 2, detail: JSON.stringify({ early, late }) };
+  });
+
+  run('randomized shapes yield nonnegative, normalized S expected counts', () => {
     const edges = evenEdges(-200, 400, 240);
     let failures = 0;
     for (let index = 0; index < 20; index += 1) {
-      const [b, c] = projectQuadraticProfile(((index * 17) % 31) - 15, ((index * 29) % 37) - 18);
+      const shape1 = ((index * 17) % 31) - 15;
+      const shape2 = ((index * 29) % 37) - 18;
       const counts = convolvedSPhase(edges, {
-        sArea: 1000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, b, c,
+        sArea: 1000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, shape1, shape2,
       });
       if (counts.some((value) => value < -1e-12) || !close(sum(counts), 1000, 0.1)) failures += 1;
     }
@@ -154,19 +159,25 @@ _MODEL_SHARED_TESTS = r"""() => {
   });
 
   // ---- convolvedSPhase ----------------------------------------------------
-  run('convolvedSPhase is all-zero when the quadratic profile is invalid', () => {
+  run('a shape that WAS infeasible under the old basis now fits normally', () => {
+    // Under the direct a + b*z + c*z^2 form, (b, c) = (0, -6) gave q(1) = -3 and
+    // convolvedSPhase returned all zeros -- a whole region of parameter space the
+    // optimizer had to be projected out of. The Bernstein basis has no such
+    // region: the same numbers are just another valid shape.
     const edges = evenEdges(0, 400, 400);
-    // b=0, c=-6: q(1) = -3 < 0 (see the isQuadraticProfileValid test above).
     const out = convolvedSPhase(edges, {
-      sArea: 1000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, b: 0, c: -6,
+      sArea: 1000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, shape1: 0, shape2: -6,
     });
-    return { pass: out.every((value) => value === 0), detail: sum(out) };
+    return {
+      pass: out.every((value) => value >= 0 && Number.isFinite(value)) && close(sum(out), 1000, 1),
+      detail: JSON.stringify({ total: sum(out), minimum: Math.min(...out) }),
+    };
   });
 
   run('convolvedSPhase is all-zero when g2Mean does not exceed g1Mean', () => {
     const edges = evenEdges(0, 400, 400);
     const out = convolvedSPhase(edges, {
-      sArea: 1000, g1Mean: 140, g2Mean: 140, broadeningCV: 0.08, b: 0, c: 0,
+      sArea: 1000, g1Mean: 140, g2Mean: 140, broadeningCV: 0.08, shape1: 0, shape2: 0,
     });
     return { pass: out.every((value) => value === 0), detail: sum(out) };
   });
@@ -174,7 +185,7 @@ _MODEL_SHARED_TESTS = r"""() => {
   run('convolvedSPhase over a wide domain recovers essentially all of sArea', () => {
     const edges = evenEdges(-50, 250, 1200);
     const out = convolvedSPhase(edges, {
-      sArea: 5000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, b: 0.3, c: -0.2,
+      sArea: 5000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, shape1: 0.3, shape2: -0.2,
     });
     const total = sum(out);
     return { pass: close(total, 5000, 5000 * 1e-4), detail: total };
@@ -190,7 +201,7 @@ _MODEL_SHARED_TESTS = r"""() => {
     const midpoint = 0.5 * (g1Mean + g2Mean);
     const edges = evenEdges(g1Mean - 30, g2Mean + 30, 800); // generous margin for broadened tails
     const out = convolvedSPhase(edges, {
-      sArea: 10000, g1Mean, g2Mean, broadeningCV: 0.03, b: 0, c: 0,
+      sArea: 10000, g1Mean, g2Mean, broadeningCV: 0.03, shape1: 0, shape2: 0,
     });
     let lowerHalf = 0;
     for (let i = 0; i < out.length; i += 1) {
@@ -203,7 +214,7 @@ _MODEL_SHARED_TESTS = r"""() => {
 
   run('convolvedSPhase with 64 vs 128 quadrature nodes agree closely for a smooth profile', () => {
     const edges = evenEdges(0, 400, 400);
-    const params = { sArea: 3000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, b: 0.4, c: -0.3 };
+    const params = { sArea: 3000, g1Mean: 70, g2Mean: 140, broadeningCV: 0.08, shape1: 0.4, shape2: -0.3 };
     const out64 = convolvedSPhase(edges, params, 64);
     const out128 = convolvedSPhase(edges, params, 128);
     let maxAbsDiff = 0;
