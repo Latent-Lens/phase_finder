@@ -46,7 +46,8 @@
 
 import { peakComponents, convolvedSPhaseWithProfile, projectMeansToFeasible, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
 import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
-import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning, boundaryHitWarnings } from "../diagnostics.js";
+import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning } from "../diagnostics.js";
+import { buildConstraintAudit, constraintAuditWarnings } from "../constraint_audit.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
 import { clamp } from "../../math/stats.js";
 
@@ -469,6 +470,25 @@ export const watson_classic = {
       optimizer: fit.optimizerDiagnostics,
     };
 
+    // STAT-01: one declared bound set feeding the audit, the warnings, and the
+    // published `bounds` alike (see dean_jett_fox.js for the rationale). Watson
+    // Classic's latent profile is the trapezoid, not the DJ quadratic, so no
+    // profileMinimumFn is supplied -- `slope`'s box bound IS its feasibility
+    // condition (projectTrapezoidSlope's exact nonnegativity interval).
+    const bounds = {
+      g1Area: [0, Infinity],
+      sArea: [0, Infinity],
+      g2Area: [0, Infinity],
+      g1CV: [config.cvMin, config.cvMax],
+      g2CV: [config.cvMin, config.cvMax],
+      g1Mean: [regions.g1.left, regions.g1.right],
+      g2Mean: [regions.g2.left, regions.g2.right],
+      slope: [SLOPE_MIN, SLOPE_MAX],
+    };
+    const constraintAudit = buildConstraintAudit({
+      named, bounds, config, phaseFractions, contaminantFractions: {},
+    });
+
     const warnings = [
       ...fitQualityWarnings(diagnostics),
       ...components
@@ -479,11 +499,7 @@ export const watson_classic = {
           observedDomainArea: component.observedDomainArea,
         }))
         .filter(Boolean),
-      ...boundaryHitWarnings(named, {
-        g1CV: { min: config.cvMin, max: config.cvMax },
-        g2CV: { min: config.cvMin, max: config.cvMax },
-        slope: { min: SLOPE_MIN, max: SLOPE_MAX },
-      }),
+      ...constraintAuditWarnings(constraintAudit),
     ];
 
     return {
@@ -498,13 +514,8 @@ export const watson_classic = {
       converged: fit.converged,
       convergenceReason: convergence_reason(fit),
       parameters: { ...named, sQuadratureNodes: config.sQuadratureNodes },
-      bounds: {
-        g1CV: [config.cvMin, config.cvMax],
-        g2CV: [config.cvMin, config.cvMax],
-        g1Mean: [regions.g1.left, regions.g1.right],
-        g2Mean: [regions.g2.left, regions.g2.right],
-        slope: [SLOPE_MIN, SLOPE_MAX],
-      },
+      bounds,
+      constraintAudit,
       expectedCounts: fit.expectedCounts,
       components,
       phaseFractions,

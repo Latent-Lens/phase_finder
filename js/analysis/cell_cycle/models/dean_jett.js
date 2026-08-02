@@ -51,9 +51,10 @@
 // result (plan §4.5) packaging around fit_engine.js's optimizer.
 // ============================================================================
 
-import { peakComponents, convolvedSPhase, projectMeansToFeasible, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
+import { peakComponents, convolvedSPhase, projectMeansToFeasible, sPhaseProfileMinimum, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
 import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
-import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning, boundaryHitWarnings } from "../diagnostics.js";
+import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning } from "../diagnostics.js";
+import { buildConstraintAudit, constraintAuditWarnings } from "../constraint_audit.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
 import { clamp } from "../../math/stats.js";
 
@@ -496,6 +497,22 @@ export const dean_jett = {
       optimizer: fit.optimizerDiagnostics,
     };
 
+    // STAT-01: one declared bound set feeding the audit, the warnings, and the
+    // published `bounds` alike (see dean_jett_fox.js for the rationale).
+    const bounds = {
+      g1Area: [0, Infinity],
+      sArea: [0, Infinity],
+      g2Area: [0, Infinity],
+      g1CV: [config.cvMin, config.cvMax],
+      g2CV: [config.cvMin, config.cvMax],
+      g1Mean: [regions.g1.left, regions.g1.right],
+      g2Mean: [regions.g2.left, regions.g2.right],
+    };
+    const constraintAudit = buildConstraintAudit({
+      named, bounds, config, phaseFractions, contaminantFractions: {},
+      profileMinimumFn: sPhaseProfileMinimum,
+    });
+
     const warnings = [
       ...fitQualityWarnings(diagnostics),
       ...components
@@ -506,10 +523,7 @@ export const dean_jett = {
           observedDomainArea: component.observedDomainArea,
         }))
         .filter(Boolean),
-      ...boundaryHitWarnings(named, {
-        g1CV: { min: config.cvMin, max: config.cvMax },
-        g2CV: { min: config.cvMin, max: config.cvMax },
-      }),
+      ...constraintAuditWarnings(constraintAudit),
     ];
 
     return {
@@ -524,12 +538,8 @@ export const dean_jett = {
       converged: fit.converged,
       convergenceReason: convergence_reason(fit),
       parameters: { ...named, sQuadratureNodes: config.sQuadratureNodes },
-      bounds: {
-        g1CV: [config.cvMin, config.cvMax],
-        g2CV: [config.cvMin, config.cvMax],
-        g1Mean: [regions.g1.left, regions.g1.right],
-        g2Mean: [regions.g2.left, regions.g2.right],
-      },
+      bounds,
+      constraintAudit,
       expectedCounts: fit.expectedCounts,
       components,
       phaseFractions,

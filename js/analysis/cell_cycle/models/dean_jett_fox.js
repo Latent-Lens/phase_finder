@@ -67,11 +67,13 @@ import {
   convolvedSPhaseWithProfile,
   sPhaseProfile,
   projectMeansToFeasible,
+  sPhaseProfileMinimum,
   DEFAULT_S_QUADRATURE_NODES,
 } from "./shared.js";
 import { normalCdf, normalPdf } from "../../math/gaussian_bin_mass.js";
 import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
-import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning, boundaryHitWarnings } from "../diagnostics.js";
+import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning } from "../diagnostics.js";
+import { buildConstraintAudit, constraintAuditWarnings } from "../constraint_audit.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
 import { clamp } from "../../math/stats.js";
 // FlowJo fits each G1/G2 Gaussian by least squares over a -3sigma..+1sigma window
@@ -593,6 +595,28 @@ export const dean_jett_fox = {
     };
 
     const waveArea = named.w * named.sArea;
+
+    // STAT-01: the single declared bound set. The audit, the boundary warnings,
+    // and the result's published `bounds` all read THIS object, so a bound can
+    // no longer exist in one place and be missing from another (the audited gap
+    // was g1Mean/g2Mean, which were published but never warned about).
+    const bounds = {
+      g1Area: [0, Infinity],
+      sArea: [0, Infinity],
+      g2Area: [0, Infinity],
+      g1CV: [config.cvMin, config.cvMax],
+      g2CV: [config.cvMin, config.cvMax],
+      g1Mean: [regions.g1.left, regions.g1.right],
+      g2Mean: [regions.g2.left, regions.g2.right],
+      w: [config.wMin, config.wMax],
+      waveMean: [config.waveMeanMin, config.waveMeanMax],
+      waveSigma: [config.waveSigmaMin, config.waveSigmaMax],
+    };
+    const constraintAudit = buildConstraintAudit({
+      named, bounds, config, phaseFractions, contaminantFractions: {},
+      profileMinimumFn: sPhaseProfileMinimum,
+    });
+
     const warnings = [
       ...fitQualityWarnings(diagnostics),
       ...components
@@ -603,13 +627,7 @@ export const dean_jett_fox = {
           observedDomainArea: component.observedDomainArea,
         }))
         .filter(Boolean),
-      ...boundaryHitWarnings(named, {
-        g1CV: { min: config.cvMin, max: config.cvMax },
-        g2CV: { min: config.cvMin, max: config.cvMax },
-        w: { min: config.wMin, max: config.wMax },
-        waveMean: { min: config.waveMeanMin, max: config.waveMeanMax },
-        waveSigma: { min: config.waveSigmaMin, max: config.waveSigmaMax },
-      }),
+      ...constraintAuditWarnings(constraintAudit),
     ];
 
     return {
@@ -624,15 +642,8 @@ export const dean_jett_fox = {
       converged: fit.converged,
       convergenceReason: convergence_reason(fit),
       parameters: { ...named, waveArea, sQuadratureNodes: config.sQuadratureNodes },
-      bounds: {
-        g1CV: [config.cvMin, config.cvMax],
-        g2CV: [config.cvMin, config.cvMax],
-        g1Mean: [regions.g1.left, regions.g1.right],
-        g2Mean: [regions.g2.left, regions.g2.right],
-        w: [config.wMin, config.wMax],
-        waveMean: [config.waveMeanMin, config.waveMeanMax],
-        waveSigma: [config.waveSigmaMin, config.waveSigmaMax],
-      },
+      bounds,
+      constraintAudit,
       expectedCounts: fit.expectedCounts,
       components,
       phaseFractions,

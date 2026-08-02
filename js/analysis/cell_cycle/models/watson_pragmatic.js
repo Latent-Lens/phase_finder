@@ -56,6 +56,7 @@
 
 import { gaussianBinMass } from "../../math/gaussian_bin_mass.js";
 import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning } from "../diagnostics.js";
+import { buildConstraintAudit, constraintAuditWarnings } from "../constraint_audit.js";
 import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
 
 const EPS = 1e-12;
@@ -308,6 +309,19 @@ export const watson_pragmatic = {
       parameterCount: 6, // g1Area/g1Mean/g1CV + g2Area/g2Mean/g2CV, estimated (not jointly optimized)
     });
 
+    // STAT-01: a decomposition optimizes nothing, so it declares no box bounds --
+    // but the composition it reports is still subject to the joint feasibility
+    // conditions, and the audit records them explicitly rather than skipping the
+    // model. (Watson Pragmatic models no contaminant, so that set is empty by
+    // construction, which the audit states rather than omits.)
+    const constraintAudit = buildConstraintAudit({
+      named: { g1Mean: g1.mean, g2Mean: g2.mean },
+      bounds: {},
+      config: { ratioMode: "free" },
+      phaseFractions,
+      contaminantFractions: {},
+    });
+
     const warnings = [
       ...fitQualityWarnings(diagnostics),
       ...components
@@ -319,6 +333,7 @@ export const watson_pragmatic = {
           observedDomainArea: component.observedDomainArea,
         }))
         .filter(Boolean),
+      ...constraintAuditWarnings(constraintAudit),
     ];
 
     return {
@@ -335,6 +350,7 @@ export const watson_pragmatic = {
       convergenceReason: "not_applicable_closed_form",
       parameters: { g1Area: g1.area, g1Mean: g1.mean, g1CV: g1.cv, g2Area: g2.area, g2Mean: g2.mean, g2CV: g2.cv },
       bounds: {},
+      constraintAudit,
       expectedCounts,
       components,
       phaseFractions,
