@@ -3,6 +3,7 @@ tests/e2e/results/*
 tests/validation/results/*
 tests/flow_e2e_*.html
 tests/validation_tests_*.html
+tests/validation_shard_*.html
 tests/e2e/driving_code/__pycache__
 tests/unit/driving_code/__pycache__
 tests/validation/driving_code/__pycache__
@@ -17,6 +18,13 @@ tests/validation/validation_test_data/external_fcs/datasets/
 tests/validation/validation_test_data/external_fcs/files/
 tests/validation/validation_test_data/external_fcs/results/
 flow_data
+
+# Independent-tool comparison harness. Commit only driving_code/; the isolated
+# Python venv, the downloaded R library tree, and every generated report stay
+# local (together they are >1 GB and are all reconstructible by the scripts).
+tests/external_tools/.venv/
+tests/external_tools/rlib/
+tests/external_tools/results/
 
 # Local AI tooling
 .claude/
