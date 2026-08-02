@@ -9,6 +9,83 @@
 
 const EPS = 1e-12;
 
+// STAT-01: expected counts come from bin-mass integrals and Gauss-Legendre
+// quadrature, both of which can land a few ulps below zero on a component whose
+// true mass is ~0. That round-off is absorbed (clamped to 0); anything more
+// negative than this is a real modelling error and is REJECTED rather than
+// silently clamped, which is what `Math.max(0, ...)` used to do.
+const NEGATIVE_ROUNDOFF_TOLERANCE = 1e-9;
+
+export const POISSON_INPUT_INVALID = "poisson_input_invalid";
+
+/*
+
+Purpose:
+	The structured error every Poisson statistic throws on an input it cannot
+	honestly evaluate. Carries a machine-readable `code` plus a `detail` naming
+	the offending array, index, and value, so a caller can surface exactly which
+	bin broke rather than propagating a NaN into a reported statistic.
+
+*/
+export class PoissonInputError extends RangeError {
+  constructor(message, detail) {
+    super(message);
+    this.name = "PoissonInputError";
+    this.code = POISSON_INPUT_INVALID;
+    this.detail = detail;
+  }
+}
+
+function assert_counts(values, role, length, { allowNegativeRoundoff }) {
+  if (values == null || typeof values.length !== "number") {
+    throw new PoissonInputError(`${role} counts must be an array or typed array.`, { role, reason: "not_array_like" });
+  }
+  if (length != null && values.length !== length) {
+    throw new PoissonInputError(
+      "Observed and expected must have the same length.",
+      { role, reason: "length_mismatch", length: values.length, expectedLength: length },
+    );
+  }
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (!Number.isFinite(value)) {
+      throw new PoissonInputError(
+        `${role} count at bin ${index} is ${value} — Poisson statistics require finite counts.`,
+        { role, reason: "nonfinite", index, value },
+      );
+    }
+    const floor = allowNegativeRoundoff ? -NEGATIVE_ROUNDOFF_TOLERANCE : 0;
+    if (value < floor) {
+      throw new PoissonInputError(
+        `${role} count at bin ${index} is ${value} — Poisson statistics require non-negative counts.`,
+        { role, reason: "negative", index, value },
+      );
+    }
+  }
+}
+
+/*
+
+Purpose:
+	STAT-01 input gate for every Poisson statistic below. Rejects non-finite or
+	negative observed counts and non-finite or materially negative expected
+	counts with a structured PoissonInputError, so an invalid histogram or a
+	broken model evaluation fails loudly at the boundary instead of silently
+	becoming a clamped (or NaN) likelihood, deviance, or residual.
+
+Input:
+	observed [array]: observed integer counts per bin
+	expected [array]: expected (model) means per bin
+
+Output:
+	(none) [void]: returns normally when both inputs are valid, throws otherwise
+
+*/
+export function validatePoissonCounts(observed, expected) {
+  assert_counts(observed, "Observed", null, { allowNegativeRoundoff: false });
+  assert_counts(expected, "Expected", observed.length, { allowNegativeRoundoff: true });
+}
+
 // Lanczos log-gamma (g=7). JavaScript has no native lgamma; this supplies the
 // standard Poisson log(y!) term without factorial overflow.
 export function logGamma(value) {
@@ -40,12 +117,12 @@ Output:
 
 */
 export function poissonLogLikelihood(observed, expected) {
-  if (observed.length !== expected.length) {
-    throw new Error("Observed and expected must have the same length.");
-  }
+  validatePoissonCounts(observed, expected);
   let ll = 0;
   for (let i = 0; i < observed.length; i += 1) {
-    const y = Math.max(0, observed[i]);
+    // Non-negative and finite by validatePoissonCounts above; the only floor
+    // left is EPS on mu, so log(0) cannot appear for an empty modelled bin.
+    const y = observed[i];
     const mu = Math.max(EPS, expected[i]);
     ll += y * Math.log(mu) - mu - logGamma(y + 1);
   }
@@ -84,9 +161,10 @@ Output:
 
 */
 export function poissonDeviance(observed, expected) {
+  validatePoissonCounts(observed, expected);
   let deviance = 0;
   for (let i = 0; i < observed.length; i += 1) {
-    const y = Math.max(0, observed[i]);
+    const y = observed[i];
     const mu = Math.max(EPS, expected[i]);
     deviance += y === 0 ? 2 * mu : 2 * (y * Math.log(y / mu) - (y - mu));
   }
@@ -107,7 +185,8 @@ Output:
 
 */
 export function pearsonResiduals(observed, expected) {
-  return observed.map((value, i) => (value - expected[i]) / Math.sqrt(Math.max(EPS, expected[i])));
+  validatePoissonCounts(observed, expected);
+  return Array.from(observed, (value, i) => (value - expected[i]) / Math.sqrt(Math.max(EPS, expected[i])));
 }
 
 /*
@@ -126,8 +205,9 @@ Output:
 
 */
 export function poissonDevianceResiduals(observed, expected) {
-  return observed.map((value, i) => {
-    const y = Math.max(0, value);
+  validatePoissonCounts(observed, expected);
+  return Array.from(observed, (value, i) => {
+    const y = value;
     const mu = Math.max(EPS, expected[i]);
     const contribution = y === 0 ? 2 * mu : 2 * (y * Math.log(y / mu) - (y - mu));
     return Math.sign(y - mu) * Math.sqrt(Math.max(0, contribution));
