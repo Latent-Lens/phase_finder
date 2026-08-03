@@ -317,6 +317,81 @@ function assert_known_config(patch, template, prefix = "") {
   }
 }
 
+// STATE-01: which models can actually CONSUME the ratio/CV settings.
+//
+// These settings constrain peak means and widths, so a model consumes them only
+// if it actually OPTIMIZES those parameters. Dean-Jett and Watson Classic fit
+// the peaks jointly, so the constraints shape their fits.
+//
+// Watson Pragmatic is a closed-form decomposition: it derives each peak directly
+// from its reviewed region and runs no optimizer, so a ratio band or an equal-CV
+// rule has nothing to act on. Dean-Jett-Fox is in the same position for a
+// different reason: it measures both peaks from their clean flanks and holds
+// them FIXED, optimizing only the S phase, so a constraint on peak means and
+// widths constrains parameters the optimizer never moves. Folding those settings
+// into either model's config would make the result key claim a difference the
+// numbers do not have, and would make a restored session imply a constraint that
+// was never applied. The fitted G2:G1 ratio is still reported as a diagnostic by
+// constraint_audit.js -- it is evaluated, just not enforced.
+const RATIO_CV_CONSUMING_MODELS = new Set(["dean_jett", "watson_classic"]);
+
+const DEFAULT_RATIO_CV_SETTINGS = Object.freeze({
+  ratioMode: "bounded", cvMode: "free", lockedRatio: 2, ratioRange: [1.65, 2.25],
+});
+
+/*
+
+Purpose:
+	Whether a ratio/CV settings block differs from the defaults -- i.e. whether
+	the user (or a restored session) is asking for something the model may not be
+	able to honour.
+
+Input:
+	settings [object]: the row's modeling settings
+
+Output:
+	changed [boolean]: true when any ratio/CV setting is non-default
+
+*/
+function ratio_cv_settings_changed(settings) {
+  if (!settings) return false;
+  return settings.ratioMode !== DEFAULT_RATIO_CV_SETTINGS.ratioMode
+    || settings.cvMode !== DEFAULT_RATIO_CV_SETTINGS.cvMode
+    || settings.lockedRatio !== DEFAULT_RATIO_CV_SETTINGS.lockedRatio
+    || stable_json(settings.ratioRange) !== stable_json(DEFAULT_RATIO_CV_SETTINGS.ratioRange);
+}
+
+/*
+
+Purpose:
+	Reports which of the row's settings the chosen model will actually apply, so
+	the caller can record the not-applied ones as provenance instead of letting
+	them silently vanish (or, worse, letting them change the result key while
+	changing nothing else).
+
+Input:
+	modelId [string]: a registered model id
+	settings [object]: the row's modeling settings
+
+Output:
+	report [object]: { applied [array], notApplied [array], reason [string|null] }
+
+*/
+export function settings_applicability(modelId, settings) {
+  const keys = ["ratioMode", "ratioRange", "lockedRatio", "cvMode"];
+  if (RATIO_CV_CONSUMING_MODELS.has(modelId)) {
+    return { applied: keys, notApplied: [], reason: null };
+  }
+  const changed = ratio_cv_settings_changed(settings);
+  return {
+    applied: [],
+    notApplied: changed ? keys : [],
+    reason: changed
+      ? `${modelId} does not optimize the G1/G2 peak means or widths — it determines them directly from the reviewed peak regions — so the ratio and CV settings cannot affect its fit. Edit the peak regions to move the peaks; the fitted G2:G1 ratio is still reported as a diagnostic.`
+      : null,
+  };
+}
+
 export function resolve_model_configuration(modelId, settings, overrides = {}) {
   const entry = get_model(modelId);
   if (!entry) throw new Error(`Unknown cell-cycle model "${modelId}".`);
@@ -331,25 +406,10 @@ export function resolve_model_configuration(modelId, settings, overrides = {}) {
     cvMode: settings?.cvMode,
   };
   const clean = Object.fromEntries(Object.entries(fitted).filter(([, value]) => value !== undefined));
-  if (modelId === "auto_dj_djf") {
-    const unknown = Object.keys(overrides).find((key) => !["dj", "djf", "selection"].includes(key));
-    if (unknown) throw new Error(`Unsupported model configuration "${unknown}".`);
-    assert_known_config(overrides.dj, get_model("dean_jett").defaultConfig, "dj");
-    assert_known_config(overrides.djf, get_model("dean_jett_fox").defaultConfig, "djf");
-    return merge_config(entry.defaultConfig, {
-      dj: merge_config(clean, overrides.dj),
-      djf: merge_config(clean, overrides.djf),
-      selection: overrides.selection ?? entry.defaultConfig.selection,
-    });
-  }
-  const supported = modelId === "dean_jett" || modelId === "dean_jett_fox" ? clean : {};
-  if (!Object.keys(supported).length) {
-    const changed = settings && (settings.ratioMode !== "bounded"
-      || settings.cvMode !== "free"
-      || settings.lockedRatio !== 2
-      || stable_json(settings.ratioRange) !== stable_json([1.65, 2.25]));
-    if (changed) throw new Error(`Model "${modelId}" does not support ratio or CV settings.`);
-  }
+
+  // Only a model that can act on these settings gets them merged into its
+  // config -- and therefore into the config hash and the result key.
+  const supported = RATIO_CV_CONSUMING_MODELS.has(modelId) ? clean : {};
   assert_known_config(overrides, entry.defaultConfig);
   return merge_config(merge_config(entry.defaultConfig, supported), overrides);
 }
@@ -483,6 +543,20 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
     retainedCount: histogram?.retainedCount ?? 0,
     componentTailCoverage: null,
   };
+  // STATE-01: record which of the row's settings this model actually applied,
+  // so a setting that cannot bite is visible as not-applied provenance rather
+  // than silently vanishing. It is deliberately NOT an error: a session saved
+  // with non-default ratio/CV values must still restore.
+  const applicability = settings_applicability(modelId, modeling.settings);
+  result.settingsApplicability = applicability;
+  if (applicability.notApplied.length) {
+    result.warnings = [...(result.warnings ?? []), {
+      code: "model_settings_not_applied",
+      severity: "info",
+      message: `${applicability.notApplied.join(", ")} were not applied: ${applicability.reason}`,
+    }];
+  }
+
   const coverage = domainCoverageAudit({
     histogramProvenance: result.histogramProvenance,
     components: result.components ?? [],

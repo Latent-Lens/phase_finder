@@ -103,6 +103,12 @@ export function get_modeling_session_state() {
     samples.push({
       name: row.name,
       model: settings.modelId,
+      // STATE-01: record WHICH implementation produced the saved state. A
+      // session is recomputed on reload, so if the model's version has moved
+      // since it was written the recomputed numbers are a NEW result, not a
+      // reproduction of the saved one -- and only a recorded version can tell
+      // the two apart on restore.
+      model_version: get_model(settings.modelId)?.version ?? "",
       reviewed: Boolean(modeling.peakSelection.reviewed),
       g1_left: regions.g1.left,
       g1_right: regions.g1.right,
@@ -176,6 +182,10 @@ export async function apply_modeling_session(config, { onProgress } = {}) {
   let restored = 0;
   let failed = 0;
   const errors = [];
+  // STATE-01: samples whose model implementation moved since the session was
+  // written, reported to the caller so the restore summary can say so rather
+  // than presenting recomputed numbers as the saved ones.
+  const driftedSamples = [];
   for (let index = 0; index < targets.length; index += 1) {
     const saved = targets[index];
     const row = plotted.get(saved.name);
@@ -213,10 +223,34 @@ export async function apply_modeling_session(config, { onProgress } = {}) {
         },
       });
 
+      // STATE-01: an UNREVIEWED saved sample restores its regions and settings
+      // but is NOT refit -- accepting-by-recomputing would silently promote
+      // regions the user never reviewed into an authoritative result.
       // Joint time-series models (CLOCCS) aren't per-sample fits; restore their
       // configuration but don't try to recompute a single-sample fit for them.
-      if (saved.reviewed === true && get_model(saved.model)?.fitScope !== "joint_series") {
-        await fit_cell_cycle_model(row, saved.model);
+      const entry = get_model(saved.model);
+      if (saved.reviewed === true && entry?.fitScope !== "joint_series") {
+        const result = await fit_cell_cycle_model(row, saved.model);
+        // STATE-01: label algorithm/version drift instead of implying the
+        // recomputed number reproduces the saved session exactly.
+        const savedVersion = saved.model_version || null;
+        const currentVersion = entry?.version ?? null;
+        const drifted = Boolean(savedVersion) && Boolean(currentVersion) && savedVersion !== currentVersion;
+        result.reproduction = {
+          status: drifted ? "recomputed_new" : savedVersion ? "reproduced" : "unknown_saved_version",
+          savedModelVersion: savedVersion,
+          currentModelVersion: currentVersion,
+          modelId: saved.model,
+        };
+        if (drifted) {
+          const message = `${entry?.label ?? saved.model} has changed since this session was saved `
+            + `(v${savedVersion} → v${currentVersion}); this is a NEW result computed with the current model, `
+            + "not a reproduction of the saved values.";
+          result.warnings = [...(result.warnings ?? []), {
+            code: "model_version_drift", severity: "warning", message,
+          }];
+          driftedSamples.push({ name: saved.name, model: saved.model, savedVersion, currentVersion });
+        }
       }
       restored += 1;
     } catch (error) {
@@ -228,5 +262,5 @@ export async function apply_modeling_session(config, { onProgress } = {}) {
       });
     }
   }
-  return { restored, failed, total: targets.length, errors };
+  return { restored, failed, total: targets.length, errors, drifted: driftedSamples };
 }
