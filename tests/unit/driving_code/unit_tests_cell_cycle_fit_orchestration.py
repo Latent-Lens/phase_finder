@@ -377,13 +377,23 @@ _TESTS = r"""() => {
     };
   });
 
-  run('UI-12: mixed staged/live plots union both histogram extents', () => {
-    const prepared = [
+  run('UI-12: overlay/ridge range contract expands when a wider live sample becomes visible', () => {
+    const narrow = [
       { prepared: { maskedHistogram: { min: 20, max: 80 }, values: [20, 80] } },
+    ];
+    const prepared = [
+      ...narrow,
       { prepared: { maskedHistogram: null, values: [0, 10, 100, 120] } },
     ];
+    const narrowRange = window.PlotRender.visible_histogram_range(narrow);
     const range = window.PlotRender.visible_histogram_range(prepared);
-    return { pass: range[0] <= 10 && range[1] >= 100, detail: JSON.stringify(range) };
+    return {
+      pass: window.PlotRender.VISIBLE_HISTOGRAM_RANGE_CONTRACT === 'visible-cohort-union-v1'
+        && narrowRange[0] === 20 && narrowRange[1] === 80
+        && range[0] <= 10 && range[1] >= 100
+        && range[0] < narrowRange[0] && range[1] > narrowRange[1],
+      detail: JSON.stringify({ contract: window.PlotRender.VISIBLE_HISTOGRAM_RANGE_CONTRACT, narrowRange, range }),
+    };
   });
 
   run('DATA-04: user-approved unavailable QC is recorded as an explicit per-stage waiver', () => {

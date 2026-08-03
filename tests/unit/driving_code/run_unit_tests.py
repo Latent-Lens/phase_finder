@@ -142,6 +142,9 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_state_reproducibility import run_state_reproducibility_tests
     run_state_reproducibility_tests(ctx)
 
+    from unit_tests_peak_focus_range import run_peak_focus_range_tests
+    run_peak_focus_range_tests(ctx)
+
     from unit_tests_time_qc_peak_tracking import run_time_qc_peak_tracking_tests
     run_time_qc_peak_tracking_tests(ctx)
 
