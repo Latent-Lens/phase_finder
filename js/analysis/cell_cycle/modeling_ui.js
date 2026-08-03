@@ -528,6 +528,8 @@ async function on_fit_all_click() {
   busy = true;
   set_controls_disabled(true);
   const progress_operation = show_progress(`Auto-fitting ${model_label(modelId)}`);
+  const controller = new AbortController();
+  show_progress_cancel(() => controller.abort());
   const outcomes = new Map(rows.map((row) => [row.name, { sample: row.name, status: "pending", reason: "Not attempted" }]));
   const finish = (row, status, reason, code = status) => {
     const current = outcomes.get(row.name);
@@ -550,6 +552,7 @@ async function on_fit_all_click() {
     const proposals = [];
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
+      if (controller.signal.aborted) break;
       get_modeling_state(row).lastFitError = null;
       update_progress((45 * index) / rows.length, "Auto-detecting peaks", row.name, "", progress_operation);
       try {
@@ -576,6 +579,13 @@ async function on_fit_all_click() {
         finish(row, "detection_failed", stored.message, stored.code);
       }
     }
+    if (controller.signal.aborted) {
+      rows.forEach((row) => finish(row, "cancelled", "User cancelled bulk fitting", "fit_cancelled"));
+      const summary = summarize_bulk_fit_outcomes(outcomes);
+      set_fit_status(`Auto-fit cancelled: ${summary.message}.`, true);
+      set_status_bar(`Auto-fit cancelled: ${summary.message}.`, "warning", null, progress_operation);
+      return;
+    }
     if (!proposals.length) {
       const summary = summarize_bulk_fit_outcomes(outcomes);
       set_fit_status(`Auto-fit outcomes: ${summary.message}.`, true);
@@ -588,6 +598,9 @@ async function on_fit_all_click() {
       && detection_can_share(entry.detection) && entry.calibration);
     const reference = trustworthy[0]?.calibration ?? null;
     const included = trustworthy.filter((entry) => calibration_matches(reference, entry.calibration));
+    const consistency = included.length >= 2
+      ? shared_regions_consistent(included)
+      : { consistent: true, reason: null };
     const shared = included.length >= 2 ? robust_shared_regions(included) : null;
     const ordered = shared && shared.g1.left < shared.g1.right
       && shared.g1.right <= shared.g2.left && shared.g2.left < shared.g2.right;
@@ -597,7 +610,10 @@ async function on_fit_all_click() {
     const excludedNames = proposals.filter((entry) => !includedSet.has(entry.row.name)).map((entry) => entry.row.name);
     const proposalText = useShared
       ? `Shared median proposal: G1 ${shared.g1.left.toFixed(0)}–${shared.g1.right.toFixed(0)}, G2 ${shared.g2.left.toFixed(0)}–${shared.g2.right.toFixed(0)}.`
-      : "No safe shared proposal; every sample will use its own detected regions.";
+      : consistency.consistent
+        ? "No safe shared proposal; every sample will use its own detected regions."
+        : `No shared proposal — ${consistency.reason} Every sample will use its own detected regions; `
+          + "review the peak assignments before trusting a comparison across these samples.";
     if (!window.confirm(
       `${proposalText}\n\nIncluded in shared estimate (${includedNames.length}): ${includedNames.join(", ") || "none"}` +
       `\nExcluded / independently fit (${excludedNames.length}): ${excludedNames.join(", ") || "none"}` +
@@ -643,8 +659,12 @@ async function on_fit_all_click() {
     // Phase 2b: fit the prepared samples across the worker pool in parallel.
     let completed = 0;
     await run_with_limit(fit_list, fit_pool_size(), async ({ row, isShared }) => {
+      if (controller.signal.aborted) {
+        finish(row, "cancelled", "User cancelled bulk fitting", "fit_cancelled");
+        return;
+      }
       try {
-        const result = await fit_cell_cycle_model(row, modelId);
+        const result = await fit_cell_cycle_model(row, modelId, { signal: controller.signal });
         result.bulkRegionProvenance = {
           mode: isShared ? "shared_median_normalized" : "independent",
           includedSamples: includedNames,
@@ -676,7 +696,8 @@ async function on_fit_all_click() {
     outcomes.forEach((outcome, name) => {
       if (outcome.status === "pending") {
         const row = rows.find((candidate) => candidate.name === name);
-        finish(row, "skipped", "Sample did not reach the fit stage");
+        finish(row, controller.signal.aborted ? "cancelled" : "skipped",
+          controller.signal.aborted ? "User cancelled bulk fitting" : "Sample did not reach the fit stage");
       }
     });
     if (rows.length > 1) switch_to_ridge_view();

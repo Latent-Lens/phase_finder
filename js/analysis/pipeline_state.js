@@ -94,6 +94,7 @@ function create_modeling_state() {
     resultsByKey: {},
     modelComparison: null,
     activeResultKey: null,
+    fitRequestId: 0,
     revision: 0,
   };
 }

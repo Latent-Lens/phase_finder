@@ -703,6 +703,21 @@ _TESTS = r"""() => {
       };
     });
 
+    await runAsync('UI-11: a fit finishing after its inputs change cannot mutate model state', async () => {
+      const row = buildReviewedRow('fit-orch-stale-input');
+      const pending = modelingState.fit_cell_cycle_model(row, 'dean_jett');
+      modelingState.set_model_settings(row, { ratioMode: 'locked', lockedRatio: 2 });
+      let code = null;
+      try { await pending; } catch (error) { code = error.code; }
+      const modeling = modelingState.get_modeling_state(row);
+      return {
+        pass: code === 'FIT_INPUTS_CHANGED'
+          && modeling.activeResultKey === null
+          && Object.keys(modeling.resultsByKey).length === 0,
+        detail: JSON.stringify({ code, active: modeling.activeResultKey, keys: Object.keys(modeling.resultsByKey) }),
+      };
+    });
+
     await runAsync('fit_cell_cycle_model runs off the main thread via the shared fit worker', async () => {
       // Mirrors the existing "fit worker: a real fit matches the main-thread
       // result" test's approach: a real Worker was actually used if progress

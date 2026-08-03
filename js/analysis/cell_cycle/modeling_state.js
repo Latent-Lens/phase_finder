@@ -516,6 +516,11 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
     throw error;
   }
 
+  const requestId = (modeling.fitRequestId ?? 0) + 1;
+  modeling.fitRequestId = requestId;
+  const inputRevision = modeling.revision;
+  const inputHistogram = state.histogram;
+
   const worker = run_fit_in_worker(modelId, histogram, config, { peakRegions, onProgress });
   if (signal?.aborted) worker?.cancel();
   const abort = () => worker?.cancel();
@@ -524,6 +529,11 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
     ? await worker.promise
     : entry.normalizeResult(entry.fit({ histogram, peakRegions, config }));
   signal?.removeEventListener?.("abort", abort);
+  if (modeling.fitRequestId !== requestId || modeling.revision !== inputRevision || state.histogram !== inputHistogram) {
+    const error = new Error("Fit inputs changed before this result completed; the stale result was discarded.");
+    error.code = "FIT_INPUTS_CHANGED";
+    throw error;
+  }
   if (signal?.aborted) rawResult = { ...rawResult, cancelled: true };
   const result = apply_result_contract(rawResult, preflight);
   result.appliedConfiguration = config;
