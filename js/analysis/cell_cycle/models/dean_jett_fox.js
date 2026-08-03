@@ -388,10 +388,27 @@ function make_parameter_transform(peaks, config) {
     { type: "log" }, peak_scaled(peaks.g1Mean, peaks.g1CV), { type: "bounded", min: config.cvMin, max: config.cvMax },
     { type: "log" }, peak_scaled(peaks.g2Mean, peaks.g2CV), { type: "bounded", min: config.cvMin, max: config.cvMax },
     { type: "log" }, { type: "identity" }, { type: "identity" },
-    // w remains projected in physical space so the exact w=0 DJ nesting start
-    // remains representable; the two strictly interior wave parameters use
-    // smooth bounded coordinates.
-    { type: "identity" },
+    // All three wave parameters use smooth bounded coordinates.
+    //
+    // w used to be an "identity" coordinate clamped into [wMin, wMax] by the
+    // projection, so that the exact w = 0 Dean-Jett nesting start stayed
+    // representable. That cost far more than it bought: w is the parameter that
+    // most often runs to a bound (with the peaks frozen, the wave is the only
+    // flexible shape left and it absorbs peak misfit), and a hard clamp on an
+    // unbounded coordinate is exactly the boundary stall lm_solver.js refuses to
+    // call convergence -- the raw LM step stays large while the projected step is
+    // clipped to nothing, so the fit burned all 200 iterations and reported
+    // maxIterationsReached. A non-converged result is not reportable
+    // (result_contract.js), so this turned "the wave wants to be large" into
+    // "no result at all".
+    //
+    // The sigmoid saturates instead of clipping: the Jacobian column shrinks as w
+    // approaches its bound, the step shrinks with it, and the fit converges and
+    // reports w at its bound honestly (diagnostics.js raises
+    // parameter_at_upper_bound). w = 0 is no longer exactly representable, but
+    // nothing needs it to be: the nesting identity is a property of
+    // expectedCounts(), which is evaluated directly, not reached through a fit.
+    { type: "bounded", min: config.wMin, max: config.wMax },
     { type: "bounded", min: config.waveMeanMin, max: config.waveMeanMax },
     { type: "bounded", min: config.waveSigmaMin, max: config.waveSigmaMax },
   ]);

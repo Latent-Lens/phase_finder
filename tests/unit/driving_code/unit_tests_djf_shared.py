@@ -471,7 +471,11 @@ _SHARED_HELPERS = r"""() => {
       initialParameters: [0],
       freeIndices: [0],
       residualFn: ([value]) => [value - 100],
-      options: { maxIterations: 1, tolerance: 1, stepTolerance: 1e-15, gradientTolerance: 1 },
+      // gradientTolerance:0 disables the gradient-optimum route so this isolates
+      // the step guard: objective met (tolerance:1) but a large step must NOT be
+      // claimed as convergence. (A vanishing gradient WOULD legitimately be an
+      // optimum -- that route is exercised separately -- so it must be off here.)
+      options: { maxIterations: 1, tolerance: 1, stepTolerance: 1e-15, gradientTolerance: 0 },
     });
     return {
       pass: fit.converged === false

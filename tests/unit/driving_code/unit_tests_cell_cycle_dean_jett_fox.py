@@ -132,6 +132,25 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     detail: waveFitted.convergenceReason,
   }));
 
+  run('the fit converges rather than stalling against the w bound', () => {
+    // Regression guard for a real defect. w used to be an unbounded optimizer
+    // coordinate hard-clamped into [0, 0.95] by the projection. Because the wave
+    // is the only flexible shape left once the peaks are frozen, it routinely
+    // runs to that ceiling -- and a hard clamp there is the boundary stall
+    // lm_solver.js refuses to call convergence, so the fit burned all 200
+    // iterations and reported maxIterationsReached. A non-converged result is
+    // not reportable, so a wave that wanted to be large produced NO result.
+    // With w on a smooth bounded coordinate the fit terminates on tolerance.
+    return {
+      pass: waveFitted.converged === true && waveFitted.convergenceReason !== 'max_iterations',
+      detail: JSON.stringify({
+        converged: waveFitted.converged,
+        reason: waveFitted.convergenceReason,
+        w: waveFitted.parameters.w,
+      }),
+    };
+  });
+
   run('the reported peaks are EXACTLY the clean-flank estimate (the optimizer never moves them)', () => {
     // The peaks-first contract, asserted against the same clean-flank routine
     // the model calls. Exact equality, not a tolerance: these are copied into
