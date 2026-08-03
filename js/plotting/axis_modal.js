@@ -30,8 +30,10 @@ import {
   series_by_name,
   histograms_by_name,
   plot_viewport,
+  plottable_rows,
 } from "./data.js";
 import { plot_performance, render_density_plot } from "./render.js";
+import { get_state as get_pipeline_state, get_active_model_result } from "../analysis/pipeline_state.js";
 import { plot_interaction_mode } from "./plot_viewport.js";
 
 const axis_range_error = document.querySelector("#axis_range_error");
@@ -143,6 +145,27 @@ Output:
 	(none) [void]: updates axis_range_override and re-renders the plot
 
 */
+/*
+
+Purpose:
+	Whether any plotted sample currently carries a reportable model result, so an
+	X-range change knows whether there is a fit to invalidate and recompute.
+
+Input:
+	(none)
+
+Output:
+	present [boolean]: true when at least one plotted sample has an active result
+
+*/
+function any_active_model_result() {
+  try {
+    return plottable_rows().some((row) => get_active_model_result(get_pipeline_state(row.name)));
+  } catch (_) {
+    return false; // no plotted data yet; nothing to refit
+  }
+}
+
 export function apply_axis_range_modal() {
   const useAnalysisDomain = axis_range_analysis_domain_input.checked;
   const validation = validate_axis_range_draft({
@@ -166,12 +189,31 @@ export function apply_axis_range_modal() {
   }
   clear_axis_range_error();
   const { x_min, x_max, y_min, y_max } = validation.values;
-  const analysisMin = useAnalysisDomain ? x_min : null;
-  const analysisMax = useAnalysisDomain ? x_max : null;
+
+  // A changed X range moves which events are BINNED, so any existing model fit
+  // was computed on a different domain than the one now on screen. Rather than
+  // leave the plot and the reported numbers describing different things, an X
+  // change is treated as an analysis-domain change whenever a fit exists, and
+  // the samples are refit (via pf-analysis-domain-changed -> run_recompute).
+  //
+  // Y is deliberately NOT included: it is the COUNT axis, so its limits clip
+  // what is drawn and cannot change which events fall in which bin. There is
+  // nothing for a refit to do.
+  //
+  // Pan/zoom stays display-only regardless -- that is an exploration gesture,
+  // not a deliberate statement about the analysis domain.
+  const xChanged = x_min !== axis_range_override.x_min || x_max !== axis_range_override.x_max;
+  const refitNeeded = xChanged && (x_min != null || x_max != null) && any_active_model_result();
+  const treatAsAnalysisDomain = useAnalysisDomain || refitNeeded;
+  const analysisMin = treatAsAnalysisDomain ? x_min : null;
+  const analysisMax = treatAsAnalysisDomain ? x_max : null;
   const analysisChanged = analysisMin !== analysis_domain_override.x_min
     || analysisMax !== analysis_domain_override.x_max;
-  if (analysisChanged && useAnalysisDomain && !window.confirm(
-    "Change the scientific analysis domain? Events outside these X limits will be excluded and existing peak/model results invalidated.",
+  if (analysisChanged && treatAsAnalysisDomain && !window.confirm(
+    refitNeeded && !useAnalysisDomain
+      ? "These X limits change which events are analysed, and this sample already has a model fit. "
+        + "Continue and refit on the new X range?"
+      : "Change the scientific analysis domain? Events outside these X limits will be excluded and existing peak/model results invalidated.",
   )) return;
   axis_range_override.x_min = x_min;
   axis_range_override.x_max = x_max;
