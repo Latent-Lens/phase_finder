@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Browser unit coverage for js/analysis/cell_cycle/models/dean_jett_fox.js
-and model_selection.js (M4): the nested wave-fraction extension of
-Dean-Jett, and the conservative auto_dj_djf selection policy over it.
+"""Browser unit coverage for js/analysis/cell_cycle/models/dean_jett_fox.js:
+the nested wave-fraction extension of Dean-Jett.
 
-Covers the plan's M4 exit gate directly:
+Covers:
   - w=0 nests Dean-Jett exactly (a formula-level identity check, not just an
-    assertion in a comment).
-  - DJ-generated data normally retains DJ under automatic selection.
-  - A planted, sufficiently large S wave is both recovered by Dean-Jett-Fox
-    on its own and selected by auto_dj_djf.
-  - Boundary-created and restart-unstable waves are rejected -- exercised
-    directly against selectAutomaticModel() with hand-built fixtures, since
-    that is a far more reliable way to hit those exact conditions than
-    coercing a real optimizer run into a boundary/instability state.
-"""
+    assertion in a comment), and a nonzero w genuinely changes the curve.
+  - The peaks-first contract: G1 and G2 are measured from their clean flanks and
+    held EXACTLY fixed, so a region bounds the peak and the optimizer only ever
+    moves the S phase.
+  - The fit converges rather than stalling against the w bound.
+  - The model reports S-phase SHAPE and never claims a population form.
+
+Dean-Jett-Fox has a single estimator: clean-flank peaks held fixed, S phase fit
+to the residual. The auto_dj_djf selection policy this file used to cover has
+been retired, and the reference's asynchronous/synchronous BIC selection is
+deliberately not implemented (see the note above fit() for the measurement that
+retired it)."""
 
 import sys
 from pathlib import Path
@@ -28,7 +30,6 @@ GROUP = "Unit / Cell Cycle Dean-Jett-Fox"
 
 _DEAN_JETT_FOX_TESTS = r"""() => {
   const { register_default_models, get_model, clear_registry } = window.CellCycleModelRegistry;
-  const { selectAutomaticModel } = window.CellCycleModelSelection;
 
   const results = [];
   const push = (name, pass, detail = '') => results.push({
@@ -70,11 +71,10 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
   register_default_models();
   const dj = get_model('dean_jett');
   const djf = get_model('dean_jett_fox');
-  const auto = get_model('auto_dj_djf');
 
   // ---- w=0 nesting: a formula-level identity, not a fit -----------------
   run('dean_jett_fox at w=0 reproduces dean_jett expected counts exactly', () => {
-    const djParams = { g1Area: 8000, g1Mean: 70, g1CV: 0.06, g2Area: 3000, g2Mean: 140, g2CV: 0.07, sArea: 4000, b: 0.3, c: -0.2 };
+    const djParams = { g1Area: 8000, g1Mean: 70, g1CV: 0.06, g2Area: 3000, g2Mean: 140, g2CV: 0.07, sArea: 4000, shape1: 0.3, shape2: -0.2 };
     const djfParams = { ...djParams, w: 0, waveMean: 0.5, waveSigma: 0.15 };
     const djExpected = dj.expectedCounts(edges, djParams);
     const djfExpected = djf.expectedCounts(edges, djfParams);
@@ -84,7 +84,7 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
   });
 
   run('dean_jett_fox at a nonzero w differs from dean_jett (the wave actually does something)', () => {
-    const djParams = { g1Area: 8000, g1Mean: 70, g1CV: 0.06, g2Area: 3000, g2Mean: 140, g2CV: 0.07, sArea: 4000, b: 0.3, c: -0.2 };
+    const djParams = { g1Area: 8000, g1Mean: 70, g1CV: 0.06, g2Area: 3000, g2Mean: 140, g2CV: 0.07, sArea: 4000, shape1: 0.3, shape2: -0.2 };
     const djfParams = { ...djParams, w: 0.4, waveMean: 0.5, waveSigma: 0.06 };
     const djExpected = dj.expectedCounts(edges, djParams);
     const djfExpected = djf.expectedCounts(edges, djfParams);
@@ -108,63 +108,70 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
   const TRUE_WAVE = {
     g1Area: 8000, g1Mean: 70, g1CV: 0.06,
     g2Area: 3000, g2Mean: 140, g2CV: 0.07,
-    sArea: 4500, b: 0, c: 0,
+    sArea: 4500, shape1: 0, shape2: 0,
     w: 0.3, waveMean: 0.4, waveSigma: 0.05,
   };
   const waveCounts = seededJitteredCounts(djf.expectedCounts(edges, TRUE_WAVE), 0xC311_c4c1);
   const trueWaveExpected = djf.expectedCounts(edges, TRUE_WAVE);
   const trueWaveDeviance = window.CellCyclePoisson.poissonDeviance(waveCounts, trueWaveExpected);
 
-  // Seed with dj's own converged fit as djHint, same as auto_dj_djf does
-  // internally -- this is the realistic way to fit DJF well (see
-  // dean_jett_fox.js's build_parameter_starts() doc for why DJF's own
-  // region-only starts alone aren't guaranteed to reach DJ's optimum, let
-  // alone improve on it).
-  const waveDjHint = dj.normalizeResult(dj.fit({ histogram: { edges, counts: waveCounts }, peakRegions: regions, config: {} })).parameters;
-  // Planted-wave recovery specifically exercises the *joint* generative fit
-  // (recover a planted 12-parameter DJF wave from a djHint-seeded start), so it
-  // pins peakFitMode:'joint' rather than inheriting the clean_flank default
-  // (which fixes the peaks and fits only S to the residual -- a different
-  // estimator, covered by its own tests below).
-  const waveRaw = djf.fit({ histogram: { edges, counts: waveCounts }, peakRegions: regions, config: { djHint: waveDjHint, peakFitMode: 'joint' } });
+  // Dean-Jett-Fox is fit PEAKS-FIRST: G1 and G2 are measured once from their
+  // clean flanks and held fixed, then only the S phase (area, Bernstein shape,
+  // wave) is fit to what those peaks leave unexplained.
+  const waveRaw = djf.fit({ histogram: { edges, counts: waveCounts }, peakRegions: regions, config: {} });
   const waveFitted = djf.normalizeResult(waveRaw);
+  const waveCleanFlank = {
+    g1: window.CellCycleWatsonPragmatic.fit_local_peak(
+      edges, waveCounts, regions.g1, 'left', window.CellCycleWatsonPragmatic.DEFAULT_CONFIG),
+    g2: window.CellCycleWatsonPragmatic.fit_local_peak(
+      edges, waveCounts, regions.g2, 'right', window.CellCycleWatsonPragmatic.DEFAULT_CONFIG),
+  };
 
   run('dean_jett_fox converges on a planted-wave synthetic histogram', () => ({
     pass: waveFitted.converged === true,
     detail: waveFitted.convergenceReason,
   }));
 
-  run('dean_jett_fox fits planted-wave data close to as well (Poisson deviance) as the true generating parameters', () => {
-    // The scientifically meaningful recovery check for a maximum-likelihood-
-    // style fit: given real (jittered) counts, the fitted deviance should be
-    // close to the deviance of the exact true parameters evaluated on the
-    // same sample. A *global* optimum would be expected to reach or beat the
-    // truth's own deviance exactly (an MLE explains its observed sample at
-    // least as well as its own generator does) -- but this is a finite
-    // (16-start, djHint-seeded) local optimizer on an under-determined
-    // 12-parameter nonlinear model, not a guaranteed global solver, so some
-    // gap versus the true global optimum is expected. DEVIANCE_SLACK bounds
-    // how much: a well-behaved fit should land within 40% relative deviance
-    // of the truth, not merely "better than doing nothing" -- this is still
-    // a far more robust check than comparing fitted parameters/fractions
-    // directly to the truth (see the fixture comment above). 40% reflects
-    // this optimizer's actually-measured performance on this fixture (a
-    // 16-start deterministic grid, including djHint-seeded starts, reaches
-    // within ~37% relative deviance of the true global optimum here) with a
-    // little headroom -- not an arbitrary round number.
-    const DEVIANCE_SLACK = 1.4;
-    const pass = waveFitted.diagnostics.deviance <= trueWaveDeviance * DEVIANCE_SLACK;
-    return { pass, detail: JSON.stringify({ fittedDeviance: waveFitted.diagnostics.deviance, trueDeviance: trueWaveDeviance }) };
+  run('the reported peaks are EXACTLY the clean-flank estimate (the optimizer never moves them)', () => {
+    // The peaks-first contract, asserted against the same clean-flank routine
+    // the model calls. Exact equality, not a tolerance: these are copied into
+    // the parameter vector by the projection on every evaluation, so any drift
+    // means a peak parameter escaped into the free set.
+    const p = waveFitted.parameters;
+    const c = waveCleanFlank;
+    return {
+      pass: p.g1Mean === c.g1.mean && p.g1CV === c.g1.cv && p.g1Area === Math.max(1, c.g1.area)
+        && p.g2Mean === c.g2.mean && p.g2CV === c.g2.cv && p.g2Area === Math.max(1, c.g2.area),
+      detail: JSON.stringify({
+        fitted: { g1Mean: p.g1Mean, g1CV: p.g1CV, g2Mean: p.g2Mean, g2CV: p.g2CV },
+        cleanFlank: { g1Mean: c.g1.mean, g1CV: c.g1.cv, g2Mean: c.g2.mean, g2CV: c.g2.cv },
+      }),
+    };
   });
 
-  run('dean_jett_fox recovers a clearly nonzero wave fraction on planted-wave data', () => {
-    // Loose tolerance deliberately: w trades off against waveMean/waveSigma
-    // and the base quadratic's own (b, c), so pinning to the exact planted
-    // w=0.3 is over-constraining. What must hold is that the optimizer
-    // actually found *a* substantial wave, not that it reproduced this
-    // model's own internal parameterization exactly.
-    const pass = waveFitted.parameters.w > 0.15;
-    return { pass, detail: waveFitted.parameters.w };
+  run('DOCUMENTED LIMITATION: frozen peaks leave a large deviance gap to the truth', () => {
+    // Not an aspiration -- a measured, deliberately pinned fact, so that
+    // improving the peak estimate shows up here as a test that needs updating
+    // rather than passing silently.
+    //
+    // The clean-flank estimate is biased on this fixture (g1CV 0.084 for a true
+    // 0.060, g2 area over-estimated), and because the peaks are frozen the fit
+    // cannot correct it: the deviance lands ~25x the truth's own, and %S is
+    // starved by roughly 12pp. Freeing the peaks fixes the synthetic and BREAKS
+    // real data (all_pass 8/30 -> 0/30 on the 30-sample FlowJo set), so the fix
+    // is a better peak ESTIMATOR, not a joint fit. See
+    // docs/audits/cell_cycle_model_investigation_handoff.md §8.1.
+    const ratio = waveFitted.diagnostics.deviance / trueWaveDeviance;
+    return {
+      pass: ratio > 5 && ratio < 60,
+      detail: JSON.stringify({
+        devianceRatio: +ratio.toFixed(1),
+        fittedDeviance: waveFitted.diagnostics.deviance,
+        trueDeviance: trueWaveDeviance,
+        sError: +(100 * waveFitted.phaseFractions.s - 100 * TRUE_WAVE.sArea
+          / (TRUE_WAVE.g1Area + TRUE_WAVE.sArea + TRUE_WAVE.g2Area)).toFixed(1),
+      }),
+    };
   });
 
   run('dean_jett_fox expected counts are finite and nonnegative at every bin (planted-wave fit)', () => {
@@ -172,257 +179,123 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     return { pass, detail: waveFitted.expectedCounts.length };
   });
 
-  // ---- clean_flank (FlowJo-style peaks-first) is the default ---------------
-  // Validated to match FlowJo DJF to ~5pp per phase and to remove the joint-fit
-  // degeneracy (a peak CV pinned at its ceiling so S absorbs the peak) on skewed
-  // samples. See docs/djf-model-validation.html.
-  run('dean_jett_fox defaults to clean_flank (FlowJo-style peaks-first) fitting', () => {
+  // ---- the peaks-first fit on standard, wave-free two-peak data -----------
+  run('dean_jett_fox has exactly one estimator, so there is no peakFitMode switch', () => {
     const entry = get_model('dean_jett_fox');
-    return { pass: entry.defaultConfig.peakFitMode === 'clean_flank', detail: entry.defaultConfig.peakFitMode };
-  });
-
-  // A clean two-peak histogram with a genuine (flat, wave-free) S population.
-  const CLEAN_FLANK_TRUTH = {
-    g1Area: 8000, g1Mean: 70, g1CV: 0.06,
-    g2Area: 3000, g2Mean: 140, g2CV: 0.07,
-    sArea: 4000, b: 0, c: 0,
-    w: 0, waveMean: 0.5, waveSigma: 0.1,
-  };
-  const cleanFlankCounts = seededJitteredCounts(djf.expectedCounts(edges, CLEAN_FLANK_TRUTH), 0x5eed_1234);
-  const cleanFlankFit = djf.normalizeResult(djf.fit({ histogram: { edges, counts: cleanFlankCounts }, peakRegions: regions, config: {} }));
-
-  run('clean_flank (default) produces a converged, area-conserving fit on standard two-peak data', () => {
-    const f = cleanFlankFit.phaseFractions;
-    const sum = f.g1 + f.s + f.g2;
     return {
-      pass: cleanFlankFit.converged === true && Number.isFinite(f.g1) && Math.abs(sum - 1) < 1e-6,
-      detail: JSON.stringify({ converged: cleanFlankFit.converged, convergenceReason: cleanFlankFit.convergenceReason, fractions: f }),
+      pass: !('peakFitMode' in entry.defaultConfig),
+      detail: JSON.stringify(Object.keys(entry.defaultConfig)),
     };
   });
 
-  run('clean_flank holds both peak CVs off their bounds (no S-swallows-peak degeneracy)', () => {
-    // The joint-fit overfit signature is a peak CV driven to the 0.30 ceiling so
-    // S absorbs a peak; clean_flank estimates each peak width from its clean
-    // flank first, so both CVs must sit strictly inside their configured bounds.
-    const p = cleanFlankFit.parameters;
+  // A clean two-peak histogram with a genuine (flat, wave-free) S population.
+  const TWO_PEAK_TRUTH = {
+    g1Area: 8000, g1Mean: 70, g1CV: 0.06,
+    g2Area: 3000, g2Mean: 140, g2CV: 0.07,
+    sArea: 4000, shape1: 0, shape2: 0,
+    w: 0, waveMean: 0.5, waveSigma: 0.1,
+  };
+  const twoPeakCounts = seededJitteredCounts(djf.expectedCounts(edges, TWO_PEAK_TRUTH), 0x5eed_1234);
+  const twoPeakFit = djf.normalizeResult(djf.fit({ histogram: { edges, counts: twoPeakCounts }, peakRegions: regions, config: {} }));
+
+  // ---- a peak region bounds the MEAN and nothing else --------------------
+  //
+  // A user drawing a generous box is saying "the mean is somewhere in here",
+  // not "there is less S phase" and not "take coarser optimizer steps". Region
+  // width used to leak into both: it scaled the mean coordinate (so the same
+  // sample fit differently depending on how precisely the box was drawn), and
+  // the S seed was summed strictly BETWEEN the region edges (so widening a
+  // region shrank the gap and starved S).
+  const REGION_WIDTHS = [
+    ['tight', { g1: { left: 64, right: 76 }, g2: { left: 126, right: 154 } }],
+    ['default', { g1: { left: 55, right: 85 }, g2: { left: 115, right: 165 } }],
+    ['wide', { g1: { left: 49, right: 91 }, g2: { left: 100, right: 180 } }],
+  ];
+  const widthFits = REGION_WIDTHS.map(([label, region]) => {
+    const fit = djf.normalizeResult(djf.fit({
+      histogram: { edges, counts: twoPeakCounts }, peakRegions: region, config: {},
+    }));
+    return { label, s: fit.phaseFractions.s, g1CV: fit.parameters.g1CV, sArea: fit.parameters.sArea };
+  });
+
+  run('the fit produces a converged, area-conserving result on standard two-peak data', () => {
+    const f = twoPeakFit.phaseFractions;
+    const sum = f.g1 + f.s + f.g2;
+    return {
+      pass: twoPeakFit.converged === true && Number.isFinite(f.g1) && Math.abs(sum - 1) < 1e-6,
+      detail: JSON.stringify({ converged: twoPeakFit.converged, convergenceReason: twoPeakFit.convergenceReason, fractions: f }),
+    };
+  });
+
+  run('both peak CVs sit off their bounds (no S-swallows-peak degeneracy)', () => {
+    // The overfit signature is a peak CV driven to the 0.30 ceiling so S absorbs
+    // a peak. Measuring each peak from its clean flank and holding it there is
+    // what keeps the fit out of that basin, so both CVs must sit strictly
+    // inside their configured bounds.
+    const p = twoPeakFit.parameters;
     const inside = (cv) => cv > 0.011 && cv < 0.299;
     return { pass: inside(p.g1CV) && inside(p.g2CV), detail: JSON.stringify({ g1CV: p.g1CV, g2CV: p.g2CV }) };
   });
 
-  // ---- auto_dj_djf: end-to-end selection on real fits ----------------------
-  const autoWaveRaw = auto.fit({ histogram: { edges, counts: waveCounts }, peakRegions: regions, config: {} });
-  const autoWaveFitted = auto.normalizeResult(autoWaveRaw);
+  // ---- the model reports S-phase SHAPE, never a population form -----------
+  //
+  // The reference (§13, Steps 6-9) fits asynchronous and synchronous variants and
+  // selects between them by BIC. That was implemented here and REMOVED, because
+  // with the peaks frozen it is not identifiable: on THIS wave-free fixture the
+  // BIC comparison preferred the cohort by 103 (it was absorbing frozen-peak
+  // misfit, w running to its 0.95 ceiling), while the same code given the true
+  // peaks correctly rejected it (ΔBIC +16.7, w = 0.0135). It only appeared to
+  // work because the synchronous fit never converged, so a `converged` guard
+  // rejected the cohort for an accidental reason.
 
-  run('auto_dj_djf selects dean_jett_fox for planted-wave data', () => ({
-    pass: autoWaveFitted.modelComparison.selectedModelId === 'dean_jett_fox',
-    detail: JSON.stringify(autoWaveFitted.modelComparison.reasons),
-  }));
-
-  run('auto_dj_djf fits planted-wave data close to as well (Poisson deviance) as the true generating parameters', () => {
-    // Same 40% relative-deviance standard as dean_jett_fox's own recovery
-    // check above (same finite-multi-start-optimizer caveat applies).
-    const DEVIANCE_SLACK = 1.4;
-    const fittedExpected = auto.expectedCounts(edges, autoWaveFitted.parameters);
-    const fittedDeviance = window.CellCyclePoisson.poissonDeviance(waveCounts, fittedExpected);
-    const pass = fittedDeviance <= trueWaveDeviance * DEVIANCE_SLACK;
-    return { pass, detail: JSON.stringify({ fittedDeviance, trueDeviance: trueWaveDeviance }) };
-  });
-
-  run('auto_dj_djf retains both candidate results in modelComparison', () => ({
-    pass: autoWaveFitted.modelComparison.djResult?.modelId === 'dean_jett' && autoWaveFitted.modelComparison.djfResult?.modelId === 'dean_jett_fox',
-    detail: JSON.stringify({ dj: autoWaveFitted.modelComparison.djResult?.modelId, djf: autoWaveFitted.modelComparison.djfResult?.modelId }),
-  }));
-
-  const TRUE_FLAT = { g1Area: 8000, g1Mean: 70, g1CV: 0.06, g2Area: 3000, g2Mean: 140, g2CV: 0.07, sArea: 4000, b: 0.3, c: -0.2, w: 0, waveMean: 0.5, waveSigma: 0.15 };
-  const flatCounts = djf.expectedCounts(edges, TRUE_FLAT).map((v) => Math.round(v));
-  const autoFlatRaw = auto.fit({ histogram: { edges, counts: flatCounts }, peakRegions: regions, config: {} });
-  const autoFlatFitted = auto.normalizeResult(autoFlatRaw);
-
-  run('auto_dj_djf retains dean_jett for wave-free (Dean-Jett-shaped) data', () => ({
-    pass: autoFlatFitted.modelComparison.selectedModelId === 'dean_jett',
-    detail: JSON.stringify(autoFlatFitted.modelComparison.reasons),
-  }));
-
-  run('SCI-11: 0.05 lag threshold separates generated DJ-like and Fox-broadened references', () => {
-    const waveReason = autoWaveFitted.modelComparison.reasons.find(item => item.criterion === 'residual_structure_improved');
-    const flatReason = autoFlatFitted.modelComparison.reasons.find(item => item.criterion === 'residual_structure_improved');
+  run('the model never claims a population form', () => {
+    // Plan §1.1's Fox row: "report 'complex S-phase model'; do not infer
+    // synchronization". No populationMode, no synchronous/asynchronous label.
+    const noClaim = (fit) => fit.populationMode === undefined
+      && fit.populationSelection === undefined
+      && !/synchronous/i.test(fit.modelLabel);
     return {
-      pass: waveReason.pass === true && flatReason.pass === false,
-      detail: JSON.stringify({ wave: waveReason.detail, flat: flatReason.detail }),
+      pass: noClaim(twoPeakFit) && noClaim(waveFitted),
+      detail: JSON.stringify({
+        label: waveFitted.modelLabel,
+        populationMode: waveFitted.populationMode ?? null,
+        populationSelection: waveFitted.populationSelection ?? null,
+      }),
     };
   });
 
-  run("auto_dj_djf.expectedCounts routes to dean_jett_fox when parameters carry 'w'", () => {
-    const recomputed = auto.expectedCounts(edges, waveFitted.parameters);
-    let maxDiff = 0;
-    for (let i = 0; i < recomputed.length; i += 1) maxDiff = Math.max(maxDiff, Math.abs(recomputed[i] - waveFitted.expectedCounts[i]));
-    return { pass: maxDiff < 1e-9, detail: maxDiff };
+  run('a substantial wave is surfaced as S-phase shape, with no synchronization claim', () => {
+    const note = waveFitted.warnings.find((w) => w.code === 'complex_s_phase_shape');
+    return {
+      pass: !!note && /shape only/i.test(note.message)
+        && /does not test for a synchronized population/i.test(note.message),
+      detail: JSON.stringify({ w: waveFitted.parameters.w, message: note?.message ?? null }),
+    };
   });
 
-  run("auto_dj_djf.expectedCounts routes to dean_jett when parameters lack 'w'", () => {
-    const djOnlyRaw = dj.fit({ histogram: { edges, counts: flatCounts }, peakRegions: regions, config: {} });
-    const djOnlyFitted = dj.normalizeResult(djOnlyRaw);
-    const recomputed = auto.expectedCounts(edges, djOnlyFitted.parameters);
-    let maxDiff = 0;
-    for (let i = 0; i < recomputed.length; i += 1) maxDiff = Math.max(maxDiff, Math.abs(recomputed[i] - djOnlyFitted.expectedCounts[i]));
-    return { pass: maxDiff < 1e-9, detail: maxDiff };
+  run('the wave parameters are always charged to the parameter count', () => {
+    // There is one variant now, so w/waveMean/waveSigma are always free and
+    // always counted: S area + 2 Bernstein shapes + 3 wave terms = 6. A
+    // parameter count that changed per sample would make BIC incomparable
+    // across the sample set.
+    return {
+      pass: twoPeakFit.diagnostics.parameterCount === 6
+        && waveFitted.diagnostics.parameterCount === 6,
+      detail: JSON.stringify({
+        twoPeak: twoPeakFit.diagnostics.parameterCount,
+        wave: waveFitted.diagnostics.parameterCount,
+      }),
+    };
   });
 
   clear_registry();
-
-  // ---- selectAutomaticModel(): each plan §5.4 criterion in isolation -------
-  // Hand-built fixtures, not real fits: this is the reliable way to exercise
-  // "boundary-created" and "restart-unstable" rejection, per the plan's M4
-  // exit gate, without depending on an optimizer landing in exactly that
-  // state.
-  function fixture(overrides = {}) {
-    const dj = {
-      modelId: 'dean_jett',
-      converged: true,
-      diagnostics: { deviance: 900, bic: 1000, reducedDeviance: 1.3, lag1Autocorrelation: 0.4 },
-      phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
-      warnings: [],
-    };
-    const djf = {
-      modelId: 'dean_jett_fox',
-      converged: true,
-      convergenceReason: 'objective_and_step',
-      diagnostics: { deviance: 840, bic: 950, reducedDeviance: 1.05, lag1Autocorrelation: 0.1, restarts: [{ converged: true, w: 0.28 }, { converged: true, w: 0.30 }, { converged: true, w: 0.29 }] },
-      parameters: { g1Area: 8000, sArea: 4000, g2Area: 3000, waveArea: 4000 * 0.3 },
-      phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
-      warnings: [],
-    };
-    const djOverride = overrides.dj ?? {};
-    const djfOverride = overrides.djf ?? {};
-    return {
-      djResult: { ...dj, ...djOverride, diagnostics: { ...dj.diagnostics, ...(djOverride.diagnostics ?? {}) } },
-      djfResult: { ...djf, ...djfOverride, diagnostics: { ...djf.diagnostics, ...(djfOverride.diagnostics ?? {}) }, parameters: { ...djf.parameters, ...(djfOverride.parameters ?? {}) } },
-    };
-  }
-
-  run('selectAutomaticModel selects Fox when every criterion passes', () => {
-    const { djResult, djfResult } = fixture();
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    return { pass: selection.selectedModelId === 'dean_jett_fox' && selection.reasons.every((r) => r.pass), detail: JSON.stringify(selection.reasons) };
-  });
-
-  run('SCI-10: automatic selection refuses information criteria from different histograms', () => {
-    const { djResult, djfResult } = fixture({
-      dj: { diagnostics: { observationKey: 'poisson:3:6:1' } },
-      djf: { diagnostics: { observationKey: 'poisson:3:7:2' } },
-    });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    return {
-      pass: selection.selectedModelId === null
-        && selection.comparison.policy === 'incomparable_histograms',
-      detail: JSON.stringify(selection),
-    };
-  });
-
-  run('selectAutomaticModel rejects Fox when DJF did not converge, regardless of favorable metrics', () => {
-    const { djResult, djfResult } = fixture({ djf: { converged: false, convergenceReason: 'max_iterations' } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    const djfValidityReason = selection.reasons.find((r) => r.criterion === 'djf_valid');
-    return { pass: selection.selectedModelId === 'dean_jett' && djfValidityReason.pass === false, detail: JSON.stringify(selection.reasons) };
-  });
-
-  run('selectAutomaticModel rejects Fox when the BIC improvement is below threshold', () => {
-    const { djResult, djfResult } = fixture({ djf: { diagnostics: { bic: 997, reducedDeviance: 1.05, lag1Autocorrelation: 0.1, restarts: [{ converged: true, w: 0.3 }, { converged: true, w: 0.31 }] } } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    const bicReason = selection.reasons.find((r) => r.criterion === 'bic_improvement');
-    return { pass: selection.selectedModelId === 'dean_jett' && bicReason.pass === false, detail: JSON.stringify(selection.reasons) };
-  });
-
-  for (const residualCase of [
-    { name: 'no change', dj: 0.2, djf: 0.2, pass: false },
-    { name: 'numerical-noise change', dj: 0.2, djf: 0.199999999, pass: false },
-    { name: 'just below threshold', dj: 0.2, djf: 0.151, pass: false },
-    { name: 'just above threshold', dj: 0.2, djf: 0.149, pass: true },
-  ]) {
-    run(`SCI-11: residual materiality — ${residualCase.name}`, () => {
-      const { djResult, djfResult } = fixture({
-        dj: { diagnostics: { lag1Autocorrelation: residualCase.dj } },
-        djf: { diagnostics: { lag1Autocorrelation: residualCase.djf } },
-      });
-      const selection = selectAutomaticModel({ djResult, djfResult });
-      const reason = selection.reasons.find(item => item.criterion === 'residual_structure_improved');
-      return {
-        pass: reason.pass === residualCase.pass
-          && reason.detail.includes('required ≥ 0.050')
-          && !reason.detail.includes('reducedDeviance'),
-        detail: reason.detail,
-      };
-    });
-  }
-
-  run('SCI-11: reference DJ-like and Fox-broadened residual cases separate at the threshold', () => {
-    const djLike = fixture({ dj: { diagnostics: { lag1Autocorrelation: 0.20 } }, djf: { diagnostics: { lag1Autocorrelation: 0.18 } } });
-    const foxLike = fixture({ dj: { diagnostics: { lag1Autocorrelation: 0.40 } }, djf: { diagnostics: { lag1Autocorrelation: 0.10 } } });
-    const first = selectAutomaticModel(djLike);
-    const second = selectAutomaticModel(foxLike);
-    return {
-      pass: first.selectedModelId === 'dean_jett' && second.selectedModelId === 'dean_jett_fox',
-      detail: JSON.stringify({ djLike: first.selectedModelId, foxLike: second.selectedModelId }),
-    };
-  });
-
-  run('selectAutomaticModel rejects Fox when the wave area is negligible', () => {
-    const { djResult, djfResult } = fixture({ djf: { parameters: { g1Area: 8000, sArea: 4000, g2Area: 3000, waveArea: 4000 * 0.001 } } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    const areaReason = selection.reasons.find((r) => r.criterion === 'minimum_wave_area');
-    return { pass: selection.selectedModelId === 'dean_jett' && areaReason.pass === false, detail: JSON.stringify(selection.reasons) };
-  });
-
-  run('selectAutomaticModel rejects a boundary-created wave (a wave parameter sits at its configured bound)', () => {
-    const { djResult, djfResult } = fixture({ djf: { warnings: [{ code: 'parameter_at_upper_bound', parameter: 'w', message: 'w converged at its upper bound.' }] } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    const boundsReason = selection.reasons.find((r) => r.criterion === 'wave_not_on_bounds');
-    return { pass: selection.selectedModelId === 'dean_jett' && boundsReason.pass === false, detail: JSON.stringify(selection.reasons) };
-  });
-
-  run('selectAutomaticModel rejects a restart-unstable wave (converged restarts disagree on w)', () => {
-    const { djResult, djfResult } = fixture({
-      djf: { diagnostics: { bic: 950, reducedDeviance: 1.05, lag1Autocorrelation: 0.1, restarts: [{ converged: true, w: 0.05 }, { converged: true, w: 0.55 }, { converged: true, w: 0.30 }] } },
-    });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    const stabilityReason = selection.reasons.find((r) => r.criterion === 'restart_stability');
-    return { pass: selection.selectedModelId === 'dean_jett' && stabilityReason.pass === false, detail: JSON.stringify(selection.reasons) };
-  });
-
-  run('selectAutomaticModel is unaffected by boundary/restart checks not concerning wave parameters', () => {
-    // A boundary warning on a non-wave parameter (e.g. a CV) must not, by
-    // itself, veto Fox -- only wave-parameter boundary hits are this
-    // criterion's concern (plan §5.4: "wave area, mean, and width are not
-    // effectively on bounds", not "no parameter anywhere is on a bound").
-    const { djResult, djfResult } = fixture({ djf: { warnings: [{ code: 'parameter_at_lower_bound', parameter: 'g1CV', message: 'g1CV at bound.' }] } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    return { pass: selection.selectedModelId === 'dean_jett_fox', detail: JSON.stringify(selection.reasons) };
-  });
-
-  run('selectAutomaticModel chooses the sole valid DJF candidate without a BIC comparison', () => {
-    const { djResult, djfResult } = fixture({ dj: { converged: false, convergenceReason: 'max_iterations' } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    return { pass: selection.selectedModelId === 'dean_jett_fox' && selection.comparison.policy === 'sole_valid_candidate' && selection.comparison.deltaBic === null, detail: JSON.stringify(selection) };
-  });
-
-  run('selectAutomaticModel chooses the sole valid DJ candidate without a BIC comparison', () => {
-    const { djResult, djfResult } = fixture({ djf: { converged: false, convergenceReason: 'max_iterations' } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    return { pass: selection.selectedModelId === 'dean_jett' && selection.comparison.policy === 'sole_valid_candidate' && selection.comparison.deltaBic === null, detail: JSON.stringify(selection) };
-  });
-
-  run('selectAutomaticModel returns typed no_valid_model when both candidates are invalid', () => {
-    const { djResult, djfResult } = fixture({ dj: { converged: false }, djf: { converged: false } });
-    const selection = selectAutomaticModel({ djResult, djfResult });
-    return { pass: selection.selectedModelId === null && selection.selectedResult.errorCode === 'no_valid_model' && selection.comparison.policy === 'no_valid_model', detail: JSON.stringify(selection) };
-  });
 
   return results;
 }"""
 
 
 def run_cell_cycle_dean_jett_fox_tests(ctx: TestContext):
-    """Run models/dean_jett_fox.js and model_selection.js assertions."""
+    """Run models/dean_jett_fox.js assertions."""
 
     try:
         all_results = ctx.page.evaluate(_DEAN_JETT_FOX_TESTS)

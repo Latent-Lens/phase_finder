@@ -54,6 +54,11 @@
 // inferring synchronization (plan §1.1's Fox row: "report 'complex S-phase
 // model'; do not infer synchronization").
 //
+// That last clause is load-bearing, and it is why this file deliberately does
+// NOT implement the reference's asynchronous/synchronous BIC selection
+// (baselines/dean_jett_fox_javascript_implementation.html §13, Steps 6-9). See
+// the "why there is no population-form selection" note above fit().
+//
 // Everything below that is *not* part of the emission model above -- the
 // region/ratio/CV-mode feasible domain (plan §6.2), deterministic multi-
 // start initialization, and the generic-result (plan §4.5) packaging around
@@ -74,15 +79,23 @@ import { normalCdf, normalPdf } from "../../math/gaussian_bin_mass.js";
 import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
 import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning } from "../diagnostics.js";
 import { buildConstraintAudit, constraintAuditWarnings } from "../constraint_audit.js";
-import { validatePeakRegions, estimatePeakFromRegion } from "../peak_regions.js";
+import { validatePeakRegions } from "../peak_regions.js";
 import { clamp } from "../../math/stats.js";
 // FlowJo fits each G1/G2 Gaussian by least squares over a -3sigma..+1sigma window
 // about the mean -- i.e. from the peak's UNCONTAMINATED flank -- and only then
-// models S (docs.flowjo.com cell-cycle univariate). The "clean_flank" peak-fit
-// mode reuses Watson Pragmatic's clean-flank local peak fit for exactly this, so
-// DJF's peaks are established (tight CV, honest area) before the S phase is fit,
-// instead of the joint fit letting a broad peak or the flexible S phase absorb
-// each other on real, overlapping DNA peaks (VALID-01).
+// models S (docs.flowjo.com cell-cycle univariate). This model reuses Watson
+// Pragmatic's clean-flank local peak fit for exactly that, so DJF's peaks are
+// established before the S phase is fit, instead of a joint fit letting a broad
+// peak or the flexible S phase absorb each other on real, overlapping DNA peaks
+// (VALID-01).
+//
+// Known cost, measured: that estimator is BIASED when S is substantial (it does
+// not subtract the S pedestal under either peak, it measures widths on a
+// histogram smoothed at 2 bins without removing the kernel, and it quantizes the
+// centre to a bin). Both peaks come out too wide and too fat, which starves S.
+// Since they are frozen, the fit cannot correct it. This is the largest known
+// defect in the model and it is documented in full, with the numbers, in
+// docs/audits/cell_cycle_model_investigation_handoff.md §8.1.
 import { fit_local_peak, DEFAULT_CONFIG as WATSON_LOCAL_PEAK_CONFIG } from "./watson_pragmatic.js";
 
 const EPS = 1e-12;
@@ -98,14 +111,24 @@ const PARAMETER_INDEX = Object.freeze({
 });
 
 export const DEFAULT_CONFIG = Object.freeze({
-  // "clean_flank" (default): fit G1/G2 from their clean flanks and hold them
-  // fixed, then fit only the S phase to the residual -- the FlowJo-style
-  // peaks-first approach. Validated to match FlowJo DJF to ~5pp per phase and to
-  // be the closest model on 26/30 reference samples, and it removes the joint-fit
+  // Dean-Jett-Fox fits G1/G2 from their clean flanks and holds them fixed, then
+  // fits only the S phase to the residual -- the FlowJo-style peaks-first
+  // approach. Validated to match FlowJo DJF to ~5pp per phase and to be the
+  // closest model on 26/30 reference samples, and it removes the joint-fit
   // degeneracy (S collapsing to 0% or ballooning to swallow a peak) on skewed
   // samples. See docs/djf-model-validation.html.
-  // "joint": fit every parameter (peaks + S) together (the older generative fit).
-  peakFitMode: "clean_flank",
+  //
+  // The older "joint" estimator (every parameter optimized together) existed
+  // only so the retired auto_dj_djf policy could compare DJ against DJF as the
+  // same generative fit. With Auto retired there is no second estimator and no
+  // peakFitMode switch: the peaks are ALWAYS fixed from their clean flanks.
+  //
+  // Consequence, stated because it is not obvious: ratioMode/cvMode constrain
+  // peak MEANS and WIDTHS, and those are no longer free parameters here, so
+  // they cannot influence this model's fit. The user controls the peaks by
+  // editing the G1/G2 regions (which is where each clean-flank fit looks);
+  // constraint_audit.js still EVALUATES the G2:G1 ratio and reports an
+  // implausible one as a diagnostic, it just no longer enforces it.
   ratioMode: "bounded",
   fitRatioRange: [1.65, 2.25],
   lockedRatio: 2,
@@ -241,7 +264,7 @@ function clean_flank_fixed_peaks(edges, counts, regions) {
   };
 }
 
-function make_project_fn(regions, config, fixedPeaks = null) {
+function make_project_fn(regions, config, { fixedPeaks = null } = {}) {
   return function project(parameters) {
     const projected = [...parameters];
     projected[PARAMETER_INDEX.G1_AREA] = Math.max(0, projected[PARAMETER_INDEX.G1_AREA]);
@@ -270,9 +293,9 @@ function make_project_fn(regions, config, fixedPeaks = null) {
     projected[PARAMETER_INDEX.WAVE_MEAN] = clamp(projected[PARAMETER_INDEX.WAVE_MEAN], config.waveMeanMin, config.waveMeanMax);
     projected[PARAMETER_INDEX.WAVE_SIGMA] = clamp(Math.abs(projected[PARAMETER_INDEX.WAVE_SIGMA]), config.waveSigmaMin, config.waveSigmaMax);
 
-    // clean_flank: the peaks are pinned to their clean-flank fit and never moved,
-    // so only the S phase (S_AREA, b, c, wave) is optimized. Overriding here (after
-    // the generic peak projections above) keeps the projection a single code path.
+    // The peaks are pinned to their clean-flank estimate and never moved, so only
+    // the S phase is optimized. Applied after the generic peak projections above
+    // so the projection stays a single code path.
     if (fixedPeaks) {
       projected[PARAMETER_INDEX.G1_AREA] = fixedPeaks.g1Area;
       projected[PARAMETER_INDEX.G1_MEAN] = fixedPeaks.g1Mean;
@@ -286,23 +309,45 @@ function make_project_fn(regions, config, fixedPeaks = null) {
   };
 }
 
-function free_indices(config) {
-  // clean_flank fixes the peaks; only the S phase is optimized.
-  if (config.peakFitMode === "clean_flank") {
-    return [
-      PARAMETER_INDEX.S_AREA, PARAMETER_INDEX.SHAPE1, PARAMETER_INDEX.SHAPE2,
-      PARAMETER_INDEX.W, PARAMETER_INDEX.WAVE_MEAN, PARAMETER_INDEX.WAVE_SIGMA,
-    ];
-  }
-  const indices = [
-    PARAMETER_INDEX.G1_AREA, PARAMETER_INDEX.G1_MEAN, PARAMETER_INDEX.G1_CV,
-    PARAMETER_INDEX.G2_AREA, PARAMETER_INDEX.S_AREA,
-    PARAMETER_INDEX.SHAPE1, PARAMETER_INDEX.SHAPE2,
+/*
+
+Purpose:
+	The parameters the optimizer may move: the S-phase area, its two Bernstein
+	shape logits, and the three wave terms. The G1/G2 peaks are NOT among them --
+	they are measured from their clean flanks and held fixed (see below).
+
+Input:
+	(none -- the free set does not depend on config, because ratio/CV mode
+	constrain peak parameters this model does not optimize)
+
+Output:
+	indices [array]: the free parameter positions in theta_F
+
+*/
+function free_indices() {
+  // The G1/G2 peaks are measured from their clean flanks and HELD FIXED; only
+  // the S phase is optimized against the residual.
+  //
+  // A joint fit (every parameter free, seeded from the same clean-flank
+  // estimate) was tried and REVERTED. Measured on the 30-sample FlowJo set
+  // under matched QC, freeing the peaks bought a small G1 gain and cost a large
+  // S regression, because the flexible S term expands into G2:
+  //
+  //     metric        frozen peaks    joint fit
+  //     g1_mean          0.985x         0.996x
+  //     %S median        -2.9pp        +12.0pp
+  //     %G2 median       +6.4pp         -6.8pp
+  //     %S within tol     28/30          11/30
+  //     all_pass           8/30           0/30
+  //
+  // This is the "S balloons to swallow a peak" degeneracy the peaks-first
+  // approach exists to prevent. Freezing the peaks costs a little accuracy in
+  // their position and buys a great deal in the phase fractions, which are what
+  // is actually reported.
+  return [
+    PARAMETER_INDEX.S_AREA, PARAMETER_INDEX.SHAPE1, PARAMETER_INDEX.SHAPE2,
     PARAMETER_INDEX.W, PARAMETER_INDEX.WAVE_MEAN, PARAMETER_INDEX.WAVE_SIGMA,
   ];
-  if (config.cvMode !== "equal") indices.push(PARAMETER_INDEX.G2_CV);
-  if (config.ratioMode !== "locked") indices.push(PARAMETER_INDEX.G2_MEAN);
-  return indices;
 }
 
 function make_parameter_transform(regions, config) {
@@ -324,6 +369,53 @@ function make_parameter_transform(regions, config) {
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// Why there is no asynchronous/synchronous population-form selection.
+//
+// The reference (§13, Steps 6-9) fits an asynchronous variant (w = 0) and a
+// synchronous one (w free), then selects between them by BIC under four
+// safeguards. That was implemented here and REMOVED, because it is not
+// identifiable while the peaks are frozen. The measurement, on the wave-free
+// two-peak fixture in unit_tests_cell_cycle_dean_jett_fox.py (true w = 0):
+//
+//                      frozen clean-flank peaks   frozen at the TRUE peaks
+//   asynchronous dev            1289.6                      46.1
+//   synchronous  dev            1169.6                      45.7
+//   fitted w                    0.95 (its ceiling)          0.0135
+//   deltaBIC                    -102.9  -> "synchronous"    +16.7 -> asynchronous
+//
+// With the true peaks the selection is correct: the cohort earns nothing and
+// BIC rejects it. With the clean-flank peaks it is wrong, and wrong in the one
+// direction that matters -- the cohort is selected on data that contains no
+// cohort. The reason is that the clean-flank estimate is biased (it returns
+// g1CV 0.084 for a true 0.060, g2Mean 137.5 for a true 140), the frozen peaks
+// therefore leave a large systematic residual, and the wave -- the only
+// flexible shape left in the model -- absorbs that residual. It is fitting
+// PEAK MISFIT, not a synchronized population.
+//
+// Because the fit runs against a hard w <= 0.95 clamp in that state, LM's
+// projected step never satisfies the step tolerance and the synchronous variant
+// reports converged: false. The `converged` guard then rejected the cohort for
+// an accidental reason, which is what made the selection look like it worked.
+// A guard that returns the right answer for the wrong reason is worse than no
+// guard: it would have started selecting spurious cohorts the moment the
+// optimizer's convergence behaviour changed.
+//
+// This does NOT mean the reference is wrong. It means population-form selection
+// needs peaks that are unbiased enough for a cohort to be distinguishable from
+// peak misfit, which the frozen clean-flank estimate is not. Re-attempting it
+// requires fixing the peak estimate first, and validating on the 30-sample
+// FlowJo reference set -- not on DJF-generated synthetics, which have exactly
+// the "clean, well-separated Gaussians" property that makes the frozen peaks
+// look far better than they are on real yeast.
+//
+// Consequence for reporting, stated because it is not obvious: w is still fit,
+// so a genuinely synchronized sample still gets a better-shaped S profile. What
+// the model no longer does is CLAIM a population form. That matches the plan's
+// standing instruction for this model (§1.1's Fox row: "report 'complex S-phase
+// model'; do not infer synchronization").
+// ---------------------------------------------------------------------------
+
 function estimate_between_peaks_area(edges, counts, regions) {
   let total = 0;
   for (let i = 0; i < counts.length; i += 1) {
@@ -333,14 +425,20 @@ function estimate_between_peaks_area(edges, counts, regions) {
   return Math.max(1, total);
 }
 
-// A small deterministic grid of wave placements (waveMean x waveSigma) used
-// to seed both the region-based and djHint-based starts below. z in [0,1] is
+// A small deterministic grid of wave placements (waveMean x waveSigma) used to
+// seed the S-phase starts below. z in [0,1] is
 // the entire latent S-phase axis, so this grid is a genuine, from-scratch
 // scan of "where along S could a wave sit and how tight could it be" -- not
 // tuned to any particular dataset. Three means (early/mid/late S) crossed
 // with two widths (tight/broad) gives the optimizer a real chance at
 // whichever placement the true wave happens to be near, rather than betting
 // on just one or two fixed guesses.
+// Share of the S area in the wave above which the fit reports a "complex S-phase
+// shape" note. Chosen to be well clear of the small w values a smooth profile
+// picks up from noise, without waiting until the wave dominates: at w = 0.2 a
+// fifth of S sits in one narrow band, which a reader should see.
+const WAVE_NOTICE_FRACTION = 0.2;
+
 const WAVE_PLACEMENT_GRID = [
   [0.3, 0.06], [0.5, 0.06], [0.7, 0.06],
   [0.3, 0.15], [0.5, 0.15], [0.7, 0.15],
@@ -353,24 +451,20 @@ Purpose:
 	mirror Dean-Jett's own with w=0; the wave-placement-grid starts activate a
 	modest wave at each grid placement from the outset, so a real wave is
 	reachable without climbing out of the w=0 plateau and isn't missed for
-	sitting away from one guessed placement. When djHint (Dean-Jett's converged,
-	fitted parameters) is supplied it seeds an additional w=0 start from DJ's
-	actual optimum plus a grid around it -- a correctness property, since
-	q_F(z)|_{w=0} = q(z) exactly, so DJF's feasible space always contains DJ's
-	solution and must never converge worse than DJ.
+	sitting away from one guessed placement.
 
 Input:
 	edges [array]: histogram bin edges
 	counts [array]: per-bin counts
 	regions [object]: the accepted { g1, g2 } peak regions
 	config [object]: model config
-	djHint [object|null]: Dean-Jett's fitted named parameters, or null
+	cleanFlankPeaks [object]: the fixed clean-flank peak estimate
 
 Output:
 	starts [array]: an array of theta_F start vectors
 
 */
-function build_parameter_starts(edges, counts, regions, config, djHint = null) {
+function build_parameter_starts(edges, counts, regions, config) {
   const g1Init = estimatePeakFromRegion(edges, counts, regions.g1, { label: "G1" });
   const g2Init = estimatePeakFromRegion(edges, counts, regions.g2, { label: "G2/M" });
 
@@ -395,40 +489,7 @@ function build_parameter_starts(edges, counts, regions, config, djHint = null) {
     ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => [...base.slice(0, PARAMETER_INDEX.SHAPE1), 0, 0, 0.25, waveMean, waveSigma]),
   ];
 
-  if (djHint) {
-    const fromDj = [
-      djHint.g1Area, djHint.g1Mean, djHint.g1CV,
-      djHint.g2Area, djHint.g2Mean, djHint.g2CV,
-      djHint.sArea, djHint.shape1, djHint.shape2,
-      0, 0.5, 0.15, // w=0: identically DJ's own optimum, the nesting guarantee
-    ];
-    starts.push(
-      fromDj,
-      ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => [...fromDj.slice(0, PARAMETER_INDEX.W), 0.25, waveMean, waveSigma]),
-    );
-  }
-
   return starts;
-}
-
-// Start vectors for the clean_flank fit: peaks pinned to their clean-flank fit,
-// only the S phase varied (flat/quadratic + a grid of wave placements, plus a
-// larger-S start since the residual S can be substantial on real data).
-function build_clean_flank_starts(edges, counts, regions, peaks) {
-  const sAreaGuess = estimate_between_peaks_area(edges, counts, regions);
-  const base = [
-    peaks.g1Area, peaks.g1Mean, peaks.g1CV,
-    peaks.g2Area, peaks.g2Mean, peaks.g2CV,
-    sAreaGuess, 0, 0, 0, 0.5, 0.15,
-  ];
-  const withS = (sArea, tail) => [...base.slice(0, PARAMETER_INDEX.S_AREA), sArea, ...tail];
-  return [
-    base,
-    withS(sAreaGuess, [0.8, -0.5, 0, 0.5, 0.15]),
-    withS(sAreaGuess, [-0.8, -0.5, 0, 0.5, 0.15]),
-    withS(sAreaGuess * 2, [0, 0, 0, 0.5, 0.15]),
-    ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => withS(sAreaGuess, [0, 0, 0.25, waveMean, waveSigma])),
-  ];
 }
 
 function convergence_reason(fit) {
@@ -461,14 +522,13 @@ export const dean_jett_fox = {
   /*
 
   Purpose:
-	Fits Dean-Jett-Fox: same flow as dean_jett's fit(), plus an optional
-	config.djHint (Dean-Jett's fitted named parameters) that seeds an additional
-	nesting-guaranteed start -- see build_parameter_starts() for why. Callers
-	fitting DJF standalone may omit it; auto_dj_djf always supplies it.
+	Fits Dean-Jett-Fox peaks-first: G1 and G2 are measured from their clean flanks
+	and HELD FIXED, then the S phase (area, Bernstein shape, and the wave) is fit
+	to what those peaks leave unexplained, from a deterministic multi-start.
 
   Input:
 	context [object]: { histogram (masked histogram), peakRegions, config
-	                  (DEFAULT_CONFIG overrides, optional djHint) }
+	                  (DEFAULT_CONFIG overrides) }
 
   Output:
 	rawResult [object]: the raw fit result for normalizeResult()
@@ -480,7 +540,7 @@ export const dean_jett_fox = {
     // reason as dean_jett.js's fit(): that object is stored in the returned
     // rawResult (provenance.rawResult), which the worker postMessages back,
     // and a live function reference there fails structured-clone.
-    const { djHint = null, onProgress, shouldCancel, ...restConfig } = userConfig;
+    const { onProgress, shouldCancel, ...restConfig } = userConfig;
     const config = { ...DEFAULT_CONFIG, ...restConfig };
     const regions = validatePeakRegions(peakRegions);
     projectMeansToFeasible(0.5 * (regions.g1.left + regions.g1.right), 0.5 * (regions.g2.left + regions.g2.right), regions, config);
@@ -491,15 +551,13 @@ export const dean_jett_fox = {
       throw new Error("histogram.edges must have exactly one more entry than histogram.counts.");
     }
 
-    const fixedPeaks = config.peakFitMode === "clean_flank"
-      ? clean_flank_fixed_peaks(edges, counts, regions)
-      : null;
-    const parameterStarts = fixedPeaks
-      ? build_clean_flank_starts(edges, counts, regions, fixedPeaks)
-      : build_parameter_starts(edges, counts, regions, config, djHint);
-    const projectFn = make_project_fn(regions, config, fixedPeaks);
+    // The clean-flank estimate IS the peaks: measured once here and held fixed
+    // for the whole fit. Only the S phase below is optimized.
+    const cleanFlankPeaks = clean_flank_fixed_peaks(edges, counts, regions);
+    const parameterStarts = build_parameter_starts(edges, counts, regions, config);
+    const projectFn = make_project_fn(regions, config, { fixedPeaks: cleanFlankPeaks });
     const parameterTransform = make_parameter_transform(regions, config);
-    const freeIndices = free_indices(config);
+    const freeIndices = free_indices();
 
     const fit = fitPoissonModel({
       observedCounts: counts,
@@ -589,7 +647,7 @@ export const dean_jett_fox = {
       ...buildPoissonFitDiagnostics({
         observedCounts: counts,
         expectedCounts: fit.expectedCounts,
-        parameterCount: free_indices(config).length,
+        parameterCount: free_indices().length,
       }),
       optimizer: fit.optimizerDiagnostics,
     };
@@ -629,6 +687,21 @@ export const dean_jett_fox = {
         .filter(Boolean),
       ...constraintAuditWarnings(constraintAudit),
     ];
+
+    // A substantial wave means the S phase is not a smooth asynchronous
+    // progression. It is reported as SHAPE evidence and nothing more: this model
+    // must not be read as inferring synchronization (plan §1.1), and with the
+    // peaks frozen a wave can also be absorbing peak misfit rather than a real
+    // cohort (see the note above fit()).
+    if (named.w >= WAVE_NOTICE_FRACTION) {
+      warnings.push({
+        code: "complex_s_phase_shape",
+        severity: "info",
+        message: `The S-phase profile is not smooth: ${(100 * named.w).toFixed(0)}% of the S area sits in a `
+          + `narrow band near ${(100 * named.waveMean).toFixed(0)}% of the way from G1 to G2/M. `
+          + `Reported as S-phase shape only — this model does not test for a synchronized population.`,
+      });
+    }
 
     return {
       schemaVersion: 1,
