@@ -46,7 +46,6 @@ export const CELL_CYCLE_COLUMN_PREFIX = "cellCycleFit:";
 export const CELL_CYCLE_PHASES = ["g1", "s", "g2"];
 export const CELL_CYCLE_PHASE_LABELS = { g1: "G1", s: "S", g2: "G2/M" };
 export const CELL_CYCLE_MODEL_LABELS = {
-  auto_dj_djf: "Automatic",
   dean_jett: "Dean–Jett",
   dean_jett_fox: "Dean–Jett–Fox",
   watson_pragmatic: "Watson Pragmatic",

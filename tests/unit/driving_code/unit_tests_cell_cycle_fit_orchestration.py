@@ -2,7 +2,7 @@
 """Browser unit coverage for js/analysis/cell_cycle/modeling_state.js's fit
 orchestration (M6): fit_cell_cycle_model, get_modeling_state, and
 set_model_settings -- the plan §4.2 operations that connect the registered
-models (dean_jett, dean_jett_fox, watson_pragmatic, auto_dj_djf) to a row's
+models (dean_jett, dean_jett_fox, watson_pragmatic, watson_classic) to a row's
 per-sample modeling state. Peak-region state transitions are covered
 separately in unit_tests_cell_cycle_modeling_state.py.
 """
@@ -649,18 +649,7 @@ _TESTS = r"""() => {
       return { pass, detail: JSON.stringify({ keys, activeResultKey: modeling.activeResultKey }) };
     });
 
-    await runAsync('fit_cell_cycle_model fits auto_dj_djf end to end and normalizes to the generic result contract', async () => {
-      const row = buildReviewedRow('fit-orch-auto');
-      const result = await modelingState.fit_cell_cycle_model(row, 'auto_dj_djf');
-      const pass = result.modelId === 'auto_dj_djf'
-        && result.modelComparison
-        && ['dean_jett', 'dean_jett_fox'].includes(result.modelComparison.selectedModelId)
-        && Array.isArray(result.warnings)
-        && Array.isArray(result.components);
-      return { pass, detail: JSON.stringify({ selectedModelId: result.modelComparison?.selectedModelId, componentCount: result.components?.length }) };
-    });
-
-    return results;
+  return results;
   })();
 }"""
 

@@ -57,7 +57,6 @@ let initialized = false;
 let busy = false;
 
 const MODEL_LABELS = {
-  auto_dj_djf: "Automatic — Dean–Jett / Dean–Jett–Fox",
   dean_jett: "Dean–Jett",
   dean_jett_fox: "Dean–Jett–Fox",
   watson_pragmatic: "Watson Pragmatic",
@@ -236,9 +235,8 @@ function render_result(result) {
   const warnings = result.warnings ?? [];
   const reporting = result_reporting_summary(result);
   const convergenceText = result.converged ? "Converged" : `Not converged (${escape_html(result.convergenceReason ?? "unknown")})`;
-  // auto_dj_djf's normalized result carries the selected submodel's own id
-  // (plan §4.5's modelId field is overwritten to "auto_dj_djf" by
-  // model_selection.js, with the real winner recorded in modelComparison).
+  // Retained for any result that still carries a model comparison (older saved
+  // sessions); the auto_dj_djf policy that produced them has been retired.
   const selectedNote = result.modelComparison
     ? `<p class="cell_cycle_fit_selected_model">${result.modelComparison.selectedModelId ? `Selected: ${escape_html(model_label(result.modelComparison.selectedModelId))}` : "No valid automatic model"}</p>`
     : "";
@@ -321,9 +319,8 @@ function refresh_panel() {
   }
 
   // Adopt the sample's stored model only once something has actually been fit
-  // with it. settings.modelId carries a state default ("auto_dj_djf") from the
-  // moment the sample exists, so syncing unconditionally would silently replace
-  // the "Model Selection…" placeholder with a model the user never picked.
+  // with it, so an unfitted sample keeps the "Model Selection…" placeholder
+  // rather than adopting a model the user never picked.
   if (cell_cycle_model_select && modeling.activeResultKey
       && cell_cycle_model_select.value !== modeling.settings.modelId) {
     cell_cycle_model_select.value = modeling.settings.modelId;

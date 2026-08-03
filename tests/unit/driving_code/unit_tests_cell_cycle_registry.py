@@ -146,14 +146,13 @@ _TESTS = r"""() => {
       };
     });
 
-    run('registry: register_default_models() also registers the auto_dj_djf selection policy', () => {
-      const entry = registry.get_model('auto_dj_djf');
+    run('registry: the retired auto_dj_djf selection policy is NOT registered', () => {
+      // Retired together with dean_jett_fox's "joint" estimator, which existed
+      // only to give Auto a like-for-like DJ-vs-DJF comparison.
+      const ids = registry.list_models().map((model) => model.id);
       return {
-        pass: !!entry
-          && entry.fitScope === 'per_sample'
-          && typeof entry.fit === 'function'
-          && typeof entry.normalizeResult === 'function',
-        detail: JSON.stringify({ entry: entry && { id: entry.id, version: entry.version } }),
+        pass: registry.get_model('auto_dj_djf') == null && !ids.includes('auto_dj_djf'),
+        detail: JSON.stringify(ids),
       };
     });
 

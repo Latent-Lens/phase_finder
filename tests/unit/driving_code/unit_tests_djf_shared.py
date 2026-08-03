@@ -723,7 +723,7 @@ _SHARED_HELPERS = r"""() => {
         && Array.isArray(m.peakDetection.candidates) && m.peakDetection.candidates.length === 0
         && m.peakSelection.source === 'automatic'
         && m.peakSelection.stale === false
-        && m.settings.modelId === 'auto_dj_djf'
+        && m.settings.modelId === null
         && m.settings.ratioMode === 'bounded'
         && Object.keys(m.resultsByKey).length === 0
         && m.activeResultKey === null

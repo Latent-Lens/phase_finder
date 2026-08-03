@@ -11,7 +11,6 @@ import { dean_jett } from "./models/dean_jett.js";
 import { dean_jett_fox } from "./models/dean_jett_fox.js";
 import { watson_pragmatic } from "./models/watson_pragmatic.js";
 import { watson_classic } from "./models/watson_classic.js";
-import { auto_dj_djf } from "./model_selection.js";
 import { cloccs } from "./models/cloccs.js";
 
 const registry = new Map();
@@ -110,7 +109,7 @@ Input:
 
 Output:
 	(none) [void]: registers legacy_bridge_v1, dean_jett, dean_jett_fox,
-	               watson_pragmatic, and auto_dj_djf
+	               watson_pragmatic, and watson_classic
 
 */
 export function register_default_models() {
@@ -119,7 +118,6 @@ export function register_default_models() {
   register_model(dean_jett_fox);
   register_model(watson_pragmatic);
   register_model(watson_classic);
-  register_model(auto_dj_djf);
   // Joint time-series model (fitScope "joint_series"). Registered so it can be
   // selected and looked up, but it is UNVERIFIED and fits a whole strain's
   // timepoints together via fitSeries(), not the per-sample fit() path.

@@ -79,7 +79,10 @@ function create_modeling_state() {
     },
 
     settings: {
-      modelId: "auto_dj_djf",
+      // No model until the user picks one. This used to default to
+      // "auto_dj_djf", a model the user never chose and which the selector did
+      // not even offer; the Auto selection policy has since been retired.
+      modelId: null,
       ratioMode: "bounded",
       ratioRange: [1.65, 2.25],
       lockedRatio: 2,
