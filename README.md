@@ -15,8 +15,8 @@ The project currently focuses on a specific analysis workflow:
 4. Choose the DNA-content area channel.
 5. Check the samples to analyze.
 6. Generate an overlaid event histogram for the selected files.
-7. Optionally fit a Dean–Jett–Fox (DJF) cell-cycle model to one sample and read
-   off its %G1 / %S / %G2 fractions.
+7. Review G1/G2 peak regions and fit Dean–Jett, Dean–Jett–Fox, Watson
+   Pragmatic, Watson Classic, or use Automatic model selection.
 
 Files are read by browser APIs. There is no upload server or database. Vite
 builds the static production artifact used by the release workflow.
