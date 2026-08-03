@@ -35,6 +35,7 @@ import { run_cloccs_fit } from "./cloccs_client.js";
 import { fit_pool_size } from "./fit_client.js";
 import { active_peak_review_row, peak_region_draft_valid } from "./peak_review_ui.js";
 import { deep_clone } from "../../util/clone.js";
+import { escape_html } from "../../util/html.js";
 import { result_reporting_summary } from "./result_contract.js";
 
 // CLOCCS metadata-column mapping controls (index.html). Queried once at module
@@ -125,10 +126,99 @@ export function detection_can_share(detection) {
     && detection.confidence >= SHARED_REGION_MIN_CONFIDENCE;
 }
 
+// SCI-06. A median is only a consensus when the things being averaged mean the
+// SAME thing. Peak detection picks the two most prominent peaks, and which
+// physical peaks those are can change across a sample set: in a synchronized
+// time course the 1C peak depletes as cells progress, so late timepoints get
+// (2C, 4C) proposed where early ones got (1C, 2C). Each proposal is
+// individually "detected" with good confidence; they simply disagree about
+// which peak is G1.
+//
+// Measured on an alpha-factor release (strain 1468o, 24 timepoints): 15
+// proposals passed the detected + confidence >= 0.65 filter and split into two
+// clusters with G1 centres near 192 and 341 -- a 1.77x ratio. Their median,
+// 306, matches NEITHER cluster, so sharing it would have put every sample's G1
+// region in the wrong place: worse than not sharing at all.
+//
+// So a set whose G1 proposals are not mutually consistent is refused rather
+// than averaged. The near-2x signature is called out by name because it is the
+// specific, recurring failure -- but any split wider than the tolerance is
+// rejected, since an unexplained bimodal set is not a consensus either.
+const SHARED_CENTER_TOLERANCE = 0.25; // relative deviation from the median allowed
+const DOUBLING_RATIO_RANGE = [1.6, 2.4];
+// A lone disagreeing proposal is an OUTLIER, and the median is chosen precisely
+// to resist one of those. A disagreement is only a genuine split -- two
+// populations of proposals meaning different things -- when enough of the set
+// sits away from the median. Both a minimum count and a minimum share are
+// required so neither a single stray nor a tiny fraction of a large set trips it.
+const SPLIT_MINIMUM_COUNT = 2;
+const SPLIT_MINIMUM_SHARE = 0.25;
+
+/*
+
+Purpose:
+	Whether a set of peak-region proposals actually agrees about which peak is
+	G1, so a median across them is meaningful.
+
+Input:
+	entries [array]: [{ regions, calibration }] candidate proposals
+
+Output:
+	verdict [object]: { consistent, ratio, low, high, reason } -- ratio is the
+	                  widest G1-centre ratio in the set
+
+*/
+export function shared_regions_consistent(entries) {
+  const centers = entries
+    .map(({ regions, calibration }) => (regions.g1.left + regions.g1.right) / (2 * calibration.range))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  if (centers.length < 2) return { consistent: true, ratio: 1, low: null, high: null, dissenters: 0, reason: null };
+
+  const middle = median(centers);
+  const deviates = (value) => Math.max(value / middle, middle / value) > 1 + SHARED_CENTER_TOLERANCE;
+  const dissenters = centers.filter(deviates);
+  const low = centers[0];
+  const high = centers[centers.length - 1];
+  const ratio = high / low;
+
+  // Not a split: either everything agrees, or one stray proposal the median
+  // already resists.
+  if (dissenters.length < SPLIT_MINIMUM_COUNT
+      || dissenters.length / centers.length < SPLIT_MINIMUM_SHARE) {
+    return { consistent: true, ratio, low, high, dissenters: dissenters.length, reason: null };
+  }
+
+  const doubled = ratio >= DOUBLING_RATIO_RANGE[0] && ratio <= DOUBLING_RATIO_RANGE[1];
+  return {
+    consistent: false,
+    ratio,
+    low,
+    high,
+    dissenters: dissenters.length,
+    reason: doubled
+      ? `the proposals disagree about which peak is G1 — their G1 centres differ by ${ratio.toFixed(2)}x, `
+        + "the signature of some samples having (1C, 2C) detected and others (2C, 4C). "
+        + "Averaging them would place G1 between the two and match neither."
+      : `${dissenters.length} of ${centers.length} proposed G1 centres sit more than `
+        + `${Math.round(100 * SHARED_CENTER_TOLERANCE)}% from the median (widest ratio ${ratio.toFixed(2)}x), `
+        + "so there is no single consensus region to share.",
+  };
+}
+
 // Median normalized centers/widths keep one atypical proposal from dragging
 // the consensus. Calibration matching currently implies a common range, but
 // normalization keeps the estimator correct if compatible scaling is widened.
+//
+// Returns null when the set is not mutually consistent (see
+// shared_regions_consistent): a median over disagreeing proposals is not a
+// robust estimate, it is a wrong one.
 export function robust_shared_regions(entries) {
+  if (entries.length && !shared_regions_consistent(entries).consistent) return null;
+  return robust_shared_regions_unchecked(entries);
+}
+
+function robust_shared_regions_unchecked(entries) {
   if (!entries.length) return null;
   const normalized = entries.map(({ regions, calibration }) => ({
     g1Center: (regions.g1.left + regions.g1.right) / (2 * calibration.range),
@@ -216,12 +306,6 @@ function set_controls_disabled(disabled) {
 
 function percent(fraction) {
   return Number.isFinite(fraction) ? `${(fraction * 100).toFixed(1)}%` : "—";
-}
-
-function escape_html(value) {
-  return String(value).replace(/[&<>"']/g, (char) => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]
-  ));
 }
 
 function render_result(result) {

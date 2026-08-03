@@ -211,6 +211,85 @@ _TESTS = r"""() => {
     };
   });
 
+  // ---- SCI-06: a median is only a consensus when the parts agree -----------
+  run('SCI-06: shared regions are refused when proposals disagree about which peak is G1', () => {
+    const ui = window.CellCycleModelingUI;
+    const calibration = { range: 1024, channel: 'FL7-A', datatype: 'F' };
+    // The measured alpha-factor failure: some timepoints get (1C, 2C) detected,
+    // later ones get (2C, 4C) once the 1C peak depletes. Each proposal is
+    // individually confident; together they mean different things.
+    const oneC = { g1: { left: 140, right: 250 }, g2: { left: 300, right: 480 } };
+    const twoC = { g1: { left: 260, right: 440 }, g2: { left: 600, right: 800 } };
+    const entries = [
+      { regions: oneC, calibration }, { regions: oneC, calibration },
+      { regions: twoC, calibration }, { regions: twoC, calibration },
+    ];
+    const verdict = ui.shared_regions_consistent(entries);
+    const shared = ui.robust_shared_regions(entries);
+    return {
+      pass: verdict.consistent === false
+        && verdict.ratio > 1.6 && verdict.ratio < 2.4
+        && /which peak is G1/.test(verdict.reason)
+        && shared === null,
+      detail: JSON.stringify({ verdict, shared }),
+    };
+  });
+
+  run('SCI-06: a genuinely agreeing set still shares, and the median is inside it', () => {
+    const ui = window.CellCycleModelingUI;
+    const calibration = { range: 1024, channel: 'FL7-A', datatype: 'F' };
+    const entries = [
+      { regions: { g1: { left: 140, right: 250 }, g2: { left: 300, right: 480 } }, calibration },
+      { regions: { g1: { left: 150, right: 258 }, g2: { left: 310, right: 486 } }, calibration },
+      { regions: { g1: { left: 145, right: 246 }, g2: { left: 305, right: 476 } }, calibration },
+    ];
+    const verdict = ui.shared_regions_consistent(entries);
+    const shared = ui.robust_shared_regions(entries);
+    const center = shared ? (shared.g1.left + shared.g1.right) / 2 : NaN;
+    return {
+      pass: verdict.consistent === true && shared !== null && center > 190 && center < 210,
+      detail: JSON.stringify({ verdict, shared, center }),
+    };
+  });
+
+  run('SCI-06: a lone outlier is still resisted by the median, not treated as a split', () => {
+    // The distinction that matters: ONE stray proposal among agreeing ones is
+    // exactly what a median is for. Only a genuine split -- enough proposals
+    // sitting away from the median to form a second population -- is refused.
+    const ui = window.CellCycleModelingUI;
+    const calibration = { range: 1000 };
+    const entry = (g1, g2) => ({
+      calibration,
+      regions: { g1: { left: g1 - 10, right: g1 + 10 }, g2: { left: g2 - 20, right: g2 + 20 } },
+    });
+    const entries = [entry(100, 200), entry(102, 202), entry(900, 950)];
+    const verdict = ui.shared_regions_consistent(entries);
+    const shared = ui.robust_shared_regions(entries);
+    return {
+      pass: verdict.consistent === true && verdict.dissenters === 1
+        && shared !== null && shared.g1.left === 92 && shared.g1.right === 112,
+      detail: JSON.stringify({ verdict, shared }),
+    };
+  });
+
+  run('SCI-06: an unexplained wide split is refused too, not just the 2x case', () => {
+    const ui = window.CellCycleModelingUI;
+    const calibration = { range: 1024, channel: 'FL7-A', datatype: 'F' };
+    const entries = [
+      { regions: { g1: { left: 100, right: 160 }, g2: { left: 260, right: 380 } }, calibration },
+      { regions: { g1: { left: 104, right: 164 }, g2: { left: 264, right: 384 } }, calibration },
+      { regions: { g1: { left: 400, right: 520 }, g2: { left: 900, right: 1000 } }, calibration },
+      { regions: { g1: { left: 404, right: 524 }, g2: { left: 904, right: 1004 } }, calibration },
+    ];
+    const verdict = ui.shared_regions_consistent(entries);
+    return {
+      pass: verdict.consistent === false && verdict.ratio > 2.4
+        && !/which peak is G1/.test(verdict.reason)
+        && ui.robust_shared_regions(entries) === null,
+      detail: JSON.stringify(verdict),
+    };
+  });
+
   run('bulk sharing rejects mixed DNA-axis calibration and weak/inferred detections', () => {
     const ui = window.CellCycleModelingUI;
     const base = {
