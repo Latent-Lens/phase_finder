@@ -598,26 +598,82 @@ Output:
 	regions [object]: { g1, g2 } proposed regions
 
 */
+// PEAK-01. A peak region exists to say "the mean is somewhere in here"; it must
+// not be so wide that it stops constraining anything. Measured on the 30-sample
+// FlowJo set, region width separated correct from period-doubled fits perfectly:
+// every region at or below 4.0 sigma of the fitted peak fitted correctly (16/16)
+// and every region at or above 4.5 sigma was doubled (14/14) -- G1 landing on
+// the 2C peak because a ~6 sigma window reached it. So the OUTER reach is capped
+// at this many sigma.
+export const MAX_REGION_SIGMA = 4;
+
+// The detector's own sigma estimate is what gets multiplied, and on a broad or
+// misidentified feature that estimate is itself inflated -- which is how a
+// nominal 2.75 sigma reach became 6+ sigma of the real peak. A DNA peak's CV
+// does not exceed this in practice (the models cap fitted CV at 0.30), so the
+// sigma used for the region is capped here too and a runaway estimate cannot
+// open the window arbitrarily wide.
+export const MAX_REGION_PEAK_CV = 0.15;
+
+/*
+
+Purpose:
+	Caps the sigma used to size a peak region, so an inflated width estimate on a
+	broad or misidentified feature cannot open the region arbitrarily wide.
+
+Input:
+	sigmaBins [number]: the detector's width estimate, in bins
+	center [number]: the peak position in data units
+	binWidth [number]: histogram bin width in data units
+
+Output:
+	sigmaBins [number]: the capped width estimate, in bins
+
+*/
+function cappedSigmaBins(sigmaBins, center, binWidth) {
+  const maxSigmaData = MAX_REGION_PEAK_CV * Math.abs(center);
+  const maxSigmaBins = maxSigmaData / Math.max(binWidth, 1e-12);
+  return Math.min(sigmaBins, maxSigmaBins);
+}
+
 export function proposeAutomaticPeakRegions(edges, detection, options = {}) {
   // Outer (clean-flank) reach vs inner (S-phase-facing) reach. The inner edge is
-  // held tighter so the region does not swallow the inter-peak S shoulder.
-  const outerMultiplier = options.regionSigmaMultiplier ?? 2.75;
-  const innerMultiplier = options.innerRegionSigmaMultiplier ?? 1.5;
-  const g1Sigma = detection.g1Candidate?.sigmaLeftBins
+  // held tighter so the region does not swallow the inter-peak S shoulder, and
+  // the outer edge is capped at MAX_REGION_SIGMA.
+  const outerMultiplier = Math.min(options.regionSigmaMultiplier ?? 2.75, MAX_REGION_SIGMA);
+  const innerMultiplier = Math.min(options.innerRegionSigmaMultiplier ?? 1.5, MAX_REGION_SIGMA);
+  const centers = binCenters(edges);
+  const binWidth = medianBinWidth(edges);
+
+  const rawG1Sigma = detection.g1Candidate?.sigmaLeftBins
     ?? detection.g1Candidate?.sigmaBins
     ?? detection.fallbackSigmaBins
     ?? 2;
-  const g2Sigma = detection.g2Candidate?.sigmaRightBins
+  const rawG2Sigma = detection.g2Candidate?.sigmaRightBins
     ?? detection.g2Candidate?.sigmaBins
     ?? detection.fallbackSigmaBins
-    ?? g1Sigma;
+    ?? rawG1Sigma;
+  const g1Sigma = cappedSigmaBins(rawG1Sigma, centers[detection.g1Index], binWidth);
+  const g2Sigma = cappedSigmaBins(rawG2Sigma, centers[detection.g2Index], binWidth);
+
   // G1: clean flank is the LEFT (outer); the S-facing RIGHT edge is the inner one.
   const g1 = proposedRegion(edges, detection.g1Index, g1Sigma, outerMultiplier, innerMultiplier);
   // G2: the S-facing LEFT edge is the inner one; clean flank is the RIGHT (outer).
   const g2 = proposedRegion(edges, detection.g2Index, g2Sigma, innerMultiplier, outerMultiplier);
 
+  // A G2-region ratio clamp was tried here and REMOVED: squeezing the G2 region
+  // into [1.8, 2.2] x G1 narrowed it from ~300 channels to 67 on four of the 30
+  // FlowJo samples, and the over-constrained fit responded by collapsing g1CV
+  // from its upper bound (0.30) to its lower bound (0.01) -- trading one
+  // boundary degeneracy for another and making fit/ref worse on all four. The
+  // ratio is already enforced where it belongs: on candidate PAIRS during
+  // detection, and on the fitted means via projectMeansToFeasible.
+  //
+  // It also could not have fixed what it was aimed at. (1C, 2C) and (2C, 4C) are
+  // BOTH ~2:1, so no ratio constraint can tell them apart -- see
+  // demote_period_doubled_pair() for the rule that can.
+
   if (g1.right >= g2.left) {
-    const centers = binCenters(edges);
     const midpoint = 0.5 * (centers[detection.g1Index] + centers[detection.g2Index]);
     g1.right = Math.min(g1.right, midpoint);
     g2.left = Math.max(g2.left, midpoint);
@@ -674,6 +730,23 @@ export function detectCellCyclePeakPair(edges, counts, options = {}) {
   let detection;
 
   if (pairs.length) {
+    // A post-hoc "demote the period-doubled pair" correction was tried here and
+    // REMOVED. The idea was sound -- no cycling cell holds less DNA than G1, so a
+    // well-formed peak at HALF the chosen G1 proves the choice was doubled -- but
+    // it cannot be implemented from this histogram's local geometry:
+    //
+    //   * position alone promotes a sub-G1 debris spike sitting at exactly half
+    //     the chosen peak (the existing sub-G1 distractor fixture);
+    //   * width cannot rescue it, because detection smooths at [1, 2, 4] bins, so
+    //     a sigma=1 debris spike is measured at sqrt(1^2 + 4^2) ~ 4.1 bins --
+    //     indistinguishable from a real sigma=4.2 G1 peak.
+    //
+    // Both discriminators are destroyed by the smoothing the detector needs. So
+    // the ambiguity is not resolvable within one histogram, and the correction
+    // only overrode the existing multi-term scoring (which handles the fixture
+    // correctly) with a worse rule. Resolving it needs information from OUTSIDE
+    // the single histogram -- the shared DNA axis across an acquisition run, or
+    // the recorded arrest condition. See the audit checklist under PEAK-01.
     const selected = pairs[0];
     const status = selected.score >= minPairScore && selected.confidence >= minConfidence
       ? "detected"

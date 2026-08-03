@@ -254,6 +254,52 @@ _TESTS = r"""() => {
     };
   });
 
+  // ---- PEAK-01: a region must actually constrain the mean ------------------
+  //
+  // Measured on the 30-sample FlowJo set: region width separated correct from
+  // period-doubled fits perfectly -- every region <= 4.0 sigma of the fitted
+  // peak was correct (16/16), every region >= 4.5 sigma was doubled (14/14),
+  // G1 having landed on the 2C peak through a window wide enough to reach it.
+
+  run('PEAK-01: an inflated detector sigma cannot open the region past the cap', () => {
+    const { proposeAutomaticPeakRegions, MAX_REGION_SIGMA, MAX_REGION_PEAK_CV } = peakDetection;
+    const edges = Array.from({ length: 257 }, (_, i) => i * 4); // 0..1024
+    // A wildly inflated width estimate, as produced on a broad or misidentified
+    // feature. Before the cap this multiplied straight through into the region.
+    const det = {
+      g1Index: 42, g2Index: 85,           // centres ~170 and ~342
+      g1Candidate: { sigmaLeftBins: 400 }, // absurd
+      g2Candidate: { sigmaRightBins: 400 },
+      fallbackSigmaBins: 2,
+    };
+    const regions = proposeAutomaticPeakRegions(edges, det);
+    const g1Center = 0.5 * (edges[42] + edges[43]);
+    // Sigma is capped at MAX_REGION_PEAK_CV of the centre, then the reach at
+    // MAX_REGION_SIGMA of that.
+    const cap = MAX_REGION_SIGMA * MAX_REGION_PEAK_CV * g1Center;
+    return {
+      pass: (g1Center - regions.g1.left) <= cap + 1e-6,
+      detail: JSON.stringify({ region: regions.g1, g1Center, cap }),
+    };
+  });
+
+  run('PEAK-01: a normal detection is left alone by the cap', () => {
+    const { proposeAutomaticPeakRegions } = peakDetection;
+    const edges = Array.from({ length: 257 }, (_, i) => i * 4);
+    const det = {
+      g1Index: 42, g2Index: 85,
+      g1Candidate: { sigmaLeftBins: 3 }, g2Candidate: { sigmaRightBins: 5 },
+      fallbackSigmaBins: 3,
+    };
+    const regions = proposeAutomaticPeakRegions(edges, det);
+    // 2.75 * 3 bins * 4 units = 33 units of outer reach; well inside the cap.
+    const g1Center = 0.5 * (edges[42] + edges[43]);
+    return {
+      pass: Math.abs((g1Center - regions.g1.left) - 33) < 2,
+      detail: JSON.stringify({ region: regions.g1, outerReach: g1Center - regions.g1.left }),
+    };
+  });
+
   return results;
 }"""
 
