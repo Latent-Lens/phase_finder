@@ -193,6 +193,20 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     };
   });
 
+  run('a planted wave puts the fitted wave where the wave actually is', () => {
+    // Position, not amplitude. w itself is not trustworthy here -- with the
+    // peaks frozen the wave also absorbs peak misfit, so its amplitude reflects
+    // both. Where it sits along S is still informative: the plant is at z = 0.4.
+    const placed = Math.abs(waveFitted.parameters.waveMean - TRUE_WAVE.waveMean) < 0.1;
+    return {
+      pass: placed && waveFitted.parameters.w > 0,
+      detail: JSON.stringify({
+        waveMean: waveFitted.parameters.waveMean, planted: TRUE_WAVE.waveMean,
+        w: waveFitted.parameters.w,
+      }),
+    };
+  });
+
   run('dean_jett_fox expected counts are finite and nonnegative at every bin (planted-wave fit)', () => {
     const pass = waveFitted.expectedCounts.every((value) => Number.isFinite(value) && value >= 0);
     return { pass, detail: waveFitted.expectedCounts.length };
@@ -339,6 +353,26 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
         twoPeak: twoPeakFit.diagnostics.parameterCount,
         wave: waveFitted.diagnostics.parameterCount,
       }),
+    };
+  });
+
+  run('a faint wave on a small S population still produces a finite, converged fit', () => {
+    const faint = {
+      g1Area: 9000, g1Mean: 70, g1CV: 0.06,
+      g2Area: 5000, g2Mean: 140, g2CV: 0.07,
+      sArea: 600, shape1: 0, shape2: 0,
+      w: 0.2, waveMean: 0.4, waveSigma: 0.05,
+    };
+    const faintCounts = seededJitteredCounts(djf.expectedCounts(edges, faint), 0xFA13_7777);
+    const fit = djf.normalizeResult(djf.fit({
+      histogram: { edges, counts: faintCounts }, peakRegions: regions, config: {},
+    }));
+    const f = fit.phaseFractions;
+    return {
+      pass: fit.converged === true
+        && [f.g1, f.s, f.g2].every((value) => Number.isFinite(value) && value >= 0)
+        && Math.abs(f.g1 + f.s + f.g2 - 1) < 1e-6,
+      detail: JSON.stringify({ converged: fit.converged, reason: fit.convergenceReason, fractions: f }),
     };
   });
 

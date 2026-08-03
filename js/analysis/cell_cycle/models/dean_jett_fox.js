@@ -423,7 +423,6 @@ const BRIDGE_SIGMA_OFFSET = 2;
 // estimate cannot collapse the optimizer's step size to zero.
 const MINIMUM_MEAN_STEP_SCALE = 1e-6;
 
-
 // Share of the S area in the wave above which the fit reports a "complex S-phase
 // shape" note. Chosen to be well clear of the small w values a smooth profile
 // picks up from noise, without waiting until the wave dominates: at w = 0.2 a
@@ -604,6 +603,65 @@ function build_parameter_starts(edges, counts, regions, config, cleanFlankPeaks)
   ];
 }
 
+/*
+
+Purpose:
+	Reference Step 7: locate the wave from the WAVE-FREE background pass's
+	residuals rather than from a fixed grid. The largest positive residual between
+	the two peak centres is where the smooth profile most under-explains the data,
+	which is where a wave would sit; its local width seeds sigma_F.
+
+	This replaces guessing: a fixed placement grid can only land near a wave by
+	luck, while this looks at the sample. Used purely to add a start vector -- it
+	decides nothing on its own.
+
+Input:
+	edges [array]: histogram bin edges
+	counts [array]: observed per-bin counts
+	expected [array]: the background pass's expected counts
+	g1Mean [number]: fitted G1 centre
+	g2Mean [number]: fitted G2/M centre
+
+Output:
+	seed [object|null]: { waveMean, waveSigma, residual } in latent z units, or
+	                    null when no positive residual lies between the peaks
+
+*/
+function cohort_seed_from_residuals(edges, counts, expected, g1Mean, g2Mean) {
+  const span = g2Mean - g1Mean;
+  if (!(span > 0)) return null;
+
+  let bestIndex = -1;
+  let best = 0;
+  for (let i = 0; i < counts.length; i += 1) {
+    const center = 0.5 * (edges[i] + edges[i + 1]);
+    if (center <= g1Mean || center >= g2Mean) continue;
+    const residual = counts[i] - expected[i];
+    if (residual > best) {
+      best = residual;
+      bestIndex = i;
+    }
+  }
+  if (bestIndex < 0) return null;
+
+  // Local width: walk out from the peak residual while it stays above half its
+  // height, the same half-maximum convention the peak detector uses.
+  const half = best / 2;
+  let left = bestIndex;
+  let right = bestIndex;
+  while (left > 0 && counts[left - 1] - expected[left - 1] > half) left -= 1;
+  while (right < counts.length - 1 && counts[right + 1] - expected[right + 1] > half) right += 1;
+  const centerOf = (i) => 0.5 * (edges[i] + edges[i + 1]);
+  const widthX = Math.max(centerOf(right) - centerOf(left), edges[1] - edges[0]);
+
+  // Half-width at half maximum -> sigma for a Gaussian.
+  const sigmaX = widthX / (2 * Math.sqrt(2 * Math.LN2));
+  return {
+    waveMean: clamp((centerOf(bestIndex) - g1Mean) / span, 0, 1),
+    waveSigma: clamp(sigmaX / span, 0, 1),
+    residual: best,
+  };
+}
 
 function convergence_reason(fit) {
   if (fit.cancelled) return "cancelled";
@@ -639,6 +697,22 @@ export const dean_jett_fox = {
 	and HELD FIXED, then the S phase (area, Bernstein shape, and the wave) is fit
 	to what those peaks leave unexplained, from a deterministic multi-start.
 
+	Runs in two passes, both of which fit the SAME model -- the first exists only
+	to place the wave's starting point:
+
+	  1. a background pass with w pinned at its w=0 start (the wave parameters are
+	     simply not in freeIndices), which is Dean-Jett's fit;
+	  2. the reported fit, whose starts are the standard grid PLUS the background
+	     pass's optimum with the wave switched on where that pass most
+	     under-explains the data (reference Step 7 -- seed the cohort from the
+	     largest positive residual rather than from a fixed grid).
+
+	Pass 1 is initialization, not model selection: its result is never reported
+	and never compared against pass 2. fitPoissonModel takes the best of all
+	restarts by deviance, so adding a data-located start can only lower the
+	objective. See the note above on why the reference's BIC-based
+	asynchronous/synchronous SELECTION is deliberately not implemented.
+
   Input:
 	context [object]: { histogram (masked histogram), peakRegions, config
 	                  (DEFAULT_CONFIG overrides) }
@@ -668,30 +742,71 @@ export const dean_jett_fox = {
     // for the whole fit. Only the S phase below is optimized.
     const cleanFlankPeaks = clean_flank_fixed_peaks(edges, counts, regions);
     const parameterStarts = build_parameter_starts(edges, counts, regions, config, cleanFlankPeaks);
-    const projectFn = make_project_fn(regions, config, { fixedPeaks: cleanFlankPeaks });
     const parameterTransform = make_parameter_transform(cleanFlankPeaks, config);
-    const freeIndices = free_indices();
-
-    const fit = fitPoissonModel({
+    const expectedCountsFn = (parameters) =>
+      expected_counts_from_parameters(edges, parameters, config.sQuadratureNodes);
+    const solverOptions = {
+      maxIterations: config.maxIterations,
+      tolerance: config.tolerance,
+      stepTolerance: config.stepTolerance,
+      initialLambda: config.initialLambda,
+      finiteDifferenceStep: config.finiteDifferenceStep,
+      onProgress,
+      shouldCancel,
+    };
+    const projectFn = make_project_fn(regions, config, { fixedPeaks: cleanFlankPeaks });
+    const run_fit = (starts, freeIndices) => fitPoissonModel({
       observedCounts: counts,
-      parameterStarts: parameterStarts.map(projectFn),
+      parameterStarts: starts.map(projectFn),
       freeIndices,
-      expectedCountsFn: (parameters) => expected_counts_from_parameters(edges, parameters, config.sQuadratureNodes),
+      expectedCountsFn,
       projectFn,
       parameterTransform,
-      options: {
-        maxIterations: config.maxIterations,
-        tolerance: config.tolerance,
-        stepTolerance: config.stepTolerance,
-        initialLambda: config.initialLambda,
-        finiteDifferenceStep: config.finiteDifferenceStep,
-        onProgress,
-        shouldCancel,
-      },
+      options: solverOptions,
     });
+
+    // Pass 1 (initialization only) -- the wave-free fit: only the starts that
+    // already sit at w = 0, with the three wave parameters left out of
+    // freeIndices so nothing can move them.
+    //
+    // Selecting the starts this way rather than zeroing w on all of them is
+    // deliberate. A start's w survives untouched when W is not free, so feeding
+    // in the wave-placement grid (which sits at w = 0.25) would make this
+    // "wave-free" pass silently carry a wave. And with w = 0 the placement is
+    // inert, so those grid starts would only duplicate the S-shape starts they
+    // were built from -- there is nothing to gain by keeping them.
+    const backgroundStarts = parameterStarts.filter(
+      (start) => start[PARAMETER_INDEX.W] === 0,
+    );
+    const background = run_fit(backgroundStarts, [
+      PARAMETER_INDEX.S_AREA, PARAMETER_INDEX.SHAPE1, PARAMETER_INDEX.SHAPE2,
+    ]);
+
+    // Reference Step 7 -- locate the wave where the background pass most
+    // under-explains the data, instead of relying on the fixed placement grid.
+    const backgroundNamed = paramsToNamed(background.parameters);
+    const cohortSeed = background.cancelled ? null : cohort_seed_from_residuals(
+      edges, counts, background.expectedCounts, backgroundNamed.g1Mean, backgroundNamed.g2Mean,
+    );
+    const starts = [...parameterStarts];
+    if (cohortSeed) {
+      // Start from the background optimum with the residual-located wave
+      // switched on, at two abundances so a small wave is reachable too.
+      for (const w of [0.15, 0.35]) {
+        const start = [...background.parameters];
+        start[PARAMETER_INDEX.W] = w;
+        start[PARAMETER_INDEX.WAVE_MEAN] = clamp(cohortSeed.waveMean, config.waveMeanMin, config.waveMeanMax);
+        start[PARAMETER_INDEX.WAVE_SIGMA] = clamp(cohortSeed.waveSigma, config.waveSigmaMin, config.waveSigmaMax);
+        starts.push(start);
+      }
+    }
+
+    // Pass 2 -- the reported fit: S area, Bernstein shape and the wave.
+    const fit = background.cancelled ? background : run_fit(starts, free_indices());
 
     return {
       fit, edges, counts, regions, config,
+      cohortSeed,
       initialCenters: { g1: parameterStarts[0][PARAMETER_INDEX.G1_MEAN], g2: parameterStarts[0][PARAMETER_INDEX.G2_MEAN] },
     };
   },
@@ -714,7 +829,7 @@ export const dean_jett_fox = {
     const array = [
       parameters.g1Area, parameters.g1Mean, parameters.g1CV,
       parameters.g2Area, parameters.g2Mean, parameters.g2CV,
-      parameters.sArea, parameters.b, parameters.c,
+      parameters.sArea, parameters.shape1, parameters.shape2,
       parameters.w, parameters.waveMean, parameters.waveSigma,
     ];
     return expected_counts_from_parameters(edges, array, parameters.sQuadratureNodes ?? DEFAULT_S_QUADRATURE_NODES);
@@ -725,8 +840,7 @@ export const dean_jett_fox = {
   Purpose:
 	Packages the raw fit result into the generic model-neutral shape --
 	structurally identical to dean_jett's normalizeResult(), with waveFraction/
-	waveArea/waveMean/waveSigma added so auto_dj_djf can read them without
-	re-deriving anything from the raw fit.
+	waveArea/waveMean/waveSigma added alongside the shared fields.
 
   Input:
 	rawResult [object]: the object returned by fit()
@@ -800,7 +914,6 @@ export const dean_jett_fox = {
         .filter(Boolean),
       ...constraintAuditWarnings(constraintAudit),
     ];
-
     // A substantial wave means the S phase is not a smooth asynchronous
     // progression. It is reported as SHAPE evidence and nothing more: this model
     // must not be read as inferring synchronization (plan §1.1), and with the
