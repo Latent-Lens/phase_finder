@@ -16,6 +16,7 @@ Usage:
 import argparse
 import base64
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -91,9 +92,13 @@ FIT_ONE = r"""async ([fileName, base64]) => {
       fractions: fit.phaseFractions,
       parameters: fit.parameters,
       bounds: fit.bounds,
-      mode: fit.populationMode,
-      selection: fit.populationSelection,
+      // S-phase shape, not a population claim: how much of S sits in the wave
+      // and where. With the peaks frozen a large w can mean a real cohort OR the
+      // wave absorbing peak misfit, so it is recorded for review, not judged.
+      waveFraction: fit.parameters?.w ?? null,
+      waveMean: fit.parameters?.waveMean ?? null,
       converged: fit.converged,
+      convergenceReason: fit.convergenceReason ?? null,
       reportable: fit.validForReporting,
       reducedDeviance: fit.diagnostics?.reducedDeviance ?? null,
       // The STAT-01 audit: which constraints were ACTIVE at the optimum. This is
@@ -168,6 +173,33 @@ def svg_for(sample, width=560, height=210, pad=34):
     return "".join(parts)
 
 
+def strain_of(filename):
+    """The strain token in an alpha-sync / async filename, or '' when absent."""
+    match = re.search(r"(?:alphasync|alphafac_sync|async)_([A-Za-z0-9]+?)(?:_t\d+)?__", filename)
+    return match.group(1) if match else ""
+
+
+def timepoint_of(filename):
+    """Minutes from the _t<N>__ token; None for a sample with no timepoint."""
+    match = re.search(r"_t(\d+)__", filename)
+    return int(match.group(1)) if match else None
+
+
+def group_samples(samples):
+    """Group by strain and order each group by timepoint, so a time course reads
+    top to bottom in the order it was collected rather than alphabetically."""
+    groups = {}
+    for sample in samples:
+        groups.setdefault(strain_of(sample.get("file", "")), []).append(sample)
+    for rows in groups.values():
+        # Samples without a timepoint keep their filename order, after the
+        # timed ones, rather than being dropped or sorted arbitrarily.
+        rows.sort(key=lambda r: (timepoint_of(r.get("file", "")) is None,
+                                 timepoint_of(r.get("file", "")) or 0,
+                                 r.get("file", "")))
+    return dict(sorted(groups.items()))
+
+
 def card(sample):
     fit = sample.get("fit") or {}
     det = sample.get("detection", {})
@@ -196,9 +228,11 @@ def card(sample):
     guard_html = " ".join(
         f"<span class='{'ok' if v else 'no'}'>{k}</span>" for k, v in guards.items()) or "—"
 
+    minutes = timepoint_of(sample.get("file", ""))
+    heading = f"t = {minutes} min" if minutes is not None else sample["file"]
     return f"""
 <section class='card'>
-  <h3>{sample['file']}</h3>
+  <h3>{heading}<span class='filename'>{sample['file']}</span></h3>
   <div class='flags'>{' '.join(flags) or "<span class='ok'>clean</span>"}</div>
   {svg_for(sample)}
   <table class='kv'>
@@ -216,6 +250,24 @@ def card(sample):
         reportable {fit.get('reportable')}</td></tr>
   </table>
 </section>"""
+
+
+def strain_sections(samples):
+    """One <hr>-separated section per strain, plots stacked in timepoint order."""
+    parts = []
+    for index, (strain, rows) in enumerate(group_samples(samples).items()):
+        if index:
+            parts.append("<hr>")
+        collapsed = sum(1 for r in rows
+                        if isinstance((r.get("fit") or {}).get("fractions", {}).get("s"), float)
+                        and r["fit"]["fractions"]["s"] < 0.01)
+        sync = sum(1 for r in rows if (r.get("fit") or {}).get("mode") == "synchronous")
+        parts.append(
+            f"<h2 class='strain'>{strain or 'ungrouped'}"
+            f"<small>{len(rows)} timepoints &middot; {collapsed} with %S below 1% "
+            f"&middot; {sync} synchronous</small></h2>")
+        parts.append("<div class='stack'>" + "".join(card(r) for r in rows) + "</div>")
+    return "".join(parts)
 
 
 def main():
@@ -273,7 +325,11 @@ def main():
  body{{font:13px/1.45 system-ui,sans-serif;margin:0;padding:24px;background:#f9fafb;color:#111827}}
  h1{{margin:0 0 4px}} .sub{{color:#6b7280;margin-bottom:18px}}
  .summary{{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:18px}}
- .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(600px,1fr));gap:16px}}
+ .stack{{display:flex;flex-direction:column;gap:14px}}
+ .strain{{margin:0 0 10px;font-size:15px;font-weight:600}}
+ .strain small{{font-weight:400;color:#6b7280;margin-left:8px}}
+ hr{{border:0;border-top:2px solid #d1d5db;margin:30px 0 20px}}
+ .filename{{display:block;font-weight:400;font-size:11px;color:#9ca3af;word-break:break-all}}
  .card{{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px}}
  .card h3{{margin:0 0 6px;font-size:13px;font-weight:600;word-break:break-all}}
  .plot{{width:100%;height:auto;display:block;background:#fff}}
@@ -304,7 +360,7 @@ def main():
   <span>shaded band = accepted peak region &middot; ticks = detector candidates</span>
  </div>
 </div>
-<div class='grid'>{''.join(card(s) for s in samples)}</div>"""
+{strain_sections(samples)}"""
 
     out_path = Path(args.out)
     out_path.write_text(html, encoding="utf-8")

@@ -33,6 +33,11 @@ def _ensure_qc_applied(page):
         selector = f"#{_QC_FILTER_IDS[stage]}"
         if page.eval_on_selector(selector, "e => e.getAttribute('aria-pressed')") != "true":
             page.click(selector)
+            # Structural QC requires an explicit ceiling review.
+            if stage == 0:
+                page.wait_for_selector("#structural_qc_modal:not([hidden])", timeout=10000)
+                page.click("#structural_qc_apply")
+                page.wait_for_selector("#structural_qc_modal", state="hidden", timeout=10000)
             # Time QC asks which method to run when it is switched on.
             if stage == 1:
                 confirm_time_qc_method(page)
@@ -429,6 +434,16 @@ def test_modeling(ctx: TestContext):
             str({**plot_overlay_dom, "parsedG1Percent": table_g1_percent, "resultG1Fraction": active_result["phaseFractions"]["g1"]}),
         )
 
+        modeled_tree = page.locator("#plot_area").aria_snapshot()
+        ctx.check(
+            group,
+            "UI-05D: browser accessibility tree exposes the modeled plot and phase fractions",
+            "img" in modeled_tree
+            and "watson pragmatic" in modeled_tree.lower()
+            and all(phase in modeled_tree for phase in ("G1", "S", "G2/M")),
+            modeled_tree,
+        )
+
         # The actual fit warning messages (not just a count) render in the same
         # top-right overlay -- one list item per warning on the active result.
         result_warnings = active_result.get("warnings") or []
@@ -470,6 +485,41 @@ def test_modeling(ctx: TestContext):
             and any(c.endswith("%") for c in columns_info["cells"]),
             str(columns_info),
         )
+
+        # Compare every consumer against the same stored result while this
+        # known-good single-sample Watson fit is still active.
+        page.select_option("#plot_view_mode", "ridge")
+        page.wait_for_selector("#plot_area .ridge_row", timeout=10000)
+        cross_surface = page.evaluate("""async (sampleName) => {
+          const exports = await import('./js/plotting/plot_export.js');
+          const series = window.PhaseFinder.plot.series.find(item => item.name === sampleName);
+          const modeling = window.PhaseFinder.pipeline.get_state(sampleName).modeling;
+          const result = modeling.resultsByKey[modeling.activeResultKey];
+          const badge = document.querySelector(`.ridge_row[data-sample-name="${CSS.escape(sampleName)}"] .ridge_badge`)?.textContent?.trim() || '';
+          const table = document.querySelector(`#file_table tr[data-file-id="${CSS.escape(series.row.id)}"]`)?.textContent || '';
+          const fractions = ['g1', 's', 'g2'].map(key => `${(result.phaseFractions[key] * 100).toFixed(1)}%`);
+          const svg = new XMLSerializer().serializeToString(exports.exportable_plot_svg());
+          const html = exports.build_analysis_report_html();
+          return {
+            activeResultKey: modeling.activeResultKey,
+            badge,
+            tableMatches: fractions.every(value => table.includes(value)),
+            reportMatches: fractions.every(value => html.includes(value)),
+            exportMatches: svg.includes(sampleName.replace(/\\.fcs$/i, '')) && svg.includes(badge),
+          };
+        }""", sample_name)
+        ctx.check(
+            group,
+            "CI-10/UI-13: stored result, ridge badge, table fractions, and export labels agree",
+            cross_surface["activeResultKey"] == modeling_after_fit["activeResultKey"]
+            and bool(cross_surface["badge"])
+            and cross_surface["tableMatches"]
+            and cross_surface["reportMatches"]
+            and cross_surface["exportMatches"],
+            str(cross_surface),
+        )
+        page.select_option("#plot_view_mode", "overlay")
+        wait_for_render(page)
 
         # Changing bins rebuilds the histogram and detector proposal, but must
         # not silently accept/refit that new automatic proposal (PEAK-01).
@@ -577,10 +627,15 @@ def test_modeling(ctx: TestContext):
         # Wait for the *new* status text specifically, not just visibility --
         # the status element is already visible from the Watson fit above and
         # would otherwise resolve immediately without waiting for this fit.
-        page.wait_for_function(
-            "() => (document.querySelector('#cell_cycle_fit_status')?.textContent || '').toLowerCase().includes('ratio')",
-            timeout=15000,
-        )
+        try:
+            page.wait_for_function(
+                "() => (document.querySelector('#cell_cycle_fit_status')?.textContent || '').toLowerCase().includes('ratio')",
+                timeout=15000,
+            )
+        except Exception:
+            # Keep collecting the independent UI/browser checks below when a
+            # scientific expectation fails instead of aborting the whole flow.
+            pass
         status_text = page.eval_on_selector("#cell_cycle_fit_status", "e => e.textContent")
         ctx.check(
             group,
@@ -699,6 +754,18 @@ def test_modeling(ctx: TestContext):
         page.select_option("#cell_cycle_model_select", "watson_pragmatic")
         page.once("dialog", lambda dialog: dialog.accept())
         page.click("#cell_cycle_fit_all_button")
+        page.wait_for_selector("#progress_overlay:not([hidden])", timeout=5000)
+        checkbox = page.locator("#file_table tbody .row_select").first
+        blocked_selection_change = {
+            "before": checkbox.is_checked(),
+            "appInert": page.eval_on_selector("main.app", "main => main.inert"),
+        }
+        try:
+            checkbox.click(timeout=250)
+            blocked_selection_change["trustedClickBlocked"] = False
+        except Exception:
+            blocked_selection_change["trustedClickBlocked"] = True
+        blocked_selection_change["after"] = checkbox.is_checked()
         page.wait_for_function(
             """() => /^Auto-fit /.test(
               document.querySelector('#status_bar_message')?.textContent || '')""",
@@ -728,6 +795,14 @@ def test_modeling(ctx: TestContext):
             and bulk["allSuccessfulHaveEvidence"] is True
             and all(mode in ("shared_median_normalized", "independent") for mode in bulk["modes"]),
             str(bulk),
+        )
+        ctx.check(
+            group,
+            "UI-11: a fit-all operation blocks a rapid selection change until its inputs are safe",
+            blocked_selection_change["appInert"]
+            and blocked_selection_change["trustedClickBlocked"]
+            and blocked_selection_change["after"] == blocked_selection_change["before"],
+            str(blocked_selection_change),
         )
 
         # Regression for todo.md #2 ("Auto-Fit All ... doesn't add the values for
@@ -944,6 +1019,8 @@ def test_modeling(ctx: TestContext):
     finally:
         if page.locator("#djf_scatter_modal").is_visible():
             page.click("#djf_scatter_modal_close")
+        if page.is_visible("#structural_qc_modal"):
+            page.eval_on_selector("#structural_qc_cancel", "button => button.click()")
         # Return the sidebar to file mode so later tests (e.g. Calculate
         # Statistics) can reach the file-mode action buttons again.
         exit_modeling_mode(page)
