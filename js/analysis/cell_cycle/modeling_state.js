@@ -15,6 +15,7 @@ import { validatePeakRegions } from "./peak_regions.js";
 import { get_model } from "./model_registry.js";
 import { run_fit_in_worker } from "./fit_client.js";
 import { apply_result_contract, model_preflight } from "./result_contract.js";
+import { domainCoverageAudit } from "./domain_sensitivity.js";
 import { deep_clone } from "../../util/clone.js";
 
 /*
@@ -467,9 +468,14 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
   const result = apply_result_contract(rawResult, preflight);
   result.appliedConfiguration = config;
   result.channelEligibility = state.channelEligibility ? deep_clone(state.channelEligibility) : null;
+  // DOMAIN-01: the analysis domain and bin grid are scientific inputs, so the
+  // exact grid the fit ran on -- and how much of the sample and of the fitted
+  // model it left out -- is stored with the result rather than being
+  // reconstructible only from whatever the UI happens to show now.
   result.histogramProvenance = {
     domain: { ...modeling.fitDomain },
     binEdges: Array.from(histogram?.edges ?? []),
+    binCount: histogram?.binCount ?? (histogram?.edges?.length ? histogram.edges.length - 1 : null),
     counts: Array.from(histogram?.counts ?? histogram?.y ?? []),
     underflow: histogram?.underflow ?? 0,
     overflow: histogram?.overflow ?? 0,
@@ -477,6 +483,24 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
     retainedCount: histogram?.retainedCount ?? 0,
     componentTailCoverage: null,
   };
+  const coverage = domainCoverageAudit({
+    histogramProvenance: result.histogramProvenance,
+    components: result.components ?? [],
+  });
+  result.histogramProvenance.componentTailCoverage = coverage.componentTailCoverage;
+  result.domainCoverage = coverage;
+  if (coverage.warnings.length) result.warnings = [...(result.warnings ?? []), ...coverage.warnings];
+  // A domain that excluded a material part of the sample, or a model whose mass
+  // is mostly outside it, does not produce a reportable fraction OF THE SAMPLE.
+  if (coverage.status === "invalid") {
+    result.validForReporting = false;
+    result.invalid = true;
+    result.scientificallyValid = false;
+    result.validityReasons = [
+      ...(result.validityReasons ?? []),
+      ...coverage.warnings.map((warning) => ({ code: warning.code, message: warning.message, detail: coverage })),
+    ];
+  }
 
   const resultKey = build_result_key(modelId, entry, row, state, config);
   modeling.resultsByKey[resultKey] = result;

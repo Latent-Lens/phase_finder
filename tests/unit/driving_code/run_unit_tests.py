@@ -136,6 +136,9 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_gate_contract import run_gate_contract_tests
     run_gate_contract_tests(ctx)
 
+    from unit_tests_domain_sensitivity import run_domain_sensitivity_tests
+    run_domain_sensitivity_tests(ctx)
+
     from unit_tests_time_qc_peak_tracking import run_time_qc_peak_tracking_tests
     run_time_qc_peak_tracking_tests(ctx)
 
