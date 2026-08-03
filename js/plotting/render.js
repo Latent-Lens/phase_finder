@@ -65,6 +65,7 @@ import {
 import { set_focused_file_id } from "../data_structs/table_state.js";
 import { update_plot_title, render_fit_results_table } from "./modeling.js";
 import { get_state as get_pipeline_state, get_active_model_result, state_matches_row } from "../analysis/pipeline_state.js";
+import { is_legacy_model_id } from "../analysis/cell_cycle/result_contract.js";
 import { update_peak_regions, fit_cell_cycle_model } from "../analysis/cell_cycle/modeling_state.js";
 import { show_curve_tooltip, hide_curve_tooltip } from "./curve_tooltip.js";
 import { render_peak_region_overlay } from "./peak_region_overlay.js";
@@ -118,8 +119,11 @@ function analysis_text(entry, fit) {
   return `${fit.modelLabel || fit.modelId || "Cell-cycle model"}: ${phases}`;
 }
 
+// LEGACY-01: canonical warnings only. The legacy stage-8 report's warnings used
+// to be merged in here, mixing a different model's diagnostics into the
+// accessible description of a canonical fit.
 function warning_text(fit) {
-  const warnings = [...(fit?.warnings || []), ...(fit?.pipelineState?.report?.warnings || [])];
+  const warnings = [...(fit?.warnings || [])];
   return warnings.length
     ? warnings.map((warning) => warning.message || String(warning)).join("; ")
     : "None";
@@ -326,15 +330,17 @@ function component_moments(x, values) {
 }
 
 // Builds the series-overlay shape from any model's generic §4.5 result (its
-// `components` array and `expectedCounts`), independent of which model
-// produced it -- the canonical models (Dean-Jett, Dean-Jett-Fox, Watson
-// Pragmatic, auto_dj_djf) and the legacy bridge all normalize to this same
-// shape. `reportFractionByKey` is legacy-only: the old fit report
-// recomputes phase fractions more precisely than the base/contamination fit
-// alone, so when present it wins over the moments-based percent computed here;
-// canonical-model results have no separate report step; their own
-// `phaseFractions` already is the final number, threaded straight through.
-export function build_fit_series_entry(series_entry, state, fit, { reportFractionByKey = {} } = {}) {
+// `components` array and `expectedCounts`), independent of which model produced
+// it -- every canonical model (Dean-Jett, Dean-Jett-Fox, Watson Pragmatic,
+// Watson Classic) normalizes to this same shape.
+//
+// SCI-05/LEGACY-01: `fit.phaseFractions` is the sole authoritative source of the
+// displayed percentages. This function used to accept a `reportFractionByKey`
+// override so the legacy stage-8 report's independently recomputed fractions
+// could win over the canonical ones; that override is gone. The moments-based
+// fallback below applies only when a model published no phaseFractions at all,
+// and is labelled as the domain-limited diagnostic it is.
+export function build_fit_series_entry(series_entry, state, fit) {
   const x = state.histogram.x;
   const point_series = (values) => x.map((position, index) => ({
     x: position,
@@ -350,10 +356,8 @@ export function build_fit_series_entry(series_entry, state, fit, { reportFractio
   const canonicalFractionByKey = fit.phaseFractions ?? {};
   const phase = (key, label) => ({
     phase: label,
-    percent: Number.isFinite(reportFractionByKey[key])
-      ? 100 * reportFractionByKey[key]
-      : Number.isFinite(canonicalFractionByKey[key])
-        ? 100 * canonicalFractionByKey[key]
+    percent: Number.isFinite(canonicalFractionByKey[key])
+      ? 100 * canonicalFractionByKey[key]
       : biologicalTotal > 0 ? (100 * moments[key].total) / biologicalTotal : 0,
     mean: moments[key].mean,
     stdev: moments[key].stdev,
@@ -1218,15 +1222,13 @@ export function render_density_plot() {
   // and DJF fit components keep their fixed reference colors (G1/S/G2/etc.)
   // without needing a label, since there's only ever this one small fixed set.
 
-  // Numeric stats for a legacy_bridge_v1 fit are only shown once a sample has
-  // completed the full pipeline (the fit report). Before that, the
-  // fitted curve overlay is drawn but no numbers are reported, so the user
-  // never sees phase fractions change as later operations run (the pre-report
-  // values also use a coarser integration than the report). The fit curve
-  // for the base/contamination fit still renders above. A canonical-model result
-  // has no separate report step to wait for -- fit_cell_cycle_model()'s result is
-  // already final, so it's included immediately.
-  const report_fits = fits.filter((fit) => fit.pipelineState?.report || fit.modelId !== "legacy_bridge_v1");
+  // LEGACY-01: only canonical models report numbers. The legacy bridge is an
+  // unvalidated compatibility path (different likelihood and contamination
+  // equations, no result-contract gate), so it never populates the fit-results
+  // table -- previously it did, as soon as a sample had completed the legacy
+  // stage-8 report. A canonical result needs no separate report step:
+  // fit_cell_cycle_model()'s result is already final.
+  const report_fits = fits.filter((fit) => !is_legacy_model_id(fit.modelId));
   render_fit_results_table(report_fits, {
     // Sit below the floating top-right controls so they don't overlap.
     top: Math.max(margin.top, plot_controls_offset()),

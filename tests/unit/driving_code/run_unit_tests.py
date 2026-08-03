@@ -130,6 +130,9 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_stat_constraints import run_stat_constraint_tests
     run_stat_constraint_tests(ctx)
 
+    from unit_tests_legacy_quarantine import run_legacy_quarantine_tests
+    run_legacy_quarantine_tests(ctx)
+
     from unit_tests_gate_contract import run_gate_contract_tests
     run_gate_contract_tests(ctx)
 

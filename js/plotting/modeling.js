@@ -1,14 +1,21 @@
-// Plot title, DJF fit-summary presentation, and plot initialization.
+// Plot title and cell-cycle fit-summary presentation.
+//
+// LEGACY-01: this overlay reports CANONICAL model results only. It used to also
+// render the legacy stage-8 fit report (its contamination percentages and its
+// R^2/RMSE/reduced-chi-square goodness block) whenever a sample carried one,
+// which put legacy diagnostics -- computed from different likelihood and
+// contamination equations, and not gated by the result contract -- into the same
+// table cells as canonical Dean-Jett/DJF/Watson numbers. That path is gone; the
+// legacy bridge is an unvalidated compatibility model and never populates this
+// surface.
 
 import {
   plot_title,
   plot_area,
-  set_plot_channels,
   strip_fcs,
   plot_escape_html,
   format_fit_number,
 } from "./data.js";
-import { render_density_plot } from "./render.js";
 
 // The fit-results overlay element; recreated each render. Owned here because
 // only this module reads or replaces it.
@@ -39,11 +46,12 @@ export function update_plot_title(rows, event_count = null) {
 /*
 
 Purpose:
-	Renders a tabular summary of the currently visible DJF fits. Each fitted
-	sample contributes one row per phase with metadata and component moments.
+	Renders a tabular summary of the currently visible canonical cell-cycle fits.
+	Each fitted sample contributes one row per phase with metadata and component
+	moments, plus the fit's own warnings.
 
 Input:
-	fits [Array<Object>]: visible DJF fit objects
+	fits [Array<Object>]: visible canonical fit objects
 	placement [Object]:   positioning for the table overlay
 
 Output:
@@ -85,11 +93,10 @@ export function render_fit_results_table(fits, placement = {}) {
         </tr>`)
       .join("");
     // Canonical models (Dean-Jett, DJF, Watson, Auto) carry their fit warnings
-    // on the series entry itself (fit.warnings, each {code, severity, message});
-    // the legacy pipeline instead reports through its fit report below. Show
-    // the actual warning messages here in the top-right overlay so the user sees
-    // what a fit flagged, not just a count in the sidebar.
-    const model_warnings = !fit.pipelineState?.report && Array.isArray(fit.warnings) ? fit.warnings : [];
+    // on the series entry itself (fit.warnings, each {code, severity, message}).
+    // Show the actual warning messages here in the top-right overlay so the user
+    // sees what a fit flagged, not just a count in the sidebar.
+    const model_warnings = Array.isArray(fit.warnings) ? fit.warnings : [];
     let model_warning_rows = "";
     if (model_warnings.length) {
       const items = model_warnings
@@ -101,34 +108,6 @@ export function render_fit_results_table(fits, placement = {}) {
             <span class="djf_fit_warnings_title">⚠ ${model_warnings.length} fit warning${model_warnings.length === 1 ? "" : "s"}</span>
             <ul class="djf_fit_warnings_list">${items}</ul>
           </td>
-        </tr>`;
-    }
-
-    const report = fit.pipelineState?.report;
-    let report_rows = "";
-    if (report) {
-      const contamination = report.fractions.contamination;
-      const goodness = report.goodnessOfFit;
-      const warnings = report.warnings || [];
-      const warningText = warnings.length
-        ? warnings.map((warning) => plot_escape_html(warning.message)).join("<br>")
-        : "No fit warnings.";
-      report_rows = `
-        <tr class="djf_fit_phase_row djf_fit_contamination_row">
-          <td>Aggregate</td>
-          <td class="numeric_cell">${format_fit_number(100 * contamination.aggregate, 1)}%</td>
-          <td colspan="2">modeled contamination</td>
-        </tr>
-        <tr class="djf_fit_phase_row djf_fit_contamination_row">
-          <td>Debris</td>
-          <td class="numeric_cell">${format_fit_number(100 * contamination.debris, 1)}%</td>
-          <td colspan="2">modeled contamination</td>
-        </tr>
-        <tr class="djf_fit_diagnostics_row">
-          <td colspan="4">R² ${format_fit_number(goodness.rSquared, 3)} · RMSE ${format_fit_number(goodness.rmse, 2)} · reduced χ² ${format_fit_number(goodness.reducedPearsonChiSquare, 2)} · ${warnings.length} warning(s)</td>
-        </tr>
-        <tr class="djf_fit_warnings_row">
-          <td colspan="4">${warningText}</td>
         </tr>`;
     }
 
@@ -147,7 +126,6 @@ export function render_fit_results_table(fits, placement = {}) {
           <th class="numeric_cell">Std Dev</th>
         </tr>
         ${phase_rows}
-        ${report_rows}
         ${model_warning_rows}
       </tbody>`);
   });
@@ -158,24 +136,4 @@ export function render_fit_results_table(fits, placement = {}) {
     </table>`;
   djf_fit_table.hidden = false;
   plot_area.appendChild(djf_fit_table);
-}
-
-
-/*
-
-Purpose:
-	Initializes the plot once analysis has loaded data: stores the selected
-	channel info and renders. Subsequent redraws are driven by control changes
-	and table selection changes.
-
-Input:
-	channels [Object]: the selected channels, e.g. { dna_area }
-
-Output:
-	(none) [void]: stores plot state and triggers the first render
-
-*/
-export function init_plot(channels) {
-  set_plot_channels(channels);
-  render_density_plot();
 }

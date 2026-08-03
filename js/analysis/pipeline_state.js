@@ -230,9 +230,9 @@ export function get_state(name) {
   return pipeline_states.get(name) || null;
 }
 
-// The sole authoritative model result. Legacy stage 6-8 compatibility slots
-// are deliberately excluded; a legacy bridge is authoritative only when it
-// was explicitly fitted through modeling.resultsByKey like any other model.
+// The sole authoritative model result. Legacy stage 6-8 compatibility slots are
+// deliberately excluded (LEGACY-01: the bridge is exploratory/unvalidated and
+// the result contract refuses it outright).
 //
 // GATE-01: is_reportable_result() requires the contract stamp as well as the
 // verdict, so a raw registry normalizeResult() output written straight into

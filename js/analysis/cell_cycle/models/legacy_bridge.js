@@ -17,6 +17,18 @@
 // left null/empty here -- those are computed today by cell_cycle_fit_report.js,
 // and folding that into this generic contract is deferred rather than duplicated.
 //
+// LEGACY-01 -- what the contamination extension actually models. The
+// debris/aggregate refinement below is an AGGREGATE APPROXIMATION, not the
+// self-convolution/Bagwell model the surrounding design prose describes: the
+// aggregate term is the single closed-form curve 0.5 * p * F(x / 2) (a rescaled
+// copy of the fitted total, see debris_aggregate_extension.js), and debris is a
+// left-windowed exponential. Nothing here convolves the fitted singlet
+// distribution with itself, and no higher multiplet order is modelled at all.
+// Any text -- help, report, or comment -- that presents this as a Bagwell or
+// self-convolution aggregate model is wrong. This is one of the reasons the
+// bridge is marked exploratory/unvalidated and is barred from every canonical
+// reporting surface.
+//
 // Every normalized result carries the exact original legacy-shaped output in
 // provenance.rawResult. That is not just an audit trail: extendCellCycleFit()
 // and summarizeCellCycleFit() both require a previousFit/fit argument in that
@@ -64,7 +76,9 @@ function build_generic_result({ parameters, expectedCounts, components, diagnost
     schemaVersion: 1,
     modelId: "legacy_bridge_v1",
     modelVersion: "1.0.0",
-    modelLabel: "Legacy Bridge (compatibility)",
+    modelLabel: "Legacy Bridge (exploratory, unvalidated)",
+    exploratory: true,
+    validated: false,
     kind: "generative",
     fitScope: "per_sample",
     comparisonGroup: null,
@@ -95,10 +109,15 @@ function build_generic_result({ parameters, expectedCounts, components, diagnost
 export const legacy_bridge_v1 = {
   id: "legacy_bridge_v1",
   version: "1.0.0",
-  label: "Legacy Bridge (compatibility)",
+  label: "Legacy Bridge (exploratory, unvalidated)",
   kind: "generative",
   fitScope: "per_sample",
   comparisonGroup: null,
+  // LEGACY-01: declared, not inferred. The result contract reads
+  // is_legacy_model_id() and refuses to mark this model's output reportable;
+  // these flags let a UI surface the same fact without string matching.
+  exploratory: true,
+  validated: false,
   requiredInputs: ["sample_histogram"],
   capabilities: { contaminants: false, multiplePloidy: false, autoComparison: false },
   defaultConfig: { ...DEFAULT_OPTIONS },
