@@ -350,15 +350,43 @@ function free_indices() {
   ];
 }
 
-function make_parameter_transform(regions, config) {
-  const scaled = (region) => ({
+/*
+
+Purpose:
+	Builds the dimensionless optimizer coordinates (SCI-07). The map covers all
+	twelve parameters because fit_engine.js encodes the whole vector; only the six
+	S-phase coordinates are ever actually moved.
+
+	The two peak-mean coordinates are scaled by the PEAK's own estimated width,
+	not by the width of the region the user drew. A region expresses one thing --
+	"the mean lies somewhere in here" -- and it is enforced as a hard bound by
+	make_project_fn(). It must not additionally set the optimizer's step size:
+	scaling by region width meant that drawing a generous box silently made every
+	step in mean-space coarser, so the same sample could fit differently purely
+	because the user was less precise with the mouse. Sigma is the physically
+	meaningful scale for how far a peak mean might move. (Inert while the peaks
+	are frozen, since neither mean is free -- kept correct so that a future
+	peak-fitting mode inherits the right scale rather than a silently wrong one.)
+
+Input:
+	peaks [object]: the peak estimate (needs g1Mean/g1CV and g2Mean/g2CV)
+	config [object]: the merged model config
+
+Output:
+	transform [object]: the encode/decode coordinate map
+
+*/
+function make_parameter_transform(peaks, config) {
+  const peak_scaled = (mean, cv) => ({
     type: "scaled",
-    center: 0.5 * (region.left + region.right),
-    scale: Math.max(region.right - region.left, Number.EPSILON),
+    center: mean,
+    // One sigma, floored so a degenerate CV estimate cannot collapse the step
+    // size to zero and stall the optimizer.
+    scale: Math.max(Math.abs(mean * cv), MINIMUM_MEAN_STEP_SCALE),
   });
   return createParameterTransform([
-    { type: "log" }, scaled(regions.g1), { type: "bounded", min: config.cvMin, max: config.cvMax },
-    { type: "log" }, scaled(regions.g2), { type: "bounded", min: config.cvMin, max: config.cvMax },
+    { type: "log" }, peak_scaled(peaks.g1Mean, peaks.g1CV), { type: "bounded", min: config.cvMin, max: config.cvMax },
+    { type: "log" }, peak_scaled(peaks.g2Mean, peaks.g2CV), { type: "bounded", min: config.cvMin, max: config.cvMax },
     { type: "log" }, { type: "identity" }, { type: "identity" },
     // w remains projected in physical space so the exact w=0 DJ nesting start
     // remains representable; the two strictly interior wave parameters use
@@ -368,6 +396,22 @@ function make_parameter_transform(regions, config) {
     { type: "bounded", min: config.waveSigmaMin, max: config.waveSigmaMax },
   ]);
 }
+
+// How many sigma out from each peak centre the S bridge is taken to start. At
+// 2 sigma a Gaussian peak has ~95% of its mass inside, so the interval between
+// these two points is dominated by S rather than by peak tails.
+const BRIDGE_SIGMA_OFFSET = 2;
+
+// Floor on the peak-mean step scale, in channel units, so a degenerate CV
+// estimate cannot collapse the optimizer's step size to zero.
+const MINIMUM_MEAN_STEP_SCALE = 1e-6;
+
+
+// Share of the S area in the wave above which the fit reports a "complex S-phase
+// shape" note. Chosen to be well clear of the small w values a smooth profile
+// picks up from noise, without waiting until the wave dominates: at w = 0.2 a
+// fifth of S sits in one narrow band, which a reader should see.
+const WAVE_NOTICE_FRACTION = 0.2;
 
 // ---------------------------------------------------------------------------
 // Why there is no asynchronous/synchronous population-form selection.
@@ -416,13 +460,58 @@ function make_parameter_transform(regions, config) {
 // model'; do not infer synchronization").
 // ---------------------------------------------------------------------------
 
-function estimate_between_peaks_area(edges, counts, regions) {
+/*
+
+Purpose:
+	Seeds the S-phase area from the bridge between the two PEAK ESTIMATES, offset
+	by each peak's own width.
+
+	It deliberately does NOT use the region edges. Summing strictly between
+	regions.g1.right and regions.g2.left meant that drawing generous peak regions
+	shrank the gap between them and so starved the S seed -- a user being cautious
+	about where a mean might lie was silently telling the model there was less S.
+	A region bounds the MEAN; it says nothing about how much S there is.
+
+Input:
+	edges [array]: histogram bin edges
+	counts [array]: per-bin counts
+	peaks [object]: the peak estimate (means and CVs)
+
+Output:
+	area [number]: a positive S-area seed
+
+*/
+function estimate_bridge_area(edges, counts, peaks) {
+  const left = peaks.g1Mean + BRIDGE_SIGMA_OFFSET * Math.abs(peaks.g1Mean * peaks.g1CV);
+  const right = peaks.g2Mean - BRIDGE_SIGMA_OFFSET * Math.abs(peaks.g2Mean * peaks.g2CV);
+  if (!(right > left)) return 1; // peaks overlap within 2 sigma; fall back to the residual seed
   let total = 0;
   for (let i = 0; i < counts.length; i += 1) {
     const center = 0.5 * (edges[i] + edges[i + 1]);
-    if (center > regions.g1.right && center < regions.g2.left) total += counts[i];
+    if (center > left && center < right) total += counts[i];
   }
   return Math.max(1, total);
+}
+
+/*
+
+Purpose:
+	A second, independent S-area seed: whatever the histogram holds that the two
+	fitted peaks do not account for. Complements estimate_bridge_area(), which
+	under-counts S wherever the peaks' own tails overlap the bridge.
+
+Input:
+	counts [array]: per-bin counts
+	peaks [object]: the peak estimate (needs g1Area and g2Area)
+
+Output:
+	area [number]: a positive S-area seed
+
+*/
+function estimate_residual_area(counts, peaks) {
+  let total = 0;
+  for (const value of counts) total += value;
+  return Math.max(1, total - peaks.g1Area - peaks.g2Area);
 }
 
 // A small deterministic grid of wave placements (waveMean x waveSigma) used to
@@ -433,12 +522,6 @@ function estimate_between_peaks_area(edges, counts, regions) {
 // with two widths (tight/broad) gives the optimizer a real chance at
 // whichever placement the true wave happens to be near, rather than betting
 // on just one or two fixed guesses.
-// Share of the S area in the wave above which the fit reports a "complex S-phase
-// shape" note. Chosen to be well clear of the small w values a smooth profile
-// picks up from noise, without waiting until the wave dominates: at w = 0.2 a
-// fifth of S sits in one narrow band, which a reader should see.
-const WAVE_NOTICE_FRACTION = 0.2;
-
 const WAVE_PLACEMENT_GRID = [
   [0.3, 0.06], [0.5, 0.06], [0.7, 0.06],
   [0.3, 0.15], [0.5, 0.15], [0.7, 0.15],
@@ -447,11 +530,19 @@ const WAVE_PLACEMENT_GRID = [
 /*
 
 Purpose:
-	Builds the deterministic theta_F,0 start candidates. Region-based starts
-	mirror Dean-Jett's own with w=0; the wave-placement-grid starts activate a
-	modest wave at each grid placement from the outset, so a real wave is
-	reachable without climbing out of the w=0 plateau and isn't missed for
-	sitting away from one guessed placement.
+	Builds the deterministic theta_F,0 start candidates.
+
+	Only the S-phase coordinates vary between starts. The six peak slots are
+	filled from the clean-flank estimate and are identical in every start, because
+	make_project_fn() overwrites them with exactly those values anyway -- the
+	peaks are fixed, so a start that disagreed about them would be projected back
+	before the first residual evaluation. (Seeding a second, region-based peak
+	estimate here produced a set of starts that were bit-identical after
+	projection: twice the restarts, same search.)
+
+	The S coordinates that DO vary: two width-independent area seeds, a flat and
+	two sloped Bernstein shapes, and the wave-placement grid, so a genuine wave is
+	reachable without first climbing out of the w=0 plateau.
 
 Input:
 	edges [array]: histogram bin edges
@@ -464,33 +555,38 @@ Output:
 	starts [array]: an array of theta_F start vectors
 
 */
-function build_parameter_starts(edges, counts, regions, config) {
-  const g1Init = estimatePeakFromRegion(edges, counts, regions.g1, { label: "G1" });
-  const g2Init = estimatePeakFromRegion(edges, counts, regions.g2, { label: "G2/M" });
+function build_parameter_starts(edges, counts, regions, config, cleanFlankPeaks) {
+  // Two width-independent S seeds: the bridge between the peaks, and whatever
+  // the peaks leave unexplained. Neither reads the region edges, so widening a
+  // region cannot starve the S estimate.
+  const bridgeGuess = estimate_bridge_area(edges, counts, cleanFlankPeaks);
+  const residualGuess = estimate_residual_area(counts, cleanFlankPeaks);
+  const sAreaGuess = Math.max(bridgeGuess, residualGuess);
 
-  let g1CV = clamp(g1Init.cv, config.cvMin, config.cvMax);
-  let g2CV = clamp(g2Init.cv, config.cvMin, config.cvMax);
-  if (config.cvMode === "equal") g2CV = g1CV;
-
-  const { g1Mean, g2Mean } = project_means(g1Init.mean, g2Init.mean, regions, config);
-  const sAreaGuess = estimate_between_peaks_area(edges, counts, regions);
-
-  const base = [
-    Math.max(1, g1Init.area), g1Mean, g1CV,
-    Math.max(1, g2Init.area), g2Mean, g2CV,
-    sAreaGuess, 0, 0,
-    0, 0.5, 0.15, // w=0, neutral (inactive) wave placement
+  let g1CV = clamp(cleanFlankPeaks.g1CV, config.cvMin, config.cvMax);
+  let g2CV = config.cvMode === "equal"
+    ? g1CV
+    : clamp(cleanFlankPeaks.g2CV, config.cvMin, config.cvMax);
+  const { g1Mean, g2Mean } = project_means(
+    cleanFlankPeaks.g1Mean, cleanFlankPeaks.g2Mean, regions, config,
+  );
+  const head = [
+    Math.max(1, cleanFlankPeaks.g1Area), g1Mean, g1CV,
+    Math.max(1, cleanFlankPeaks.g2Area), g2Mean, g2CV,
+    sAreaGuess,
   ];
 
-  const starts = [
-    base,
-    [...base.slice(0, PARAMETER_INDEX.SHAPE1), 0.8, -0.5, 0, 0.5, 0.15],
-    [...base.slice(0, PARAMETER_INDEX.SHAPE1), -0.8, -0.5, 0, 0.5, 0.15],
-    ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => [...base.slice(0, PARAMETER_INDEX.SHAPE1), 0, 0, 0.25, waveMean, waveSigma]),
+  return [
+    [...head, 0, 0, 0, 0.5, 0.15], // flat profile, w=0 (neutral wave placement)
+    [...head, 0.8, -0.5, 0, 0.5, 0.15],
+    [...head, -0.8, -0.5, 0, 0.5, 0.15],
+    // The alternate S-area seed, so whichever of the two is closer on this
+    // sample is available to the multi-start rather than being averaged away.
+    [...head.slice(0, PARAMETER_INDEX.S_AREA), Math.min(bridgeGuess, residualGuess), 0, 0, 0, 0.5, 0.15],
+    ...WAVE_PLACEMENT_GRID.map(([waveMean, waveSigma]) => [...head, 0, 0, 0.25, waveMean, waveSigma]),
   ];
-
-  return starts;
 }
+
 
 function convergence_reason(fit) {
   if (fit.cancelled) return "cancelled";
@@ -554,9 +650,9 @@ export const dean_jett_fox = {
     // The clean-flank estimate IS the peaks: measured once here and held fixed
     // for the whole fit. Only the S phase below is optimized.
     const cleanFlankPeaks = clean_flank_fixed_peaks(edges, counts, regions);
-    const parameterStarts = build_parameter_starts(edges, counts, regions, config);
+    const parameterStarts = build_parameter_starts(edges, counts, regions, config, cleanFlankPeaks);
     const projectFn = make_project_fn(regions, config, { fixedPeaks: cleanFlankPeaks });
-    const parameterTransform = make_parameter_transform(regions, config);
+    const parameterTransform = make_parameter_transform(cleanFlankPeaks, config);
     const freeIndices = free_indices();
 
     const fit = fitPoissonModel({

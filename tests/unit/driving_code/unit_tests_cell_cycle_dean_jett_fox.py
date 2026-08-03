@@ -218,6 +218,41 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     return { label, s: fit.phaseFractions.s, g1CV: fit.parameters.g1CV, sArea: fit.parameters.sArea };
   });
 
+  run('region WIDTH does not change the fitted %S (a wide region must not starve S)', () => {
+    const values = widthFits.map((entry) => 100 * entry.s);
+    const spread = Math.max(...values) - Math.min(...values);
+    // All three regions comfortably contain both true means, so the only thing
+    // varying is how generously the box was drawn. 1.5pp allows for the
+    // optimizer landing in slightly different places; the pre-fix behaviour
+    // moved %S by far more than this through the S seed alone.
+    return {
+      pass: spread < 1.5,
+      detail: JSON.stringify({ spread, byWidth: widthFits.map((e) => [e.label, +(100 * e.s).toFixed(2)]) }),
+    };
+  });
+
+  run('region WIDTH does not change the fitted peak width', () => {
+    const values = widthFits.map((entry) => entry.g1CV);
+    const spread = Math.max(...values) - Math.min(...values);
+    return {
+      pass: spread < 0.005,
+      detail: JSON.stringify({ spread, byWidth: widthFits.map((e) => [e.label, +e.g1CV.toFixed(4)]) }),
+    };
+  });
+
+  run('a region still HARD-BOUNDS the fitted mean to the drawn interval', () => {
+    // The one job a region does keep: the mean cannot leave it.
+    const narrow = { g1: { left: 74, right: 78 }, g2: { left: 115, right: 165 } };
+    const fit = djf.normalizeResult(djf.fit({
+      histogram: { edges, counts: twoPeakCounts }, peakRegions: narrow, config: {},
+    }));
+    return {
+      pass: fit.parameters.g1Mean >= 74 - 1e-9 && fit.parameters.g1Mean <= 78 + 1e-9
+        && fit.bounds.g1Mean[0] === 74 && fit.bounds.g1Mean[1] === 78,
+      detail: JSON.stringify({ g1Mean: fit.parameters.g1Mean, bounds: fit.bounds.g1Mean }),
+    };
+  });
+
   run('the fit produces a converged, area-conserving result on standard two-peak data', () => {
     const f = twoPeakFit.phaseFractions;
     const sum = f.g1 + f.s + f.g2;
