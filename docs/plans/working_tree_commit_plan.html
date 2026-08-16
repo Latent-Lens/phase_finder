@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PhaseFinder Working Tree Commit Plan</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f5f7fb;
+        --surface: #ffffff;
+        --surface-2: #edf2f8;
+        --text: #172033;
+        --muted: #596579;
+        --border: #cbd5e1;
+        --accent: #2458a6;
+        --accent-soft: #e8f0ff;
+        --warn: #8a4b08;
+        --warn-soft: #fff4d6;
+        --hold: #7a2834;
+        --hold-soft: #ffe9ed;
+        --code: #eef2f6;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #10141d;
+          --surface: #171d28;
+          --surface-2: #202938;
+          --text: #edf2f7;
+          --muted: #aab6c8;
+          --border: #3b4658;
+          --accent: #8db8ff;
+          --accent-soft: #1d3151;
+          --warn: #ffd38a;
+          --warn-soft: #493515;
+          --hold: #ffabb9;
+          --hold-soft: #4a2029;
+          --code: #222b39;
+        }
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main { width: min(1120px, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 4rem; }
+      h1, h2, h3 { line-height: 1.2; }
+      h1 { margin: 0 0 .5rem; font-size: clamp(2rem, 5vw, 3.25rem); }
+      h2 { margin-top: 2.5rem; }
+      p { max-width: 80ch; }
+      a { color: var(--accent); }
+      code {
+        padding: .1rem .3rem;
+        border-radius: .25rem;
+        background: var(--code);
+        overflow-wrap: anywhere;
+      }
+      .lede { color: var(--muted); font-size: 1.1rem; }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: .75rem;
+        margin: 1.5rem 0;
+      }
+      .metric, .notice, .commit, .hold {
+        border: 1px solid var(--border);
+        border-radius: .75rem;
+        background: var(--surface);
+      }
+      .metric { padding: 1rem; }
+      .metric strong { display: block; font-size: 1.65rem; }
+      .metric span { color: var(--muted); }
+      .notice { padding: 1rem 1.1rem; border-left: .35rem solid var(--accent); }
+      .notice.warning { border-left-color: var(--warn); background: var(--warn-soft); }
+      .approval {
+        margin: 1.25rem 0;
+        padding: 1rem;
+        border-radius: .65rem;
+        background: var(--accent-soft);
+      }
+      .commit-list { display: grid; gap: 1rem; }
+      .commit { padding: 1.1rem 1.25rem; }
+      .commit header { display: flex; align-items: flex-start; gap: .9rem; }
+      .number {
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        width: 2.4rem;
+        height: 2.4rem;
+        border-radius: 50%;
+        background: var(--accent);
+        color: var(--surface);
+        font-weight: 800;
+      }
+      .commit h3 { margin: .1rem 0 .4rem; }
+      .message { margin: 0; font-weight: 650; }
+      .meta { color: var(--muted); }
+      .badge {
+        display: inline-block;
+        margin-right: .4rem;
+        padding: .12rem .45rem;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--surface-2);
+        color: var(--muted);
+        font-size: .78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+      }
+      .files { columns: 2 23rem; padding-left: 1.25rem; }
+      .files li { break-inside: avoid; margin: .25rem 0; }
+      .details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: .75rem;
+        margin-top: .9rem;
+      }
+      .details > div { padding: .75rem; border-radius: .5rem; background: var(--surface-2); }
+      .details strong { display: block; margin-bottom: .2rem; }
+      .hold { padding: 1rem 1.25rem; background: var(--hold-soft); }
+      .hold h3 { color: var(--hold); }
+      table { width: 100%; border-collapse: collapse; background: var(--surface); }
+      th, td { padding: .65rem; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+      th { background: var(--surface-2); }
+      @media (max-width: 600px) {
+        main { width: min(100% - 1rem, 1120px); padding-top: 1rem; }
+        .commit { padding: .9rem; }
+        .files { columns: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="meta">PhaseFinder · branch <code>cell-cycle-modeling-sidebar</code> · prepared 2026-07-30</p>
+        <h1>Working Tree Commit Plan</h1>
+        <p class="lede">Every pre-plan uncommitted file is assigned to a numbered functional commit or an explicit hold. No proposed commit has been created.</p>
+      </header>
+
+      <section class="summary" aria-label="Inventory summary">
+        <div class="metric"><strong>11</strong><span>proposed commits</span></div>
+        <div class="metric"><strong>29</strong><span>tracked changed files</span></div>
+        <div class="metric"><strong>25</strong><span>individual untracked files</span></div>
+        <div class="metric"><strong>3</strong><span>planning or scratch holds</span></div>
+      </section>
+
+      <div class="notice">
+        <strong>License history is already separate from this plan.</strong>
+        PolyForm Noncommercial 1.0.0 is present in every commit reachable from the standard local branches, remote-tracking refs, and tag. Those rewritten refs have not been pushed. The license rewrite therefore needs a coordinated force-push, not another ordinary commit.
+      </div>
+
+      <div class="approval">
+        <strong>Approval syntax:</strong>
+        say <code>commit 1-5 and 7-9, but not 6, 10, or 11</code>. Ranges and individual numbers can be mixed. Shared files in commits 1 and 2 will be staged by hunk.
+      </div>
+
+      <h2>Proposed commits</h2>
+      <section class="commit-list" aria-label="Proposed commits">
+        <article class="commit" id="commit-1">
+          <header><span class="number">1</span><div><h3>Truthful optimizer convergence</h3><p class="message"><code>fix(math): report truthful optimizer convergence</code></p></div></header>
+          <p>Require objective and step agreement, distinguish stalls and numerical failures, and carry termination evidence through the legacy adapter and scientific-result contract.</p>
+          <ul class="files">
+            <li data-path="js/analysis/math/lm_solver.js"><span class="badge">M</span><code>js/analysis/math/lm_solver.js</code></li>
+            <li data-path="js/analysis/legacy_bridge_fit.js"><span class="badge">M</span><code>js/analysis/legacy_bridge_fit.js</code></li>
+            <li data-path="js/analysis/cell_cycle/models/legacy_bridge.js"><span class="badge">M</span><code>js/analysis/cell_cycle/models/legacy_bridge.js</code></li>
+            <li data-path="js/analysis/cell_cycle/result_contract.js"><span class="badge">Partial</span><code>js/analysis/cell_cycle/result_contract.js</code> — convergence enforcement hunks</li>
+            <li data-path="tests/unit/driving_code/unit_tests_djf_shared.py"><span class="badge">M</span><code>tests/unit/driving_code/unit_tests_djf_shared.py</code></li>
+            <li data-path="tests/unit/driving_code/unit_tests_djf_pipeline.py"><span class="badge">M</span><code>tests/unit/driving_code/unit_tests_djf_pipeline.py</code></li>
+            <li data-path="tests/unit/driving_code/unit_tests_cell_cycle_worker.py"><span class="badge">M</span><code>tests/unit/driving_code/unit_tests_cell_cycle_worker.py</code></li>
+            <li data-path="tests/unit/driving_code/unit_tests_cell_cycle_fit_orchestration.py"><span class="badge">Partial</span><code>tests/unit/driving_code/unit_tests_cell_cycle_fit_orchestration.py</code> — stall-normalization test</li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>None.</div><div><strong>Check</strong>Run the browser unit suite; inspect LM termination diagnostics for the four new boundary cases.</div><div><strong>Risk</strong>High scientific behavior change; review before commit 2.</div></div>
+        </article>
+
+        <article class="commit" id="commit-2">
+          <header><span class="number">2</span><div><h3>Fail-closed result reporting</h3><p class="message"><code>fix(modeling): withhold nonreportable phase fractions</code></p></div></header>
+          <p>Use one reporting summary in the fit panel, metadata table, and exported HTML so diagnostic or nonconverged fits retain a reason but never publish phase fractions.</p>
+          <ul class="files">
+            <li data-path="js/analysis/cell_cycle/result_contract.js"><span class="badge">Partial</span><code>js/analysis/cell_cycle/result_contract.js</code> — reporting-summary export</li>
+            <li data-path="js/analysis/cell_cycle/modeling_ui.js"><span class="badge">M</span><code>js/analysis/cell_cycle/modeling_ui.js</code></li>
+            <li data-path="js/plotting/plot_export.js"><span class="badge">M</span><code>js/plotting/plot_export.js</code></li>
+            <li data-path="js/data_structs/derived_columns.js"><span class="badge">M</span><code>js/data_structs/derived_columns.js</code></li>
+            <li data-path="js/ui/cell_cycle_columns.js"><span class="badge">M</span><code>js/ui/cell_cycle_columns.js</code></li>
+            <li data-path="tests/unit/driving_code/unit_tests_cell_cycle_fit_orchestration.py"><span class="badge">Partial</span><code>tests/unit/driving_code/unit_tests_cell_cycle_fit_orchestration.py</code> — reporting-consumer test</li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>Commit 1.</div><div><strong>Check</strong>Run unit tests and export one converged and one diagnostic result.</div><div><strong>Staging</strong>Use hunk staging for the two shared files.</div></div>
+        </article>
+
+        <article class="commit" id="commit-3">
+          <header><span class="number">3</span><div><h3>Dean–Jett–Fox fitting policy</h3><p class="message"><code>fix(modeling): default DJF to clean-flank fitting</code></p></div></header>
+          <p>Make the validated peaks-first estimator the standalone DJF default while forcing automatic DJ-versus-DJF selection to keep its like-for-like joint fit.</p>
+          <ul class="files">
+            <li data-path="js/analysis/cell_cycle/models/dean_jett_fox.js"><span class="badge">M</span><code>js/analysis/cell_cycle/models/dean_jett_fox.js</code></li>
+            <li data-path="js/analysis/cell_cycle/model_selection.js"><span class="badge">M</span><code>js/analysis/cell_cycle/model_selection.js</code></li>
+            <li data-path="tests/unit/driving_code/unit_tests_cell_cycle_dean_jett_fox.py"><span class="badge">M</span><code>tests/unit/driving_code/unit_tests_cell_cycle_dean_jett_fox.py</code></li>
+            <li data-path="docs/djf-model-validation.html"><span class="badge">A</span><code>docs/djf-model-validation.html</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>None; land after commit 1 if both are approved.</div><div><strong>Check</strong>Run DJF and automatic-selection unit tests; review empirical claims in the validation page.</div><div><strong>Risk</strong>Changes default scientific estimates.</div></div>
+        </article>
+
+        <article class="commit" id="commit-4">
+          <header><span class="number">4</span><div><h3>Modal and progress focus</h3><p class="message"><code>fix(a11y): preserve focus across dialogs and progress overlays</code></p></div></header>
+          <p>Restore the correct inert state when nested dialogs close, hide zero-delay progress synchronously, and use a cross-version focus assertion in browser tests.</p>
+          <ul class="files">
+            <li data-path="js/ui/modal_focus.js"><span class="badge">M</span><code>js/ui/modal_focus.js</code></li>
+            <li data-path="js/ui/status_channels.js"><span class="badge">M</span><code>js/ui/status_channels.js</code></li>
+            <li data-path="tests/e2e/driving_code/tests_plotting.py"><span class="badge">M</span><code>tests/e2e/driving_code/tests_plotting.py</code></li>
+            <li data-path="tests/e2e/driving_code/tests_reset.py"><span class="badge">M</span><code>tests/e2e/driving_code/tests_reset.py</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>None.</div><div><strong>Check</strong>Run the reset and plotting E2E groups with keyboard focus assertions.</div><div><strong>Risk</strong>Low, but nested-overlay behavior needs browser verification.</div></div>
+        </article>
+
+        <article class="commit" id="commit-5">
+          <header><span class="number">5</span><div><h3>Topic-based help center</h3><p class="message"><code>feat(help): split the help center into topic pages</code></p></div></header>
+          <p>Replace the monolithic help document with an index and seven topic pages, update in-app links, and make every page a production-build entry.</p>
+          <ul class="files">
+            <li data-path="help.html"><span class="badge">D</span><code>help.html</code></li>
+            <li data-path="help/index.html"><span class="badge">A</span><code>help/index.html</code></li>
+            <li data-path="help/help-getting-started.html"><span class="badge">A</span><code>help/help-getting-started.html</code></li>
+            <li data-path="help/help-metadata.html"><span class="badge">A</span><code>help/help-metadata.html</code></li>
+            <li data-path="help/help-plotting.html"><span class="badge">A</span><code>help/help-plotting.html</code></li>
+            <li data-path="help/help-modeling.html"><span class="badge">A</span><code>help/help-modeling.html</code></li>
+            <li data-path="help/help-statistics.html"><span class="badge">A</span><code>help/help-statistics.html</code></li>
+            <li data-path="help/help-sessions.html"><span class="badge">A</span><code>help/help-sessions.html</code></li>
+            <li data-path="help/help-troubleshooting.html"><span class="badge">A</span><code>help/help-troubleshooting.html</code></li>
+            <li data-path="css/help.css"><span class="badge">M</span><code>css/help.css</code></li>
+            <li data-path="index.html"><span class="badge">M</span><code>index.html</code></li>
+            <li data-path="js/io/metadata_io.js"><span class="badge">M</span><code>js/io/metadata_io.js</code></li>
+            <li data-path="vite.config.js"><span class="badge">M</span><code>vite.config.js</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>None.</div><div><strong>Check</strong>Build root and subpath artifacts; crawl all local help links and fragments.</div><div><strong>Risk</strong>Broken deep links if the old <code>help.html#…</code> URL has external users.</div></div>
+        </article>
+
+        <article class="commit" id="commit-6">
+          <header><span class="number">6</span><div><h3>BrowserStack Safari retirement</h3><p class="message"><code>ci(browser): remove the BrowserStack Safari job</code></p></div></header>
+          <p>Remove the credential-dependent native-Safari workflow and its Selenium-only test files.</p>
+          <ul class="files">
+            <li data-path=".github/workflows/safari-browserstack.yml"><span class="badge">D</span><code>.github/workflows/safari-browserstack.yml</code></li>
+            <li data-path="tests/safari/requirements.txt"><span class="badge">D</span><code>tests/safari/requirements.txt</code></li>
+            <li data-path="tests/safari/test_native_safari.py"><span class="badge">D</span><code>tests/safari/test_native_safari.py</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>None.</div><div><strong>Check</strong>Confirm current Playwright WebKit coverage is the intended replacement.</div><div><strong>Risk</strong>Explicit approval recommended: this reduces native Safari coverage.</div></div>
+        </article>
+
+        <article class="commit" id="commit-7">
+          <header><span class="number">7</span><div><h3>Project and release documentation</h3><p class="message"><code>docs(project): consolidate usage, compatibility, and release guidance</code></p></div></header>
+          <p>Bring the README, supported-FCS policy, metadata import behavior, repository map, release/privacy policy, and moved test paths into one documentation update.</p>
+          <ul class="files">
+            <li data-path="README.md"><span class="badge">M</span><code>README.md</code></li>
+            <li data-path="docs/fcs-analysis-compatibility.md"><span class="badge">A</span><code>docs/fcs-analysis-compatibility.md</code></li>
+            <li data-path="docs/metadata-import.md"><span class="badge">A</span><code>docs/metadata-import.md</code></li>
+            <li data-path="docs/project-directory-tree.html"><span class="badge">A</span><code>docs/project-directory-tree.html</code></li>
+            <li data-path="docs/release-and-privacy.md"><span class="badge">A</span><code>docs/release-and-privacy.md</code></li>
+            <li data-path="docs/plans/cell_cycle_modeling_plan.md"><span class="badge">M</span><code>docs/plans/cell_cycle_modeling_plan.md</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>Land after approved behavior commits, especially 3 and 5.</div><div><strong>Check</strong>Verify every documented command/path and all internal links.</div><div><strong>Note</strong>This includes the README’s PolyForm license statement.</div></div>
+        </article>
+
+        <article class="commit" id="commit-8">
+          <header><span class="number">8</span><div><h3>Scientific authority documentation</h3><p class="message"><code>docs(modeling): document authoritative scientific results</code></p></div></header>
+          <p>Document which model object is authoritative, when fractions are reportable, and how low-level or legacy outputs are quarantined.</p>
+          <ul class="files">
+            <li data-path="docs/model-result-contract.md"><span class="badge">A</span><code>docs/model-result-contract.md</code></li>
+            <li data-path="docs/scientific-result-contract.md"><span class="badge">A</span><code>docs/scientific-result-contract.md</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>Commits 1 and 2.</div><div><strong>Check</strong>Cross-check every named state field and consumer against current source.</div><div><strong>Risk</strong>Documentation must not overstate enforcement.</div></div>
+        </article>
+
+        <article class="commit" id="commit-9">
+          <header><span class="number">9</span><div><h3>Peak-tracking Time QC specification</h3><p class="message"><code>docs(qc): specify peak-tracking Time QC</code></p></div></header>
+          <p>Add the standalone algorithm, UI, persistence, guardrail, and test specification for the remaining peak-tracking work.</p>
+          <ul class="files">
+            <li data-path="docs/plans/peak_tracking_time_qc_implementation_spec.md"><span class="badge">A</span><code>docs/plans/peak_tracking_time_qc_implementation_spec.md</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>None.</div><div><strong>Check</strong>Review as a plan only; it does not claim the deferred algorithm is implemented.</div><div><strong>Risk</strong>Low code risk; high scope commitment if treated as promised work.</div></div>
+        </article>
+
+        <article class="commit" id="commit-10">
+          <header><span class="number">10</span><div><h3>Audit source findings</h3><p class="message"><code>docs(audit): archive frontend and UX findings</code></p></div></header>
+          <p>Archive the full-project report and its two source remediation audits as review evidence.</p>
+          <ul class="files">
+            <li data-path="docs/audits/codex_audit_of_full_project.html"><span class="badge">A</span><code>docs/audits/codex_audit_of_full_project.html</code></li>
+            <li data-path="docs/audits/archive/needs_be_fixed_frontend_dev.md"><span class="badge">A</span><code>docs/audits/archive/needs_be_fixed_frontend_dev.md</code></li>
+            <li data-path="docs/audits/archive/needs_to_be_fixed_ux.md"><span class="badge">A</span><code>docs/audits/archive/needs_to_be_fixed_ux.md</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>None; optional historical evidence.</div><div><strong>Superseded 2026-08-15</strong>Both remediation audits were merged into <code>docs/audits/master_checklist.md</code> and moved from the repository root to <code>docs/audits/archive/</code>. Paths above reflect the new locations.</div><div><strong>Check</strong>Review for stale claims, machine-specific paths, and sensitive information.</div><div><strong>Risk</strong>Large reports can become misleading if presented as current truth.</div></div>
+        </article>
+
+        <article class="commit" id="commit-11">
+          <header><span class="number">11</span><div><h3>Remediation tracker and baselines</h3><p class="message"><code>docs(audit): add remediation checklist and baselines</code></p></div></header>
+          <p>Preserve the checklist, the browser/scientific pre-remediation baselines it cites, and the derived checkbox-count workbook. <strong>Superseded 2026-08-15:</strong> the remediation checklist is no longer the active tracker — <code>docs/audits/master_checklist.md</code> is — and it was moved to <code>docs/audits/archive/</code> for provenance.</p>
+          <ul class="files">
+            <li data-path="docs/audits/archive/codex_audit_of_full_project_remediation_checklist.md"><span class="badge">A</span><code>docs/audits/archive/codex_audit_of_full_project_remediation_checklist.md</code></li>
+            <li data-path="docs/audits/baselines/browser_unit_baseline_2026-07-28.md"><span class="badge">A</span><code>docs/audits/baselines/browser_unit_baseline_2026-07-28.md</code></li>
+            <li data-path="docs/audits/baselines/scientific_numeric_baseline_2026-07-24.json"><span class="badge">A</span><code>docs/audits/baselines/scientific_numeric_baseline_2026-07-24.json</code></li>
+            <li data-path="code_audit_checkbox_counts_by_code.xlsx"><span class="badge">A · Binary</span><code>code_audit_checkbox_counts_by_code.xlsx</code></li>
+          </ul>
+          <div class="details"><div><strong>Dependency</strong>Commit 10 is recommended, not required.</div><div><strong>Check</strong>Recount checklist totals and verify baseline source hashes.</div><div><strong>Risk</strong>The workbook is opaque/derived; omit it if the checklist is authoritative enough.</div></div>
+        </article>
+      </section>
+
+      <h2>Explicit holds</h2>
+      <section class="commit-list" aria-label="Files not proposed for commits">
+        <article class="hold">
+          <h3>H1 · Personal task list</h3>
+          <p data-path="docs/audits/archive/todo.md"><code>todo.md</code> mixes requests, open questions, and old session notes. Keep it local unless you explicitly want a public backlog. <strong>Superseded 2026-08-15:</strong> its items were folded into <code>docs/audits/master_checklist.md</code> and the file moved to <code>docs/audits/archive/todo.md</code>.</p>
+        </article>
+        <article class="hold">
+          <h3>H2 · Superseded Markdown plan</h3>
+          <p data-path="docs/plans/working_tree_commit_plan.md"><code>docs/plans/working_tree_commit_plan.md</code> describes changes already committed and uses obsolete IDs. Do not commit it.</p>
+        </article>
+        <article class="hold">
+          <h3>H3 · This approval artifact</h3>
+          <p><code>docs/plans/working_tree_commit_plan.html</code> is the live approval document. Keep it uncommitted while executing the plan; delete it afterward or approve a separate documentation commit.</p>
+        </article>
+      </section>
+
+      <h2>Order and shared-file boundaries</h2>
+      <table>
+        <thead><tr><th>Order</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>1 → 2</td><td>Reporting must consume the convergence semantics introduced by commit 1.</td></tr>
+          <tr><td>3</td><td>Independent scientific policy; preferably reviewed beside commits 1–2.</td></tr>
+          <tr><td>4–6</td><td>Independent UI/help/CI changes.</td></tr>
+          <tr><td>8 → 7</td><td>Land authoritative-result documentation before the broad README consolidation.</td></tr>
+          <tr><td>9–11</td><td>Plans and audit evidence belong after product behavior and user documentation.</td></tr>
+        </tbody>
+      </table>
+      <p class="meta">Coverage rule: every one of the 54 pre-plan file paths appears above. Repeated paths are limited to the two explicitly hunk-staged files in commits 1 and 2.</p>
+    </main>
+  </body>
+</html>
