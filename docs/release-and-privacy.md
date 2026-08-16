@@ -28,11 +28,11 @@ Contributors run `nvm use` in the checkout. Declared and installed versions must
 never be left disagreeing — that state blocks `npm run check` entirely, because
 the gate begins with `npm run preflight`.
 
-**Verification gap:** at the time of the switch the gate could not be confirmed
-end-to-end on 24, because `npm test` was independently blocked by a missing
-Playwright environment (ENV-02). Everything up to that point passed on 24 —
-preflight, lint, DOM bindings, documents, import graph, privacy scan, and the
-25 CI tests. Re-run the full gate once ENV-02 is resolved.
+**Verified on 24:** `npm run check` exits 0 end to end — preflight, lint, DOM
+bindings, documents, import graph, privacy scan, 25 CI tests, 756/756 browser
+unit checks, production build with provenance, and artifact verification. The
+switch was made before the browser suites could run (they were blocked by
+ENV-02) and confirmed in full once that was fixed, both on 2026-08-15.
 
 ## Release-note script contract
 

@@ -42,13 +42,38 @@ Use Node 24 (the exact major is pinned in `.nvmrc`) and Python 3.12:
 
 ```bash
 npm ci
-python3 -m pip install --requirement requirements-dev.txt
-python3 -m playwright install chromium
+python3 -m venv .venv
+./.venv/bin/python -m pip install --requirement requirements-dev.txt
+./.venv/bin/python -m playwright install chromium
 npm test
 npm run build
 npm run check:dist
 npm run preview
 ```
+
+### Which Python the tests use
+
+Every `npm run test:*` script goes through `scripts/python.sh`, which resolves
+the interpreter in the same order as the pre-commit hook:
+`$PHASEFINDER_TEST_PYTHON`, then `./.venv/bin/python`, then `python3`. Creating
+`.venv` as above is therefore enough; no environment variable is needed. `.venv`
+may also be a symlink to an interpreter kept outside the checkout, and it is
+gitignored either way.
+
+This indirection exists because a bare `python3` is frequently a shim without
+playwright installed, which fails the browser suites while a perfectly good
+environment sits unused.
+
+Two Python environments are involved and they are **not** interchangeable:
+
+| Environment | Purpose | Installed from |
+| --- | --- | --- |
+| `.venv` | browser unit/e2e suites (`npm test`, `npm run check`) | `requirements-dev.txt` |
+| `tests/external_tools/.venv` | independent-tool comparison harness — flowio, flowkit, numpy, scikit-learn, plus an R library tree | its own scripts under `tests/external_tools/`; see that directory's README |
+
+The external-tools environment is large (>1 GB with `rlib/` and `results/`),
+reconstructible from its scripts, and fully gitignored. It does not read
+`requirements-dev.txt`, and nothing in `npm run check` depends on it.
 
 `npm run dev` serves the source module graph for development. `npm run build`
 creates the reviewed production artifact under `dist/`, and `npm run preview`

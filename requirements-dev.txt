@@ -1,2 +1,8 @@
-playwright==1.61.0
+# Browser test suites. playwright is pinned to the version the 756-check unit
+# suite is validated against (verified 2026-08-15 against Chromium 148).
+playwright==1.60.0
+
+# Used only by tests/validation/driving_code/generate_flowio_reference.py.
+# The independent-tool comparison harness has its own environment under
+# tests/external_tools/.venv and does not read this file.
 flowio==1.4.0

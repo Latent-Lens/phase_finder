@@ -19,6 +19,11 @@ tests/validation/validation_test_data/external_fcs/files/
 tests/validation/validation_test_data/external_fcs/results/
 flow_data
 
+# Project Python environment for the browser test suites. Usually a symlink to
+# an interpreter kept outside the checkout; never committed either way.
+.venv
+.venv/
+
 # Independent-tool comparison harness. Commit only driving_code/; the isolated
 # Python venv, the downloaded R library tree, and every generated report stay
 # local (together they are >1 GB and are all reconstructible by the scripts).

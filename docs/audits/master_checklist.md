@@ -62,17 +62,26 @@ $ node scripts/preflight.cjs   (on 24) → requires Node 22.x; found v24.16.0   
 - [x] Recorded in `docs/release-and-privacy.md` under **Toolchain pin**, with the rationale and the two-file change rule.
 - [x] `packageManager` corrected to `npm@11.13.0` (the npm shipping with 24.16.0; was `10.9.0`). Not enforced — no corepack — but `scripts/generate-provenance.cjs:19-20` falls back to it outside npm invocations, so a stale value would misreport npm in release provenance.
 
-**Gate status on 24:** passes preflight, `lint:js`, `check:dom` (225 static + 4 generated IDs), `check:docs` (14 HTML, 17 Markdown), `check:imports` (137 modules, 428 edges), `check:privacy` (527 tracked paths), and `test:ci` (25 tests). It then stops at `test:unit` on `ModuleNotFoundError: No module named 'playwright'` — **that is ENV-02, not this item.** `npm run build` and `check:dist` are still unverified because they sit behind the failing test step; re-run the full gate once ENV-02 is fixed.
+**Gate status on 24:** `npm run check` exits 0 end to end — preflight, `lint:js`, `check:dom` (225 static + 4 generated IDs), `check:docs` (14 HTML, 17 Markdown), `check:imports` (137 modules, 428 edges), `check:privacy` (527 tracked paths), `test:ci` (25 tests), `test:unit` (756/756), `build` + provenance (43 files), and `check:dist` (44 files). Verified 2026-08-15 after ENV-02 was fixed.
 
-### ENV-02 — The working Playwright venv is not discoverable
+### ENV-02 — The working Playwright venv is not discoverable — RESOLVED 2026-08-15
 
-**Priority:** P2 · **Effort:** 1 minute
+**Priority:** P2 · **Effort:** 1 minute (**actual: the diagnosis below was wrong; see resolution**)
 
 **Problem:** A working venv exists at `~/.venvs/playwright` (Python 3.12.13, playwright 1.60.0, Chromium verified). Test drivers look for `PHASEFINDER_TEST_PYTHON` → `./.venv/bin/python` → `python3`. The project has no `.venv`, and bare `python3` resolves to a uv shim without playwright — so `npm run test:unit` fails despite a perfectly good venv being present.
 
-- [ ] `ln -s ~/.venvs/playwright .venv` (already gitignored; makes `npm test` and the pre-commit hook work with no env var).
-- [ ] Reconcile `requirements-dev.txt` (pins playwright **1.61.0**) with the venv's **1.60.0**.
-- [ ] Document in README that `tests/external_tools/.venv` is a separate environment (flowio, flowkit, numpy, scikit-learn) for independent-tool comparison.
+**Two errors in that diagnosis, both found while fixing it:**
+
+1. **Only `.githooks/pre-commit` implemented that resolution chain — the npm scripts did not.** `test:unit` and its siblings called bare `python3`. The symlink alone would have fixed the hook and left `npm run check` failing exactly as before.
+2. **`.venv` was not gitignored.** Only `tests/external_tools/.venv/` was. Creating the symlink would have left an untracked `.venv` at the root, one `git add -A` away from being committed.
+
+- [x] `ln -s ~/.venvs/playwright .venv` — created and verified (`playwright 1.60.0`, Chromium 148.0.7778.96 launches).
+- [x] `.venv` and `.venv/` added to `.gitignore` with a comment covering the symlink case.
+- [x] Added `scripts/python.sh`, which implements the documented resolution order (`$PHASEFINDER_TEST_PYTHON` → `./.venv/bin/python` → `python3`) copied from the hook, and repointed all five `test:*` npm scripts at it. This is what actually unblocked the gate. `check:docs` and `check:imports` still call `python3` deliberately — they are stdlib-only and interpreter-agnostic.
+- [x] Reconciled `requirements-dev.txt` **down to `playwright==1.60.0`**, matching the environment the 756-check suite is actually validated against. The 1.61.0 pin had never been exercised here. *If the intent was to move up to 1.61.0, this is the line to revisit — the direction was a judgement call.*
+- [x] Documented both environments in README under **Which Python the tests use**: a table separating `.venv` (from `requirements-dev.txt`) from `tests/external_tools/.venv` (its own scripts, >1 GB, gitignored, not read by `npm run check`), plus the resolution order and why the indirection exists.
+
+**Known gap, not blocking:** the `.venv` target `~/.venvs/playwright` has **no `pip`** and **no `flowio`**, so it does not fully satisfy `requirements-dev.txt`. Nothing in `npm run check` needs flowio — only `tests/validation/driving_code/generate_flowio_reference.py` imports it — but that script will fail under this `.venv`. Replace the symlink with a real venv (`python3 -m venv .venv`, as the README now instructs) if you need to regenerate flowio references.
 
 ---
 
