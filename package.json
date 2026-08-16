@@ -3,9 +3,9 @@
   "version": "0.8.0",
   "description": "PhaseFinder is a browser-based tool for inspecting and plotting flow cytometry `.fcs` files. It is designed as a lightweight, local-first workspace: users drop FCS files into the page, the app reads the FCS header and TEXT metadata in the browser, and selected samples can then be loaded into an overlaid DNA-content event histogram with optional Dean–Jett–Fox cell-cycle modeling.",
   "private": true,
-  "packageManager": "npm@10.9.0",
+  "packageManager": "npm@11.13.0",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "directories": {
     "doc": "docs",

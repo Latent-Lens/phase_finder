@@ -1,5 +1,39 @@
 # Release, artifact, and privacy policy
 
+## Toolchain pin
+
+**Node 24.x — decided 2026-08-15 (ENV-01).** The pin moved from 22.x to 24.x.
+
+`.nvmrc` is the single source of truth for the Node major version. Everything
+else derives from it: `scripts/preflight.cjs` reads `.nvmrc` and rejects any
+other major, and all four CI workflows (`node_build`, `security`,
+`browser-compatibility`, `deploy-release`) select their runtime with
+`node-version-file: .nvmrc`. Two files declare the version and must always be
+changed together — `.nvmrc` and `engines.node` in `package.json` — plus the
+Development section of `README.md`, which names the major in prose.
+
+**Why 24 over 22.** Node 24 is the current Active LTS; 22 has moved to
+maintenance and reaches end-of-life in April 2027. The audit trail records
+successful builds under both 22.23.2 and 24, so validation history favours
+neither. Keeping 22 would have meant pinning the older line purely because it
+was already declared.
+
+`packageManager` in `package.json` tracks the npm that ships with the pinned
+Node major (24.16.0 ships npm 11.13.0). Nothing enforces it — there is no
+corepack step — but `scripts/generate-provenance.cjs` falls back to it when the
+script runs outside an npm invocation, so a stale value would record the wrong
+npm version in release provenance. Update it whenever the Node pin moves.
+
+Contributors run `nvm use` in the checkout. Declared and installed versions must
+never be left disagreeing — that state blocks `npm run check` entirely, because
+the gate begins with `npm run preflight`.
+
+**Verification gap:** at the time of the switch the gate could not be confirmed
+end-to-end on 24, because `npm test` was independently blocked by a missing
+Playwright environment (ENV-02). Everything up to that point passed on 24 —
+preflight, lint, DOM bindings, documents, import graph, privacy scan, and the
+25 CI tests. Re-run the full gate once ENV-02 is resolved.
+
 ## Release-note script contract
 
 `.github/scripts/update_release_notes.sh <tag> [dry-run]` requires an existing

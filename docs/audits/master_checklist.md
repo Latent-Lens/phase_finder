@@ -44,20 +44,25 @@ All of these were **archived to [`docs/audits/archive/`](./archive/) on 2026-08-
 
 # Section 0 — Environment (do this first)
 
-### ENV-01 — Node 22 is required and not installed
+### ENV-01 — Node version pin — RESOLVED 2026-08-15
 
-**Priority:** P0 (blocks every build and check) · **Effort:** 1 minute
+**Priority:** P0 (blocked every build and check) · **Effort:** 1 minute
 
-**Problem:** `.nvmrc` and `engines.node` pin **22**. The only installed version is **24**, so `nvm use` fails, and `scripts/preflight.cjs` hard-rejects 24. Because `npm run check` begins with `npm run preflight`, the entire gate — lint, docs, imports, privacy, tests, build, dist — cannot run.
+**Problem:** `.nvmrc` and `engines.node` pinned **22**. The only installed version was **24**, so `nvm use` failed, and `scripts/preflight.cjs` hard-rejected 24. Because `npm run check` begins with `npm run preflight`, the entire gate — lint, docs, imports, privacy, tests, build, dist — could not run.
 
 ```
 $ nvm use          → N/A: version "v22" is not yet installed
 $ node scripts/preflight.cjs   (on 24) → requires Node 22.x; found v24.16.0   exit 1
 ```
 
-- [ ] `nvm install 22 && nvm use`; confirm `node scripts/preflight.cjs` exits 0.
-- [ ] Decide the pin deliberately: the audit trail records builds validated under **both** 22.23.2 and 24. Either install 22 and keep the pin, or move `.nvmrc` + `engines.node` to 24. Do not leave declared and installed disagreeing.
-- [ ] Record the decision in `docs/release-and-privacy.md`.
+**Resolution: the pin moved to 24.x.** Node 24 is the current Active LTS (`lts/*` → `lts/krypton` → v24.16.0); 22 is in maintenance with an April 2027 EOL. The audit trail records builds validated under *both* 22.23.2 and 24, so validation history favoured neither — keeping 22 would have meant pinning the older line only because it was already declared.
+
+- [x] `nvm use` resolves and `node scripts/preflight.cjs` exits 0 — *`Toolchain preflight passed: PhaseFinder 0.8.0, Node v24.16.0`.* Node 22.23.2 was also installed while diagnosing and remains available via `nvm`.
+- [x] Pin decided and applied — `.nvmrc` → `24`, `engines.node` → `24.x`, `README.md` Development section → "Use Node 24". All four CI workflows use `node-version-file: .nvmrc` and needed no change.
+- [x] Recorded in `docs/release-and-privacy.md` under **Toolchain pin**, with the rationale and the two-file change rule.
+- [x] `packageManager` corrected to `npm@11.13.0` (the npm shipping with 24.16.0; was `10.9.0`). Not enforced — no corepack — but `scripts/generate-provenance.cjs:19-20` falls back to it outside npm invocations, so a stale value would misreport npm in release provenance.
+
+**Gate status on 24:** passes preflight, `lint:js`, `check:dom` (225 static + 4 generated IDs), `check:docs` (14 HTML, 17 Markdown), `check:imports` (137 modules, 428 edges), `check:privacy` (527 tracked paths), and `test:ci` (25 tests). It then stops at `test:unit` on `ModuleNotFoundError: No module named 'playwright'` — **that is ENV-02, not this item.** `npm run build` and `check:dist` are still unverified because they sit behind the failing test step; re-run the full gate once ENV-02 is fixed.
 
 ### ENV-02 — The working Playwright venv is not discoverable
 

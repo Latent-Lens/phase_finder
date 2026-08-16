@@ -38,7 +38,7 @@ Poisson log-likelihood includes the full `log(y!)` term and therefore matches st
 
 ## Development
 
-Use Node 22 (the exact major is pinned in `.nvmrc`) and Python 3.12:
+Use Node 24 (the exact major is pinned in `.nvmrc`) and Python 3.12:
 
 ```bash
 npm ci
