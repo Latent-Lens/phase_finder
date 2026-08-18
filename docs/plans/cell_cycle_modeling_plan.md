@@ -5,8 +5,8 @@
 > **Audience:** the agent implementing the next modeling layer
 >
 > **Baseline:** the current `cell-cycle-modeling-sidebar` work, the existing
-> Stage 0–4 QC/histogram pipeline, and the model handoff in
-> `assets/misc/cell-cycle-modeling-handoff(2).zip`
+> Stage 0–4 QC/histogram pipeline, and the model handoff reference now kept in
+> [`docs/references/`](../references/)
 >
 > **Scope:** independent per-sample Dean–Jett, Dean–Jett–Fox, and Watson fits;
 > joint CLOCCS fitting across related time-indexed sample histograms; automatic
@@ -16,7 +16,7 @@
 > the core per-sample models.
 
 This plan supersedes the Stage 5–8 scientific/modeling portion of
-`docs/djf_impl_plan.md`. That older document remains useful history for the
+`docs/audits/archive/djf_impl_plan.md`. That older document remains useful history for the
 nine-stage scaffold, but it intentionally ported the current simplified bridge
 model and deferred equation fidelity.
 
@@ -75,14 +75,17 @@ its fit scope:
 | `watson_pragmatic` | **Watson Pragmatic** | Per sample | Independently apply pragmatic peak fitting plus residual S decomposition. Label it separately and never rank it against DJ/DJF with ordinary AIC/BIC. |
 | `cloccs_time_series` | **CLOCCS — Joint time series** | Joint series | Jointly fit a selected set of related sample histograms using numeric timepoint and replicate metadata. Share population-dynamics parameters across the series while producing an expected histogram for every sample/timepoint. Enable only when the selected samples form a valid synchronized time series. |
 
-During development and the first opt-in rollout, the application-wide default
-remains `legacy_bridge_v1`. Switch the application default to `auto_dj_djf`
-only after the scientific validation gate in §11.5 is approved.
+There is no application-wide default model, and there is no fallback model. The
+dropdown opens on a “Model Selection…” placeholder — `selected_model_id()` in
+[`modeling_ui.js`](../../js/analysis/cell_cycle/modeling_ui.js) returns `""`
+until the user picks one, which disables both Fit buttons — because choosing a
+model is a scientific decision and must never be inherited from whatever
+happens to be first in the registry. Whether `auto_dj_djf` should become a
+preselected default is deferred until the scientific validation gate in §11.5
+is approved.
 
 The following are deliberately not ordinary entries in that dropdown:
 
-- `legacy_bridge_v1`: advanced compatibility/debug option for the current
-  tapered bridge. It must no longer be labeled Dean–Jett–Fox.
 - Debris, aggregate, and sub-G1-like signal: `Off / Auto / On` component
   policies below the model selector.
 - Multiple ploidy: an advanced population-count option layered on a generative
@@ -148,20 +151,26 @@ alternatives are visible before constraints are applied.
 
 | Existing area | Decision |
 |---|---|
-| `js/analysis/structural_qc.js` through `pulse_geometry_gate.js` | Keep. These remain optional preprocessing/QC inputs to the modeling histogram. |
-| `js/analysis/dna_histogram.js` | Keep as the only event-to-histogram implementation. Add edges, underflow/overflow, identity, and revision fields. Do not port the archive’s duplicate event histogram builder. |
-| `js/analysis/peak_detection.js` | Replace internally with a compatibility wrapper around the new multi-scale detector. |
-| `js/analysis/legacy_bridge_fit.js` | Preserve only as the `legacy_bridge_v1` adapter while canonical models are validated. It must stop being the default scientific implementation. |
-| `js/analysis/debris_aggregate_extension.js` | Preserve only for legacy comparisons. Replace its aggregate/debris equations before exposing extensions on canonical models. |
-| `js/analysis/cell_cycle_fit_report.js` | Reuse useful diagnostics, but adapt reporting to the generic result and Poisson likelihood contracts. |
-| `js/analysis/pipeline_state.js` | Keep QC/histogram state; add nested model-neutral modeling state and semantic invalidation helpers. |
-| `js/analysis/pipeline_ui.js` | Keep QC-button behavior. Move user-facing model interactions to a new controller. Stage-number buttons may remain behind a developer disclosure. |
+| `js/analysis/qc/*.js` and `js/analysis/gating/*.js` | Keep. These remain optional preprocessing/QC inputs to the modeling histogram. |
+| `js/analysis/pipeline/dna_histogram.js` | Keep as the only event-to-histogram implementation. Add edges, underflow/overflow, identity, and revision fields. Do not port the archive’s duplicate event histogram builder. |
+| `js/analysis/cell_cycle/peak_detection.js` | Replace internally with a compatibility wrapper around the new multi-scale detector. |
+| `js/analysis/cell_cycle/diagnostics.js` | Reuse useful diagnostics, but adapt reporting to the generic result and Poisson likelihood contracts. |
+| `js/analysis/pipeline/pipeline_state.js` | Keep QC/histogram state; add nested model-neutral modeling state and semantic invalidation helpers. |
+| `js/analysis/pipeline/pipeline_ui.js` | Keep QC-button behavior. Move user-facing model interactions to a new controller. Stage-number buttons may remain behind a developer disclosure. |
 | `js/plotting/render.js` | Keep the histogram renderer. Generalize fit components and add the peak-region/residual overlays. |
 | `js/plotting/modeling.js` | Generalize the table from DJF-specific fields to the shared fit result. |
 | current `#sidebar_modeling_section` work | Keep. Replace its Stage 5–8 debug group with the user-facing controls in this plan after the current sidebar edits land. |
 
 The implementation must not overwrite or revert the uncommitted sidebar work
 that existed when this plan was written.
+
+Three files this section originally listed no longer exist:
+`legacy_bridge_fit.js` and `debris_aggregate_extension.js` were deleted with
+the rest of the legacy bridge (§13), and `cell_cycle_fit_report.js` was
+superseded by `js/analysis/cell_cycle/diagnostics.js` and
+`js/analysis/cell_cycle/export.js`. The paths above reflect the
+`qc/ gating/ math/ pipeline/ cell_cycle/` layout adopted in the 2026-08-17
+`js/analysis/` reorganization.
 
 ## 3. Target architecture
 
@@ -218,8 +227,9 @@ js/plotting/
 └── residual_plot.js
 ```
 
-The archive is MIT-licensed. Preserve its license notice for substantial
-ported code and note the source module in file headers.
+The archive is LatentLens-authored internal work, covered by the repository's
+PolyForm Noncommercial License 1.0.0. Ported code carries no separate upstream
+licence notice; note the source module in file headers for provenance only.
 
 ## 4. Data and API contracts
 
@@ -452,6 +462,12 @@ produce the current shape during migration.
 
 ## 5. Mathematical and numerical specification
 
+Bracketed citation keys below resolve through
+[`docs/references/REFERENCES.md`](../references/REFERENCES.md) and
+[`references.bib`](../references/references.bib). Where this section disagrees
+with the handoff archive, this section wins: it records the decisions made for
+PhaseFinder, not the archive's reference implementation.
+
 ### 5.1 Observation model
 
 Fit raw integer histogram counts. Smoothing is only for peak detection and
@@ -501,6 +517,10 @@ explicit mode, never an invisible default.
 
 ### 5.3 Dean–Jett S phase
 
+Dean and Jett modeled the histogram as `F(x) = G1(x) + F_S(x) + G2(x)`, with a
+latent quadratic S-phase profile broadened by a normal kernel carrying the same
+coefficient of variation as G1, `sigma(u) = CV_1 * u` [DeanJett1974].
+
 Let
 
 \[
@@ -536,6 +556,13 @@ use histogram centers themselves as the latent integration grid.
 
 ### 5.4 Dean–Jett–Fox S phase
 
+Fox added a Gaussian wave to the latent S-phase profile for synchronized or
+otherwise complex populations [Fox1980]. The wave belongs to the **latent
+biological distribution**; the constant-CV kernel then broadens the entire
+profile. The two are not interchangeable: `mu_W`, `s_W`, and the wave fraction
+describe a concentrated cohort within S phase, while `CV_1 * u` describes
+measurement and biological dispersion around each DNA position.
+
 Make Fox exactly nested within DJ:
 
 \[
@@ -564,6 +591,11 @@ Auto mode selects Fox only when all of these are true:
 Otherwise retain Dean–Jett and record the rejection reasons.
 
 ### 5.5 Watson Pragmatic
+
+Watson, Chambers, and Smith proposed a deliberately pragmatic method requiring
+an identifiable G1 or G2/M peak [Watson1987]. Its S component is a data
+residual, not a fully parameterized probability density — which is why it is
+never ranked against DJ/DJF by AIC/BIC.
 
 Implement the archive’s documented sequence:
 
@@ -615,7 +647,20 @@ and normalizes the enumerated masses to mixture weights
 `pi_(g,r)(t; Theta)`.
 
 Let `m(p; psi_j)` map lifeline position to G1, linearly increasing S, or G2/M
-DNA signal for histogram `j`, and let `tau_j` be its measurement width. The
+DNA signal for histogram `j`, and let `tau_j` be its measurement width.
+Explicitly, with `gamma1` and `gamma2` the cycle fractions where S begins and
+ends, `alpha1` the G1 fluorescence, `alpha2` the G1-to-G2/M increase, and `q`
+the fractional position within the current cycle [Orlando2009]:
+
+\[
+m(P_t)=\begin{cases}
+\alpha_1, & \text{G1},\\
+\alpha_1+\alpha_2\dfrac{q-\gamma_1}{\gamma_2-\gamma_1}, & \text{S},\\
+\alpha_1+\alpha_2, & \text{G2/M}.
+\end{cases}
+\]
+
+The
 expected count in bin `i` of histogram `j` is
 
 \[
@@ -697,6 +742,179 @@ canonical fitting:
 
 All production fits run off the UI thread. The archive’s pure functions remain
 usable in the worker.
+
+Fox’s original implementation minimized weighted squared deviations using the
+Marquardt algorithm [Fox1980; Marquardt1963]. The count likelihood in §5.1 is
+preferred here because histogram variance grows with expected count.
+
+### 5.8 Residual and diagnostic quantities
+
+Pearson residual:
+
+\[
+r_i^{(P)}=\frac{y_i-\lambda_i}{\sqrt{\lambda_i}}.
+\]
+
+Poisson deviance residual:
+
+\[
+r_i^{(D)}=\operatorname{sign}(y_i-\lambda_i)
+\sqrt{2\left[y_i\log\left(\frac{y_i}{\lambda_i}\right)-(y_i-\lambda_i)\right]}.
+\]
+
+For `y_i = 0` this reduces to `-sqrt(2 * lambda_i)`. Deviance residuals are the
+squared-residual objective used by the transformed Levenberg–Marquardt path in
+§5.7, so the least-squares problem matches the count likelihood.
+
+Report alongside them: reduced Poisson deviance, residual lag-1
+autocorrelation, a runs statistic for long same-sign regions, the maximum
+regional residual sum, parameters sitting at bounds, a G2:G1 ratio warning, a
+missing pulse-geometry warning, and a one-visible-peak warning.
+
+A visually convincing overlay can still hide systematic residual structure.
+The residual panel is visible by default after a fit (§7), not opt-in.
+
+### 5.9 Model-selection criteria
+
+For maximized log likelihood `l_hat`, parameter count `k`, and `n` fitted bins:
+
+\[
+AIC=2k-2\hat\ell,
+\qquad
+AIC_c=AIC+\frac{2k(k+1)}{n-k-1},
+\qquad
+BIC=k\log n-2\hat\ell.
+\]
+
+`n` is always the number of fitted bins. Never mix weighted and raw SSE
+criteria across selection and reporting [Akaike1974; Schwarz1978].
+
+The DJ-versus-DJF rule is specified in §5.4. It is deliberately conservative
+because “no wave” places `w` on a boundary at zero, where standard asymptotic
+likelihood-ratio assumptions fail. Parametric bootstrap (§5.12) is the more
+rigorous test when a study depends on the answer.
+
+Every added optional component (§5.10) must clear the same guardrail: a
+material information-criterion gain, improved residual structure, a
+non-negligible fitted area, and no parameter resting on a bound. Components are
+enabled deliberately so the parameter count entering AICc/BIC is explicit.
+Never leave every optional component active by default.
+
+### 5.10 Optional component densities
+
+These are the M7 components. They are specified here so the equations are
+settled before implementation; none of them are built yet, and M7 is gated
+behind independent scientific validation.
+
+**Debris.** A phenomenological left-side truncated exponential:
+
+\[
+D(x)=\frac{N_D\lambda e^{-\lambda(x-x_{min})}}
+{1-e^{-\lambda(x_c-x_{min})}},
+\qquad x_{min}\leq x\leq x_c.
+\]
+
+Normalize over the truncation interval so `N_D` is a true area. Enable it only
+when residuals show systematic excess toward low DNA and event-level QC cannot
+remove it.
+
+**Sub-G1-like.** A Gaussian truncated below the fitted G1 mean:
+
+\[
+A_{sub}(x)\propto\phi(x;\mu_A,\sigma_A)\,I(x<\mu_1).
+\]
+
+Label this **sub-G1-like**, never apoptosis. DNA fragmentation produces sub-G1
+signal, but so does debris, and early apoptotic cells can overlap ordinary G1.
+Apoptosis as a biological endpoint requires an orthogonal marker — Annexin V,
+caspase activity, or TUNEL [Nicoletti1991].
+
+**Aggregate/doublet.** Two singlets passing together sum their DNA-area signal,
+so for normalized singlet biological distribution `B(x)` the unresolved doublet
+component is the self-convolution:
+
+\[
+A(x)=N_A(B*B)(x)=N_A\int B(u)B(x-u)\,du.
+\]
+
+This places G1+G1 doublets near the G2/M signal, which is exactly why it cannot
+perfectly separate true G2/M from G1 doublets on DNA area alone [Wersto2001].
+Use it as a fallback when pulse geometry is unavailable, and report the
+out-of-domain mass rather than silently losing it. Do not substitute the
+cheaper `0.5 * p * F(x/2)` approximation that the retired legacy extension
+used; it is not this model.
+
+**Multiple ploidy.** For `K` cycling populations:
+
+\[
+F(x)=\sum_{k=1}^{K}\pi_kF_k(x;\theta_k)+C(x),\qquad \pi_k\geq0,
+\]
+
+where each `F_k` is DJ or DJF and `C(x)` collects contaminants. Require ordered
+G1 means `mu_1,1 < mu_1,2 < ...` to prevent label switching, optionally
+near-integer relationships such as `mu_1,2 ≈ 2 * mu_1,1`, shared or tightly
+related CVs when justified, and a minimum retained area per population.
+
+Multiple ploidy is frequently weakly identifiable from a single histogram
+because one population's G1 can overlap another population's G2/M. Treat a
+second population as unsupported unless it clears §5.9 decisively.
+
+### 5.11 Contaminant reporting
+
+Component areas are `N_G1`, `N_S`, `N_G2` from §5.1, and the biological
+denominator is `N_bio = N_G1 + N_S + N_G2`. Contaminants are reported against
+the full total instead:
+
+\[
+p_{debris}=\frac{N_D}{N_{all}},\quad
+p_{aggregate}=\frac{N_A}{N_{all}},\quad
+p_{subG1}=\frac{N_{sub}}{N_{all}}.
+\]
+
+Contaminant components never enter the G1/S/G2 denominator, and the two
+denominators are labeled distinctly wherever both appear.
+
+### 5.12 Uncertainty intervals
+
+Parametric bootstrap is the practical browser-compatible method:
+
+1. fit the selected model;
+2. generate synthetic counts `y_i* ~ Poisson(lambda_hat_i)`;
+3. refit each synthetic histogram;
+4. summarize parameter and phase-fraction quantiles; and
+5. report failed and boundary-hitting refits rather than discarding them.
+
+Bootstrap intervals capture model and counting uncertainty. They do not capture
+sample-preparation or gating bias, and must not be presented as though they do.
+
+### 5.13 Marker-assisted multiparameter extension
+
+Deferred past the per-sample release; recorded so the target shape is fixed.
+For DNA signal `d`, marker signal `m`, and phase `c` in `{G1, S, G2}`:
+
+\[
+p(d,m)=\sum_c\pi_c\,p(d\mid c)\,p(m\mid c),
+\]
+
+assuming conditional independence within phase as a starting approximation.
+Event-level posterior membership is:
+
+\[
+P(c\mid d,m)=
+\frac{\pi_c p(d\mid c)p(m\mid c)}
+{\sum_j\pi_j p(d\mid j)p(m\mid j)}.
+\]
+
+For EdU/BrdU pulse labeling, `p(m | S)` comes from marker-positive cells or a
+labeled control, `p(m | G1)` and `p(m | G2)` from the negative control, and
+`p(d | c)` from fitted DJ/DJF component mass. BrdU/DNA bivariate cytometry
+identifies DNA-synthesizing cells directly, and EdU click chemistry gives a
+related marker without antibody-mediated detection [Dolbeare1983; Salic2008].
+
+The same framework accepts cyclins, phospho-histone H3, RNA content, viability
+markers, yeast budding status, and size or morphology measurements. Replace
+conditional independence with phase-specific multivariate Gaussian, mixture,
+kernel, or copula densities when marker correlations matter.
 
 ## 6. Automatic detection and manual peak regions
 
@@ -1291,8 +1509,8 @@ opt-in implementation and internal numerical validation.
 |---|---|
 | `AGENT_HANDOFF.md` | Product semantics, milestone order, result/provenance expectations. |
 | `UI_WORKFLOW.md` | Raw-histogram-first user flow and residual display. |
-| `AUTOMATIC_PEAK_DETECTION.md`, `src/peakDetection.js` | Port/adapt multi-scale evidence, pair ranking, ambiguity, and auto regions. |
-| `PEAK_REGION_HANDLES.md`, `src/peakRegions.js` | Port/adapt immutable region semantics and ratio feasibility. |
+| [`docs/references/AUTOMATIC_PEAK_DETECTION.md`](../references/AUTOMATIC_PEAK_DETECTION.md) | Port/adapt multi-scale evidence, pair ranking, ambiguity, and auto regions. |
+| [`docs/references/PEAK_REGION_HANDLES.md`](../references/PEAK_REGION_HANDLES.md) | Port/adapt immutable region semantics and ratio feasibility. |
 | `src/initialization.js` | Adapt to accepted regions and the canonical parameterization. |
 | `src/models/shared.js`, `dj.js`, `djf.js` | Use as equation/expected-bin-count references; replace softplus, histogram-grid quadrature, and wave amplitude as specified above. |
 | `src/models/watson.js` | Port/adapt after DJ/DJF. |
@@ -1320,10 +1538,13 @@ histograms independently. It is complete only when:
 - fits run off the UI thread and return explicit failure states;
 - residuals are visible by default;
 - model IDs, versions, settings, exact peak limits, and provenance survive
-  session/export workflows;
-- focused unit, full E2E, golden, and scientific validation gates pass; and
-- `legacy_bridge_v1` remains available for comparison until the validated
-  default switch is explicitly approved.
+  session/export workflows; and
+- focused unit, full E2E, golden, and scientific validation gates pass.
+
+The `legacy_bridge_v1` compatibility model that previously stood in for the
+canonical fits was retired on 2026-08-17, along with pipeline stages 5–8. It
+was never reportable, every canonical model now covers its surface, and
+`unit_tests_cell_cycle_registry.py` asserts it stays unregistered.
 
 CLOCCS reaches its separate M8 production gate when the same dropdown can
 switch from those independent fits to one validated joint fit across a selected
