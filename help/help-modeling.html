@@ -25,6 +25,8 @@
             <li><a href="./help-metadata.html">Metadata & Sample Table</a></li>
             <li><a href="./help-plotting.html">Plotting Events</a></li>
             <li><a href="./help-modeling.html" aria-current="page">Cell-Cycle Modeling</a></li>
+            <li><a href="./help-cell-cycle-accuracy.html">Cell-Cycle Accuracy</a></li>
+            <li><a href="./help-cell-cycle-math-check.html">Is the Cell-Cycle Math Right?</a></li>
             <li><a href="./help-statistics.html">Summary Statistics</a></li>
             <li><a href="./help-sessions.html">Sessions & Layout</a></li>
             <li><a href="./help-troubleshooting.html">Troubleshooting & Compatibility</a></li>
@@ -41,8 +43,72 @@
           <h2>6. Cell Cycle Modeling</h2>
           <p>Once a channel is plotted, click <span class="ui_label">Cell Cycle Modeling</span> in the sidebar. The file and channel controls slide away and the sidebar reveals the <span class="ui_label">Pre-modeling QC Filtering</span> box (four filters: Structural, Time, Cell Gate, Singlet Gate &mdash; toggle individually or with <span class="ui_label">Run All</span>), the <span class="ui_label">Identify Peaks</span> panel, and the <span class="ui_label">Model &amp; Fit</span> panel; moving these out of the plot panel also gives the histogram more height. QC is a separate action, applied on its own before peak review. <span class="ui_label">Back</span> returns the sidebar to the file/channel controls without losing any progress.</p>
           <p>With exactly one sample checked, <span class="ui_label">Identify Peaks</span> reviews that sample; with several checked at once, click a row in the table to choose which one it's reviewing. <span class="ui_label">Detect Peaks</span> runs automatic peak detection and proposes G1 and G2/M regions (when several samples are checked and none is singled out, it detects for all of them); the four numeric fields let you adjust each region's left/right limits directly, with inline validation if an edit breaks their ordering. <span class="ui_label">Reset</span> discards manual edits and restores the automatic proposal; <span class="ui_label">Accept</span> marks the current regions reviewed; <span class="ui_label">Apply to All</span> copies the reviewed sample's regions to every plotted sample.</p>
-          <p>In <span class="ui_label">Model &amp; Fit</span>, pick a model (Dean&ndash;Jett, Dean&ndash;Jett&ndash;Fox, Watson Pragmatic, or Automatic, which chooses between Dean&ndash;Jett and Dean&ndash;Jett&ndash;Fox) &mdash; the dropdown opens on <span class="ui_label">Model Selection&hellip;</span> so the choice is always deliberate. <span class="ui_label">Fit Current</span> fits the reviewed sample; <span class="ui_label">Fit All Samples</span> auto-detects, averages the regions across every plotted sample, and fits each. Fitted G1/S/G2&ndash;M fractions are written to the metadata table (one column group per model in use), alongside the accepted G1/G2 peak-region bounds.</p>
-          <p><strong>Watson Pragmatic</strong> is a <em>pragmatic decomposition</em>, not a likelihood fit: it estimates G1 and G2/M locally from each peak's clean (uncontaminated) flank and then takes S phase as whatever observed signal is left over. That residual S is measured <em>strictly between the two fitted peak centers</em> &mdash; signal below the G1 center (sub-G1 debris) or above the G2/M center (post-G2 aggregates) is never counted as S. Watson models no separate debris/aggregate component, so keep such contaminants outside the G1&ndash;G2/M interval. Because it is a decomposition rather than a generative model, its results are deliberately never ranked against Dean&ndash;Jett or Dean&ndash;Jett&ndash;Fox by AIC/BIC.</p>
+          <p>In <span class="ui_label">Model &amp; Fit</span>, pick a model &mdash; the dropdown opens on <span class="ui_label">Model Selection&hellip;</span> so the choice is always deliberate. <span class="ui_label">Fit Current</span> fits the reviewed sample; <span class="ui_label">Fit All Samples</span> fits every plotted sample (see below). Fitted G1/S/G2&ndash;M fractions are written to the metadata table (one column group per model in use), alongside the accepted G1/G2 peak-region bounds.</p>
+
+          <h3 id="choosing-a-model">Which model should I choose?</h3>
+          <p>PhaseFinder does not pick a model for you. Each one makes different assumptions, and the right choice depends on your data:</p>
+          <table class="help_table">
+            <thead>
+              <tr><th scope="col">Model</th><th scope="col">What it does</th><th scope="col">Choose it when</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Dean&ndash;Jett</th>
+                <td>Generative fit: two Gaussian peaks plus a smooth S-phase profile between them, fitted by maximum likelihood against the observed counts.</td>
+                <td>Your sample is asynchronous and the S phase looks like a simple bridge between the peaks.</td>
+              </tr>
+              <tr>
+                <th scope="row">Dean&ndash;Jett&ndash;Fox</th>
+                <td>Dean&ndash;Jett plus an extra flexible term that lets the S-phase profile take a more complex shape.</td>
+                <td>The S phase is uneven &mdash; for example after a release from arrest. This is the most commonly used model.</td>
+              </tr>
+              <tr>
+                <th scope="row">Watson Pragmatic</th>
+                <td>Not a likelihood fit. Estimates each peak locally from its clean flank, then calls whatever is left over between the two peak centres S phase.</td>
+                <td>You want a fast, assumption-light number, or a sanity check against a generative fit.</td>
+              </tr>
+              <tr>
+                <th scope="row">Watson Classic</th>
+                <td>The original Watson formulation, retained for comparison with published Watson results.</td>
+                <td>You are reproducing or comparing against an analysis that used classic Watson.</td>
+              </tr>
+              <tr>
+                <th scope="row">CLOCCS <em>(Unverified)</em></th>
+                <td>Fits one set of shared timing parameters across a whole strain's timepoints at once, rather than each sample independently. Requires timepoint metadata.</td>
+                <td>You have a synchronised time course <em>and</em> you accept that this model has not yet been validated &mdash; treat its output as exploratory.</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="callout">
+            <p class="callout_title">There is no &ldquo;Automatic&rdquo; option</p>
+            <p>An earlier version offered one that chose between Dean&ndash;Jett and Dean&ndash;Jett&ndash;Fox by an information criterion. It was removed because that comparison cannot be made reliably while the peak positions are held fixed &mdash; and reporting a confident automatic choice that rested on an unreliable comparison was worse than asking you to choose.</p>
+          </div>
+
+          <p><strong>Watson Pragmatic</strong> deserves one extra note: because it takes S phase as leftover signal, that residual is measured <em>strictly between the two fitted peak centres</em> &mdash; signal below the G1 centre (sub-G1 debris) or above the G2/M centre (post-G2 aggregates) is never counted as S. Watson models no separate debris/aggregate component, so keep such contaminants outside the G1&ndash;G2/M interval. Because it is a decomposition rather than a generative model, its results are deliberately never ranked against Dean&ndash;Jett or Dean&ndash;Jett&ndash;Fox by AIC/BIC.</p>
+
+          <h3 id="fit-all-samples">Fitting several samples at once</h3>
+          <p><span class="ui_label">Fit All Samples</span> does more than loop over the samples. Sharing one set of peak-region boundaries across samples is only valid if those samples share a comparable DNA axis, so PhaseFinder checks before it does so:</p>
+          <ol>
+            <li>It auto-detects peaks for every plotted sample and records the channel, range, and instrument settings each one used.</li>
+            <li>It <strong>excludes</strong> samples whose detection failed, was inferred rather than found, or fell below the confidence threshold &mdash; and any sample whose DNA axis is not comparable to the others.</li>
+            <li>From the samples that remain it builds a <strong>robust (median) proposal</strong> rather than an average, so one atypical sample cannot drag the shared boundaries.</li>
+            <li>It shows you exactly which samples are included and which will be fitted independently, and waits for you to confirm.</li>
+            <li>Samples excluded from the shared proposal are still fitted &mdash; just using their own detected regions.</li>
+          </ol>
+          <p>Every result records which mode it used, so you can always tell afterwards whether a sample was fitted on shared or independent regions.</p>
+
+          <h3 id="reading-results">Reading a result honestly</h3>
+          <p>A percentage on its own does not tell you whether to trust it. PhaseFinder separates three different questions, and you should check all three before using a number:</p>
+          <ul>
+            <li><strong>Did the optimizer converge?</strong> A fit that ran out of iterations, stalled against a limit, or failed numerically is reported as not converged. It is not a result.</li>
+            <li><strong>Is the result valid for reporting?</strong> Separate from convergence. A fit can converge and still be refused &mdash; for example if a parameter is pinned against its bound, too much of the modelled distribution falls outside the histogram, or a required QC step was unavailable.</li>
+            <li><strong>Do the warnings matter for your question?</strong> Warnings flag things the fit cannot decide for you: a very complex S-phase shape, a peak sitting near a constraint, unusual residual structure.</li>
+          </ul>
+          <div class="callout warn">
+            <p class="callout_title">Two limits a histogram cannot resolve on its own</p>
+            <p>When a sample shows only <em>one</em> peak, PhaseFinder assumes it is G1 and places G2/M at twice that position. On a G2-arrested sample that assumption is wrong, and no statistic within a single histogram can detect it &mdash; move the regions manually if you know the biology.</p>
+            <p>Likewise, a G1/G2 pair and a G2/G4 pair have the same 2:1 spacing, so a single histogram cannot tell them apart. Check that the detected G1 sits where you expect it to, and use a stained control or a sample from the same run that clearly shows both peaks.</p>
+          </div>
 
           <h3 id="pipeline-filters">Pre-modeling QC filters</h3>
           <p>Automated preprocessing works best in layers rather than a single step: first remove acquisition artifacts over time, then apply cell-cloud (debris) gating and explicit singlet/doublet discrimination, and only then fit the histogram. Order matters because clogs, flow-rate surges, dynamic-range artifacts, and margin events distort the very populations the model is trying to quantify. PhaseFinder's four QC filters implement that order:</p>
