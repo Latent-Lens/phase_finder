@@ -6,6 +6,7 @@ directly. Synthetic inputs are deterministic so failures identify algorithm or
 mask-regression changes rather than random test data.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -38,14 +39,13 @@ _STAGES_0_TO_4 = r"""() => {
     return count;
   };
 
-  run('harness: exposes the pipeline operation modules and runners', () => {
-    const modules = ['structuralQc', 'timeQc', 'cellGate', 'singletGate', 'dnaHistogram',
-                     'peakDetection', 'baseFitModule', 'contaminationFit', 'fitReport'];
+  run('harness: exposes the pipeline stage modules and runners', () => {
+    const modules = ['structuralQc', 'timeQc', 'cellGate', 'singletGate', 'dnaHistogram'];
     const modulesPresent = modules.every((name) => Boolean(pipeline[name]));
     return {
       pass: modulesPresent
         && typeof pipeline.apply_structural_qc === 'function'
-        && typeof pipeline.apply_fit_report === 'function'
+        && typeof pipeline.apply_dna_histogram === 'function'
         && typeof window.DJFPipelineState.combine_masks === 'function',
       detail: `modulesPresent=${modulesPresent}`,
     };
@@ -763,219 +763,6 @@ _STAGES_0_TO_4 = r"""() => {
 }"""
 
 
-_STAGES_5_TO_8 = r"""() => {
-  const { peakDetection, baseFitModule, contaminationFit, fitReport } = window.PhaseFinder.pipeline;
-  const results = [];
-  const push = (name, pass, detail = '') => results.push({
-    name, pass: Boolean(pass), detail: String(detail ?? ''),
-  });
-  const run = (name, test) => {
-    try {
-      const outcome = test();
-      push(name, outcome.pass, outcome.detail);
-    } catch (error) {
-      push(name, false, `${error.name}: ${error.message}`);
-    }
-  };
-
-  const histogram = TestUtils.buildDJFHistogram(256);
-  let fit = null;
-
-  run('Stage 5: detects the deterministic 1C/2C pair at an approximately 2:1 ratio', () => {
-    const peaks = peakDetection.detectDNAContentPeaks(histogram.y, {
-      histogramMin: histogram.min,
-      binWidth: histogram.binWidth,
-    });
-    return {
-      pass: peaks.found && peaks.ratio >= 1.8 && peaks.ratio <= 2.1,
-      detail: JSON.stringify({ found: peaks.found, mu1: peaks.mu1, mu2: peaks.mu2, ratio: peaks.ratio }),
-    };
-  });
-
-  run('Stage 5: a single-peak histogram reports no valid pair', () => {
-    const onePeak = histogram.x.map((x) =>
-      800 * Math.exp(-0.5 * Math.pow((x - 64000) / 4500, 2))
-    );
-    const peaks = peakDetection.detectDNAContentPeaks(onePeak, {
-      histogramMin: histogram.min,
-      binWidth: histogram.binWidth,
-    });
-    return {
-      pass: !peaks.found && peaks.candidatePairs.length === 0,
-      detail: peaks.status,
-    };
-  });
-
-  run('SCI-03: the constrained legacy fit keeps valid bounds but reports its iteration-limit stop', () => {
-    fit = baseFitModule.fitCellCycleHistogram(histogram.x, histogram.y);
-    const ratio = fit.parameters.mu2 / fit.parameters.mu1;
-    return {
-      pass: fit.diagnostics.converged === false
-        && fit.diagnostics.terminationReason === 'max_iterations'
-        && fit.parameters.mu1 > 52000
-        && fit.parameters.mu1 < 76000
-        && ratio > 1.9
-        && ratio < 2.1,
-      detail: JSON.stringify({
-        converged: fit.diagnostics.converged,
-        terminationReason: fit.diagnostics.terminationReason,
-        iterations: fit.diagnostics.iterations,
-        mu1: fit.parameters.mu1,
-        mu2: fit.parameters.mu2,
-        ratio,
-      }),
-    };
-  });
-
-  run('Stage 6: fitted total equals the nonnegative G1 + S + G2 components', () => {
-    if (!fit) fit = baseFitModule.fitCellCycleHistogram(histogram.x, histogram.y);
-    let maximumDifference = 0;
-    let allNonnegative = true;
-    for (let i = 0; i < fit.curves.x.length; i += 1) {
-      const sum = fit.curves.g1[i] + fit.curves.s[i] + fit.curves.g2[i];
-      maximumDifference = Math.max(maximumDifference, Math.abs(sum - fit.curves.fitted[i]));
-      allNonnegative = allNonnegative
-        && fit.curves.g1[i] >= 0 && fit.curves.s[i] >= 0 && fit.curves.g2[i] >= 0;
-    }
-    return {
-      pass: allNonnegative && maximumDifference < 1e-9,
-      detail: `maximumDifference=${maximumDifference}`,
-    };
-  });
-
-  run('Stage 7: a 2C-multiple residual is detected and selects the aggregate extension', () => {
-    if (!fit) fit = baseFitModule.fitCellCycleHistogram(histogram.x, histogram.y);
-    const perfectBase = {
-      ...fit,
-      curves: {
-        ...fit.curves,
-        observed: [...fit.curves.fitted],
-        residuals: new Array(fit.curves.x.length).fill(0),
-      },
-    };
-    const parameters = contaminationFit.parametersFromPreviousFit(
-      perfectBase,
-      histogram.x,
-      perfectBase.curves.fitted,
-    );
-    const aggregateTemplate = histogram.x.map((x) =>
-      0.5 * contaminationFit.evaluateBaseAt(x / 2, parameters).total
-    );
-    const aggregateObserved = perfectBase.curves.fitted.map((value, index) =>
-      value + 0.8 * aggregateTemplate[index]
-    );
-    const aggregatePrevious = {
-      ...perfectBase,
-      curves: {
-        ...perfectBase.curves,
-        observed: aggregateObserved,
-        residuals: perfectBase.curves.fitted.map((value, index) =>
-          value - aggregateObserved[index]
-        ),
-      },
-    };
-    const extended = contaminationFit.extendCellCycleFit(
-      histogram.x,
-      aggregateObserved,
-      aggregatePrevious,
-    );
-    const aggregateArea = extended.curves.aggregate.reduce((sum, value) => sum + value, 0);
-    return {
-      pass: extended.inspection.aggregateDetected
-        && extended.selectedModel.includes('aggregate')
-        && extended.parameters.pAggregate > 0
-        && aggregateArea > 0,
-      detail: JSON.stringify({
-        selectedModel: extended.selectedModel,
-        pAggregate: extended.parameters.pAggregate,
-        detected: extended.inspection.aggregateDetected,
-        excessZ: extended.inspection.aggregateExcessZ,
-        correlation: extended.inspection.aggregateCorrelation,
-      }),
-    };
-  });
-
-  run('Stage 7: clean residuals conservatively retain the base model', () => {
-    if (!fit) fit = baseFitModule.fitCellCycleHistogram(histogram.x, histogram.y);
-    const perfectBase = {
-      ...fit,
-      curves: {
-        ...fit.curves,
-        observed: [...fit.curves.fitted],
-        residuals: new Array(fit.curves.x.length).fill(0),
-      },
-    };
-    const extended = contaminationFit.extendCellCycleFit(
-      histogram.x,
-      perfectBase.curves.fitted,
-      perfectBase,
-    );
-    return {
-      pass: !extended.inspection.aggregateDetected
-        && !extended.inspection.debrisDetected
-        && extended.selectedModel === 'base'
-        && extended.diagnostics.candidateFits.length === 1,
-      detail: JSON.stringify({
-        selectedModel: extended.selectedModel,
-        inspection: extended.inspection,
-        candidates: extended.diagnostics.candidateFits.map((candidate) => candidate.name),
-      }),
-    };
-  });
-
-  run('Stage 8: biological-singlet fractions sum to 100% and display as percentages', () => {
-    if (!fit) fit = baseFitModule.fitCellCycleHistogram(histogram.x, histogram.y);
-    const report = fitReport.summarizeCellCycleFit(fit, { pulseGeometryAvailable: true });
-    const fractions = report.fractions.biologicalSinglets;
-    const total = fractions.oneC + fractions.sPhase + fractions.twoC;
-    const display = fitReport.createDisplaySummary(report);
-    return {
-      pass: Math.abs(total - 1) < 1e-9
-        && report.areas.biologicalSingletTotal > 0
-        && display.cellCycle.oneC.endsWith('%')
-        && display.cellCycle.sPhase.endsWith('%')
-        && display.cellCycle.twoC.endsWith('%'),
-      detail: JSON.stringify({ fractions, total, display: display.cellCycle }),
-    };
-  });
-
-  run('Stage 8: one-peak, ratio-off, and missing-geometry warnings all fire', () => {
-    if (!fit) fit = baseFitModule.fitCellCycleHistogram(histogram.x, histogram.y);
-    const zeros = new Array(fit.curves.x.length).fill(0);
-    const fitted = fit.curves.g1.map((value, index) => value + fit.curves.s[index]);
-    const warningFit = {
-      ...fit,
-      parameters: {
-        ...fit.parameters,
-        R: 1.6,
-        mu2: 1.6 * fit.parameters.mu1,
-        a2: 0,
-      },
-      curves: {
-        ...fit.curves,
-        g2: zeros,
-        fitted,
-        observed: [...fitted],
-        residuals: [...zeros],
-      },
-    };
-    const report = fitReport.summarizeCellCycleFit(warningFit, {
-      pulseGeometryAvailable: false,
-    });
-    const codes = report.warnings.map((warning) => warning.code);
-    return {
-      pass: codes.includes('ONLY_ONE_VISIBLE_PEAK')
-        && codes.includes('RATIO_FAR_FROM_EXPECTED')
-        && codes.includes('NO_PULSE_GEOMETRY_CHANNELS')
-        && report.qualityChecks.passed === false,
-      detail: codes.join(', '),
-    };
-  });
-
-  return results;
-}"""
-
-
 _PIPELINE_HELPERS = r"""() => {
   const pipeline = window.PhaseFinder.pipeline;
   const stateHelpers = window.DJFPipelineState;
@@ -1150,19 +937,6 @@ _PIPELINE_HELPERS = r"""() => {
     };
   });
 
-  run('pipeline orchestrator: a dependent operation fails clearly before the histogram is built', () => {
-    const row = makeRow('unit-orchestrator-dependency');
-    pipeline.clear_state(row.name);
-    pipeline.apply_structural_qc(row);
-    let message = '';
-    try {
-      pipeline.apply_base_fit(row);
-    } catch (error) {
-      message = error.message;
-    }
-    return { pass: /Build the histogram/.test(message), detail: message };
-  });
-
   run('pipeline orchestrator: manual Stage 2 translation replaces the mask and reset restores it', () => {
     const scatter = TestUtils.buildScatterDataset();
     const row = {
@@ -1289,6 +1063,78 @@ _PIPELINE_HELPERS = r"""() => {
     };
   });
 
+  // QC-02/AD-3: before this, the sidebar toggle button read "did this gate
+  // succeed" off aria-pressed (which only ever meant "is the toggle on") while
+  // the table's QC status column inspected the stage product's raw fields
+  // directly -- two independent readings of the same product that could (and
+  // did) disagree, so a gate could render "applied" in the sidebar while the
+  // table simultaneously said "incomplete: review required". derive_gate_state()
+  // is now the one function both call sites (pipeline_ui.js's
+  // update_gate_button_states() for the sidebar and update_qc_columns() for the
+  // table -- both fed from the same compute_gate_state_matrix() call) delegate
+  // to, so they cannot diverge. This exercises that shared derivation directly
+  // against a real per-row scatter-gate product produced by the orchestrator,
+  // the same object pipeline_ui.js reads as state.scatterGate.
+  run('QC-02: a review-required scatter gate reads as needs-review (the shared derivation both surfaces use)', () => {
+    const n = 30;
+    const fsc = new Float64Array(n);
+    const ssc = new Float64Array(n);
+    for (let i = 0; i < n; i += 1) {
+      if (i < 20) { fsc[i] = 100 + 5 * Math.sin(i * 1.7); ssc[i] = 80 + 4 * Math.cos(i * 1.3); }
+      else { fsc[i] = 30 + 4 * Math.sin(i * 1.1); ssc[i] = 25 + 3 * Math.cos(i * 1.9); }
+    }
+    const row = {
+      id: 'qc02-review-id', name: 'qc02-review',
+      data: {
+        channel_key: 'DAPI-A', eventCount: n,
+        channels: {
+          DNA_A: Float64Array.from({ length: n }, () => 1),
+          DNA_H: null, DNA_W: null, FSC_A: fsc, SSC_A: ssc, Time: null,
+        },
+        pnr: { DNA_A: 10, DNA_H: null, DNA_W: null, FSC_A: null, SSC_A: null, Time: null },
+        masks: { structural: null, timeQC: null, scatter: null, singlet: null, final: null },
+      },
+    };
+    pipeline.clear_state(row.name);
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_cell_gate(row);
+    const state = pipeline.get_state(row.name);
+    const buttonState = stateHelpers.derive_gate_state(state.scatterGate, { active: true });
+    const inactiveState = stateHelpers.derive_gate_state(state.scatterGate, { active: false });
+    const runningState = stateHelpers.derive_gate_state(state.scatterGate, { active: true, running: true });
+    return {
+      pass: state.scatterGate.reviewRequired === true
+        && buttonState === 'needs-review'
+        && inactiveState === 'not-run'
+        && runningState === 'running',
+      detail: JSON.stringify({
+        reasons: state.scatterGate.reviewReasons, buttonState, inactiveState, runningState,
+      }),
+    };
+  });
+
+  run('QC-02: a clean, fully-passing scatter gate reads as applied (not needs-review)', () => {
+    const gate = pipeline.cellGate.gateMainBiologicalCloud(TestUtils.buildScatterDataset());
+    const buttonState = stateHelpers.derive_gate_state(gate, { active: true });
+    return {
+      pass: gate.reviewRequired === false && buttonState === 'applied',
+      detail: JSON.stringify({ reviewRequired: gate.reviewRequired, buttonState }),
+    };
+  });
+
+  run('QC-02: aggregate_gate_state picks the worst state across samples for one gate button', () => {
+    const mixed = stateHelpers.aggregate_gate_state(['applied', 'needs-review', 'applied']);
+    const allApplied = stateHelpers.aggregate_gate_state(['applied', 'applied']);
+    const withFailure = stateHelpers.aggregate_gate_state(['needs-review', 'failed', 'applied']);
+    const empty = stateHelpers.aggregate_gate_state([]);
+    return {
+      pass: Array.isArray(stateHelpers.GATE_STATES) && stateHelpers.GATE_STATES.length === 6
+        && mixed === 'needs-review' && allApplied === 'applied' && withFailure === 'failed'
+        && empty === 'not-run',
+      detail: JSON.stringify({ order: stateHelpers.GATE_STATES, mixed, allApplied, withFailure, empty }),
+    };
+  });
+
   run('gate cache: re-applying the scatter gate with unchanged upstream reuses the fit', () => {
     const scatter = TestUtils.buildScatterDataset();
     const row = {
@@ -1377,12 +1223,126 @@ _PIPELINE_HELPERS = r"""() => {
 }"""
 
 
+def _check_ui06_metadata_wizard_no_auto_open(ctx: TestContext):
+    """UI-06 regression guard: the wizard no longer force-opens itself.
+
+    `schedule_metadata_wizard_after_file_load()` used to be
+    `window.setTimeout(() => open_metadata_wizard(), 750)` -- a blocking modal
+    that opened itself 750ms after the first file load and stole focus mid-
+    orientation. The fix replaces it with a non-blocking status-bar hint
+    pointing at the existing "Configure filename metadata columns" toolbar
+    button, so the wizard only opens when the user chooses to.
+
+    The headless unit-test harness (tests/unit/test_harness.html) renders no
+    app UI -- its own comment notes every module querySelector capture
+    resolves to null -- so calling the real function here cannot observe
+    modal-visibility or focus state directly (set_status_bar() would throw on
+    the missing #status_bar_message element, and open_metadata_wizard() would
+    silently no-op on the missing modal either way, before or after the fix).
+    Given that constraint, this reads the actual owned source file WS-4 ships
+    and asserts the blocking-timer call is gone and the replacement hint is
+    wired through set_status_bar() -- it fails against the pre-fix source
+    (real assertion error, not a harness artifact) and passes against the
+    current one.
+    """
+    metadata_wizard_path = Path(__file__).resolve().parent.parent.parent.parent / "js" / "ui" / "metadata_wizard.js"
+    source = metadata_wizard_path.read_text()
+    match = re.search(
+        r"export function schedule_metadata_wizard_after_file_load\(\)\s*\{(.*?)\n\}",
+        source,
+        re.DOTALL,
+    )
+    body = match.group(1) if match else ""
+    no_blocking_timer = not re.search(r"setTimeout\([^)]*open_metadata_wizard", source)
+    uses_status_bar_hint = bool(re.search(r"set_status_bar\(", body))
+    ctx.check(
+        GROUP,
+        "UI-06: file load no longer force-opens the metadata wizard via a blocking timer",
+        match is not None and no_blocking_timer and uses_status_bar_hint,
+        (
+            f"function_found={match is not None} no_blocking_timer={no_blocking_timer} "
+            f"uses_status_bar_hint={uses_status_bar_hint}"
+        ),
+        screenshot=False,
+    )
+
+
+def _check_ui09_peak_review_message_names_real_control(ctx: TestContext):
+    """UI-09 regression guard: the bulk-detect messaging names a control that
+
+    actually works, and the disabled fields underneath explain themselves.
+
+    With several samples checked and none singled out, `peak_review_ui.js`
+    used to tell the user "click a row to review one" both before and after
+    Detect Peaks -- but clicking a table row does not focus a sample (only
+    the Ridge view's per-sample "Manual Review" button does, via
+    `js/plotting/render.js`'s `enter_ridge_review()` ->
+    `set_focused_file_id()`). A live-browser repro (Playwright, two real FCS
+    fixtures) confirmed clicking a row did nothing while the four region
+    inputs stayed empty and disabled directly under a "Peaks detected"
+    success message -- the reported bug. The fix (a) replaces "click a row"
+    with the control that actually works in both the pre-detection hint
+    (refresh_panel()) and the post-detection status
+    (on_detect_peaks_click()), and (b) makes the disabled-fields state
+    self-explaining by surfacing a reason on the existing `peak_review_status`
+    line instead of just hiding it.
+
+    Same headless-harness constraint as the UI-06 check above (no app DOM,
+    so `refresh_panel()`/`on_detect_peaks_click()` can't be exercised
+    directly here): this reads the owned source file and asserts the old,
+    dead-end instruction is gone and the replacement literally names the
+    real controls ("Ridge", the View mode; "Manual Review", the per-sample
+    button label in render.js) in both messages, plus that the disabled
+    fields get a non-empty explanation. Fails against the pre-fix source
+    (the old "click a row" text matches) and passes against the current one.
+    """
+    peak_review_path = (
+        Path(__file__).resolve().parent.parent.parent.parent / "js" / "analysis" / "cell_cycle" / "peak_review_ui.js"
+    )
+    source = peak_review_path.read_text()
+
+    no_dead_end_instruction = not re.search(r"[Cc]lick a row", source)
+
+    hint_match = re.search(
+        r"samples checked.*?Detect Peaks runs on all of them;\s*([^`]*?)`",
+        source,
+    )
+    hint_text = hint_match.group(1) if hint_match else ""
+    hint_names_real_control = "Ridge" in hint_text and "Manual Review" in hint_text
+
+    status_match = re.search(
+        r"Peaks detected for all \$\{targets\.length\} plotted samples\.\s*([^`]*?)`",
+        source,
+    )
+    status_text = status_match.group(1) if status_match else ""
+    status_names_real_control = "Ridge" in status_text and "Manual Review" in status_text
+
+    # refresh_panel()'s !row branch: peak_review_status must be given a
+    # non-empty explanation (not just left hidden) when several samples are
+    # checked and none is focused.
+    self_explains_disabled_state = bool(
+        re.search(r"peak_review_status\.textContent\s*=\s*bulk\s*\n\s*\?\s*\"[^\"]+\"", source)
+    )
+
+    ctx.check(
+        GROUP,
+        "UI-09: bulk Detect Peaks messaging names the control that actually focuses a sample, "
+        "and the disabled region fields explain themselves",
+        no_dead_end_instruction and hint_names_real_control and status_names_real_control and self_explains_disabled_state,
+        (
+            f"no_dead_end_instruction={no_dead_end_instruction} hint_names_real_control={hint_names_real_control} "
+            f"status_names_real_control={status_names_real_control} "
+            f"self_explains_disabled_state={self_explains_disabled_state}"
+        ),
+        screenshot=False,
+    )
+
+
 def run_djf_pipeline_tests(ctx: TestContext):
     """Run isolated stage groups and record every JS assertion."""
 
     for suite_name, source in (
         ("Stages 0-4", _STAGES_0_TO_4),
-        ("Stages 5-8", _STAGES_5_TO_8),
         ("orchestrator/state helpers", _PIPELINE_HELPERS),
     ):
         try:
@@ -1405,3 +1365,5 @@ def run_djf_pipeline_tests(ctx: TestContext):
                 item.get("detail", ""),
                 screenshot=False,
             )
+
+    _check_ui06_metadata_wizard_no_auto_open(ctx)

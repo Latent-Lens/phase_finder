@@ -14,42 +14,43 @@ import {
   time_qc_method_name,
   time_qc_method_edit,
   time_qc_summary,
-} from "../ui/dom.js";
+} from "../../ui/dom.js";
 import {
   get_time_qc_state,
   time_qc_method_options,
   time_qc_method_label,
-} from "./time_qc_settings.js";
-import { open_time_qc_method_modal, init_time_qc_modal } from "./time_qc_modal.js";
+} from "../qc/time_qc_settings.js";
+import { open_time_qc_method_modal, init_time_qc_modal } from "../qc/time_qc_modal.js";
 import {
   timeQcDiagnosticAvailable,
   timeQcDiagnosticChannels,
   buildTimeQcDiagnosticModel,
   renderTimeQcDiagnosticSvg,
-} from "./time_qc_diagnostic_plot.js";
+} from "../qc/time_qc_diagnostic_plot.js";
 import {
   get_structural_qc_state,
   structural_qc_state_is_default,
   STRUCTURAL_QC_CEILING_CHANNELS,
-} from "./structural_qc_settings.js";
-import { open_structural_qc_modal, init_structural_qc_modal } from "./structural_qc_modal.js";
-import { plottable_rows, plot_bin_count, clamp_range_to_analysis_domain } from "../plotting/data.js";
-import { render_density_plot } from "../plotting/render.js";
+} from "../qc/structural_qc_settings.js";
+import { open_structural_qc_modal, init_structural_qc_modal } from "../qc/structural_qc_modal.js";
+import { plottable_rows, plot_bin_count, clamp_range_to_analysis_domain } from "../../plotting/data.js";
+import { render_density_plot } from "../../plotting/render.js";
 import {
   set_status_bar,
   show_progress,
   update_progress,
   hide_progress,
   next_frame,
-} from "../ui/status_channels.js";
+} from "../../ui/status_channels.js";
 import { load_pipeline, load_pipeline_silently, get_pipeline } from "./pipeline_loader.js";
-import { init_scatter_modal, open_scatter_modal } from "./scatter_modal.js";
-import { get_file_table } from "../state/app_state.js";
-import { get_file_by_id } from "../state/files.js";
-import { render_file_table } from "../ui/table_render.js";
-import { ensure_companions_loaded } from "../io/channel_loading.js";
-import { QC_LOST_COLUMNS, QC_STATUS_COLUMN, TOTAL_EVENTS_COLUMN } from "../data_structs/derived_columns.js";
-import { qc_outcome } from "./cell_cycle/result_contract.js";
+import { derive_gate_state, aggregate_gate_state } from "./pipeline_state.js";
+import { init_scatter_modal, open_scatter_modal } from "../gating/scatter_modal.js";
+import { get_file_table } from "../../state/app_state.js";
+import { get_file_by_id } from "../../state/files.js";
+import { render_file_table } from "../../ui/table_render.js";
+import { ensure_companions_loaded } from "../../io/channel_loading.js";
+import { QC_LOST_COLUMNS, QC_STATUS_COLUMN, TOTAL_EVENTS_COLUMN } from "../../data_structs/derived_columns.js";
+import { qc_outcome } from "../cell_cycle/result_contract.js";
 
 let initialized = false;
 
@@ -57,6 +58,11 @@ let initialized = false;
 // the sidebar toggle labels, so the progress readout can name exactly which
 // filters are being applied rather than a generic "Applying pre-model QC".
 const QC_FILTER_NAMES = ["Structural", "Time QC", "Cell gate", "Singlet gate"];
+
+// Per-filter-index state field names, shared by every place that reads a
+// stage's product (the gate-state matrix below, the metadata table, the
+// cell-gate inspector) so they all name the same four fields.
+const QC_PRODUCT_FIELDS = ["structuralQC", "timeQC", "scatterGate", "singletResult"];
 
 /*
 
@@ -267,20 +273,90 @@ function sync_qc_run_all_state() {
 /*
 
 Purpose:
-	Writes the checked filters' loss columns (plus the leading total-events column)
-	into the metadata table and drops any unchecked filter's column, then re-renders
-	the table.
+	Builds the single gate-state matrix (QC-02/AD-3) that both the metadata table's
+	QC status column and the sidebar toggle buttons render from, so the two surfaces
+	read one derivation instead of two independent ones that can drift apart. For
+	each plotted row, classifies each of the four QC filters via
+	pipeline_state.js's derive_gate_state() -- "not-run" for a filter that isn't
+	checked, otherwise the state its stage product actually reached (including
+	"needs-review" for e.g. the scatter gate's reviewRequired outcome).
 
 Input:
 	rows [array]: the plotted sample rows
 	pipeline [object]: the loaded pipeline module
 	checked [array]: the checked QC filter indexes
+	options [object]: { running [boolean]: true while an apply is in flight, so
+	                    every checked filter reads as "running" instead of
+	                    whatever its (stale) product currently says }
+
+Output:
+	matrix [Map]: row.name -> [state0, state1, state2, state3], one GATE_STATES
+	              value per QC filter index
+
+*/
+export function compute_gate_state_matrix(rows, pipeline, checked, { running = false } = {}) {
+  const checked_set = new Set(checked);
+  const matrix = new Map();
+  for (const row of rows) {
+    const state = pipeline.get_state(row.name);
+    matrix.set(row.name, QC_FILTER_INDICES.map((filterIndex) => {
+      const active = checked_set.has(filterIndex);
+      const product = state?.[QC_PRODUCT_FIELDS[filterIndex]];
+      return derive_gate_state(product, { active, running: active && running });
+    }));
+  }
+  return matrix;
+}
+
+/*
+
+Purpose:
+	Writes each sidebar QC toggle button's (and "Run All"'s) `data-gate-state`
+	attribute (QC-02/AD-3) from the shared gate-state matrix, aggregating every
+	plotted row's state for that filter to the single worst one present (e.g. one
+	sample needing review is enough to mark the whole gate "needs-review"). Leaves
+	`aria-pressed` untouched -- it keeps meaning "the toggle is on", set by
+	set_qc_active(); appearance is driven by `data-gate-state` alone.
+
+Input:
+	rows [array]: the plotted sample rows
+	matrix [Map]: the matrix from compute_gate_state_matrix()
+
+Output:
+	(none) [void]: writes `data-gate-state` on each gate button
+
+*/
+function update_gate_button_states(rows, matrix) {
+  const per_filter_state = QC_FILTER_INDICES.map((filterIndex) => {
+    const button = qc_gate_buttons[filterIndex];
+    const states = rows.map((row) => matrix.get(row.name)?.[filterIndex] ?? "not-run");
+    const gate_state = states.length ? aggregate_gate_state(states) : "not-run";
+    if (button) button.setAttribute("data-gate-state", gate_state);
+    return gate_state;
+  });
+  if (qc_gate_run_all) qc_gate_run_all.setAttribute("data-gate-state", aggregate_gate_state(per_filter_state));
+}
+
+/*
+
+Purpose:
+	Writes the checked filters' loss columns (plus the leading total-events column)
+	into the metadata table and drops any unchecked filter's column, then re-renders
+	the table. The QC status column reads the same gate-state matrix
+	(compute_gate_state_matrix()) the sidebar buttons render from (QC-02/AD-3), so a
+	row cannot say "Complete" while its gate button shows "needs-review".
+
+Input:
+	rows [array]: the plotted sample rows
+	pipeline [object]: the loaded pipeline module
+	checked [array]: the checked QC filter indexes
+	matrix [Map]: the matrix from compute_gate_state_matrix()
 
 Output:
 	(none) [void]: updates and re-renders the metadata table
 
 */
-function update_qc_columns(rows, pipeline, checked) {
+function update_qc_columns(rows, pipeline, checked, matrix) {
   const frame = get_file_table();
   if (!frame) return;
   const checked_set = new Set(checked);
@@ -297,17 +373,18 @@ function update_qc_columns(rows, pipeline, checked) {
       const funnel = funnel_by_name.get(name_for(id));
       return funnel ? funnel.eventCount.toLocaleString() : undefined;
     });
-    const products = ["structuralQC", "timeQC", "scatterGate", "singletResult"];
     write_frame_column(frame, ids, QC_STATUS_COLUMN, (id) => {
       const name = name_for(id);
       if (!name) return undefined;
       const state = pipeline.get_state(name);
+      const row_states = matrix.get(name);
       for (const filterIndex of checked) {
-        const product = state?.[products[filterIndex]];
-        if (!product) return `${QC_FILTER_NAMES[filterIndex]} not run`;
-        if (product.failed) return `${QC_FILTER_NAMES[filterIndex]} failed: ${product.reason ?? "load error"}`;
-        if (product.skipped || product.reviewRequired) {
-          return `${QC_FILTER_NAMES[filterIndex]} incomplete: ${product.reason ?? product.status ?? "review required"}`;
+        const gate_state = row_states?.[filterIndex] ?? "not-run";
+        const product = state?.[QC_PRODUCT_FIELDS[filterIndex]];
+        if (gate_state === "not-run") return `${QC_FILTER_NAMES[filterIndex]} not run`;
+        if (gate_state === "failed") return `${QC_FILTER_NAMES[filterIndex]} failed: ${product?.reason ?? "load error"}`;
+        if (gate_state === "needs-review" || gate_state === "skipped") {
+          return `${QC_FILTER_NAMES[filterIndex]} incomplete: ${product?.reason ?? product?.status ?? "review required"}`;
         }
       }
       return "Complete";
@@ -681,6 +758,12 @@ async function apply_qc_selection() {
 
   qc_busy = true;
   set_qc_controls_disabled(true);
+  // Mark every checked filter's button "running" immediately (QC-02/AD-3) --
+  // otherwise a checked-but-not-yet-recomputed gate keeps showing whatever
+  // state its stale product left behind for the whole apply.
+  QC_FILTER_INDICES.forEach((filterIndex) => {
+    if (checked.includes(filterIndex)) qc_gate_buttons[filterIndex]?.setAttribute("data-gate-state", "running");
+  });
   let progress_operation = null;
   try {
     const progress_label = qc_progress_label(checked);
@@ -736,7 +819,9 @@ async function apply_qc_selection() {
       if (state) state.requiredQc = requiredQc;
     });
 
-    update_qc_columns(rows, pipeline, checked);
+    const gate_matrix = compute_gate_state_matrix(rows, pipeline, checked);
+    update_qc_columns(rows, pipeline, checked, gate_matrix);
+    update_gate_button_states(rows, gate_matrix);
     sync_structural_qc_line();
     sync_time_qc_method_line();
     const critical_removal = render_time_qc_summary(rows, pipeline, checked);
@@ -756,6 +841,14 @@ async function apply_qc_selection() {
   } catch (error) {
     console.error("Pre-model QC failed before per-stage completion", error);
     set_status_bar(`Pre-model QC failed: ${error.message}`, true, null, progress_operation, error);
+    // An exception here happened before any per-row product was written, so
+    // there is nothing for the matrix to classify -- mark every checked gate
+    // "failed" directly rather than leaving the "running" state stuck on
+    // screen.
+    QC_FILTER_INDICES.forEach((filterIndex) => {
+      if (checked.includes(filterIndex)) qc_gate_buttons[filterIndex]?.setAttribute("data-gate-state", "failed");
+    });
+    if (qc_gate_run_all) qc_gate_run_all.setAttribute("data-gate-state", "failed");
     hide_progress(800, progress_operation);
   } finally {
     qc_busy = false;
@@ -793,9 +886,14 @@ function open_cell_gate_inspector() {
     onGateChange: (edit) => {
       const updated = pipeline.update_cell_gate(inspect_row, edit);
       // The gate edit invalidates every downstream mask for this row; keep
-      // its Pre-modeling QC columns and the plot in sync with the new gate.
+      // its Pre-modeling QC columns, its gate button, and the plot in sync
+      // with the new gate (e.g. a manual override that resolves the review
+      // requirement should clear "needs-review" in both surfaces).
       regenerate_histograms(rows, pipeline);
-      update_qc_columns(rows, pipeline, checked_qc_filters());
+      const checked = checked_qc_filters();
+      const gate_matrix = compute_gate_state_matrix(rows, pipeline, checked);
+      update_qc_columns(rows, pipeline, checked, gate_matrix);
+      update_gate_button_states(rows, gate_matrix);
       render_density_plot();
 
       const result = updated.result;
@@ -993,6 +1091,10 @@ export function init_pipeline_ui() {
   init_structural_qc_modal();
   init_time_qc_modal();
   init_premodel_qc();
+  // Every gate starts "not-run" (QC-02/AD-3) -- set explicitly so CSS never has
+  // to treat "no data-gate-state attribute yet" as its own implicit state.
+  qc_gate_buttons.forEach((button) => button?.setAttribute("data-gate-state", "not-run"));
+  qc_gate_run_all?.setAttribute("data-gate-state", "not-run");
   sync_structural_qc_line();
   sync_time_qc_method_line();
   document.addEventListener("pf-plot-complete", schedule_qc_precompute);

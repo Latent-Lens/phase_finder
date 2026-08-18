@@ -10,10 +10,104 @@
 // invalidate_after(), invalidate_histogram_dependents(),
 // invalidate_model_results(), and invalidate_model_config_result() clear
 // downstream products when an upstream input changes.
+//
+// GATE_STATES / derive_gate_state() (QC-02, AD-3): the gate-state vocabulary
+// every pre-model QC surface (sidebar toggle buttons, metadata table status
+// column) renders from. Before this, "did the gate succeed" was read off
+// `aria-pressed`, which only ever meant "is the toggle on" -- there was no
+// third state for "the gate ran but produced a result that needs review"
+// (e.g. the scatter gate's `reviewRequired`), so a reviewed-but-incomplete
+// gate rendered identically to a cleanly-applied one in the sidebar while the
+// table reported it as incomplete. derive_gate_state() is the single place
+// that classifies a stage product into GATE_STATES, built on top of
+// qc_outcome() (the existing single source of truth for stage status used by
+// the result contract) rather than re-deriving pass/fail from the product's
+// raw fields a second time -- every caller (pipeline_ui.js's sidebar buttons
+// and metadata-table column) must call this function instead of inspecting
+// `product.failed` / `product.skipped` / `product.reviewRequired` directly,
+// so the two surfaces cannot disagree about a given gate's state.
 
-import { is_reportable_result } from "./cell_cycle/result_contract.js";
+import { is_reportable_result, qc_outcome } from "../cell_cycle/result_contract.js";
 
 export const pipeline_states = new Map();
+
+// "not-run"/"running" are UI-only states with no qc_outcome() equivalent
+// (derive_gate_state() returns them directly, from the toggle/busy flags);
+// every other GATE_STATES value is one of qc_outcome()'s possible statuses,
+// funneled down to the six the sidebar/table vocabulary distinguishes.
+export const GATE_STATES = ["not-run", "running", "applied", "needs-review", "failed", "skipped"];
+
+// qc_outcome() status -> GATE_STATES. "cancelled" reads as "failed": per
+// qc_outcome()'s own contract comment, a cancelled stage's mask is left in an
+// unknown state and cannot be trusted, the same as a genuine failure.
+// "waived" reads as "applied": a waiver only counts when a human explicitly
+// recorded a reason (qc_outcome()'s waiver branch), so it is a resolved,
+// accepted state, not one still awaiting review.
+const OUTCOME_STATUS_TO_GATE_STATE = {
+  not_run: "not-run",
+  applied: "applied",
+  passed_no_loss: "applied",
+  waived: "applied",
+  degraded: "needs-review",
+  unavailable: "skipped",
+  skipped_optional: "skipped",
+  failed: "failed",
+  cancelled: "failed",
+};
+
+// Severity order used to pick one state when several samples disagree about a
+// single gate (worst first): a sidebar button aggregates every plotted
+// sample's state for that gate into one, and this is the priority used to
+// pick which one wins.
+const GATE_STATE_SEVERITY = ["failed", "needs-review", "running", "skipped", "not-run", "applied"];
+
+/*
+
+Purpose:
+	Classifies one stage product into the GATE_STATES vocabulary -- the single
+	derivation both the sidebar toggle buttons and the metadata table's QC status
+	column must read from, so a gate cannot render "applied" in one surface and
+	"incomplete" in the other. Delegates the actual pass/fail/degraded reading to
+	qc_outcome() (the result contract's existing classification) instead of
+	re-inspecting the product's raw fields.
+
+Input:
+	product [object|null]: the stage's product (e.g. state.scatterGate), or null
+	options [object]: { active [boolean]: whether the gate's toggle is on;
+	                    running [boolean]: whether an apply is currently in
+	                    flight for this gate; waiver [object|undefined]: an
+	                    explicit acknowledgement, passed through to qc_outcome() }
+
+Output:
+	state [string]: one of GATE_STATES
+
+*/
+export function derive_gate_state(product, { active = false, running = false, waiver } = {}) {
+  if (!active) return "not-run";
+  if (running) return "running";
+  const outcome = qc_outcome(product, waiver);
+  return OUTCOME_STATUS_TO_GATE_STATE[outcome.status] ?? "not-run";
+}
+
+/*
+
+Purpose:
+	Picks the single worst GATE_STATES value out of several (e.g. one gate's
+	state across every plotted sample), by GATE_STATE_SEVERITY.
+
+Input:
+	states [array]: GATE_STATES values
+
+Output:
+	state [string]: the worst one present, or "not-run" when `states` is empty
+
+*/
+export function aggregate_gate_state(states) {
+  for (const candidate of GATE_STATE_SEVERITY) {
+    if (states.includes(candidate)) return candidate;
+  }
+  return "not-run";
+}
 
 // Maps each operation index to the state field it produces, so invalidate_after
 // can clear every downstream product. Index 0 names the structural filter's

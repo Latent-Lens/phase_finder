@@ -616,16 +616,109 @@
   border-color: var(--accent);
 }
 
-/* Active (applied) filter. */
-.qc_gate_button[aria-pressed="true"] {
-  background: var(--accent_soft);
-  border-color: var(--accent);
-  color: var(--accent_strong);
-}
-
 .qc_gate_button:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* AD-3 (QC-02): gate-state contract. Appearance is keyed entirely off
+   data-gate-state, written by js/analysis/pipeline_ui.js from the
+   GATE_STATES enum in js/analysis/pipeline_state.js:
+     not-run | running | applied | needs-review | failed | skipped
+   The old `.qc_gate_button[aria-pressed="true"]` appearance rule is
+   deleted, on purpose: `aria-pressed` reverts to meaning only toggle
+   on/off and must not drive appearance -- do not reintroduce it. Declared
+   after `:disabled` above so a gate that is mid-run or needs review stays
+   legible instead of fading to the generic disabled treatment. */
+.qc_gate_button[data-gate-state="not-run"] {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.qc_gate_button[data-gate-state="running"] {
+  border-color: var(--accent);
+  color: var(--accent_strong);
+  cursor: progress;
+  animation: qc_gate_running_pulse 1.4s ease-in-out infinite;
+}
+
+/* Non-colour "in progress" cue -- the ellipsis reads under forced-colors
+   and greyscale printing even when the pulse animation and accent border
+   do not. */
+.qc_gate_button[data-gate-state="running"]::after {
+  content: "\2026";
+  margin-left: 0.3em;
+  font-weight: 400;
+}
+
+@keyframes qc_gate_running_pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qc_gate_button[data-gate-state="running"] {
+    animation: none;
+    /* Static substitute for the pulse: a dashed border is still a visible
+       "not settled yet" cue with the animation off. */
+    border-style: dashed;
+  }
+}
+
+/* Applied: the only state allowed to read as "done, successfully". Solid
+   border + a checkmark glyph that `needs-review` below deliberately does
+   not share, so the two cannot be confused at a glance -- that confusion
+   (QC-02's actual bug) is exactly what this pair of rules prevents. */
+.qc_gate_button[data-gate-state="applied"] {
+  background: var(--accent_soft);
+  border: 1px solid var(--accent);
+  color: var(--accent_strong);
+  font-weight: 700;
+}
+
+.qc_gate_button[data-gate-state="applied"]::after {
+  content: "\2713";
+  margin-left: 0.3em;
+}
+
+/* needs-review must not read as success: a dashed border (vs. applied's
+   solid), a distinct warning glyph (vs. applied's checkmark), and a colour
+   that sits outside both the success-green and danger-red families so it
+   cannot collapse visually into either `applied` or `failed`. */
+.qc_gate_button[data-gate-state="needs-review"] {
+  background: color-mix(in srgb, var(--warn, #b26a00) 12%, transparent);
+  border: 2px dashed var(--warn, #b26a00);
+  color: var(--warn, #b26a00);
+  font-weight: 700;
+}
+
+.qc_gate_button[data-gate-state="needs-review"]::after {
+  content: "\26A0";
+  margin-left: 0.3em;
+}
+
+.qc_gate_button[data-gate-state="failed"] {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.qc_gate_button[data-gate-state="failed"]::after {
+  content: "\2715";
+  margin-left: 0.3em;
+}
+
+/* Deliberately not run: italic + strike-through so it reads as "opted out
+   of", not as an error or an accident. */
+.qc_gate_button[data-gate-state="skipped"] {
+  background: var(--panel);
+  border: 1px dashed var(--muted);
+  color: var(--muted);
+  font-style: italic;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
 .qc_gate_run_all {
@@ -1257,6 +1350,81 @@
   color: var(--danger);
 }
 
+/* AD-2 (UI-01): qualifier contract. The result panel used to render phase
+   percentages (.cell_cycle_fit_fraction_row dd, 0.78rem / var(--text)) larger
+   and darker than the caveats that qualify them (.cell_cycle_fit_convergence,
+   .cell_cycle_fit_goodness, .cell_cycle_fit_warnings -- all 0.72rem /
+   var(--muted) above). WS-2 emits these classes on that same convergence
+   status, fit-quality score and warning-count text; the existing
+   .cell_cycle_fit_* rules stay in place because WS-2 may not convert every
+   element in the same change. Never shrink the phase-percentage size to
+   close this gap -- these come up to meet it, not the other way around. */
+.cc_qualifier {
+  font-size: 0.78rem; /* == phase-percentage size; must never end up smaller */
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Both states already carry a "⚠" glyph in the text content (WS-2's job) --
+   the weight/underline here is a second, independent non-colour cue so the
+   distinction survives greyscale printing and colour-blindness even if the
+   glyph is ever dropped from a call site. */
+.cc_qualifier--warn {
+  color: var(--warn, #b26a00);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.cc_qualifier--fail {
+  color: var(--danger);
+  font-weight: 700;
+  border-bottom: 2px solid currentColor;
+}
+
+/* The inline "⚠" marker UI-01 appends to a fraction wherever it renders --
+   table cell, sidebar readout, TSV-adjacent DOM. Sized in em so it holds up
+   at table row density (file_table's body text runs smaller than the fit
+   panel) instead of a fixed rem that could go illegible there. */
+.cc_value_flag {
+  display: inline-block;
+  margin-left: 0.3em;
+  padding: 0 0.3em;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  font-size: 1em;
+  font-weight: 800;
+  line-height: 1.35;
+  vertical-align: text-top;
+}
+
+/* Visible, focusable replacement for a title="" tooltip explaining the
+   goodness-of-fit number (previously keyboard/touch-unreachable). Styled to
+   read as "there is more here" even before focus -- dotted underline, help
+   cursor -- and to get an unmistakable ring when it is focused. WS-2 may put
+   this on a <button> or on a plain element with [tabindex="0"]; base.css's
+   global :where(...,[tabindex]):focus-visible rule already rings it, this
+   adds the resting-state affordance and a component-fitted offset. */
+.cc_goodness_detail {
+  display: inline;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
+.cc_goodness_detail:focus-visible {
+  outline: 3px solid var(--focus_ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .djf_scatter_modal .stats_modal_card {
   width: min(880px, 100%);
 }
@@ -1715,6 +1883,18 @@
   outline: none;
 }
 
+/* UI-05: the rule above suppressed the default outline unconditionally,
+   even for keyboard focus, with no replacement -- the only feedback left
+   was js/plotting/peak_region_overlay.js's on-focus .peak_region_line_focus
+   class (a stroke-width bump on the paired line, not the handle itself).
+   :focus-visible restores a real outline for keyboard users without
+   reintroducing the mouse/drag-start outline flash the original rule was
+   suppressing. */
+.peak_region_handle:focus-visible {
+  outline: 3px solid var(--focus_ring);
+  outline-offset: 2px;
+}
+
 .peak_region_dragging {
   cursor: grabbing;
 }
@@ -1946,4 +2126,74 @@
 .ridge_region_numeric_error {
   flex-basis: 100%;
   color: var(--danger-text, #9f1239);
+}
+
+/* UI-04: forced-colors support previously stopped at the shell -- plot.css
+   had none, despite owning the plot toolbar, the QC gate buttons, and the
+   cell-cycle fit panel. Pattern copied from css/help.css:582: generic
+   borders and focus rings first, then the colour-only state this item is
+   really about.
+
+   AD-2 (.cc_qualifier--warn/--fail) and AD-3
+   (.qc_gate_button[data-gate-state]) already carry non-colour cues --
+   weight, underline, border-style, a content glyph -- that survive forced-
+   colors on their own, because forced-colors remaps paint colours
+   (color/background/border-color) but leaves structural properties
+   (border-style, font-weight, text-decoration) alone. Nothing below
+   redefines that; it only makes sure the *borders* those states rely on
+   (solid vs. dashed) stay visible instead of disappearing along with their
+   author border-color. The one genuine gap is `.cell_cycle_fit_warnings.
+   cell_cycle_fit_has_warnings`, the pre-AD-2 warning-count element WS-2
+   has not necessarily converted yet: it has no non-colour cue at all, so
+   it gets one here too. */
+@media (forced-colors: active) {
+  :where(button, input, select, textarea, [role="button"], [role="checkbox"], [role="slider"], [role="separator"]) {
+    border: 1px solid ButtonText;
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: Highlight !important;
+  }
+
+  /* AD-3: keep the solid/dashed distinction between applied and
+     needs-review visible -- explicit border-style survives the author
+     border-color being remapped, but state it here so a state's colour and
+     its border-style can never silently drift apart again. */
+  .qc_gate_button[data-gate-state="not-run"],
+  .qc_gate_button[data-gate-state="applied"],
+  .qc_gate_button[data-gate-state="failed"] {
+    border-style: solid;
+  }
+
+  .qc_gate_button[data-gate-state="needs-review"],
+  .qc_gate_button[data-gate-state="skipped"] {
+    border-style: dashed;
+  }
+
+  .qc_gate_button[data-gate-state="running"] {
+    border-style: solid;
+    animation: none;
+  }
+
+  /* Pre-AD-2 legacy element: give it the same kind of non-colour cue the
+     converged/goodness variants beside it already have. */
+  .cell_cycle_fit_convergence.cell_cycle_fit_not_converged,
+  .cell_cycle_fit_goodness.cell_cycle_fit_goodness_poor,
+  .cell_cycle_fit_warnings.cell_cycle_fit_has_warnings {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  /* Time QC's escalation border-left is colour-only today (text/high/
+     critical prose carries the real meaning, but the visual escalation
+     cue does not) -- widen it a step further at each escalation so the
+     structure survives even once the colours flatten. */
+  .time_qc_summary__high {
+    border-left-width: 5px;
+  }
+
+  .time_qc_summary__critical {
+    border-left-width: 7px;
+    border-left-style: double;
+  }
 }
