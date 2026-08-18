@@ -16,7 +16,7 @@ The project currently focuses on a specific analysis workflow:
 5. Check the samples to analyze.
 6. Generate an overlaid event histogram for the selected files.
 7. Review G1/G2 peak regions and fit Dean–Jett, Dean–Jett–Fox, Watson
-   Pragmatic, Watson Classic, or use Automatic model selection.
+   Pragmatic, Watson Classic, or CLOCCS (Unverified).
 
 Files are read by browser APIs. There is no upload server or database. Vite
 builds the static production artifact used by the release workflow.
@@ -177,7 +177,7 @@ runtime:
 5. `js/io/channel_loading.js` imports the file getters and `FCSParser` to load
    index-aligned DNA A/H/W, FSC-A, SSC-A, and Time channels (via the module
    worker), then `js/plotting/modeling.js`'s `init_plot` draws the plot.
-6. `js/analysis/pipeline_loader.js` dynamically imports the QC + modeling
+6. `js/analysis/pipeline/pipeline_loader.js` dynamically imports the QC + modeling
    pipeline orchestrator on the first QC or modeling action.
 
 The only runtime third-party library is vendored in the repository:
@@ -280,7 +280,7 @@ across `data.js` (state, data preparation, and histogram binning), `modeling.js`
 (fit/report table), `render.js` (the main SVG render pass), and `axis_modal.js`
 (axis-range modal, plot-control listeners, and the `window.PhaseFinder.plot`
 inspection API). Rendering reads the latest available checkpoint from the
-per-sample state owned by `js/analysis/pipeline_state.js`.
+per-sample state owned by `js/analysis/pipeline/pipeline_state.js`.
 
 Important responsibilities:
 
@@ -296,7 +296,9 @@ Important responsibilities:
   Cell Gate, Singlet Gate) removes acquisition artifacts, debris, and doublets;
   the masked histogram is built; peaks are detected and reviewed (Identify
   Peaks); then a model is fit against the accepted G1/G2 regions (Model & Fit:
-  Dean–Jett, Dean–Jett–Fox, Watson Pragmatic, or Automatic). The plot overlays
+  Dean–Jett, Dean–Jett–Fox, Watson Pragmatic, Watson Classic, or CLOCCS
+  (Unverified) -- automatic model selection was retired; the user always
+  picks the model). The plot overlays
   the fitted total and filled G1/S/G2 components (plus selected contamination
   terms), and the fitted fractions plus the accepted region bounds are written
   to the metadata table.
@@ -311,7 +313,7 @@ The selected-data loading and panel orchestration layer, loaded after
 `js/plotting/`. The QC + modeling pipeline, numeric helpers under `js/analysis/math/`,
 per-sample state, lazy loader, and UI orchestration live directly under
 `js/analysis/`;
-`js/analysis/start.js` coordinates plotting/pipeline actions, and
+`js/analysis/pipeline/start.js` coordinates plotting/pipeline actions, and
 `js/analysis/stats.js` owns summary statistics. Selected FCS DATA loading is in
 `js/io/channel_loading.js`, using `js/io/parameter_map.js` for parameter-index
 resolution and `js/data_structs/channel_cache.js` for reusable loaded arrays.

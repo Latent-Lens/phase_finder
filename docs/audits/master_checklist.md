@@ -870,9 +870,9 @@ Applies to every item in this document, not just testing.
 
 **Problem:** `js/analysis/djf/` is **21 files, 6,630 lines, zero external imports** — verified: no `djf/` import exists outside the directory, and `check_import_graph.py` reaches 137 modules without it. It contains `pipeline_ui.js`, `pipeline_state.js`, `stage8_report.js`, and `scatter_modal.js` — all with **live counterparts of the same name**, which actively costs time when navigating. The `unit_tests_djf_*.py` suites drive the *live* pipeline through the harness, not this code.
 
-- [ ] `git rm -r js/analysis/djf/`
+- [x] `git rm -r js/analysis/djf/` — 21 files, 6,630 lines. *Done 2026-08-17, owner-approved.*
 - [x] `djf-pipeline_report.md` archived to `docs/audits/archive/` — it reviews this dead code and reports all 8 findings resolved, which is accurate about code nobody runs. *Done 2026-08-15.*
-- [ ] Consider archiving `docs/djf_impl_plan.md` (46 KB) — it plans this same dead directory.
+- [x] `docs/djf_impl_plan.md` (46 KB) archived to `docs/audits/archive/` — it plans this same dead directory. *Done 2026-08-17; all five inbound links repointed.*
 - [ ] `npm run check:imports && npm run test:unit` after.
 
 ### CLEAN-02 — Deduplicate documentation
@@ -881,7 +881,9 @@ Applies to every item in this document, not just testing.
 
 - [x] `docs/plans/dean_jett_fox_implementation.md` removed — byte-identical to `docs/dean_jett_fox_implementation.md`, which is the copy referenced by five other documents. *Done 2026-08-15.*
 - [ ] Resolve five near-duplicate HTML pairs — `docs/X.html` vs `docs/audits/X.html` (color_use, user_controlled_vars, djf_diffs) and `docs/X.html` vs `docs/workflows/X.html` (both graph files). Sizes differ by 5–120 KB, so these are *different generations of the same document* and the filename does not say which is current.
+  - **Graph pair resolved (2026-08-17):** `docs/workflows/` deleted. `docs/build_diagram_pages.py` only ever writes to `docs/`, so the `docs/workflows/` copies could not be anything but a stale generation, and would have drifted again after every rebuild. Three `docs/` vs `docs/audits/` pairs remain.
   - **Evidence (2026-08-15):** for all three `docs/audits/` copies, the relative `.md` links are broken — they resolve against `docs/audits/` but the targets (`djf_impl_plan.md`, `dean_jett_fox_implementation.md`, `djf_diffs.md`) live in `docs/`. The `docs/` copies resolve cleanly. The `docs/audits/` copies are also 5–72 bytes larger. **This points to `docs/` as canonical and the `docs/audits/` copies as misplaced duplicates**; confirm before deleting.
+  - **Note (2026-08-17):** two of those three link targets have since been archived — `djf_impl_plan.md` and `djf_diffs.md` now live in `docs/audits/archive/`, and both HTML copies' "View Markdown" links were repointed at the new location. That repoint does not change the verdict above: the `docs/` and `docs/audits/` HTML files are still two generations of the same page, and one of them is still stale. Only `dean_jett_fox_implementation.md` remains at its original `docs/` path.
 - [ ] Fix the tracking inconsistency: `needs_to_be_fixed_ux.md` is **tracked** while `needs_be_fixed_frontend_dev.md` is **untracked**, though `working_tree_commit_plan.md` says both should be untracked.
 - [x] Archive the superseded sources listed at the top of this document — all 8 moved to `docs/audits/archive/` with a provenance README. *Done 2026-08-15.*
 

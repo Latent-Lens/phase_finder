@@ -2,23 +2,25 @@
 
 These diagrams document the current ES-module browser application. They
 separate module topology, state ownership, FCS data
-loading, the staged Dean–Jett–Fox pipeline, rendering, and session restore so
-each diagram remains useful at a readable scale.
+loading, the QC and cell-cycle modeling pipeline, rendering, and session restore
+so each diagram remains useful at a readable scale.
 
 Key architectural facts:
 
 - `index.html` loads one module entry, `js/main.js`; imports define runtime
   ordering after the explicit `init_*()` bootstrap.
 - D3 is the only vendored third-party module. Peak detection and nonlinear
-  fitting are repository-native modules under `js/analysis/djf/`.
-- `pipeline_loader.js` lazy-loads `djf/index.js` on the first stage action.
+  fitting are repository-native modules under `js/analysis/cell_cycle/`.
+- `pipeline_loader.js` lazy-loads `pipeline/cell_cycle_pipeline.js` on the first QC/modeling action.
   Pipeline UI, state-aware rendering, and the Stage 2 scatter viewer are part of
   the eager application shell.
 - Loaded event channels remain full-length and aligned to original FCS event
   indexes. Stage 0–3 masks are composed without compacting those arrays.
 - Pipeline state is per sample and guarded by row id, channel key, and event
   count. Re-running an upstream stage invalidates every downstream product.
-- `render_density_plot()` reads stored pipeline outputs; it never fits a model.
+- The `render_density_plot()` pass reads stored pipeline outputs; it never fits
+  a model. (The peak-region drag handler installed by that pass does refit the
+  one edited sample, but only on commit, after the pass has returned.)
 
 ## 1. Runtime module topology
 
@@ -35,13 +37,13 @@ flowchart LR
 
   subgraph shell["Eager application shell"]
     UI["ui/*<br/>table · wizard · status · panels"]
-    START["analysis/start.js<br/>channel + plot orchestration"]
-    STATS["analysis/stats.js"]
+    START["analysis/pipeline/start.js<br/>channel + plot orchestration"]
+    STATS["ui/table_summary_stats.js"]
     PLOT["plotting/*<br/>data · render · modeling · axis"]
-    PUI["analysis/djf/pipeline_ui.js<br/>stage controls"]
-    PLOAD["analysis/djf/pipeline_loader.js"]
-    PST["analysis/djf/pipeline_state.js"]
-    SCATTER["analysis/djf/scatter_modal.js<br/>Stage 2 inspection"]
+    PUI["analysis/pipeline/pipeline_ui.js<br/>stage controls"]
+    PLOAD["analysis/pipeline/pipeline_loader.js"]
+    PST["analysis/pipeline/pipeline_state.js"]
+    SCATTER["analysis/gating/scatter_modal.js<br/>Stage 2 inspection"]
     SESSION["session/core.js<br/>save · load · restore"]
   end
 
@@ -55,13 +57,13 @@ flowchart LR
     FILECACHE["session/file_cache.js + reconnect.js"]
   end
 
-  subgraph lazy["Lazy DJF orchestrator and stages"]
-    PIPE["analysis/djf/index.js<br/>stage orchestrator"]
-    STAGES["stage0 … stage8<br/>+ background stub"]
+  subgraph lazy["Lazy QC/modeling orchestrator"]
+    PIPE["analysis/pipeline/cell_cycle_pipeline.js<br/>QC + histogram orchestrator"]
+    STAGES["qc · gating · cell_cycle<br/>gate, detection, and model modules"]
   end
 
-  subgraph sharedmath["Shared DJF numeric modules"]
-    MATH["math/* + djf_components.js"]
+  subgraph sharedmath["Shared numeric modules"]
+    MATH["analysis/math/*"]
   end
 
   subgraph adapters["Browser adapters"]
@@ -127,7 +129,7 @@ flowchart LR
   I7 --> I8["init_session()"]
   I8 --> HOOK["window.PhaseFinder<br/>{ app, get pipeline(), get djf(), plot }"]
   I8 -. "setTimeout(..., 0)" .-> AUTO["session/core.try_autoload()"]
-  I5 -. "first Stage / Run all click" .-> LAZY["pipeline_loader.load_pipeline()<br/>dynamic import djf/index.js"]
+  I5 -. "first QC Apply / Run All click" .-> LAZY["pipeline_loader.load_pipeline()<br/>dynamic import pipeline/cell_cycle_pipeline.js"]
 ```
 
 ## 3. State ownership and runtime contracts
@@ -143,7 +145,7 @@ flowchart TB
     T["data_structs/table_state.js<br/>selection · filters · sort"]
     C["data_structs/channel_cache.js<br/>per-row/per-channel Map<br/>active row.data"]
     P["plotting/data.js<br/>active channel · series · histograms · axes"]
-    D["djf/pipeline_state.js<br/>Map keyed by filename<br/>row.data.masks"]
+    D["pipeline/pipeline_state.js<br/>Map keyed by filename<br/>row.data.masks"]
     F["session/file_cache.js<br/>OPFS file records"]
   end
 
@@ -167,12 +169,12 @@ flowchart TB
   CHANNEL["main.notify_channel_changed()"] --> E3
   E3 --> PRELOAD["analysis/start: preload/activate channel<br/>plot switch stays explicit"]
   START["analysis/start.start_analysis()"] --> E4
-  STATS["analysis/stats"] --> E5
+  STATS["ui/table_summary_stats"] --> E5
   E5 --> STATS
   PRELOAD --> C
   START --> C
   REDRAW --> P
-  PIPE["djf/index.js run_stageN()"] --> D
+  PIPE["pipeline/cell_cycle_pipeline.js apply_*_fast()<br/>apply_dna_histogram()"] --> D
   D --> REDRAW
   HOOK["window.PhaseFinder"] -. "read-only debug access" .-> A
   HOOK -.-> P
@@ -239,15 +241,17 @@ sequenceDiagram
   IO->>MODEL: init_plot(selected channel)
   MODEL->>RENDER: render_density_plot()
   RENDER-->>U: checked samples drawn with D3
-  START-->>U: enable Run DJF Pipeline shortcut
+  START-->>U: enable the QC gate controls
 ```
 
-## 5. Staged DJF dataflow
+## 5. QC and cell-cycle modeling dataflow
 
 Stages 1–3 are optional. When their required channels are unavailable, their
-mask slot remains null and prior masks still apply. Stage 5 records peak-pair
-diagnostics, but Stage 6 initializes and fits independently from the Stage 4
-histogram; a `found:false` Stage 5 result does not stop Run all.
+mask slot remains null and prior masks still apply. Everything downstream of the
+Stage 4 histogram is model-neutral: peak detection proposes G1/G2 regions, the
+user accepts or edits them, and whichever registered model the user picked reads
+the histogram plus those regions. Peak regions identify peaks — they are not
+phase gates, and the optimizer may never move them.
 
 ```mermaid
 flowchart LR
@@ -257,43 +261,45 @@ flowchart LR
   S2 --> S3["Stage 3 optional<br/>pulse-geometry ridge<br/>singlet mask or null"]
   S3 --> FINAL["Final mask<br/>AND all non-null masks"]
   FINAL --> S4["Stage 4<br/>shared-range DNA histogram"]
-  S4 --> S5["Stage 5<br/>near-2:1 peak diagnostics"]
-  S4 --> S6["Stage 6<br/>constrained base DJF fit"]
-  S5 -. "diagnostic only" .-> REPORTING["state.peaks"]
-  S6 --> S7["Stage 7 optional<br/>debris/aggregate candidates<br/>conservative model selection"]
-  S6 --> CHOOSE["baseFit"]
-  S7 --> CHOOSE["extendedFit when selected"]
-  CHOOSE --> S8["Stage 8<br/>1C/S/2C fractions<br/>contamination + GoF<br/>residual diagnostics + warnings"]
-  S8 --> BG["General background<br/>explicitly unspecified stub"]
+  S4 --> DETECT["modeling_state.detect_peak_regions()<br/>multi-scale G1/G2 pair detection"]
+  DETECT --> REGIONS["modeling.peakSelection.regions<br/>accepted or manually edited"]
+  S4 --> FIT["modeling_state.fit_cell_cycle_model(row, modelId)<br/>registry lookup · preflight · worker fit"]
+  REGIONS --> FIT
+  FIT --> CONTRACT["result_contract.apply_result_contract()<br/>validForReporting · fractions · GoF · warnings"]
+  CONTRACT --> STORE["modeling.resultsByKey"]
+  JOINT["CLOCCS · fitScope joint_series<br/>run_cloccs_joint_fit() over a strain's timepoints"] -.-> STORE
 ```
 
-## 6. Manual-stage orchestration and invalidation
+## 6. QC application and fit orchestration
 
-The UI runs one selected stage across all currently plottable samples. Run all
-loops through the same UI path from Stage 0 to Stage 8. Every stage redraws, so
-rerunning upstream work immediately removes stale downstream visuals.
+There are no stage-number buttons. The QC panel applies whichever gates are
+checked across all plottable samples in one pass, then rebuilds every histogram
+so the modeling panel always reads fresh, correctly filtered bins. Fitting is a
+separate, explicitly chosen action: the model dropdown opens on a placeholder,
+so both Fit buttons stay disabled until the user picks a model.
 
 ```mermaid
 flowchart TD
-  USER["Stage N button<br/>or Run all"] --> ROWS{"Any plottable rows?"}
-  ROWS -- "no" --> ERR["readout + status error"]
-  ROWS -- "yes" --> LOCK["lock pipeline controls<br/>show progress"]
+  USER["Apply / Run All<br/>(checked QC gates)"] --> ROWS{"Any plottable rows?"}
+  ROWS -- "no" --> ERR["status-bar error"]
+  ROWS -- "yes" --> LOCK["set_qc_controls_disabled(true)<br/>mark checked gates running<br/>show progress"]
   LOCK --> LOAD["load_pipeline()<br/>singleton dynamic import"]
-  LOAD --> OPT{"Stage 4?"}
-  OPT -- "yes" --> RANGE["shared_histogram_range(rows)"]
-  OPT -- "no" --> EACH
-  RANGE --> EACH["for each row: run_stage(N, row, options)"]
-  EACH --> GUARD["get_or_create_state()<br/>guard rowId/channelKey/eventCount"]
-  GUARD --> PURE["run pure Stage N function"]
-  PURE --> STORE["store product and mask/null"]
-  STORE --> MASK["recompute final mask"]
-  MASK --> INVALID["invalidate_after()<br/>clear all downstream products/masks"]
-  INVALID --> DRAW["render_density_plot()"]
-  DRAW --> MODAL{"Direct successful Stage 2?"}
-  MODAL -- "yes" --> SCATTER["open scatter/GMM modal"]
-  MODAL -- "no" --> DONE
-  SCATTER --> DONE["update readout/status<br/>unlock controls"]
-  RUNALL["Run all"] -. "repeat N = 0…8<br/>suppress Stage 2 modal" .-> EACH
+  LOAD --> COMP["ensure_companions_loaded(rows)<br/>when any gate ≥ Time QC is checked"]
+  COMP --> EACH["for each row: reset_qc_gates(row)<br/>then each checked gate in order"]
+  EACH --> FAST["apply_structural_qc_fast()<br/>apply_time_qc_fast(method options)<br/>apply_cell_gate_fast()<br/>apply_singlet_gate_fast()"]
+  FAST -- "throws" --> FAIL["record_qc_failure(row, filterIndex)<br/>stop this row's chain"]
+  FAST --> HIST["regenerate_histograms(rows, pipeline)<br/>shared_histogram_range + apply_dna_histogram"]
+  FAIL --> HIST
+  HIST --> REQ["state.requiredQc = checked gate names"]
+  REQ --> COLS["compute_gate_state_matrix()<br/>update_qc_columns / gate buttons<br/>render_time_qc_summary()"]
+  COLS --> DRAW["render_density_plot()"]
+  DRAW --> DONE["qc_completion_message()<br/>unlock controls"]
+
+  FITBTN["Fit Current / Fit All Samples"] --> MODEL{"Model chosen?"}
+  MODEL -- "no" --> FITERR["buttons stay disabled"]
+  MODEL -- "yes" --> WAIVER["approve_degraded_qc(rows)"]
+  WAIVER --> DISPATCH["fit_cell_cycle_model(row, modelId)<br/>bulk: run_with_limit() over the worker pool"]
+  DISPATCH --> REFRESH["refresh_panel() + render_density_plot()<br/>dispatch cell-cycle-fit-changed"]
 ```
 
 ## 7. State-aware render path
@@ -311,11 +317,11 @@ flowchart TD
   H -- "yes" --> HIST["use stored histogram<br/>and final-mask values"]
   RAW --> SERIES["sample series + plot caches"]
   HIST --> SERIES
-  SERIES --> FIT{"baseFit or extendedFit?"}
-  FIT -- "yes" --> CURVES["convert stored G1/S/G2/total<br/>+ selected debris/aggregate curves"]
+  SERIES --> FIT{"pipeline_fit_for_series():<br/>active model result with<br/>components + expectedCounts?"}
+  FIT -- "yes" --> CURVES["build_fit_series_entry()<br/>stored G1/S/G2/total component curves"]
   FIT -- "no" --> D3["D3 draw samples, axes, legend"]
   CURVES --> D3
-  D3 --> REP{"Stage 8 report?"}
+  D3 --> REP{"Any fit collected?"}
   REP -- "yes" --> TABLE["render_fit_results_table()<br/>fractions · contamination<br/>GoF · warnings"]
   REP -- "no" --> END["update title and inspection API"]
   TABLE --> END
@@ -324,7 +330,7 @@ flowchart TD
 ## 8. Session save, load, and reconnect
 
 Sessions serialize metadata, table state, channel/plot settings, statistics
-plans, file records, and layout. DJF masks, fits, and reports are runtime-only;
+plans, file records, and layout. QC masks, fits, and reports are runtime-only;
 legacy correction flags are written as false for compatibility.
 
 ```mermaid

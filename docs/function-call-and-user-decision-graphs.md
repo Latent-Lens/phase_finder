@@ -1,18 +1,19 @@
 # PhaseFinder Function Calls And User Decisions
 
 These graphs map user-facing controls to concrete module functions in the
-current staged-pipeline application. They intentionally separate setup,
-channel/plot loading, DJF orchestration, numerical stages, state invalidation,
-and session/statistics flows so function names remain readable.
+current application. They intentionally separate setup, channel/plot loading,
+QC orchestration, numerical gates, state invalidation, and session/statistics
+flows so function names remain readable.
 
 Important distinctions reflected below:
 
-- The UI **Run all** path loops through `pipeline_ui.run_manual_stage()`; it does
-  not call the programmatic `index.run_all(row)` helper.
-- Stage 1–3 skip paths store null optional masks, preserving upstream masks.
-- Stage 5 peak detection is diagnostic. Stage 6 consumes the Stage 4 histogram
-  directly and can continue after `found: false`.
-- Every stage rerun invalidates downstream products before the plot redraws.
+- QC is applied as a set, not stage by stage: `pipeline_ui.apply_qc_selection()`
+  resets each row's gates and then runs every *checked* filter in order. There is
+  no index-based dispatcher and no stage-number buttons.
+- Filter 1–3 skip paths store null optional masks, preserving upstream masks.
+- Peak detection proposes G1/G2 regions; the user accepts or edits them. Regions
+  are an input to fitting, and the optimizer may never move them.
+- Re-applying QC invalidates downstream products before the plot redraws.
 - Pipeline results are runtime-only and are not serialized in session files.
 
 ## 1. Bootstrap, file load, and metadata calls
@@ -71,7 +72,7 @@ flowchart TD
   C0["#channel_select change"] --> C1["main.notify_channel_changed()"]
   C1 --> C2["dispatch fcs-channel-change"]
   C2 --> C3["start.prepare_selected_channel_for_plotting()"]
-  C3 --> C4["enter_plotting_mode()<br/>clear stage badges<br/>disable Run DJF shortcut"]
+  C3 --> C4["enter_plotting_mode()<br/>clear QC gate badges"]
   C3 --> C5{"Channel data cached?"}
   C5 -- "yes" --> C6["channel_cache.activate_analysis_data()"]
   C5 -- "no" --> C7["channel_loading.load_analysis_batch()<br/>activate: false"]
@@ -106,117 +107,116 @@ flowchart TD
   U5["window or panel resize"] --> P6
 ```
 
-## 3. Manual DJF pipeline UI calls
+## 3. Pre-model QC filter UI calls
+
+The four QC gates are independent **toggles**, not a sequential stage runner.
+Toggling any of them recomposes the whole filter selection.
 
 ```mermaid
 flowchart TD
-  M0["#djf_stage0 … #djf_stage8"] --> M1["pipeline_ui.run_manual_stage(stage, button)"]
-  A0["#djf_run_all"] --> A1["pipeline_ui.run_manual_all()"]
-  A2["Sidebar Run DJF Pipeline"] --> A3["click #djf_run_all"]
-  A3 --> A1
+  M0["#qc_structural / #qc_time<br/>#qc_cellgate / #qc_singlet"] --> M1["set_qc_active(button)"]
+  A0["#qc_filter_all 'Run All'"] --> A1{"All already on?"}
+  A1 -- "no" --> A2["open_time_qc_method_modal()"]
+  A1 -- "yes" --> A3["clear every filter"]
+  A2 --> A4["turn every filter on"]
+  M1 --> QS["apply_qc_selection()"]
+  A3 --> QS
+  A4 --> QS
 
-  M1 --> Q0{"Any plottable rows?"}
-  Q0 -- "no" --> Q1["readout + error status"]
-  Q0 -- "yes" --> L0["pipeline_loader.load_pipeline()"]
-  L0 --> L1["dynamic import djf/index.js"]
+  QS --> Q0{"Already busy,<br/>or no plottable rows?"}
+  Q0 -- "yes" --> Q1["return / error status"]
+  Q0 -- "no" --> L0["pipeline_loader.load_pipeline()"]
+  L0 --> L1["dynamic import pipeline/cell_cycle_pipeline.js"]
   L1 --> M2["disable controls + show progress"]
-  M2 --> M3["Stage 4 only:<br/>shared_histogram_range(rows)"]
-  M2 --> M4["for each row:<br/>pipeline.run_stage(stage, row, options)"]
-  M3 --> M4
-  M4 --> M5["format_stage_result()"]
-  M5 --> M6["render_density_plot()"]
-  M6 --> M7{"Direct Stage 2<br/>and not skipped?"}
-  M7 -- "yes" --> M8["scatter_modal.open_scatter_modal()"]
-  M7 -- "no" --> M9["update readout/status"]
-  M8 --> M9
-  M9 --> M10["mark complete<br/>re-enable controls"]
+  M2 --> M3["for each row:<br/>pipeline.reset_qc_gates(row)"]
+  M3 --> M4["per checked filter index:<br/>apply_structural_qc_fast / apply_time_qc_fast<br/>apply_cell_gate_fast / apply_singlet_gate_fast"]
+  M4 --> M5{"Threw?"}
+  M5 -- "yes" --> M6["pipeline.record_qc_failure(row, index, error)"]
+  M5 -- "no" --> M7["pipeline.get_state(row.name)"]
+  M6 --> M7
+  M7 --> M8["render_density_plot()"]
+  M8 --> M9["qc_completion_message()<br/>re-enable controls"]
 
-  A1 --> A4["lock all controls"]
-  A4 --> A5["for stage 0 through 8"]
-  A5 --> A6["run_manual_stage()<br/>managedByRunAll: true<br/>openScatter: false"]
-  A6 --> A7{"Stage returned outputs?"}
-  A7 -- "yes" --> A8{"Stage 8 finished?"}
-  A8 -- "no" --> A5
-  A8 -- "yes" --> A9["All nine stages complete"]
-  A7 -- "no / caught error" --> A10["stop loop"]
-  A9 --> A11["unlock controls"]
-  A10 --> A11
-
-  D0["Programmatic API"] --> D1["pipeline.run_stage_all()<br/>pipeline.run_all(row)"]
+  BG0["Channel finishes plotting"] --> BG1["schedule_qc_precompute()"]
+  BG1 --> BG2["load_pipeline_silently()"]
+  BG2 --> BG3["precompute_prefilter_qc(rows)"]
+  BG3 --> BG4["shared_histogram_range(rows)<br/>clamp_range_to_analysis_domain()"]
+  BG4 --> BG5["per row:<br/>ensure_histogram_current(row, {binCount, range})"]
+  BG5 --> M8
 ```
 
-## 4. Stage-by-stage numerical calls
+## 4. QC gate and modeling numerical calls
 
 ```mermaid
 flowchart TD
-  S0["index.run_stage0()"] --> S0A["stage0.runStructuralQC()<br/>createStructuralValidityMask()"]
-  S0A --> S0B["set_stage_mask(0, structuralMask)"]
+  S0["pipeline.apply_structural_qc_fast(row)"] --> S0A["structural_qc.runStructuralQC()<br/>createStructuralValidityMask()"]
+  S0A --> S0B["set_filter_mask(row, 0, structuralMask)"]
 
-  S0B --> S1Q{"Time channel present?"}
-  S1Q -- "no" --> S1S["Stage 1 skipped<br/>timeQC mask = null"]
-  S1Q -- "yes" --> S1A["stage1.runTimeQC()<br/>prepareTimeQCBins()<br/>summarize + robust-score bins<br/>createTimeQCMask()"]
+  S0B --> S1Q{"Time QC checked and<br/>Time channel present?"}
+  S1Q -- "no" --> S1S["filter 1 skipped<br/>time mask = null"]
+  S1Q -- "yes" --> S1A["pipeline.apply_time_qc_fast(row, method options)<br/>acquisition_time_qc.prepareTimeQCBins()<br/>summarizeTimeQCBins() + scoreTimeQCBins()<br/>or peak_tracking_time_qc"]
   S1S --> S2Q
   S1A --> S2Q
 
-  S2Q{"FSC-A and SSC-A present?"}
-  S2Q -- "no" --> S2S["Stage 2 skipped<br/>scatter mask = null"]
-  S2Q -- "yes" --> S2A["stage2.gateMainBiologicalCloud()<br/>buildScatterPoints() → fitGMM2D()<br/>chooseMainBiologicalComponent()<br/>createScatterGateMask()"]
+  S2Q{"Cell Gate checked and<br/>FSC-A + SSC-A present?"}
+  S2Q -- "no" --> S2S["filter 2 skipped<br/>scatter mask = null"]
+  S2Q -- "yes" --> S2A["pipeline.apply_cell_gate_fast(row)<br/>scatter_gmm_gate.buildScatterPoints() → fitGMM2D()<br/>scoreScatterComponents()<br/>createScatterGateMask()"]
   S2S --> S3Q
   S2A --> S3Q
 
-  S3Q{"DNA-H or DNA-W<br/>and enough usable events?"}
-  S3Q -- "no" --> S3S["Stage 3 skipped<br/>singlet mask = null"]
-  S3Q -- "yes" --> S3A["stage3.gateByPulseGeometry()<br/>select/build geometry points<br/>fitRobustRidge2D()<br/>createSingletMaskFromRidge()"]
+  S3Q{"Singlet Gate checked and<br/>DNA-H or DNA-W usable?"}
+  S3Q -- "no" --> S3S["filter 3 skipped<br/>singlet mask = null"]
+  S3Q -- "yes" --> S3A["pipeline.apply_singlet_gate_fast(row)<br/>pulse_geometry_gate.gateByPulseGeometry()<br/>selectPulseGeometry() → fitRobustRidge2D()<br/>createSingletMaskFromRidge()"]
   S3S --> S4
   S3A --> S4
 
-  S4["index.run_stage4()<br/>recompute_final_mask()<br/>stage4.generateHistogram()"] --> S5
-  S5["index.run_stage5()<br/>detectDNAContentPeaks()<br/>smooth + prominence + ratio score"] --> S5Q{"Valid pair found?"}
-  S5Q -- "no" --> S5N["store found:false<br/>Run all may continue"]
-  S5Q -- "yes" --> S5Y["store peak diagnostics"]
-  S5N --> S6
-  S5Y --> S6
+  S4["pipeline_ui.regenerate_histograms(rows, pipeline)<br/>shared_histogram_range(rows)<br/>pipeline.apply_dna_histogram(row, {binCount, range})<br/>dna_histogram.generateHistogram()"] --> DET
 
-  S6["index.run_stage6()<br/>fitCellCycleHistogram()<br/>initializeParameters()<br/>runLevenbergMarquardt()"] --> S7
-  S7["index.run_stage7()<br/>extendCellCycleFit()<br/>inspectResidualStructure()"] --> S7Q{"Contamination signal?"}
-  S7Q -- "none / weak improvement" --> S7B["chooseModel(): base"]
-  S7Q -- "detected" --> S7E["fitCandidateModel()<br/>debris / aggregate / both<br/>compare SSE + BIC + targeted residuals"]
-  S7B --> S8
-  S7E --> S8
-  S8["index.run_stage8()<br/>summarizeCellCycleFit()<br/>integrate components<br/>fractions + contamination + GoF<br/>residual checks + warnings<br/>createDisplaySummary()"]
+  DET["modeling_state.detect_peak_regions(row)<br/>peak_detection.detectCellCyclePeakPair()<br/>scoreCellCyclePeakPairs()<br/>proposeAutomaticPeakRegions()"] --> DETQ{"Review required?"}
+  DETQ -- "yes" --> REV["peak_review_ui / ridge drag handles<br/>update_peak_regions() → accept_peak_regions()"]
+  DETQ -- "no" --> REG
+  REV --> REG["modeling.peakSelection.regions"]
+
+  REG --> FITQ{"Model chosen in the dropdown?"}
+  FITQ -- "no" --> NOFIT["Fit buttons stay disabled"]
+  FITQ -- "per-sample model" --> FIT["modeling_state.fit_cell_cycle_model(row, modelId)<br/>resolve_model_configuration() → model_preflight()<br/>fit_client.run_fit_in_worker()<br/>entry.fit() + normalizeResult()"]
+  FITQ -- "cloccs (joint_series)" --> CJ["modeling_ui.run_cloccs_joint_fit(rows)<br/>derive_cloccs_timepoints()<br/>cloccs_client → cloccs_worker fitSeries()"]
+
+  FIT --> CON["result_contract.apply_result_contract()<br/>validForReporting · fractions · GoF · warnings"]
+  CJ --> CON
+  CON --> OUT["modeling.resultsByKey<br/>render_fit_results_table()"]
 ```
 
 ## 5. Pipeline state, masks, and invalidation calls
 
 ```mermaid
 flowchart LR
-  T0["Any run_stageN(row)"] --> T1["pipeline_state.get_or_create_state(row)"]
+  T0["Any apply_*(row) entry point"] --> T1["pipeline_state.get_or_create_state(row)"]
   T1 --> T2{"Same rowId,<br/>channelKey, eventCount?"}
   T2 -- "no" --> T3["empty_state(row)<br/>replace filename-keyed Map entry"]
   T2 -- "yes" --> T4["reuse current state"]
-  T3 --> T5["write Stage N product"]
+  T3 --> T5["write filter N product"]
   T4 --> T5
 
-  T5 --> T6{"Stage 0–3?"}
-  T6 -- "yes" --> T7["set_stage_mask(row, N, mask or null)"]
+  T5 --> T6{"QC filter 0–3?"}
+  T6 -- "yes" --> T7["set_filter_mask(row, N, mask or null)"]
   T7 --> T8["recompute_final_mask()<br/>AND every non-null mask"]
   T6 -- "no" --> T9["retain current final mask"]
   T8 --> T10["invalidate_after(row, state, N)"]
   T9 --> T10
 
-  T10 --> T11["clear state products N+1 … 8"]
-  T10 --> T12["clear downstream masks when applicable"]
+  T10 --> T11["clear downstream QC products"]
+  T10 --> T12["invalidate_histogram_dependents()<br/>invalidate_model_results()"]
   T12 --> T8
-  T10 --> T13["state.lastStageRun = N"]
-  T13 --> T14["render_density_plot()"]
+  T12 --> T14["render_density_plot()"]
 
   C0["Different row.data.channel_key"] --> C1["enter_plotting_mode()<br/>clear completion badges"]
   C1 --> C2["render.active_pipeline_state()<br/>reject mismatched old state"]
   C2 --> T1
 
-  T14 --> V0["Stage 4 histogram replaces display bins"]
-  T14 --> V1["Stage 6/7 overlays stored curves"]
-  T14 --> V2["Stage 8 populates report table"]
+  T14 --> V0["histogram replaces display bins"]
+  T14 --> V1["get_active_model_result() overlays component curves"]
+  T14 --> V2["render_fit_results_table() populates the report table"]
 ```
 
 ## 6. Statistics, sessions, reconnect, and layout calls
@@ -240,7 +240,7 @@ flowchart TD
     SS0["#save_session_button"] --> SS1["handle_save()"]
     SS1 --> SS2["collect_session()<br/>table + metadata + stats plan<br/>file records + plot + layout"]
     SS2 --> SS3["serialize_session()<br/>write_session_file()"]
-    SS2 -. "not serialized" .-> SS4["DJF pipeline state/results"]
+    SS2 -. "not serialized" .-> SS4["QC masks + model results"]
 
     SL0["#load_session_button"] --> SL1["handle_load()"]
     SL1 --> SL2["read_session_file()<br/>parse_session_toml()"]
@@ -311,28 +311,34 @@ flowchart TD
   A1 -- "adjust plot" --> A2["Color, bins, display mode,<br/>selection, or axis range"]
   A2 --> A1
 
-  A1 -- "run DJF" --> A3{"Run all or one stage?"}
-  A3 -- "run all" --> A4["Stages 0 → 8<br/>for every plottable sample"]
+  A1 -- "apply QC" --> A3["Check the wanted gates<br/>Structural · Time · Cell · Singlet"]
+  A3 --> A4["Apply / Run All<br/>for every plottable sample"]
   A4 --> A5["Missing Time/FSC-SSC/pulse geometry<br/>skips optional gates"]
-  A5 --> A9["Fit overlays + report table"]
+  A5 --> A11["Rebuild every histogram<br/>clear downstream results and redraw"]
+  A11 --> A12{"Inspect the Cell Gate?"}
+  A12 -- "yes" --> A13["Open the scatter/GMM modal"]
+  A12 -- "no" --> A14
+  A13 --> A14
 
-  A3 -- "one stage" --> A6["Choose Stage 0–8"]
-  A6 --> A7{"Required upstream product exists?"}
-  A7 -- "no" --> A8["Readout/status error"]
-  A7 -- "yes" --> A10["Run exactly that stage<br/>for all plottable samples"]
-  A10 --> A11["Clear downstream results and redraw"]
-  A11 --> A12{"Direct successful Stage 2?"}
-  A12 -- "yes" --> A13["Inspect scatter/GMM modal"]
-  A12 -- "no" --> A9
-  A13 --> A9
-  A8 --> A3
+  A1 -- "model the cell cycle" --> A14{"Peak regions accepted?"}
+  A14 -- "no" --> A15["Identify Peaks: detect,<br/>then accept or drag the handles"]
+  A15 --> A14
+  A14 -- "yes" --> A16{"Model chosen?"}
+  A16 -- "no" --> A17["Fit buttons stay disabled"]
+  A17 --> A16
+  A16 -- "yes" --> A18{"Per-sample or joint series?"}
+  A18 -- "per sample" --> A19["Fit Current / Fit All Samples"]
+  A18 -- "cloccs" --> A20["Fit All Samples<br/>map strain + timepoint columns"]
+  A19 --> A9
+  A20 --> A9
+  A9["Fit overlays + report table"] --> A1
 
   A1 -- "calculate statistics" --> B0["Choose channel + metrics"]
   B0 --> B1["Add CHANNEL:metric columns"]
   B1 --> A1
 
   A1 -- "save session" --> C0["Save metadata, table, stats plan,<br/>file records, plot and layout"]
-  C0 --> C1["DJF results remain runtime-only"]
+  C0 --> C1["QC masks and model results remain runtime-only"]
 
   A1 -- "adjust layout" --> D0["Collapse or resize panels/sidebar"]
   D0 --> A1
@@ -360,21 +366,28 @@ FCS and IO:
 - `js/io/metadata_io.js`, `js/io/channel_loading.js`, `js/io/parameter_map.js` —
   file/table IO and selected-channel loading.
 
-Staged DJF pipeline:
+Cell-cycle QC pipeline:
 
-- `js/analysis/djf/pipeline_loader.js`, `pipeline_ui.js`, `pipeline_state.js`,
-  `index.js`, `scatter_modal.js` — lazy loading, manual controls, state/masks,
-  orchestration, and Stage 2 inspection.
-- `stage0_structural.js` through `stage8_report.js` — the nine checkpoints;
-  `stage_background.js` — explicit unspecified-background stub.
-- `djf_components.js` and `math/{stats,gaussian,linalg2d,lm_solver,integrate}.js`
+- `js/analysis/pipeline/pipeline_loader.js`, `pipeline_ui.js`, `pipeline_state.js`,
+  `cell_cycle_pipeline.js`, and `js/analysis/gating/scatter_modal.js` — lazy
+  loading, QC filter controls, state/masks, stage orchestration, and Cell Gate
+  inspection.
+- `qc/structural_qc.js`, `qc/acquisition_time_qc.js`,
+  `gating/scatter_gmm_gate.js`, `gating/pulse_geometry_gate.js`, and
+  `pipeline/dna_histogram.js` — the canonical Stage 0–4 checkpoints;
+  `cell_cycle/peak_detection.js`, `cell_cycle/peak_regions.js`,
+  `cell_cycle/model_registry.js`, `cell_cycle/models/*.js`,
+  `cell_cycle/fit_client.js`/`fit_worker.js`, and
+  `cell_cycle/result_contract.js` — detection, model registration, off-thread
+  fitting, and the reportability gate.
+- `math/{stats,gaussian,gaussian_bin_mass,poisson,linalg2d,lm_solver,nelder_mead,integrate,quadrature}.js`
   — shared numerical implementation.
 
 Rendering, analysis, and persistence:
 
 - `js/plotting/data.js`, `render.js`, `modeling.js`, `axis_modal.js` — D3 plot
   state/rendering, staged fit/report presentation, and axis/inspection API.
-- `js/analysis/start.js`, `stats.js` — channel/plot workflow and summary stats.
+- `js/analysis/pipeline/start.js`, `stats.js` — channel/plot workflow and summary stats.
 - `js/session/core.js`, `table_session.js`, `file_cache.js`, `reconnect.js`,
   `opfs_fs.js`, `copy_worker.js`, `toml_io.js` — session serialization, OPFS
   caching, and reconnect orchestration.

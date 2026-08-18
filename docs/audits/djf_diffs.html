@@ -318,7 +318,7 @@
 <body>
   <header class="topbar">
     <div class="topbar-title">PhaseFinder · DJF implementation audit</div>
-    <a href="djf_diffs.md">View Markdown</a>
+    <a href="archive/djf_diffs.md">View Markdown</a>
   </header>
   <div class="layout">
         <nav id="TOC" role="doc-toc">
@@ -646,7 +646,7 @@
       Legacy — <code>7b5bed9:js/analysis/djf.js</code>
       </th>
       <th width="50%">
-      Staged — <a href="../js/analysis/djf_components.js"><code>djf_components.js</code></a>
+      Staged — <a href="../js/analysis/legacy/legacy_bridge_components.js"><code>djf_components.js</code></a>
       </th>
       </tr>
       </thead>
@@ -693,13 +693,13 @@
       </tr>
       </tbody>
       </table>
-      <p>Sources: legacy lines 16 and 366–391; current <a href="../js/analysis/djf_components.js"><code>djf_components.js</code></a>, especially <code>gaussianPeak</code>, <code>evaluateSBridge</code>, and <code>evaluateBaseAt</code>.</p>
+      <p>Sources: legacy lines 16 and 366–391; current <a href="../js/analysis/legacy/legacy_bridge_components.js"><code>djf_components.js</code></a>, especially <code>gaussianPeak</code>, <code>evaluateSBridge</code>, and <code>evaluateBaseAt</code>.</p>
       <p>Consequences:</p>
       <ul>
       <li>The legacy S component is a numerical convolution. It has shoulders/tails outside <code>m1..m2</code>, and its local broadening interpolates from <code>sigma1</code> to <code>sigma2</code>.</li>
       <li>The staged S component is a direct curve. It is identically zero at and outside <code>mu1..mu2</code>.</li>
       <li>The legacy peak Gaussian is normalized, so <code>a_g1</code> and <code>a_g2</code> are area-like. The staged <code>A1</code> and <code>A2</code> are peak heights. Peak parameters cannot be compared directly between implementations even when their plotted curves look alike.</li>
-      <li>The current theoretical prose still describes a broadened S integral in <a href="dean_jett_fox_implementation.md"><code>dean_jett_fox_implementation.md</code></a>, while the shipped code uses the direct bridge. The implementation plan explicitly acknowledges that the staged phase model differs from and replaces the old one in <a href="djf_impl_plan.md"><code>djf_impl_plan.md</code></a>.</li>
+      <li>The current theoretical prose still describes a broadened S integral in <a href="dean_jett_fox_implementation.md"><code>dean_jett_fox_implementation.md</code></a>, while the shipped code uses the direct bridge. The implementation plan explicitly acknowledges that the staged phase model differs from and replaces the old one in <a href="archive/djf_impl_plan.md"><code>djf_impl_plan.md</code></a>.</li>
       <li>Despite the DJF product/module name, the legacy code has no <code>Ns</code>, <code>sigmaS</code>, or <code>xS</code> corresponding to Fox equation (5). The staged base model has no such parameters either. Stage 7’s aggregate and debris parameters model different functions and cannot substitute for them.</li>
       </ul>
       <p>Against the published equations, the legacy S-phase core is more faithful to both Dean–Jett and the backbone of Fox’s model: it approximates Fox equations (2) and (4). It is not a complete synchronous Fox model because it omits equation (5), and this fidelity result does not establish that legacy will produce better biological estimates on every data set.</p>
@@ -764,7 +764,7 @@
       </tr>
       </tbody>
       </table>
-      <p>Sources: legacy <code>estimate_run_g1</code>, <code>fit</code>, and the historical <code>js/plotting/render.js</code>; current <a href="../js/analysis/legacy_bridge_fit.js"><code>legacy_bridge_fit.js</code></a> and <a href="../js/analysis/djf_components.js"><code>djf_components.js</code></a>.</p>
+      <p>Sources: legacy <code>estimate_run_g1</code>, <code>fit</code>, and the historical <code>js/plotting/render.js</code>; current <a href="../js/analysis/legacy/legacy_bridge_fit.js"><code>legacy_bridge_fit.js</code></a> and <a href="../js/analysis/legacy/legacy_bridge_components.js"><code>djf_components.js</code></a>.</p>
       <p>When at least one plotted series supplied a valid detected G1/G2 pair, the legacy application estimated the median of those G1 positions and constrained each <strong>shown fit</strong> to ±10% of that anchor. If no pair was found, <code>g1_hint</code> was <code>null</code> and the fit instead used local bounds of 0.75–1.25× its initializer. G2 was an independent fit parameter with broad bounds relative to the <strong>initial</strong> G1. The staged application has no run-wide anchor: each sample initializes and fits independently. In the normal UI path, Stage 6 receives default options, fixing G2 at exactly twice G1. <code>unlockRatio: true</code> is supported by the API, but the UI does not currently expose it.</p>
       <p>The solver also changed from <code>ml-levenberg-marquardt</code> (160-iteration cap, bounded parameter arrays, exceptions converted to <code>null</code>) to the local projected LM solver (150-iteration default plus convergence diagnostics). The solver’s independent numerical effect has not yet been isolated from the model and constraint changes.</p>
       <h2 id="stage-5-does-not-seed-or-constrain-stage-6">3. Stage 5 does not seed or constrain Stage 6</h2>
@@ -821,7 +821,7 @@
       </tr>
       </tbody>
       </table>
-      <p>Source: current <a href="../js/analysis/cell_cycle_pipeline.js"><code>cell_cycle_pipeline.js</code></a>, <code>run_stage5</code> and <code>run_stage6</code>.</p>
+      <p>Source: current <a href="../js/analysis/pipeline/cell_cycle_pipeline.js"><code>cell_cycle_pipeline.js</code></a>, <code>run_stage5</code> and <code>run_stage6</code>.</p>
       <p>Stage 6 detects its own candidates inside <code>initializeParameters()</code> and never reads <code>state.peaks</code>. The two current detectors also use different defaults: Stage 5 accepts ratios from 1.8–2.1, whereas Stage 6 considers candidate pairs from 1.45–2.55 before applying its own scoring/fallback and final ratio constraint. A normal Stage 5 result with <code>found: false</code> does not prevent Run All from proceeding to Stage 6.</p>
       <p>This is best described as a workflow disconnect, not dead code: Stage 5 still provides inspection/reporting information. The UI should either label it as diagnostic, pass its automatically selected peaks forward as Stage 6 hints or constraints, or add a separate manual-selection path if that is desired.</p>
       <h2 id="shared-histogram-range">4. Shared histogram range</h2>
@@ -875,7 +875,7 @@
       </tr>
       </tbody>
       </table>
-      <p>Sources: legacy <code>7b5bed9:js/plotting/data.js</code>, <code>shared_range_for_values</code>; current <a href="../js/analysis/cell_cycle_pipeline.js"><code>cell_cycle_pipeline.js</code></a>, <code>shared_histogram_range</code>.</p>
+      <p>Sources: legacy <code>7b5bed9:js/plotting/data.js</code>, <code>shared_range_for_values</code>; current <a href="../js/analysis/pipeline/cell_cycle_pipeline.js"><code>cell_cycle_pipeline.js</code></a>, <code>shared_histogram_range</code>.</p>
       <p>On the normal legacy linear DNA axis, the effective range was <code>[0, sampled p99.5]</code>, recomputed with the histogram during rendering. In the normal staged multi-sample UI path, Stage 4 snapshots one shared full finite min/max <strong>after whichever QC masks are currently active</strong> and stores the bins. Changing the bin control or QC later does not silently re-bin that fit; Stage 4 must be rerun. One surviving extreme can therefore widen every selected sample’s frozen bins. The current modeling Run All executes Stages 4–8 and does not itself run the separate pre-model QC controls, so this protection depends on which filters the user has applied.</p>
       <p>The direct <code>run_stage4(row)</code> API is a qualification: without an explicitly supplied range it derives min/max from that one row. The exported programmatic <code>run_all(row)</code> has the same behavior unless Stage 4 receives a range option. The shared-extrema behavior comes from the multi-row UI/batch path, which passes <code>shared_histogram_range(rows)</code> into every Stage 4 call.</p>
       <p>The private legacy helper in <code>djf.js</code> also used p0.2–p99.8 for an internal histogram. That was not the final live-fit range and should not be confused with the plotting layer’s <code>[0, p99.5]</code> behavior above.</p>
@@ -935,7 +935,7 @@
       </tr>
       </tbody>
       </table>
-      <p>Sources: legacy <code>robust_ratio_mask</code> and <code>apply_aggregate_mask</code>; current <a href="../js/analysis/pulse_geometry_gate.js"><code>pulse_geometry_gate.js</code></a>.</p>
+      <p>Sources: legacy <code>robust_ratio_mask</code> and <code>apply_aggregate_mask</code>; current <a href="../js/analysis/gating/pulse_geometry_gate.js"><code>pulse_geometry_gate.js</code></a>.</p>
       <p>Precisely, the legacy code used a log A/H band and a log-width band. When both companions were usable, both masks were intersected. It required at least 64 eligible ratios and used a median ±4 robust-sigma band. The staged code fits an iteratively reweighted PCA ridge in raw <code>[DNA_A, DNA_H]</code> space, falling back to raw <code>[DNA_A, DNA_W]</code>; it does not use both at once. Its defaults are 5 MAD and a 20-point minimum. These gates are not geometrically equivalent and may retain different event populations.</p>
       <h2 id="debris-and-aggregate-semantics">6. Debris and aggregate semantics</h2>
       <p>The legacy correction deletes events before histogramming. Stage 7 retains the histogram and may allocate modeled area to contamination after the base fit.</p>
@@ -994,7 +994,7 @@
       </tr>
       </tbody>
       </table>
-      <p>Sources: legacy <code>debris_bounds</code> and <code>prepare_row</code>; current <a href="../js/analysis/debris_aggregate_extension.js"><code>debris_aggregate_extension.js</code></a>.</p>
+      <p>Sources: legacy <code>debris_bounds</code> and <code>prepare_row</code>; current <a href="../js/analysis/legacy/debris_aggregate_extension.js"><code>debris_aggregate_extension.js</code></a>.</p>
       <p>The staged code also provides four event-removing pre-model QC stages:</p>
       <ol type="1">
       <li>structural validity and saturation;</li>
@@ -1049,7 +1049,7 @@
       </tr>
       </tbody>
       </table>
-      <p>Source: legacy <code>phase_stats</code>; current <a href="../js/analysis/cell_cycle_fit_report.js"><code>cell_cycle_fit_report.js</code></a>.</p>
+      <p>Source: legacy <code>phase_stats</code>; current <a href="../js/analysis/legacy/cell_cycle_fit_report.js"><code>cell_cycle_fit_report.js</code></a>.</p>
       <p>The current biological G1/S/G2 fractions deliberately exclude aggregate and debris from their denominator. Contamination fractions are reported separately against all modeled area. Stage 8 also calculates SSE, MSE, RMSE, MAE, R², adjusted R², Pearson chi-square, AIC/BIC, boundary checks, peak checks, residual autocorrelation/local bias, pulse-geometry checks, and user-facing warnings.</p>
       <p>The legacy sum omits a common bin-width multiplier, but its live histograms are uniformly spaced, so that omission mostly cancels in normalized phase fractions. The more important fraction differences are the fitted component shapes, constraints, histogram range, and input events—not sum versus trapezoid alone.</p>
       <p>Legacy solver exceptions and invalid parameter results became <code>null</code>, after which rendering silently skipped the sample. The staged code validates array lengths and values, preserves solver diagnostics, tracks stage provenance, invalidates dependent products when an upstream gate changes, and lets the UI report sample failures without discarding successful samples.</p>

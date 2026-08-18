@@ -17,7 +17,9 @@ Everything in this directory has been **merged into [`docs/audits/master_checkli
 | `needs_be_fixed_frontend_dev.md` | 35 FE items from 2026-07-17. | **31 verified resolved** (evidence in checklist Appendix A). 4 survivors → PERF-01, UI-03/04, UI-05, UI-08. |
 | `needs_to_be_fixed_ux.md` | 9 UX items from 2026-07-17. | **6 verified resolved.** 3 survivors → UI-07 (UX-06), UI-12 (UX-09), UI-04 (UI-19). |
 | `todo.md` | Loose task list. | 2 items verified already done (y-axis zero clamp, Phase 2 diagnostic plot); the rest folded in. |
-| `djf-pipeline_report.md` | Code review of `js/analysis/djf/`. | **Reviews dead code.** That directory has zero external imports and is scheduled for deletion (CLEAN-01). The review is accurate about code nobody runs. |
+| `djf-pipeline_report.md` | Code review of `js/analysis/djf/`. | **Reviews dead code.** That directory had zero external imports and was deleted under CLEAN-01 on 2026-08-17. The review is accurate about code nobody ran. |
+| `djf_impl_plan.md` | 46 KB implementation plan for the staged `js/analysis/djf/` pipeline. | **Plans deleted code.** Archived 2026-08-17 with CLEAN-01; the five inbound links were repointed here. Superseded by [`../../plans/cell_cycle_modeling_plan.md`](../../plans/cell_cycle_modeling_plan.md). |
+| `djf_diffs.md` | 2026-07-14 audit comparing the legacy bridge against the staged DJF implementation, against the Fox 1980 primary source. | **Compares two implementations that both now exist only in git history.** Archived 2026-08-17. Its module links were converted to plain code spans — read them at the audit-base commits named in its header. |
 
 ## Still live, deliberately not archived
 

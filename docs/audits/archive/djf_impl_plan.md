@@ -6,7 +6,7 @@
 > touch, and flags the meshing pitfalls. Source line references into the doc use
 > `dean_jett_fox_implementation.md:<line>`.
 >
-> **Deliverable location:** this document is saved at `docs/djf_impl_plan.md`.
+> **Deliverable location:** archived 2026-08-17 to `docs/audits/archive/djf_impl_plan.md` with the dead `js/analysis/djf/` tree it plans (CLEAN-01). Originally `docs/djf_impl_plan.md`.
 
 ---
 

@@ -3,8 +3,13 @@
 **Date:** 2026-07-31 (§1–§10) · updated later the same day (**§11**)
 **Branch:** `cell-cycle-report-warn`
 **Working tree:** uncommitted. Unit suite **756/756**.
-**Origin:** work on the unchecked SCI / VALID / GATE / STATE / PEAK / DOMAIN / QC / STAT / LEGACY / UNC / PERF-MODEL / FUTURE items in
-`docs/audits/codex_audit_of_full_project_remediation_checklist.md`.
+**Origin:** work on the unchecked SCI / VALID / GATE / STATE / PEAK / DOMAIN / QC / STAT / LEGACY / UNC / PERF-MODEL / FUTURE items in the codex remediation checklist (since merged into
+[`docs/audits/master_checklist.md`](./master_checklist.md); the original is archived at
+`docs/audits/archive/codex_audit_of_full_project_remediation_checklist.md`).
+
+> **This document is a research log, not a task list.** Open work lives in the master checklist.
+> This is kept live because it records what was *tried and measured* — including four changes that
+> made results worse — so those are not re-attempted. Keep it current.
 
 > **Read §2 and §5 before touching the model.** Five separate model changes were
 > attempted and measured; four made things worse and one is unattributed. The
