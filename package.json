@@ -38,7 +38,7 @@
     "url": "git+https://github.com/Latent-Lens/PhaseFinder.git"
   },
   "keywords": [],
-  "author": "",
+  "author": "LatentLens",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "commonjs",
   "bugs": {
