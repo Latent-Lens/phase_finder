@@ -18,7 +18,7 @@
 const file_map = new Map();
 
 // Tabular view of loaded files. Columns: id, name, user-defined filename
-// metadata columns, plus stats columns added by js/analysis/stats.js
+// metadata columns, plus stats columns added by js/ui/table_summary_stats.js
 // in the form "CHANNEL:metric" (e.g. "DAPI-A:mean"). Single source of truth
 // for annotation edits and all stats.
 let file_table_frame = null;

@@ -50,12 +50,13 @@ def setup_unit_harness(ctx: TestContext, app_url: str):
     page.wait_for_load_state("domcontentloaded")
 
     # The harness imports the app's ES modules and exposes them on window.
-    # Waiting for that assignment covers every suite, including all DJF stages.
+    # Waiting for that assignment covers every suite, including all pipeline
+    # stages. __libsReady is set last, after every namespace is published.
     try:
         page.wait_for_function(
             "() => !!(window.FCSParser && window.PhaseFinderFrame "
             "   && window.PhaseFinder && window.PhaseFinder.pipeline "
-            "   && window.PhaseFinder.pipeline.fitReport)",
+            "   && window.PhaseFinder.pipeline.dnaHistogram && window.__libsReady)",
             timeout=LIBS_READY_TIMEOUT,
         )
     except Exception as err:
@@ -127,11 +128,11 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_cell_cycle_fit_orchestration import run_cell_cycle_fit_orchestration_tests
     run_cell_cycle_fit_orchestration_tests(ctx)
 
+    from unit_tests_cell_cycle_export import run_cell_cycle_export_tests
+    run_cell_cycle_export_tests(ctx)
+
     from unit_tests_stat_constraints import run_stat_constraint_tests
     run_stat_constraint_tests(ctx)
-
-    from unit_tests_legacy_quarantine import run_legacy_quarantine_tests
-    run_legacy_quarantine_tests(ctx)
 
     from unit_tests_gate_contract import run_gate_contract_tests
     run_gate_contract_tests(ctx)

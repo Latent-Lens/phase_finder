@@ -33,7 +33,7 @@ import {
   plottable_rows,
 } from "./data.js";
 import { plot_performance, render_density_plot } from "./render.js";
-import { get_state as get_pipeline_state, get_active_model_result } from "../analysis/pipeline_state.js";
+import { get_state as get_pipeline_state, get_active_model_result } from "../analysis/pipeline/pipeline_state.js";
 import { plot_interaction_mode } from "./plot_viewport.js";
 
 const axis_range_error = document.querySelector("#axis_range_error");

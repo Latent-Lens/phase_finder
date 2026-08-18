@@ -10,9 +10,7 @@
 //        { type: "result", request_id, ok: true, result }
 //        { type: "result", request_id, ok: false, error }
 //
-// peakRegions is optional -- legacy_bridge_v1 (the only model that predates
-// the canonical DJ/DJF/Watson contract) reads only {histogram, config} and
-// simply ignores an extra field; every canonical model requires it.
+// Every canonical model requires peakRegions alongside the histogram.
 
 import { register_default_models, get_model } from "./model_registry.js";
 import { is_worker_message, worker_message } from "../../util/worker_protocol.js";
@@ -60,8 +58,8 @@ self.addEventListener("message", (event) => {
     });
     cancelled_requests.delete(request_id);
 
-    // Some fit implementations (e.g. legacy_bridge_fit.js) record the exact
-    // options object used into their diagnostics for audit purposes. That
+    // Some fit implementations record the exact options object used into
+    // their diagnostics for audit purposes. That
     // object now carries the onProgress/shouldCancel closures above, which
     // postMessage's structured clone cannot serialize -- strip them from the
     // copy we send back. The full options (functions included) remain

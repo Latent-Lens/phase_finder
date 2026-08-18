@@ -49,7 +49,6 @@ export const CELL_CYCLE_MODEL_LABELS = {
   dean_jett: "Dean–Jett",
   dean_jett_fox: "Dean–Jett–Fox",
   watson_pragmatic: "Watson Pragmatic",
-  legacy_bridge_v1: "Legacy Bridge",
 };
 
 // Cell-cycle table cells may be restored from older sessions as numbers or

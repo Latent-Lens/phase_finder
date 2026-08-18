@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Browser unit coverage for js/analysis/peak_tracking_time_qc.js -- the
-peak-tracking Time QC method, and js/analysis/time_qc_settings.js -- the method
+"""Browser unit coverage for js/analysis/qc/peak_tracking_time_qc.js -- the
+peak-tracking Time QC method, and js/analysis/qc/time_qc_settings.js -- the method
 selection state it is driven by.
 
 Covers the unit-test list in

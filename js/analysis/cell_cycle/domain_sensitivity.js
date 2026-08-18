@@ -18,7 +18,7 @@
 // Nothing here re-derives a model equation; it only re-runs the caller's fit
 // function at perturbed inputs and compares the answers.
 
-import { generateHistogram } from "../dna_histogram.js";
+import { generateHistogram } from "../pipeline/dna_histogram.js";
 
 // ---------------------------------------------------------------------------
 // Documented thresholds (DOMAIN-01 box: "define warning/invalid thresholds for

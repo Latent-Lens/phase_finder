@@ -37,8 +37,8 @@ Scope of this map: every file under `js/` (31 files) plus `index.html`'s script/
 20. js/io/cache.js
 21. js/fcs/channel_cleaning.js
 22. js/io/channel_loading.js
-23. js/analysis/start.js
-24. js/analysis/stats.js
+23. js/analysis/pipeline/start.js
+24. js/ui/table_summary_stats.js
 25. js/ui/panel_resize.js
 26. js/session/store.js
 27. js/session/toml_io.js
@@ -54,7 +54,7 @@ There are no ES-module scripts among the app code (only the two dynamic-import s
 | `js/ui/hover_text.js` before `js/main.js` | `main.js` line 127 calls `window.PhaseFinderTooltips.apply_static()` immediately (not inside a handler) — `PhaseFinderTooltips` must already exist. |
 | `js/ui/status_channels.js` and `js/ui/table_render.js` before `js/main.js` | `main.js`'s trailing lines (363–367) call `clear_channel_controls()`, `render_file_table()`, `update_drop_zone_text()`, `set_status(...)`, `set_status_bar(...)` immediately at load time, not from an event handler. All five are defined in those two earlier files. |
 | `js/plotting/render.js` before `js/plotting/axis_modal.js` | `axis_modal.js` lines 96–107 immediately does `el.addEventListener("change", render_density_plot)` for several plot controls — the *value* of `render_density_plot` (defined in `render.js`) is captured at that statement's execution time. |
-| `js/ui/panels.js` before `js/analysis/start.js` | `start.js` lines 213–216 immediately calls `metadata_panel_toggle.addEventListener(...)`, `analysis_start_button.addEventListener("click", start_analysis)`, etc. Those DOM-reference consts (`analysis_start_button`, `metadata_panel_toggle`, `cell_cycle_modeling_button`, …) are declared in `panels.js`. |
+| `js/ui/panels.js` before `js/analysis/pipeline/start.js` | `start.js` lines 213–216 immediately calls `metadata_panel_toggle.addEventListener(...)`, `analysis_start_button.addEventListener("click", start_analysis)`, etc. Those DOM-reference consts (`analysis_start_button`, `metadata_panel_toggle`, `cell_cycle_modeling_button`, …) are declared in `panels.js`. |
 | `d3` (head) before any `js/plotting/*` file | `render.js` reads `window.d3` synchronously the first time `render_density_plot()` runs; since d3 is a blocking classic script in `<head>`, it is guaranteed ready before body scripts even parse. |
 
 Everything else — e.g. `io/metadata_io.js`'s `load_files()` calling `sync_file_annotations()` (defined in `data_structs/table_state.js`) or `analysis/djf.js` reading `window.levenbergMarquardt`/`window.gsd` (populated asynchronously by the `<head>` dynamic imports, not guaranteed ready even after all scripts parse) — is safe only because those references live inside function bodies that first run in response to user interaction, well after the whole script list has executed. The Levenberg-Marquardt/gsd libraries are a soft dependency: if the dynamic import hasn't resolved yet when a fit is attempted, `js/analysis/djf.js`'s `fit()` (line 462-463) and `detect_peaks()` (line 90) simply check `typeof window.gsd === "function"` / `!LM` and fall back to a local peak scan or return `null` — this is a documented, intentional soft-load design (see the inline comment in `index.html` lines 10-12).
@@ -122,11 +122,11 @@ Since none of this is ES modules, "exports" are just assignments to `window.*` o
 | Global | Defined in | Consumed by |
 |---|---|---|
 | `window.FCSParser` | `fcs/parser.js` | `fcs/metadata_processing.js`, `fcs/data_worker.js` (via `importScripts`, independent of HTML order), `io/channel_loading.js` |
-| `window.PhaseFinderHoverText` / `window.PhaseFinderTooltips` | `ui/hover_text.js` | `main.js` (immediate call), `ui/table_support.js`, `ui/table_render.js`, `ui/panels.js`, `analysis/start.js` |
-| `window.PhaseFinderApp` | `main.js` (assigned near end of file) | `io/channel_loading.js`, `io/metadata_io.js`, `analysis/start.js`, `analysis/stats.js`, `plotting/data.js`, `session/*` — universally, as the sanctioned cross-module accessor for `file_map`/`file_table_frame`/status/progress |
+| `window.PhaseFinderHoverText` / `window.PhaseFinderTooltips` | `ui/hover_text.js` | `main.js` (immediate call), `ui/table_support.js`, `ui/table_render.js`, `ui/panels.js`, `analysis/pipeline/start.js` |
+| `window.PhaseFinderApp` | `main.js` (assigned near end of file) | `io/channel_loading.js`, `io/metadata_io.js`, `analysis/pipeline/start.js`, `ui/table_summary_stats.js`, `plotting/data.js`, `session/*` — universally, as the sanctioned cross-module accessor for `file_map`/`file_table_frame`/status/progress |
 | `window.PhaseFinderDJF` | `analysis/djf.js` | `plotting/render.js` |
 | `window.PhaseFinderPlot` | `plotting/axis_modal.js` | external test harnesses (not seen used by other app files) |
-| `window.PhaseFinderSummaryStats` | `analysis/stats.js` | `io/metadata_io.js` (`clear_stats_plan`), `session/core.js` (`get_stats_plan`/`restore_stats_plan`) |
+| `window.PhaseFinderSummaryStats` | `ui/table_summary_stats.js` | `io/metadata_io.js` (`clear_stats_plan`), `session/core.js` (`get_stats_plan`/`restore_stats_plan`) |
 | `window.PhaseFinderOPFS` | `session/store.js` | `session/opfs.js`, `session/reconnect.js`, `session/core.js` |
 | `window.PhaseFinderSessionFiles` | `session/core.js` (assigned) | `io/metadata_io.js`'s `load_files` (`register_loaded_files`) |
 | `window.PhaseFinderReconnect` | `session/core.js` | not consumed elsewhere in `js/` — appears to be a test/automation hook |
@@ -138,9 +138,9 @@ Bare top-level (non-namespaced) globals shared via the classic-script scope, wit
 - `file_map`, `file_table_frame` — `main.js` — read/written almost everywhere (`data_structs/*`, `io/*`, `ui/*`, `analysis/*`, `plotting/data.js`, `session/core.js`).
 - `TABLE_COLUMNS`, `selected_file_ids`, `column_filters`, `sort_state`, `open_filter_field` — `data_structs/table_state.js` — consumed by `ui/table_support.js`, `ui/table_render.js`, `data_structs/metadata_columns.js`, `io/metadata_io.js`.
 - `PhaseFinderFrame` (class), `make_frame`, `concat_frames`, `build_metadata_frame_from_records` — `data_structs/metadata_frame.js` — consumed by `main.js`, `io/metadata_io.js`, `ui/metadata_wizard.js`, `ui/table_support.js`.
-- `plot_channels`, `modeling_started`, `shown_fits`, `peak_threshold`, `last_series`, `series_by_name`, `histograms_by_name`, `axis_range_override` — `plotting/data.js` — consumed by `plotting/modeling.js`, `plotting/render.js`, `plotting/axis_modal.js`, and read by `io/channel_loading.js` (`plot_channels`, `init_plot`) and `analysis/start.js`.
-- `analysis_start_button`, `cell_cycle_modeling_button`, `plot_panel`, `metadata_panel`, etc. — `ui/panels.js` — consumed immediately by `analysis/start.js`'s top-level listener wiring (a hard load-order requirement, see §1).
-- `ANALYSIS_FILE_CONCURRENCY`, `load_analysis_row`, `load_analysis_batch`, `load_analysis_data`, `refresh_analysis_after_metadata_change`, `preload_analysis_rows_in_background` — `io/channel_loading.js` — consumed by `analysis/start.js`, `analysis/stats.js`, `io/metadata_io.js`.
+- `plot_channels`, `modeling_started`, `shown_fits`, `peak_threshold`, `last_series`, `series_by_name`, `histograms_by_name`, `axis_range_override` — `plotting/data.js` — consumed by `plotting/modeling.js`, `plotting/render.js`, `plotting/axis_modal.js`, and read by `io/channel_loading.js` (`plot_channels`, `init_plot`) and `analysis/pipeline/start.js`.
+- `analysis_start_button`, `cell_cycle_modeling_button`, `plot_panel`, `metadata_panel`, etc. — `ui/panels.js` — consumed immediately by `analysis/pipeline/start.js`'s top-level listener wiring (a hard load-order requirement, see §1).
+- `ANALYSIS_FILE_CONCURRENCY`, `load_analysis_row`, `load_analysis_batch`, `load_analysis_data`, `refresh_analysis_after_metadata_change`, `preload_analysis_rows_in_background` — `io/channel_loading.js` — consumed by `analysis/pipeline/start.js`, `ui/table_summary_stats.js`, `io/metadata_io.js`.
 - `file_records`, `OPFS()`, `is_test_mode`, `esc`, `human_size`, `is_resolved`, `copy_file_to_opfs`, `idb_get`/`idb_put`, `pick_dir_fallback` — `session/opfs.js` — consumed by `session/reconnect.js` and `session/core.js`.
 
 **Ambiguity worth flagging:** `js/session/reconnect.js` line 154 calls `getFileHandleByRelativePath(dir_handle, record.relative_path)`, but this function is not defined anywhere under `js/` (confirmed via repo-wide grep). It is wrapped in a `try { … } catch { … }` that falls back to `dir_handle.getFileHandle(record.original_name)`, so the failure mode is silently absorbed at runtime (a `ReferenceError` is caught, and the code falls through to the simpler by-name lookup) — but this is a genuine dangling reference in the reorganized code, not something inferred as intentional.
@@ -158,14 +158,14 @@ Also worth flagging as a duplicated-logic seam rather than a true bug: **`fcs/ch
 3. `read_fcs_header` in `js/fcs/metadata_processing.js:22-39` slices only the file's first 58 bytes + the TEXT segment, calls `window.FCSParser.parse_header` and `parse_fcs_header_from_segments` (`js/fcs/parser.js:59-80, 533-538`), and returns `{id: create_id(), name, file, summary}` — event DATA is *not* read at this stage.
 4. Back in `load_files` (`metadata_io.js:69-84`): the entry is stored in `file_map`, linked to an existing unlinked metadata row if one matches by filename (`link_existing_metadata_row_to_loaded_entry`, `js/ui/table_render.js:10-28`), otherwise queued as a new tabular row.
 5. After the loop, `metadata_io.js:93-105` builds a new frame via `make_frame`/`concat_frames` (`js/data_structs/metadata_frame.js`) and merges it into `file_table_frame`; if a filename-metadata template is compatible it's auto-applied (`apply_current_filename_metadata_template`, `js/ui/metadata_wizard.js:396-402`), else `sync_file_annotations()` (`js/data_structs/table_state.js:187-202`).
-6. `metadata_io.js:106-114` dispatches `pf-files-loaded` (consumed by `js/analysis/stats.js:129-132` to auto-recompute tracked stats for new files) and calls `window.PhaseFinderSessionFiles.register_loaded_files(loaded_entries)` (`js/session/opfs.js:313-324`) to queue background OPFS caching.
+6. `metadata_io.js:106-114` dispatches `pf-files-loaded` (consumed by `js/ui/table_summary_stats.js:129-132` to auto-recompute tracked stats for new files) and calls `window.PhaseFinderSessionFiles.register_loaded_files(loaded_entries)` (`js/session/opfs.js:313-324`) to queue background OPFS caching.
 7. `metadata_io.js:115-120` sorts the table (`sort_file_table`, `js/ui/table_support.js:398-410`) and calls `update_views()` (`js/ui/table_support.js:310-315`), which calls `render_file_table()` (`js/ui/table_render.js:45-177` — builds the `<table>` markup with checkboxes, editable annotation `<input>`s, and any grouped stats columns) and `populate_channel_controls()` (`js/ui/status_channels.js:348-358`, fills the DNA-area channel `<select>`).
 8. If a plot already exists, `refresh_downstream_after_file_load` (`metadata_io.js:14-19`) calls `refresh_analysis_after_metadata_change` (`js/io/channel_loading.js:366-413`), which loads event data only for newly-added, currently-selected rows and calls `init_plot` (`js/plotting/modeling.js:143-146`) to redraw.
 
 ### B. "Cell Cycle Modeling" click → DJF fit → plot render
 
-1. Precondition: a channel plot must already exist. Clicking "Plot Channel Events" / the collapsed plot icon invokes `start_analysis()` (`js/analysis/start.js:193-211`, wired at line 215-216), which calls `load_analysis_data()` (`js/io/channel_loading.js:316-350`) to load the checked rows' DNA-area (and optional H/W) channel data via the worker (`load_selected_fcs_columns_in_worker` → `js/fcs/data_worker.js`) or main-thread fallback, then `init_plot(selected)` and `enter_modeling_mode()` (flips the button to "Start Modeling (DJF)").
-2. Clicking "Cell Cycle Modeling" (`#cell_cycle_modeling_button`/collapsed variant) calls `start_modeling()` directly (wired in `analysis/start.js:239-243`), defined in `js/plotting/modeling.js:162-169`: sets `modeling_started = true`, seeds `shown_fits` with the first plottable row's name, and calls `render_density_plot()`.
+1. Precondition: a channel plot must already exist. Clicking "Plot Channel Events" / the collapsed plot icon invokes `start_analysis()` (`js/analysis/pipeline/start.js:193-211`, wired at line 215-216), which calls `load_analysis_data()` (`js/io/channel_loading.js:316-350`) to load the checked rows' DNA-area (and optional H/W) channel data via the worker (`load_selected_fcs_columns_in_worker` → `js/fcs/data_worker.js`) or main-thread fallback, then `init_plot(selected)` and `enter_modeling_mode()` (flips the button to "Start Modeling (DJF)").
+2. Clicking "Cell Cycle Modeling" (`#cell_cycle_modeling_button`/collapsed variant) calls `start_modeling()` directly (wired in `analysis/pipeline/start.js:239-243`), defined in `js/plotting/modeling.js:162-169`: sets `modeling_started = true`, seeds `shown_fits` with the first plottable row's name, and calls `render_density_plot()`.
 3. `render_density_plot()` (`js/plotting/render.js:25-405`) is the single render pass. It gathers `plottable_rows()` (`js/plotting/data.js:268-272`), runs `PhaseFinderDJF.prepare_row(row, corrections)` (`js/analysis/djf.js:322-361` — applies debris/doublet masks if the corresponding checkboxes are checked), bins each sample via `histogram_curve` (`plotting/data.js:414-431`), and computes a shared x-range (`shared_range_for_values`, `plotting/data.js:353-375`).
 4. Because `modeling_started` is true (`render.js:98`), for each sample in `shown_fits` it calls `djf.fit(points, range, threshold, run_g1)` (`analysis/djf.js:461-507`) — seeds initial G1/S/G2 parameters via `seed_fit` (peak detection through `window.gsd` if loaded, else a local-maxima scan) and refines them with `window.levenbergMarquardt` (loaded async from `<head>`; `fit()` returns `null` if that library isn't ready or the fit is degenerate).
 5. Fitted parameters feed `djf.components`/`djf.phase_stats` to build the G1/S/G2 area curves and the phase percent/mean/stdev table; `render.js:296-312` draws the filled component paths + solid total curve with D3, and `js/plotting/modeling.js:45-104` (`render_fit_results_table`) renders the numeric summary table overlay.
@@ -187,7 +187,7 @@ Two parallel per-file representations exist and must stay in sync:
 1. **`file_map`** (a `Map<id, entry>`, owned by `main.js`) — the non-tabular, "heavy" per-file object:
    `{ id, name, file (File), summary (from FCSParser: header/metadata/columns/event_count/parameter_count/data_begin/data_end), annotations (plain object synced from the table), data (active-channel payload: channel_key, channel, dna_a/dna_h/dna_w Float64Arrays, keep_mask, indexes, removed_invalid_count, total_count), analysis_data_by_channel (Map<channel_key, data> cache, from data_structs/channel_cache.js), analysis_data_promises_by_channel (in-flight load dedup, from io/channel_loading.js) }`.
 
-2. **`file_table_frame`** (a `PhaseFinderFrame`, also owned by `main.js`) — the tabular, "light" view: columns `id`, `name`, one column per user/filename/import metadata field (defined by `TABLE_COLUMNS` in `data_structs/table_state.js`), plus computed `"CHANNEL:metric"` stat columns added by `analysis/stats.js`. This is the single source of truth for annotation edits, filters, sort, and export — `data_structs/table_state.js`'s `sync_file_annotations()` is the one-way bridge that copies frame values back onto each `file_map` entry's `.annotations` (used later by the plot legend/fit-table metadata display in `plotting/modeling.js:63-69`).
+2. **`file_table_frame`** (a `PhaseFinderFrame`, also owned by `main.js`) — the tabular, "light" view: columns `id`, `name`, one column per user/filename/import metadata field (defined by `TABLE_COLUMNS` in `data_structs/table_state.js`), plus computed `"CHANNEL:metric"` stat columns added by `ui/table_summary_stats.js`. This is the single source of truth for annotation edits, filters, sort, and export — `data_structs/table_state.js`'s `sync_file_annotations()` is the one-way bridge that copies frame values back onto each `file_map` entry's `.annotations` (used later by the plot legend/fit-table metadata display in `plotting/modeling.js:63-69`).
 
 Layer dependencies on these structures:
 - **`fcs/`** produces `summary`/raw column arrays; it does not know about `file_map` or the frame.
@@ -223,8 +223,8 @@ js/ui/table_render.js
 js/ui/panels.js
 js/ui/panel_resize.js
 js/analysis/djf.js
-js/analysis/start.js
-js/analysis/stats.js
+js/analysis/pipeline/start.js
+js/ui/table_summary_stats.js
 js/plotting/data.js
 js/plotting/modeling.js
 js/plotting/render.js

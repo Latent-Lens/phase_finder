@@ -431,7 +431,7 @@ def execute(page, records, selected_models, include_qc):
 _CLOCCS_VALIDATION = r"""async input => {
   const [{ FCSParser }, { generateHistogram }, CLOCCS, bins] = await Promise.all([
     import('/js/fcs/parser.js'),
-    import('/js/analysis/dna_histogram.js'),
+    import('/js/analysis/pipeline/dna_histogram.js'),
     import('/js/analysis/cell_cycle/models/cloccs.js'),
     import('/js/analysis/cell_cycle/bin_settings_sync.js'),
   ]);

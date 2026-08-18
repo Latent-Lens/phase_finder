@@ -9,7 +9,7 @@
 // the generic state schema and invalidation primitives; this owns the
 // modeling-specific behavior built on top of them.
 
-import { get_or_create_state, invalidate_model_results } from "../pipeline_state.js";
+import { get_or_create_state, invalidate_model_results } from "../pipeline/pipeline_state.js";
 import { detectCellCyclePeakPair, proposeAutomaticPeakRegions } from "./peak_detection.js";
 import { validatePeakRegions } from "./peak_regions.js";
 import { get_model } from "./model_registry.js";

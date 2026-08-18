@@ -15,7 +15,7 @@
 // read/write a boundary on the live regions.
 
 import * as d3 from "d3";
-import { get_state } from "../analysis/pipeline_state.js";
+import { get_state } from "../analysis/pipeline/pipeline_state.js";
 import {
   active_peak_review_row,
   commit_peak_region_draft,

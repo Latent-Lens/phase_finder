@@ -16,8 +16,8 @@
 // apply_modeling_session() re-applies that config on reload.
 
 import { plottable_rows, plot_bin_count, clamp_range_to_analysis_domain } from "../plotting/data.js";
-import { get_state } from "../analysis/pipeline_state.js";
-import { load_pipeline } from "../analysis/pipeline_loader.js";
+import { get_state } from "../analysis/pipeline/pipeline_state.js";
+import { load_pipeline } from "../analysis/pipeline/pipeline_loader.js";
 import {
   get_modeling_state,
   update_peak_regions,

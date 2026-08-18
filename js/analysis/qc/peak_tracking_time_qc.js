@@ -13,7 +13,7 @@
 // with the robust-summary method via prepareTimeQCBins, so both methods agree on
 // what "acquisition order" means; only the binning and scoring differ.
 
-import { mad, median } from "./math/stats.js";
+import { mad, median } from "../math/stats.js";
 import { prepareTimeQCBins, DEFAULT_TIMER_RANGE } from "./acquisition_time_qc.js";
 
 export const PEAK_TRACKING_ALGORITHM_VERSION = "peak-tracking-v2";

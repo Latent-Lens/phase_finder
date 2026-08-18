@@ -163,8 +163,8 @@ _TESTS = r"""async () => {
     modelingState.detect_peak_regions(row);
 
     const state = pipeline.get_state(row.name);
-    state.modeling.resultsByKey = { 'legacy_bridge_v1|fp1': { modelId: 'legacy_bridge_v1' } };
-    state.modeling.activeResultKey = 'legacy_bridge_v1|fp1';
+    state.modeling.resultsByKey = { 'dean_jett_fox|fp1': { modelId: 'dean_jett_fox' } };
+    state.modeling.activeResultKey = 'dean_jett_fox|fp1';
 
     const updated = modelingState.update_peak_regions(row, {
       g1: { left: 55, right: 85 }, g2: { left: 120, right: 160 },
@@ -210,7 +210,7 @@ _TESTS = r"""async () => {
       return { pass: true, detail: 'only one candidate pair found; select_peak_pair not exercised' };
     }
     const alternativeId = detection.pairs[1].id;
-    state.modeling.resultsByKey = { x: { modelId: 'legacy_bridge_v1' } };
+    state.modeling.resultsByKey = { x: { modelId: 'dean_jett_fox' } };
     const selection = modelingState.select_peak_pair(row, alternativeId);
     return {
       pass: state.modeling.peakDetection.selectedPairId === alternativeId

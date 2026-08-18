@@ -27,8 +27,8 @@ import {
 } from "../../plotting/data.js";
 import { render_density_plot } from "../../plotting/render.js";
 import { get_model } from "./model_registry.js";
-import { pipeline_states, invalidate_histogram_dependents, invalidate_model_results } from "../pipeline_state.js";
-import { load_pipeline } from "../pipeline_loader.js";
+import { pipeline_states, invalidate_histogram_dependents, invalidate_model_results } from "../pipeline/pipeline_state.js";
+import { load_pipeline } from "../pipeline/pipeline_loader.js";
 import {
   get_modeling_state,
   fit_cell_cycle_model,

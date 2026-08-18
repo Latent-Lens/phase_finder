@@ -244,7 +244,7 @@
                 <button type="button" id="cell_cycle_fit_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitAllReviewed" disabled>Fit All Samples</button>
               </div>
               <p id="cell_cycle_fit_status" class="peak_review_status" role="status" hidden></p>
-              <div id="cell_cycle_fit_result" class="cell_cycle_fit_result" hidden></div>
+              <div id="cell_cycle_fit_result" class="cell_cycle_fit_result" role="status" aria-live="polite" hidden></div>
             </fieldset>
           </section>
           <section class="sidebar_section sidebar_actions">
@@ -334,6 +334,11 @@
                 </button>
                 <button id="plot_tool_home" class="plot_tool quick_tooltip" type="button" data-tooltip-key="plotToolHome" aria-label="Reset axes">
                   <img class="plot_tool_icon" src="./assets/img/plot_icons/home.svg" alt="" aria-hidden="true" />
+                </button>
+                <button id="plot_tool_axes" class="plot_tool quick_tooltip" type="button"
+                        data-tooltip-key="plotToolAxes" aria-label="Set axis ranges"
+                        aria-haspopup="dialog">
+                  <img class="plot_tool_icon" src="./assets/img/plot_icons/axes.svg" alt="" aria-hidden="true" />
                 </button>
               </div>
               <button id="plot_panel_toggle" class="panel_icon_toggle quick_tooltip" type="button" aria-expanded="true" aria-controls="plot_panel_body" data-tooltip-key="plotCollapse" aria-label="Collapse plot">
@@ -755,6 +760,17 @@
             <label class="plot_export_option">
               <input type="radio" name="plot_export_format" value="html" />
               <span><strong>HTML report</strong> — metadata table and the plotted fits, printable to PDF</span>
+            </label>
+          </fieldset>
+          <fieldset class="plot_export_group">
+            <legend>Machine-readable data</legend>
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="json" />
+              <span><strong>JSON</strong> — fit provenance for every plotted sample: model version, convergence, goodness-of-fit, warnings, and whether the result is valid for reporting</span>
+            </label>
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="csv" />
+              <span><strong>CSV</strong> — per-bin fitted curves (observed, fitted, G1/S/G2-M, residuals) for every plotted sample</span>
             </label>
           </fieldset>
           <fieldset class="plot_export_group">

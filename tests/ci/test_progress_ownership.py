@@ -22,7 +22,7 @@ class ProgressOwnershipTests(unittest.TestCase):
         self.assertEqual([], failures, "\n".join(failures))
 
     def test_long_parse_and_bulk_fit_expose_their_existing_abort_signals(self):
-        channel_load = (ROOT / "js/analysis/start.js").read_text()
+        channel_load = (ROOT / "js/analysis/pipeline/start.js").read_text()
         bulk_fit = (ROOT / "js/analysis/cell_cycle/modeling_ui.js").read_text()
         self.assertIn("show_progress_cancel(() => controller.abort())", channel_load)
         self.assertIn("show_progress_cancel(() => controller.abort())", bulk_fit)

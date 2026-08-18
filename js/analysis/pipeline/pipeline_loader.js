@@ -5,7 +5,7 @@
 // no overlay; get_pipeline() returns the already-loaded module (or null). All
 // three share one cached promise, so concurrent callers reuse a single import.
 
-import { show_progress, update_progress, hide_progress } from "../ui/status_channels.js";
+import { show_progress, update_progress, hide_progress } from "../../ui/status_channels.js";
 
 let pipeline_promise = null;
 let pipeline_module = null;

@@ -75,6 +75,12 @@ export const cell_cycle_fit_all_button = document.querySelector("#cell_cycle_fit
 export const cell_cycle_fit_status = document.querySelector("#cell_cycle_fit_status");
 export const cell_cycle_fit_result = document.querySelector("#cell_cycle_fit_result");
 
+// ── Plot toolbar axis-range button ───────────────────────────────────────────
+// AD-1: this button lives in dom.js (not plotting/data.js, which WS-1 owns for
+// MODEL-09) even though its five sibling plot_tool_* buttons are registered
+// there. plot_toolbar.js imports this one ref from here instead.
+export const plot_tool_axes = document.querySelector("#plot_tool_axes");
+
 // ── Companion (Height/Width/FSC/SSC) channel panel ───────────────────────────
 export const channel_aux_panel = document.querySelector("#channel_aux_panel");
 export const aux_height_select = document.querySelector("#aux_height_select");

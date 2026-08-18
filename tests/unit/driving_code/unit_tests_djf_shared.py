@@ -18,7 +18,7 @@ GROUP = "Unit / DJF Shared"
 
 
 _SHARED_HELPERS = r"""() => {
-  const { stats, gaussian, integrate, linalg2d, lm, components } = window.DJFShared;
+  const { stats, gaussian, integrate, linalg2d, lm } = window.DJFShared;
   const state = window.DJFPipelineState;
   const pipeline = window.PhaseFinder.pipeline;
   const results = [];
@@ -118,7 +118,9 @@ _SHARED_HELPERS = r"""() => {
     const left = gaussian.gaussianPeakHeight(8, 10, 2, 7);
     const right = gaussian.gaussianPeakHeight(12, 10, 2, 7);
     return {
-      pass: center === 7 && close(left, right) && gaussian.gaussianPeakHeight(10, 10, 0, 7) === 0,
+      pass: center === 7 && close(left, right)
+        && gaussian.gaussianPeakHeight(10, 10, 0, 7) === 0
+        && gaussian.gaussianPeakHeight(10, 10, 2, -1) === 0,
       detail: JSON.stringify({ center, left, right }),
     };
   });
@@ -543,37 +545,6 @@ _SHARED_HELPERS = r"""() => {
       residualFn: ([value]) => [value],
     }), /out of range/);
     return { pass: failed, detail: `failed=${failed}` };
-  });
-
-  // ---- DJF component functions ------------------------------------------
-  run('components: Gaussian peaks reject invalid widths and amplitudes', () => {
-    const center = components.gaussianPeak(10, 10, 2, 100);
-    const invalidWidth = components.gaussianPeak(10, 10, 0, 100);
-    const invalidAmplitude = components.gaussianPeak(10, 10, 2, -1);
-    return {
-      pass: center === 100 && invalidWidth === 0 && invalidAmplitude === 0,
-      detail: JSON.stringify({ center, invalidWidth, invalidAmplitude }),
-    };
-  });
-
-  run('components: S bridge tapers to zero and reaches its center coefficient', () => {
-    const left = components.evaluateSBridge(10, 10, 20, 5, 5, 5);
-    const center = components.evaluateSBridge(15, 10, 20, 5, 5, 5);
-    const right = components.evaluateSBridge(20, 10, 20, 5, 5, 5);
-    return { pass: left === 0 && center === 5 && right === 0, detail: `${left}, ${center}, ${right}` };
-  });
-
-  run('components: base total equals G1 plus S plus G2 at every x', () => {
-    const parameters = [10, 2, 1, 2, 100, 50, 5, 6, 7];
-    const model = components.evaluateBaseModel([8, 10, 12, 15, 20, 22], parameters);
-    const maximumError = Math.max(...model.fitted.map((value, index) =>
-      Math.abs(value - model.g1[index] - model.s[index] - model.g2[index])
-    ));
-    return {
-      pass: maximumError < 1e-12
-        && model.g1.length === 6 && model.s.length === 6 && model.g2.length === 6,
-      detail: `maximumError=${maximumError}`,
-    };
   });
 
   // ---- Pipeline state and compacted-view helpers ------------------------

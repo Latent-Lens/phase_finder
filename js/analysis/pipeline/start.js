@@ -19,10 +19,10 @@ import {
   plot_panel_toggle,
   toggle_metadata_panel,
   toggle_plot_panel,
-} from "../ui/panels.js";
-import { set_sidebar_collapsed } from "../ui/table_support.js";
-import { Tooltips } from "../ui/hover_text.js";
-import { get_parsed_files } from "../state/files.js";
+} from "../../ui/panels.js";
+import { set_sidebar_collapsed } from "../../ui/table_support.js";
+import { Tooltips } from "../../ui/hover_text.js";
+import { get_parsed_files } from "../../state/files.js";
 import {
   get_selected_channels,
   set_status,
@@ -33,16 +33,16 @@ import {
   show_progress_cancel,
   next_frame,
   update_start_button_state,
-} from "../ui/status_channels.js";
-import { is_analysis_data_loaded, activate_analysis_data } from "../data_structs/channel_cache.js";
-import { plot_channels } from "../plotting/data.js";
-import { render_density_plot } from "../plotting/render.js";
+} from "../../ui/status_channels.js";
+import { is_analysis_data_loaded, activate_analysis_data } from "../../data_structs/channel_cache.js";
+import { plot_channels } from "../../plotting/data.js";
+import { render_density_plot } from "../../plotting/render.js";
 import {
   analysis_file_concurrency,
   load_analysis_data,
   load_analysis_batch,
   refresh_analysis_after_metadata_change,
-} from "../io/channel_loading.js";
+} from "../../io/channel_loading.js";
 
 let channel_change_load_id = 0;
 let channel_change_abort_controller = null;

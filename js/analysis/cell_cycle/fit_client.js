@@ -196,7 +196,7 @@ Purpose:
 	model that itself checks options.shouldCancel() at a real yield point.
 
 Input:
-	modelId [string]: a registered model id (e.g. "legacy_bridge_v1")
+	modelId [string]: a registered model id (e.g. "dean_jett_fox")
 	histogram [object]: a masked histogram (x/y required)
 	config [object]: model-specific fit config
 	options [object]: optional { onProgress(iteration,maxIterations,sse),

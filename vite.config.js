@@ -17,6 +17,21 @@ function sourceCommit() {
   }
 }
 
+// REL-03: the import map exists so the SOURCE tree runs unbuilt (bare "d3" ->
+// vendored copy via resolve.alias below). Vite rewrites those imports and
+// never emits js/vendor/, so in the built HTML the map is dead markup
+// pointing at a path that isn't there -- and it forces a CSP script-src hash
+// to exist for a script that does nothing. Strip it post-build.
+function stripImportMap() {
+  return {
+    name: "phasefinder-strip-importmap",
+    transformIndexHtml: {
+      order: "post",
+      handler: (html) => html.replace(/\s*<script type="importmap">[\s\S]*?<\/script>/, ""),
+    },
+  };
+}
+
 module.exports = defineConfig({
   base: process.env.BASE_PATH || "/",
   define: {
@@ -40,8 +55,15 @@ module.exports = defineConfig({
       for (const file of fs.readdirSync(path.join(outDir, "assets"))) {
         if (/^site-.*\.webmanifest$/.test(file)) fs.unlinkSync(path.join(outDir, "assets", file));
       }
+      // REL-02: ship an inert autoload config so the startup probe
+      // (js/session/core.js try_autoload()) gets 200 {} instead of a 404.
+      // Keeps the console clean without shipping anyone's personal session --
+      // scripts/verify-dist.cjs fails the build if this is ever non-empty.
+      const autoloadStub = path.join(outDir, "sessions", "phasefinder_local.json");
+      fs.mkdirSync(path.dirname(autoloadStub), { recursive: true });
+      fs.writeFileSync(autoloadStub, "{}\n");
     },
-  }],
+  }, stripImportMap()],
   resolve: {
     alias: {
       // Keep production builds on the same vendored, offline D3 bundle used

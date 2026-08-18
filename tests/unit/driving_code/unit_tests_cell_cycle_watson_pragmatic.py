@@ -149,7 +149,7 @@ _WATSON_TESTS = r"""() => {
     detail: JSON.stringify({ kind: bridgeFitted.kind, comparisonGroup: bridgeFitted.comparisonGroup }),
   }));
 
-  run('watson_pragmatic.expectedCounts() is not implemented (S is observed-data-dependent, not parameter-only), matching legacy_bridge_v1’s documented precedent', () => ({
+  run('watson_pragmatic.expectedCounts() is not implemented (S is observed-data-dependent, not parameter-only), matching the retired legacy bridge’s documented precedent', () => ({
     pass: watson.expectedCounts(edges, bridgeFitted.parameters) === null,
     detail: watson.expectedCounts(edges, bridgeFitted.parameters),
   }));

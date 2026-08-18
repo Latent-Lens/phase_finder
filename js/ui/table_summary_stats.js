@@ -8,12 +8,12 @@
 // get_stats_plan/restore_stats_plan/clear_stats_plan are imported directly by the
 // session and IO layers.
 
-import { channel_select, collapsed_channel_select } from "../ui/dom.js";
+import { channel_select, collapsed_channel_select } from "./dom.js";
 import { get_file_table } from "../state/app_state.js";
 import { get_parsed_files, get_file_by_id } from "../state/files.js";
-import { set_status_bar, unique_columns } from "../ui/status_channels.js";
+import { set_status_bar, unique_columns } from "./status_channels.js";
 import { load_analysis_row } from "../io/channel_loading.js";
-import { render_file_table } from "../ui/table_render.js";
+import { render_file_table } from "./table_render.js";
 
 const calculate_stats_button = document.querySelector("#calculate_stats_button");
 const collapsed_calculate_stats_button = document.querySelector("#collapsed_calculate_stats_button");

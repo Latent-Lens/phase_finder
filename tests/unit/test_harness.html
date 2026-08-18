@@ -28,7 +28,7 @@
     import { escape_html } from "/js/util/html.js";
     import { plot_escape_html } from "/js/plotting/data.js";
     import { parse_delimited_metadata, find_metadata_filename_column, loaded_file_index_by_metadata_key, tsv_cell, metadata_import_preview } from "/js/io/metadata_io.js";
-    import { qc_completion_message, qc_ui_outcome } from "/js/analysis/pipeline_ui.js";
+    import { qc_completion_message, qc_ui_outcome } from "/js/analysis/pipeline/pipeline_ui.js";
     import { parameter_map, find_param_index, unique_indexes } from "/js/io/parameter_map.js";
     import {
       build_raw_analysis_channels,
@@ -36,16 +36,15 @@
       find_pipeline_channel_indexes,
     } from "/js/fcs/channel_cleaning.js";
     import { serialize_session, parse_session_toml } from "/js/session/toml_io.js";
-    import * as DJFPipeline from "/js/analysis/cell_cycle_pipeline.js";
-    import * as DJFPipelineState from "/js/analysis/pipeline_state.js";
+    import * as DJFPipeline from "/js/analysis/pipeline/cell_cycle_pipeline.js";
+    import * as DJFPipelineState from "/js/analysis/pipeline/pipeline_state.js";
     import * as DJFStats from "/js/analysis/math/stats.js";
-    import * as SummaryStats from "/js/analysis/stats.js";
-    import * as ScatterModal from "/js/analysis/scatter_modal.js";
+    import * as TableSummaryStats from "/js/ui/table_summary_stats.js";
+    import * as ScatterModal from "/js/analysis/gating/scatter_modal.js";
     import * as DJFGaussian from "/js/analysis/math/gaussian.js";
     import * as DJFIntegrate from "/js/analysis/math/integrate.js";
     import * as DJFLinearAlgebra from "/js/analysis/math/linalg2d.js";
     import * as DJFLMSolver from "/js/analysis/math/lm_solver.js";
-    import * as DJFComponents from "/js/analysis/djf_components.js";
     import * as CellCycleGaussianBinMass from "/js/analysis/math/gaussian_bin_mass.js";
     import * as CellCycleQuadrature from "/js/analysis/math/quadrature.js";
     import * as CellCyclePoisson from "/js/analysis/math/poisson.js";
@@ -54,6 +53,7 @@
     import { run_fit_in_worker, fit_pool_size, compute_pool_size } from "/js/analysis/cell_cycle/fit_client.js";
     import * as CellCyclePeakDetection from "/js/analysis/cell_cycle/peak_detection.js";
     import * as CellCyclePeakRegions from "/js/analysis/cell_cycle/peak_regions.js";
+    import * as DnaHistogram from "/js/analysis/pipeline/dna_histogram.js";
     import * as CellCycleModelingState from "/js/analysis/cell_cycle/modeling_state.js";
     import * as CellCycleResultContract from "/js/analysis/cell_cycle/result_contract.js";
     import * as CellCycleFitEngine from "/js/analysis/cell_cycle/fit_engine.js";
@@ -64,9 +64,9 @@
     import * as CellCycleDeanJettFox from "/js/analysis/cell_cycle/models/dean_jett_fox.js";
     import * as CellCycleWatsonPragmatic from "/js/analysis/cell_cycle/models/watson_pragmatic.js";
     import * as CellCycleWatsonClassic from "/js/analysis/cell_cycle/models/watson_classic.js";
-    import * as PeakTrackingTimeQC from "/js/analysis/peak_tracking_time_qc.js";
-    import * as TimeQCSettings from "/js/analysis/time_qc_settings.js";
-    import * as TimeQCDiagnosticPlot from "/js/analysis/time_qc_diagnostic_plot.js";
+    import * as PeakTrackingTimeQC from "/js/analysis/qc/peak_tracking_time_qc.js";
+    import * as TimeQCSettings from "/js/analysis/qc/time_qc_settings.js";
+    import * as TimeQCDiagnosticPlot from "/js/analysis/qc/time_qc_diagnostic_plot.js";
     import * as CLOCCS from "/js/analysis/cell_cycle/models/cloccs.js";
     import * as CLOCCSSynthetic from "/js/analysis/cell_cycle/models/cloccs_synthetic.js";
     import * as NelderMead from "/js/analysis/math/nelder_mead.js";
@@ -76,6 +76,7 @@
     import * as AxisRangeModal from "/js/plotting/axis_modal.js";
     import * as BrowserCompatibility from "/js/ui/compatibility.js";
     import * as CellCycleModelingUI from "/js/analysis/cell_cycle/modeling_ui.js";
+    import * as CellCycleExport from "/js/analysis/cell_cycle/export.js";
     import { format_cell_cycle_value } from "/js/data_structs/derived_columns.js";
 
     Object.assign(window, {
@@ -106,9 +107,8 @@
       integrate: DJFIntegrate,
       linalg2d: DJFLinearAlgebra,
       lm: DJFLMSolver,
-      components: DJFComponents,
     };
-    window.SummaryStats = SummaryStats;
+    window.TableSummaryStats = TableSummaryStats;
     window.ScatterModal = ScatterModal;
     window.CellCycleGaussianBinMass = CellCycleGaussianBinMass;
     window.CellCycleQuadrature = CellCycleQuadrature;
@@ -139,6 +139,8 @@
     window.PeakFocusRange = PeakFocusRange;
     window.PlotData = PlotData;
     window.CellCycleModelingUI = CellCycleModelingUI;
+    window.CellCycleExport = CellCycleExport;
+    window.DnaHistogram = DnaHistogram;
     window.__libsReady = true;
   </script>
 

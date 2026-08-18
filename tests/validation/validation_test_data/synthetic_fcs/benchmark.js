@@ -1,14 +1,14 @@
 import { FCSParser } from "/js/fcs/parser.js";
-import { generateHistogram } from "/js/analysis/dna_histogram.js";
+import { generateHistogram } from "/js/analysis/pipeline/dna_histogram.js";
 import {
   get_model,
   register_default_models,
 } from "/js/analysis/cell_cycle/model_registry.js";
-import { runStructuralQC } from "/js/analysis/structural_qc.js";
-import { runTimeQC } from "/js/analysis/acquisition_time_qc.js";
-import { runPeakTrackingTimeQC } from "/js/analysis/peak_tracking_time_qc.js";
-import { gateMainBiologicalCloud } from "/js/analysis/scatter_gmm_gate.js";
-import { gateByPulseGeometry } from "/js/analysis/pulse_geometry_gate.js";
+import { runStructuralQC } from "/js/analysis/qc/structural_qc.js";
+import { runTimeQC } from "/js/analysis/qc/acquisition_time_qc.js";
+import { runPeakTrackingTimeQC } from "/js/analysis/qc/peak_tracking_time_qc.js";
+import { gateMainBiologicalCloud } from "/js/analysis/gating/scatter_gmm_gate.js";
+import { gateByPulseGeometry } from "/js/analysis/gating/pulse_geometry_gate.js";
 
 const DEFAULT_MODELS = [
   "dean_jett",

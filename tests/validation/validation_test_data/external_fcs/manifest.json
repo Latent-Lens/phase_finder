@@ -19,7 +19,7 @@
         "spdx": "MIT",
         "evidence_url": "https://github.com/eyurtsev/fcsparser/blob/da70aaa7ec92ff3bd9ce00aec4eea7c77ee8c096/LICENSE",
         "covers_binary": true,
-        "redistribution_basis": "The repository copyright holder committed this acquisition as test data under the repository-wide MIT license; the required notice is retained in LICENSES/fcsparser-MIT.txt."
+        "redistribution_basis": "This acquisition originates from the MIT-licensed fcsparser project and is redistributed here as test data under that MIT grant; the required notice is retained in LICENSES/fcsparser-MIT.txt. The repository itself is licensed under PolyForm Noncommercial License 1.0.0 (see LICENSE), which does not apply to this upstream file."
       },
       "privacy_review": {
         "reviewed": true,

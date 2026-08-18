@@ -47,7 +47,7 @@ import {
   schedule_metadata_wizard_after_file_load,
 } from "../ui/metadata_wizard.js";
 import { register_loaded_files } from "../session/file_cache.js";
-import { clear_stats_plan } from "../analysis/stats.js";
+import { clear_stats_plan } from "../ui/table_summary_stats.js";
 import { CELL_CYCLE_COLUMN_PREFIX, format_cell_cycle_value } from "../data_structs/derived_columns.js";
 
 function has_initialized_plot() {

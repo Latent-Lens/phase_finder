@@ -11,7 +11,7 @@
 // peak-tracking Time QC method lives in peak_tracking_time_qc.js; both satisfy
 // the same Time QC result contract.
 
-import { mad, median, quantileSorted } from "./math/stats.js";
+import { mad, median, quantileSorted } from "../math/stats.js";
 
 // Keep the numerical helpers visible from this module for source-level
 // traceability and focused browser tests.

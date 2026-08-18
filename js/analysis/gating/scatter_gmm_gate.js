@@ -10,14 +10,14 @@
 // shared skip-shape helper. The fit is deterministic (robust-quantile
 // initialization, no RNG) so a sample always gates the same way.
 
-import { mad, median, variance } from "./math/stats.js";
-import { logGaussian2D, logSumExp } from "./math/gaussian.js";
+import { mad, median, variance } from "../math/stats.js";
+import { logGaussian2D, logSumExp } from "../math/gaussian.js";
 import {
   calculateGlobalCovariance,
   eigenDecomposition2D,
   mahalanobisSquared,
   regularizeCovariance,
-} from "./math/linalg2d.js";
+} from "../math/linalg2d.js";
 
 export {
   calculateGlobalCovariance,

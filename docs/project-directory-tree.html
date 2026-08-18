@@ -245,7 +245,7 @@
 │   ├── audits/
 │   │   └── baselines/                 recorded verification baselines
 │   ├── plans/                          implementation and remediation plans
-│   └── workflows/                      generated workflow diagrams
+│   └── references/                     modeling methodology and citations
 ├── sessions/                           examples plus ignored personal sessions
 ├── .github/
 │   ├── scripts/                        GitHub release helper scripts
@@ -316,7 +316,7 @@
             <tr><td><code>docs/audits/</code></td><td>Audit reports, remediation checklist, and focused inspection pages.</td><td><span class="badge optional">Governance/reference</span></td><td>Optional for runtime; useful when preserving remediation evidence.</td></tr>
             <tr><td><code>docs/audits/baselines/</code></td><td>Recorded browser and numerical verification baselines.</td><td><span class="badge recommended">Regression evidence</span></td><td>Commit only reviewed, reproducible baselines.</td></tr>
             <tr><td><code>docs/plans/</code></td><td>Implementation specifications and working plans.</td><td><span class="badge optional">Planning</span></td><td>Keep durable decisions; temporary plans may stay local.</td></tr>
-            <tr><td><code>docs/workflows/</code></td><td>Rendered code-flow and user-decision diagrams.</td><td><span class="badge optional">Reference</span></td><td>Commit if maintained; ideally retain or regenerate from authoritative sources.</td></tr>
+            <tr><td><code>docs/references/</code></td><td>Modeling methodology reference and the citation bibliography.</td><td><span class="badge optional">Reference</span></td><td>Commit; code headers cite these documents by section.</td></tr>
 
             <tr><td><code>sessions/</code></td><td>Inert session examples and personal/local session state.</td><td><span class="badge local">Local data</span></td><td>Commit only sanitized <code>*.example.*</code> files; ignore real sessions.</td></tr>
             <tr><td><code>.github/</code></td><td>GitHub Actions, Dependabot, and release automation.</td><td><span class="badge development">Hosted CI/release</span></td><td>Commit.</td></tr>

@@ -252,7 +252,7 @@ export const watson_pragmatic = {
   /*
 
   Purpose:
-	Not implemented, for the same reason as legacy_bridge_v1's: S here is defined
+	Not implemented, for the same reason as the retired legacy bridge's: S here is defined
 	from the OBSERVED counts at fit time, not a standalone function of parameters,
 	so there is no (edges, parameters) => expectedCounts closed form to offer.
 

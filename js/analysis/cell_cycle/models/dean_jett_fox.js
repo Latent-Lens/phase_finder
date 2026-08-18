@@ -245,7 +245,7 @@ function expected_counts_from_parameters(edges, parameters, quadratureNodes) {
 // ---- region/ratio/CV feasible domain -- identical to dean_jett.js's, since
 // Fox reuses "the same G1/G2 peaks" (plan); duplicated rather than imported
 // to keep each model file a self-contained, independently readable unit
-// (matches this codebase's existing legacy_bridge.js/dean_jett.js pattern of
+// (matches this codebase's existing dean_jett.js pattern of
 // each model owning its own projection, not sharing a projection module that
 // doesn't exist yet in the plan's file layout). ---------------------------
 

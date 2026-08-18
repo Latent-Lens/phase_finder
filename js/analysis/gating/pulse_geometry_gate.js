@@ -6,14 +6,14 @@
 // into a mask; gateByPulseGeometry() runs the whole gate; copyInputMask() and
 // combineMasks() are mask helpers.
 
-import { mad, median, variance } from "./math/stats.js";
+import { mad, median, variance } from "../math/stats.js";
 import {
   calculateWeightedCenter,
   calculateWeightedCovariance,
   principalDirection2D,
   signedOrthogonalDistance,
   eigenDecomposition2D,
-} from "./math/linalg2d.js";
+} from "../math/linalg2d.js";
 
 export {
   calculateWeightedCenter,

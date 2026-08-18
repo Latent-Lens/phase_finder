@@ -5,7 +5,7 @@ from helpers import TestContext
 
 def run_summary_stats_tests(ctx: TestContext):
     result = ctx.page.evaluate("""async () => {
-      const { compute_column_stats, map_with_concurrency } = window.SummaryStats;
+      const { compute_column_stats, map_with_concurrency } = window.TableSummaryStats;
       const stats = compute_column_stats(
         Float64Array.from([1, 2, 3, 4, 0, -1, NaN, Infinity]),
         ['mean', 'stddev', 'median', 'min', 'max'],

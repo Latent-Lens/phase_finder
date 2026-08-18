@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Browser unit coverage for js/analysis/time_qc_diagnostic_plot.js -- the
+"""Browser unit coverage for js/analysis/qc/time_qc_diagnostic_plot.js -- the
 Phase 2 acquisition-order diagnostic for peak-tracking Time QC.
 
 These test the pure model builder (channel discovery, per-segment layout along
@@ -160,7 +160,7 @@ _DIAGNOSTIC_TESTS = r"""() => {
 
 
 def run_time_qc_diagnostic_plot_tests(ctx: TestContext):
-    """Run js/analysis/time_qc_diagnostic_plot.js assertions."""
+    """Run js/analysis/qc/time_qc_diagnostic_plot.js assertions."""
 
     try:
         all_results = ctx.page.evaluate(_DIAGNOSTIC_TESTS)
