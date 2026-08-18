@@ -13,6 +13,20 @@ const forbiddenTracked = tracked.filter((file) => fs.existsSync(file) && (
 if (forbiddenTracked.length) throw new Error(`Private/generated files are tracked:\n${forbiddenTracked.join("\n")}`);
 
 const root = path.resolve(process.env.DIST_DIR || "dist");
+// REL-02 / AD-8: the build (vite.config.js writeBundle()) intentionally ships
+// dist/sessions/phasefinder_local.json as an inert `{}` autoload stub so the
+// startup probe (js/session/core.js try_autoload()) gets 200 {} instead of a
+// 404. scripts/verify-dist.cjs is the strong guard for this path -- it fails
+// the build unless the stub's content is exactly `{}` AND it is the only
+// entry in dist/sessions/. This script does not duplicate that content check;
+// it only needs to stop treating the one known-safe, content-verified path as
+// a bare-name match so `npm run check` (which runs check:privacy again after
+// build && check:dist) can pass. Everything else under sessions/ -- including
+// a real session reusing this exact filename, which verify-dist.cjs already
+// rejects earlier in the pipeline -- is still caught by the pattern checks
+// below (they still run against this file's own text content, and by every
+// other file's relative path).
+const AUTOLOAD_STUB = "sessions/phasefinder_local.json";
 if (fs.existsSync(root)) {
   const textExtensions = new Set([".html", ".js", ".css", ".json", ".txt", ".xml", ".webmanifest"]);
   const findings = [];
@@ -20,7 +34,7 @@ if (fs.existsSync(root)) {
     const target = path.join(directory, entry.name);
     if (entry.isDirectory()) return walk(target);
     const relative = path.relative(root, target).replaceAll(path.sep, "/");
-    if (/(^|\/)(?:sessions|tests|\.codex|\.claude|\.git)(\/|$)|\.fcs$|\.toml$/i.test(relative)) findings.push(relative);
+    if (relative !== AUTOLOAD_STUB && /(^|\/)(?:sessions|tests|\.codex|\.claude|\.git)(\/|$)|\.fcs$|\.toml$/i.test(relative)) findings.push(relative);
     if (!textExtensions.has(path.extname(entry.name).toLowerCase()) && entry.name !== "site.webmanifest") return;
     const text = fs.readFileSync(target, "utf8");
     if (/(?:\/home\/[^/\s]+|\/Users\/[^/\s]+|[A-Z]:\\Users\\[^\\\s]+)/.test(text)) findings.push(`${relative}: local absolute path`);

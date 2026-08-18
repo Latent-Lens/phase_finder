@@ -70,12 +70,35 @@ build for a non-root deployment.
 
 | Path | Classification | Policy |
 | --- | --- | --- |
-| `sessions/phasefinder_local.json` | private active autoload configuration | ignored and absent from Git/deployments |
+| `sessions/phasefinder_local.json` | private active autoload configuration | untracked and absent from Git. **A same-named inert `{}` stub is deliberately shipped in `dist/`** — see below |
 | `sessions/phasefinder_session_*.toml` | private experiment/session state | ignored and absent from Git/deployments |
 | `sessions/*.example.json`, `sessions/*.example.toml` | public synthetic templates | may be tracked; must contain no real identifiers |
 | `.codex/`, `.claude/` | private local AI-tool configuration | ignored and absent from Git/deployments |
 | `tests/e2e/results/`, `tests/validation/results/` | generated local test output | ignored and absent from deployments |
 | `tests/validation/validation_test_data/external_fcs/` | explicitly reviewed validation material | source-test only; never copied to `dist/` |
+
+### Why a session-shaped filename appears in `dist/` (REL-02)
+
+Auditing this project will surface `dist/sessions/phasefinder_local.json` in the
+deployable artifact. That file is **not** a session. The build writes an inert
+empty-object stub there so the startup autoload probe in
+`js/session/core.js try_autoload()` receives `200 {}` instead of a 404.
+
+Your real `sessions/phasefinder_local.json` is untracked, is never copied to
+`dist/`, and cannot reach a deployment. Three independent checks enforce that,
+and each one fails the build rather than warning:
+
+- `scripts/verify-dist.cjs` parses the shipped stub and throws unless its content
+  is **exactly** `{}` — a real session's keys abort the build.
+- The same script asserts the stub is the **only** entry in `dist/sessions/`, so no
+  additional session file can ride along beside it.
+- `scripts/check-privacy.cjs` still scans the stub's own text for local absolute
+  paths, OPFS identifiers, and non-synthetic FCS sample names.
+
+Both scripts carve out this one exact path by filename only, and both content
+assertions above run **before** that carve-out is reached. The separate
+tracked-file check in `scripts/check-privacy.cjs` is untouched and still rejects
+any tracked `sessions/` path that is not an `*.example.*` template.
 
 The current private session/tool files were removed from the Git index without
 deleting local working copies. Rewriting shared history is an owner decision:

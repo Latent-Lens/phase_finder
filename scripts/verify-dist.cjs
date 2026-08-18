@@ -6,14 +6,24 @@ const zlib = require("node:zlib");
 const root = path.resolve(process.env.DIST_DIR || "dist");
 const configuredBase = (process.env.BASE_PATH || "/").replace(/^\/+|\/+$/g, "");
 const basePath = configuredBase ? `/${configuredBase}/` : "/";
+// The build ships this file as an inert `{}` so the startup autoload probe
+// (js/session/core.js try_autoload()) gets 200 {} instead of a 404 (REL-02).
+// It is the ONE path under sessions/ that is allowed to exist in dist/ --
+// everything else that looks like session data is still forbidden below.
+const AUTOLOAD_STUB = "sessions/phasefinder_local.json";
 const required = [
   "index.html", "help/index.html", "_headers",
   "artifact-manifest.json", "build-metadata.json", "sbom.cdx.json", "SHA256SUMS",
   "assets/img/favicon/site.webmanifest",
   "assets/img/favicon/android-chrome-192x192.png",
   "assets/img/favicon/android-chrome-512x512.png",
+  AUTOLOAD_STUB,
 ];
-const forbidden = ["sessions", "tests", ".codex", ".claude", ".git"];
+// "sessions" is intentionally NOT in this list any more: dist/sessions/ now
+// legitimately exists to hold AUTOLOAD_STUB. Its content is verified below
+// (must be exactly one empty-object file) instead of forbidding the directory
+// outright.
+const forbidden = ["tests", ".codex", ".claude", ".git"];
 
 if (!fs.existsSync(root)) throw new Error("dist/ does not exist; run npm run build first.");
 for (const file of required) {
@@ -23,18 +33,43 @@ for (const name of forbidden) {
   if (fs.existsSync(path.join(root, name))) throw new Error(`Private/internal path entered dist: ${name}`);
 }
 
+// A missing stub already failed the `required` loop above. Now make a real
+// session leaking into the build (instead of the stub) a build failure too --
+// this is the valuable half of REL-02.
+const autoloadStub = JSON.parse(fs.readFileSync(path.join(root, AUTOLOAD_STUB), "utf8"));
+if (Object.keys(autoloadStub).length) {
+  throw new Error(`dist/${AUTOLOAD_STUB} must be an empty object; a real session leaked into the build.`);
+}
+const sessionsDirEntries = fs.readdirSync(path.join(root, "sessions"));
+if (sessionsDirEntries.length !== 1 || sessionsDirEntries[0] !== path.basename(AUTOLOAD_STUB)) {
+  throw new Error(`dist/sessions/ must contain only the known-safe autoload stub; found: ${sessionsDirEntries.join(", ") || "(nothing)"}`);
+}
+
 const indexHtml = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const headers = fs.readFileSync(path.join(root, "_headers"), "utf8");
-const importMap = indexHtml.match(/<script type="importmap">([\s\S]*?)<\/script>/)?.[1];
-if (!importMap) throw new Error("Production index has no import map to authorize in CSP.");
-const importMapHash = require("node:crypto").createHash("sha256").update(importMap).digest("base64");
+// REL-03: the import map only exists so the SOURCE tree runs unbuilt; Vite
+// rewrites every bare "d3" import and never emits js/vendor/, so a build that
+// still ships the map is dead markup kept alive only to justify a CSP
+// script-src hash. Assert it is gone instead of hashing it.
+if (/<script type="importmap">/.test(indexHtml)) {
+  throw new Error("Production index still ships a dead import map; strip it at build time (REL-03, vite.config.js stripImportMap()).");
+}
 for (const requiredHeader of [
-  `Content-Security-Policy:`, `'sha256-${importMapHash}'`, `worker-src 'self' blob:`,
+  `Content-Security-Policy:`, `worker-src 'self' blob:`,
   "X-Content-Type-Options: nosniff", "Referrer-Policy:", "X-Frame-Options:", "Permissions-Policy:",
   "Cache-Control: public, max-age=31536000, immutable",
   "Cache-Control: public, max-age=0, must-revalidate",
 ]) {
   if (!headers.includes(requiredHeader)) throw new Error(`Missing production security header: ${requiredHeader}`);
+}
+// With the import map gone, no inline script needs a CSP hash any more --
+// script-src should be exactly 'self'. A hash reappearing here means either
+// the map came back or a new inline script was added without review.
+const cspLine = headers.split("\n").find((line) => line.includes("Content-Security-Policy:")) || "";
+const scriptSrc = cspLine.match(/script-src ([^;]+)/)?.[1]?.trim();
+if (!scriptSrc) throw new Error("Content-Security-Policy is missing a script-src directive.");
+if (scriptSrc !== "'self'") {
+  throw new Error(`script-src should be exactly 'self' now the import map is stripped (REL-03); found: ${scriptSrc}`);
 }
 
 const files = [];
@@ -54,7 +89,13 @@ for (const worker of ["data_worker", "copy_worker", "fit_worker", "cloccs_worker
 const allowedExtensions = new Set(["", ".html", ".js", ".css", ".json", ".webmanifest", ".png", ".svg", ".ico", ".jpg", ".jpeg", ".webp", ".gif", ".txt"]);
 const unexpected = files.filter((file) => !allowedExtensions.has(path.extname(file).toLowerCase()) || file.endsWith(".map"));
 if (unexpected.length) throw new Error(`Unexpected production file type:\n${unexpected.join("\n")}`);
-if (files.some((file) => /(^|\/)(phasefinder_local|phasefinder_session_)|\.fcs$/i.test(file))) {
+// Narrowed for REL-02: AUTOLOAD_STUB is the one known-safe exception, and its
+// content was already verified above to be exactly `{}`. Everything else
+// matching a session or FCS filename pattern -- including a real session
+// that happened to reuse this exact filename but with real keys, since the
+// empty-object check above would already have failed the build for that
+// case -- is still rejected.
+if (files.some((file) => file !== AUTOLOAD_STUB && /(^|\/)(phasefinder_local|phasefinder_session_)|\.fcs$/i.test(file))) {
   throw new Error("Personal session or FCS data entered dist.");
 }
 if (files.some((file) => /(^|\/)(\.env|.*\.log|.*\.toml)$/i.test(file))) {
