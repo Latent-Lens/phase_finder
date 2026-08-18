@@ -1,28 +1,25 @@
 // Orchestrator for the cell-cycle QC + modeling pipeline. Each apply_*() entry
-// point runs exactly one operation, stores its diagnostics on the per-sample
+// point runs exactly one stage, stores its diagnostics on the per-sample
 // state, composes/clears the QC-filter masks, and invalidates downstream
-// products; optional missing-channel operations leave a null mask. The nine
-// operations, in order, are structural QC, Time QC, the Cell Gate, the Singlet
-// Gate, the DNA histogram, peak detection, the base fit, the contamination fit,
-// and the fit report. apply_structural_qc_fast() and apply_time_qc_fast() reuse
+// products; optional missing-channel stages leave a null mask. The five
+// stages, in order, are structural QC, Time QC, the Cell Gate, the Singlet
+// Gate, and the DNA histogram; modeling runs off the finished histogram through
+// the model registry. apply_structural_qc_fast() and apply_time_qc_fast() reuse
 // the eager background precompute (precompute_prefilter_qc()); update_cell_gate()
-// edits the Cell Gate ellipse; run_operation(), run_operation_all(), and
-// run_all() drive operations by index; reset_qc_gates() clears all QC masks;
+// edits the Cell Gate ellipse; shared_histogram_range() derives one bin range
+// spanning several samples so a batch build shares identical bins;
+// reset_qc_gates() clears all QC masks;
 // pipeline_filter_funnel() and pipeline_table_stats() produce the metadata-table
-// summaries. Numeric work lives in the imported per-operation modules; this file
+// summaries. Numeric work lives in the imported per-stage modules; this file
 // only sequences them and manages state.
 
-import { plottable_rows } from "../plotting/data.js";
-import * as structuralQc from "./structural_qc.js";
-import * as timeQc from "./acquisition_time_qc.js";
-import * as peakTrackingTimeQc from "./peak_tracking_time_qc.js";
-import * as cellGate from "./scatter_gmm_gate.js";
-import * as singletGate from "./pulse_geometry_gate.js";
+import { plottable_rows } from "../../plotting/data.js";
+import * as structuralQc from "../qc/structural_qc.js";
+import * as timeQc from "../qc/acquisition_time_qc.js";
+import * as peakTrackingTimeQc from "../qc/peak_tracking_time_qc.js";
+import * as cellGate from "../gating/scatter_gmm_gate.js";
+import * as singletGate from "../gating/pulse_geometry_gate.js";
 import * as dnaHistogram from "./dna_histogram.js";
-import * as peakDetection from "./peak_detection.js";
-import * as baseFitModule from "./legacy_bridge_fit.js";
-import * as contaminationFit from "./debris_aggregate_extension.js";
-import * as fitReport from "./cell_cycle_fit_report.js";
 import {
   pipeline_states,
   get_state,
@@ -38,18 +35,17 @@ import {
   invalidate_model_results,
   invalidate_model_config_result,
 } from "./pipeline_state.js";
-import { rotateCovariance2D } from "./math/linalg2d.js";
-import { resolve_pnr_for_dataset } from "./structural_qc_settings.js";
-import { register_default_models, get_model } from "./cell_cycle/model_registry.js";
-import { MINIMUM_MODELING_EVENTS, MINIMUM_NONEMPTY_BINS } from "./cell_cycle/result_contract.js";
-import { normalize_legacy_extended_result } from "./cell_cycle/models/legacy_bridge.js";
+import { rotateCovariance2D } from "../math/linalg2d.js";
+import { resolve_pnr_for_dataset } from "../qc/structural_qc_settings.js";
+import { register_default_models, get_model } from "../cell_cycle/model_registry.js";
+import { MINIMUM_MODELING_EVENTS, MINIMUM_NONEMPTY_BINS } from "../cell_cycle/result_contract.js";
 
 // This module is already lazy-loaded as a whole (see pipeline_loader.js), so
 // registering the (currently one-entry) model set here at load time carries
 // no extra critical-path cost.
 register_default_models();
 
-export { structuralQc, timeQc, cellGate, singletGate, dnaHistogram, peakDetection, baseFitModule, contaminationFit, fitReport };
+export { structuralQc, timeQc, cellGate, singletGate, dnaHistogram };
 export { peakTrackingTimeQc };
 export {
   pipeline_states,
@@ -66,7 +62,7 @@ export {
 
 Purpose:
 	Returns row.data, throwing a clear error when no DNA-area channel is loaded and
-	plotted (the precondition every operation shares).
+	plotted (the precondition every stage shares).
 
 Input:
 	row [object]: the sample row
@@ -85,22 +81,22 @@ function require_row_data(row) {
 /*
 
 Purpose:
-	Wraps one operation's output in the common return envelope every apply_*()
+	Wraps one stage's output in the common return envelope every apply_*()
 	shares.
 
 Input:
-	operation_index [number]: the operation's index
+	stage_index [number]: the stage's index
 	row [object]: the sample row
-	result [object]: the operation's result
+	result [object]: the stage's result
 	state [object]: the per-sample pipeline state
 
 Output:
-	envelope [object]: { operationIndex, name, channel, result, state }
+	envelope [object]: { stageIndex, name, channel, result, state }
 
 */
-function operation_result(operation_index, row, result, state) {
+function stage_result(stage_index, row, result, state) {
   return {
-    operationIndex: operation_index,
+    stageIndex: stage_index,
     name: row.name,
     channel: row.data.channel_key,
     result,
@@ -217,14 +213,14 @@ function count_retained(mask) {
 
 Purpose:
 	Stores a structural-QC result on the state, installs its mask as QC filter 0,
-	invalidates downstream products, and returns the operation envelope.
+	invalidates downstream products, and returns the stage envelope.
 
 Input:
 	row [object]: the sample row
 	result [object]: the structural-QC result
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 function commit_structural_qc(row, result) {
@@ -233,7 +229,7 @@ function commit_structural_qc(row, result) {
   state.structuralMask = result.structuralMask;
   set_filter_mask(row, 0, result.structuralMask);
   invalidate_after(row, state, 0);
-  return operation_result(0, row, result, state);
+  return stage_result(0, row, result, state);
 }
 
 /*
@@ -247,7 +243,7 @@ Input:
 	result [object]: the Time QC result
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 function commit_time_qc(row, result) {
@@ -255,13 +251,13 @@ function commit_time_qc(row, result) {
   state.timeQC = result;
   set_filter_mask(row, 1, result.skipped ? null : result.timeQCMask);
   invalidate_after(row, state, 1);
-  return operation_result(1, row, result, state);
+  return stage_result(1, row, result, state);
 }
 
 /*
 
 Purpose:
-	Runs structural QC for a sample and commits it (operation 0).
+	Runs structural QC for a sample and commits it (stage 0).
 
 Input:
 	row [object]: the sample row
@@ -270,7 +266,7 @@ Input:
 	                  with this dataset's own $PnR values when omitted
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function apply_structural_qc(row, options = {}) {
@@ -333,14 +329,14 @@ function run_time_qc(data, structuralMask, options = {}) {
 
 Purpose:
 	Runs Time QC for a sample using its current structural mask and commits it
-	(operation 1).
+	(stage 1).
 
 Input:
 	row [object]: the sample row
 	options [object]: the Time QC options (method + settings)
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function apply_time_qc(row, options = {}) {
@@ -592,14 +588,14 @@ export function precompute_prefilter_qc(rows) {
 /*
 
 Purpose:
-	Runs structural QC (operation 0) reusing the eager precompute's result when it's
+	Runs structural QC (stage 0) reusing the eager precompute's result when it's
 	still valid, falling back to a fresh run otherwise.
 
 Input:
 	row [object]: the sample row
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function apply_structural_qc_fast(row) {
@@ -612,7 +608,7 @@ export function apply_structural_qc_fast(row) {
 /*
 
 Purpose:
-	Runs Time QC (operation 1) reusing a cached result for this method + settings
+	Runs Time QC (stage 1) reusing a cached result for this method + settings
 	when one exists; a miss computes and stores it, so toggling Time QC off and back
 	on (or switching methods and back) stays instant even for peak tracking, which
 	is never precomputed eagerly.
@@ -622,7 +618,7 @@ Input:
 	options [object]: the Time QC options
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function apply_time_qc_fast(row, options = {}) {
@@ -642,7 +638,7 @@ export function apply_time_qc_fast(row, options = {}) {
 /*
 
 Purpose:
-	Runs the Cell Gate (operation 2): fits the FSC/SSC GMM, records the fitted
+	Runs the Cell Gate (stage 2): fits the FSC/SSC GMM, records the fitted
 	component/threshold as the editable baseline, installs its mask as QC filter 2,
 	and invalidates downstream products.
 
@@ -651,7 +647,7 @@ Input:
 	options [object]: the Cell Gate options
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 // Fits the Cell Gate on the current structural + Time QC survivors. Pure compute
@@ -685,7 +681,7 @@ function commit_cell_gate(row, state, rawResult) {
   // an explicit review and installs the resulting mask via update_cell_gate().
   set_filter_mask(row, 2, result.skipped || result.reviewRequired ? null : result.scatterMask);
   invalidate_after(row, state, 2);
-  return operation_result(2, row, result, state);
+  return stage_result(2, row, result, state);
 }
 
 export function apply_cell_gate(row, options = {}) {
@@ -707,7 +703,7 @@ Input:
 	options [object]: the Cell Gate options
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function apply_cell_gate_fast(row, options = {}) {
@@ -741,7 +737,7 @@ Input:
 	edit [object]: { mean, coverage, rotation, reset }
 
 Output:
-	envelope [object]: the operation result envelope (throws when no gate exists)
+	envelope [object]: the stage result envelope (throws when no gate exists)
 
 */
 export function update_cell_gate(
@@ -824,13 +820,13 @@ export function update_cell_gate(
   state.scatterGate = updatedResult;
   set_filter_mask(row, 2, mask);
   invalidate_after(row, state, 2);
-  return operation_result(2, row, updatedResult, state);
+  return stage_result(2, row, updatedResult, state);
 }
 
 /*
 
 Purpose:
-	Runs the optional Singlet Gate (operation 3): fits the pulse-geometry ridge over
+	Runs the optional Singlet Gate (stage 3): fits the pulse-geometry ridge over
 	the composed upstream mask, installs its mask as QC filter 3 (null when skipped),
 	and invalidates downstream products.
 
@@ -839,7 +835,7 @@ Input:
 	options [object]: the Singlet Gate options
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 // Installs a (possibly cached) raw Singlet Gate fit onto a fresh shallow copy so
@@ -853,7 +849,7 @@ function commit_singlet_gate(row, state, rawResult) {
   // explicit; recomputing final still preserves all prior masks.
   set_filter_mask(row, 3, result.skipped || result.reviewRequired ? null : result.singletMask);
   invalidate_after(row, state, 3);
-  return operation_result(3, row, result, state);
+  return stage_result(3, row, result, state);
 }
 
 export function apply_singlet_gate(row, options = {}) {
@@ -876,7 +872,7 @@ Input:
 	options [object]: the Singlet Gate options
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function apply_singlet_gate_fast(row, options = {}) {
@@ -919,7 +915,7 @@ function build_histogram_fingerprint(row, { binCount, range, dnaChannel }, revis
 /*
 
 Purpose:
-	Builds the DNA-content histogram (operation 4) from the gated view (upstream
+	Builds the DNA-content histogram (stage 4) from the gated view (upstream
 	filters have already removed their events), stamps it with the gated-view
 	revision and fingerprint, stores it, and invalidates downstream products.
 
@@ -928,7 +924,7 @@ Input:
 	options [object]: { binCount, range, ... }
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function apply_dna_histogram(row, options = {}) {
@@ -958,34 +954,14 @@ export function apply_dna_histogram(row, options = {}) {
   );
   state.histogram = result;
   invalidate_after(row, state, 4);
-  return operation_result(4, row, result, state);
-}
-
-/*
-
-Purpose:
-	Returns the sample's stored histogram, throwing when none has been built yet.
-
-Input:
-	state [object]: the per-sample state
-	requesting_operation [number]: the operation index requesting it (for context)
-
-Output:
-	histogram [object]: the stored histogram (throws when absent)
-
-*/
-function require_histogram(state, requesting_operation) {
-  if (!state.histogram) {
-    throw new Error(`Build the histogram before this operation.`);
-  }
-  return state.histogram;
+  return stage_result(4, row, result, state);
 }
 
 /*
 
 Purpose:
 	Like apply_dna_histogram(), but skips rebuilding (and so skips invalidating every
-	downstream operation) when the stored histogram's fingerprint already matches the
+	downstream stage) when the stored histogram's fingerprint already matches the
 	requested bin count, range, and gated-view revision. Called before peak
 	detection/fitting and by the background precompute, so repeated calls with
 	unchanged inputs are free instead of silently deleting downstream results.
@@ -995,7 +971,7 @@ Input:
 	options [object]: { binCount, range, ... }
 
 Output:
-	envelope [object]: the operation result envelope
+	envelope [object]: the stage result envelope
 
 */
 export function ensure_histogram_current(row, options = {}) {
@@ -1008,190 +984,9 @@ export function ensure_histogram_current(row, options = {}) {
     data.filteredViewRevision || 0,
   );
   if (state.histogram && state.histogram.fingerprint === requested) {
-    return operation_result(4, row, state.histogram, state);
+    return stage_result(4, row, state.histogram, state);
   }
   return apply_dna_histogram(row, options);
-}
-
-/*
-
-Purpose:
-	Detects DNA-content peaks (operation 5) on the current histogram, stores them,
-	and invalidates downstream products.
-
-Input:
-	row [object]: the sample row
-	options [object]: peak-detection options
-
-Output:
-	envelope [object]: the operation result envelope
-
-*/
-export function apply_peak_detection(row, options = {}) {
-  require_row_data(row);
-  const state = get_or_create_state(row);
-  const histogram = require_histogram(state, 5);
-  const retained = histogram.counts.reduce((sum, count) => sum + count, 0);
-  const nonempty = histogram.counts.filter((count) => count > 0).length;
-  if (retained < MINIMUM_MODELING_EVENTS || nonempty < MINIMUM_NONEMPTY_BINS) {
-    const error = new Error(
-      `Peak detection requires at least ${MINIMUM_MODELING_EVENTS} eligible events across ${MINIMUM_NONEMPTY_BINS} nonempty bins.`,
-    );
-    error.code = "histogram_support_insufficient";
-    throw error;
-  }
-  const result = peakDetection.detectDNAContentPeaks(histogram.y, {
-    histogramMin: histogram.min,
-    binWidth: histogram.binWidth,
-    ...options,
-  });
-  state.peaks = result;
-  invalidate_after(row, state, 5);
-  return operation_result(5, row, result, state);
-}
-
-/*
-
-Purpose:
-	Runs the base model fit (operation 6) via the model registry on the current
-	histogram, stores the normalized result, and invalidates downstream products.
-
-Input:
-	row [object]: the sample row
-	options [object]: fit config
-
-Output:
-	envelope [object]: the operation result envelope
-
-*/
-export function apply_base_fit(row, options = {}) {
-  require_row_data(row);
-  const state = get_or_create_state(row);
-  const histogram = require_histogram(state, 6);
-  const entry = get_model("legacy_bridge_v1");
-  const rawResult = entry.fit({ histogram, config: options });
-  const result = entry.normalizeResult(rawResult);
-  state.baseFit = result;
-  invalidate_after(row, state, 6);
-  return operation_result(6, row, result, state);
-}
-
-/*
-
-Purpose:
-	Runs the debris/aggregate contamination fit (operation 7), refining the base fit
-	(threaded through as the original legacy-shaped result), stores the normalized
-	extended result, and invalidates downstream products.
-
-Input:
-	row [object]: the sample row
-	options [object]: contamination-fit options
-
-Output:
-	envelope [object]: the operation result envelope (throws without a base fit)
-
-*/
-export function apply_contamination_fit(row, options = {}) {
-  require_row_data(row);
-  const state = get_or_create_state(row);
-  const histogram = require_histogram(state, 7);
-  if (!state.baseFit) throw new Error("Run the base fit before the contamination fit.");
-  // extendCellCycleFit() requires the exact original legacy-shaped fit
-  // (previousFit.parameters, previousFit.curves.residuals) -- the generic
-  // normalized shape doesn't carry those, so the raw fit is threaded through
-  // via provenance.rawResult instead of state.baseFit itself.
-  const rawResult = contaminationFit.extendCellCycleFit(
-    histogram.x,
-    histogram.y,
-    state.baseFit.provenance.rawResult,
-    options,
-  );
-  const result = normalize_legacy_extended_result(rawResult);
-  state.extendedFit = result;
-  invalidate_after(row, state, 7);
-  return operation_result(7, row, result, state);
-}
-
-/*
-
-Purpose:
-	Builds the fit report (operation 8) from the extended (or base) fit: cell-cycle
-	fractions and a display summary, plus channel names for labeling. Stores it and
-	marks the pipeline complete.
-
-Input:
-	row [object]: the sample row
-	options [object]: { channelNames, pulseGeometryAvailable, ... }
-
-Output:
-	envelope [object]: the operation result envelope (throws without a fit)
-
-*/
-export function apply_fit_report(row, options = {}) {
-  require_row_data(row);
-  const state = get_or_create_state(row);
-  const fit = state.extendedFit || state.baseFit;
-  if (!fit) throw new Error("Run the base fit (and optionally the contamination fit) before the report.");
-  // summarizeCellCycleFit() likewise requires the original legacy shape.
-  const rawFit = fit.provenance.rawResult;
-
-  const channelNames = options.channelNames ?? [
-    ...(row.summary?.columns || []),
-    ...Object.values(row.data.parameterMetadata || {}).flatMap((metadata) =>
-      metadata ? [metadata.name, metadata.stain] : []
-    ),
-  ].filter(Boolean);
-  const pulseGeometryAvailable = typeof options.pulseGeometryAvailable === "boolean"
-    ? options.pulseGeometryAvailable
-    : state.singletResult?.geometryMode != null;
-  const report = fitReport.summarizeCellCycleFit(rawFit, {
-    ...options,
-    channelNames,
-    pulseGeometryAvailable,
-  });
-  const result = {
-    ...report,
-    displaySummary: fitReport.createDisplaySummary(report),
-    background: {
-      implemented: false,
-      reason: "General background model has not yet been specified.",
-    },
-  };
-  state.report = result;
-  invalidate_after(row, state, 8);
-  return operation_result(8, row, result, state);
-}
-
-const OPERATION_RUNNERS = [
-  apply_structural_qc,
-  apply_time_qc,
-  apply_cell_gate,
-  apply_singlet_gate,
-  apply_dna_histogram,
-  apply_peak_detection,
-  apply_base_fit,
-  apply_contamination_fit,
-  apply_fit_report,
-];
-
-/*
-
-Purpose:
-	Runs a single operation by index.
-
-Input:
-	operation_index [number]: which operation (0-8)
-	row [object]: the sample row
-	options [object]: options for that operation
-
-Output:
-	envelope [object]: the operation result envelope (throws on a bad index)
-
-*/
-export function run_operation(operation_index, row, options = {}) {
-  const runner = OPERATION_RUNNERS[operation_index];
-  if (!runner) throw new Error(`Pipeline operation ${operation_index} is not available.`);
-  return runner(row, options);
 }
 
 /*
@@ -1252,58 +1047,6 @@ export function shared_histogram_range(rows) {
     maximum += span / 2;
   }
   return [minimum, maximum];
-}
-
-/*
-
-Purpose:
-	Runs one operation across several samples. For the histogram operation with no
-	explicit range, injects a shared range so every sample uses identical bins.
-
-Input:
-	operation_index [number]: which operation
-	rows [iterable|null]: the samples (defaults to all plottable rows)
-	options [object]: options for that operation
-
-Output:
-	envelopes [array]: one operation result envelope per sample
-
-*/
-export function run_operation_all(operation_index, rows = null, options = {}) {
-  const targets = target_rows(rows);
-  const operationOptions = operation_index === 4 && options.range == null
-    ? { ...options, range: shared_histogram_range(targets) }
-    : options;
-  return targets.map((row) => run_operation(operation_index, row, operationOptions));
-}
-
-export const apply_structural_qc_all = (rows = null, options = {}) => run_operation_all(0, rows, options);
-export const apply_time_qc_all = (rows = null, options = {}) => run_operation_all(1, rows, options);
-export const apply_cell_gate_all = (rows = null, options = {}) => run_operation_all(2, rows, options);
-export const apply_singlet_gate_all = (rows = null, options = {}) => run_operation_all(3, rows, options);
-export const apply_dna_histogram_all = (rows = null, options = {}) => run_operation_all(4, rows, options);
-export const apply_peak_detection_all = (rows = null, options = {}) => run_operation_all(5, rows, options);
-export const apply_base_fit_all = (rows = null, options = {}) => run_operation_all(6, rows, options);
-export const apply_contamination_fit_all = (rows = null, options = {}) => run_operation_all(7, rows, options);
-export const apply_fit_report_all = (rows = null, options = {}) => run_operation_all(8, rows, options);
-
-/*
-
-Purpose:
-	Runs every operation in order for one sample, passing each its own options.
-
-Input:
-	row [object]: the sample row
-	options_by_operation [object]: operation index -> options
-
-Output:
-	envelopes [array]: one operation result envelope per operation
-
-*/
-export function run_all(row, options_by_operation = {}) {
-  return OPERATION_RUNNERS.map((runner, operation_index) =>
-    runner(row, options_by_operation[operation_index] || {})
-  );
 }
 
 /*

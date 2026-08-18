@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Browser unit coverage for the model-neutral cell-cycle model registry
-(js/analysis/cell_cycle/model_registry.js) and the legacy_bridge_v1 adapter
+(js/analysis/cell_cycle/model_registry.js) and the canonical model adapters
 that proves the contract end-to-end against the existing fit implementation.
 """
 
@@ -85,24 +85,15 @@ _TESTS = r"""() => {
       return { pass: registry.get_model('does-not-exist') === null, detail: '' };
     });
 
-    await runAsync('registry: register_default_models() registers legacy_bridge_v1 with the right contract shape', async () => {
+    await runAsync('registry: the retired legacy_bridge_v1 compatibility model is NOT registered', async () => {
+      // Removed with the pre-canonical stage 5-8 bridge. It was never
+      // reportable, and every canonical model now covers its surface.
       registry.clear_registry();
       await registry.register_default_models();
-      const entry = registry.get_model('legacy_bridge_v1');
+      const ids = registry.list_models().map((model) => model.id);
       return {
-        pass: !!entry
-          && entry.version === '1.0.0'
-          && entry.kind === 'generative'
-          && entry.fitScope === 'per_sample'
-          && entry.comparisonGroup === null // never AIC/BIC-compared against canonical models
-          && typeof entry.fit === 'function'
-          && typeof entry.normalizeResult === 'function'
-          // Not an exact registry size: register_default_models() gains a new
-          // canonical model at each milestone (dean_jett here in M3; DJF/Watson
-          // later), and this test only cares that legacy_bridge_v1 itself is
-          // still registered with its documented compatibility-model shape.
-          && registry.list_models().some((m) => m.id === 'legacy_bridge_v1'),
-        detail: JSON.stringify({ entry: entry && { id: entry.id, version: entry.version, comparisonGroup: entry.comparisonGroup } }),
+        pass: registry.get_model('legacy_bridge_v1') === null && !ids.includes('legacy_bridge_v1'),
+        detail: JSON.stringify(ids),
       };
     });
 
@@ -153,37 +144,6 @@ _TESTS = r"""() => {
       return {
         pass: registry.get_model('auto_dj_djf') == null && !ids.includes('auto_dj_djf'),
         detail: JSON.stringify(ids),
-      };
-    });
-
-    run('registry: legacy_bridge_v1 fits a real bimodal histogram and normalizes to the generic result contract', () => {
-      const entry = registry.get_model('legacy_bridge_v1');
-      const histogram = window.TestUtils.buildDJFHistogram(256);
-      const raw = entry.fit({ histogram, config: {} });
-      const result = entry.normalizeResult(raw);
-
-      const componentIds = result.components.map((c) => c.id).join(',');
-      const componentsSumToFitted = result.components.every((c) =>
-        Array.isArray(c.counts) && c.counts.length === result.expectedCounts.length
-      );
-
-      return {
-        pass: result.schemaVersion === 1
-          && result.modelId === 'legacy_bridge_v1'
-          && result.comparisonGroup === null
-          && typeof result.converged === 'boolean'
-          && typeof result.parameters.mu1 === 'number' && result.parameters.mu1 > 0
-          && typeof result.parameters.R === 'number'
-          && Array.isArray(result.expectedCounts) && result.expectedCounts.length === histogram.x.length
-          && componentIds === 'g1,s,g2'
-          && componentsSumToFitted
-          && Array.isArray(result.warnings)
-          && Array.isArray(result.targetResults)
-          && result.provenance.rawResult === raw,
-        detail: JSON.stringify({
-          converged: result.converged, mu1: result.parameters.mu1, R: result.parameters.R,
-          componentIds, expectedCountsLength: result.expectedCounts.length,
-        }),
       };
     });
 

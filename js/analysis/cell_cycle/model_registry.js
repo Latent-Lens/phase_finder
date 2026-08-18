@@ -6,7 +6,6 @@
 // -- it has no built-in knowledge of any specific model; callers register_model()
 // their own entries (see register_default_models() for the current app-wide set).
 
-import { legacy_bridge_v1 } from "./models/legacy_bridge.js";
 import { dean_jett } from "./models/dean_jett.js";
 import { dean_jett_fox } from "./models/dean_jett_fox.js";
 import { watson_pragmatic } from "./models/watson_pragmatic.js";
@@ -108,12 +107,11 @@ Input:
 	(none)
 
 Output:
-	(none) [void]: registers legacy_bridge_v1, dean_jett, dean_jett_fox,
-	               watson_pragmatic, and watson_classic
+	(none) [void]: registers dean_jett, dean_jett_fox, watson_pragmatic,
+	               watson_classic, and cloccs
 
 */
 export function register_default_models() {
-  register_model(legacy_bridge_v1);
   register_model(dean_jett);
   register_model(dean_jett_fox);
   register_model(watson_pragmatic);

@@ -168,7 +168,7 @@ def test_pipeline(ctx: TestContext):
         # action -- that's what makes Stage 4 and the first Pre-model QC
         # click instant. Confirm it's actually usable here instead.
         pipeline_ready = page.evaluate(
-            "() => typeof window.PhaseFinder.pipeline?.run_operation === 'function'"
+            "() => typeof window.PhaseFinder.pipeline?.apply_dna_histogram === 'function'"
         )
         ctx.check(
             group,
@@ -490,7 +490,7 @@ def test_pipeline(ctx: TestContext):
         ctx.check(group, "Histogram is automatically kept current and published to the plot", ok4, str(summary4))
 
         pipeline_after = page.evaluate(
-            "() => typeof window.PhaseFinder.pipeline?.run_operation === 'function'"
+            "() => typeof window.PhaseFinder.pipeline?.apply_dna_histogram === 'function'"
             " && typeof window.PhaseFinder.pipeline?.get_state === 'function'"
         )
         ctx.check(
@@ -632,7 +632,7 @@ def test_time_qc_methods(ctx: TestContext):
         # to live/session state until Apply.
         page.evaluate(
             """async () => {
-              const settings = await import('/js/analysis/time_qc_settings.js');
+              const settings = await import('/js/analysis/qc/time_qc_settings.js');
               settings.set_time_qc_state({
                 robustSummaryOptions: { targetBinSize: 750, includeEventRateCheck: false },
                 peakTrackingOptions: { includeEventRateCheck: true },
@@ -698,7 +698,7 @@ def test_time_qc_methods(ctx: TestContext):
         )
         page.evaluate(
             """() => {
-              window.__timeQcDraftPromise = import('/js/analysis/time_qc_modal.js')
+              window.__timeQcDraftPromise = import('/js/analysis/qc/time_qc_modal.js')
                 .then(module => module.open_time_qc_method_modal({ applyLabel: 'Apply defaults' }));
             }"""
         )

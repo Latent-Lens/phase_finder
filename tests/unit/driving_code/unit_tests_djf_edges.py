@@ -14,7 +14,7 @@ GROUP = "Unit / DJF Stage Edges"
 
 _STAGE_EDGES = r"""() => {
   const pipeline = window.PhaseFinder.pipeline;
-  const { structuralQc, timeQc, cellGate, singletGate, dnaHistogram, peakDetection, baseFitModule, contaminationFit, fitReport } = pipeline;
+  const { structuralQc, timeQc, cellGate, singletGate, dnaHistogram } = pipeline;
   const results = [];
   const push = (name, pass, detail = '') => results.push({
     name, pass: Boolean(pass), detail: String(detail ?? ''),
@@ -542,192 +542,7 @@ _STAGE_EDGES = r"""() => {
       detail: JSON.stringify({ blockedPct: blocked.qc.time.percentRemoved, moderatePct: moderate.qc.time.percentRemoved }) };
   });
 
-  // ---- Stage 5 -----------------------------------------------------------
-  run('Stage 5 edge: a flat-topped local maximum collapses to its center bin', () => {
-    const maxima = peakDetection.findLocalMaxima([0, 1, 3, 3, 3, 1, 0]);
-    return {
-      pass: maxima.length === 1 && maxima[0].bin === 3 && maxima[0].height === 3,
-      detail: JSON.stringify(maxima),
-    };
-  });
-
-  run('Stage 5 edge: peak prominence uses the higher surrounding basin', () => {
-    const prominence = peakDetection.calculatePeakProminence([0, 5, 1, 3, 2], 1);
-    return { pass: prominence === 4, detail: String(prominence) };
-  });
-
-  run('Stage 5 edge: inconsistent ratio bounds fail before peak detection', () => {
-    const failed = throws(() => peakDetection.detectDNAContentPeaks([0, 1, 0, 1, 0], {
-      targetRatio: 2,
-      minimumRatio: 2.1,
-      maximumRatio: 2.2,
-    }), /ratio settings/);
-    return { pass: failed, detail: `failed=${failed}` };
-  });
-
-  // ---- Stage 6 -----------------------------------------------------------
-  run('Stage 6 edge: histogram input rejects short, nonmonotonic, and negative data', () => {
-    const short = throws(() => baseFitModule.validateHistogramInput([1, 2], [1, 2]), /at least 10 bins/);
-    const nonmonotonic = throws(() => baseFitModule.validateHistogramInput(
-      [0, 1, 2, 3, 4, 5, 6, 7, 7, 9],
-      new Array(10).fill(1),
-    ), /strictly increasing/);
-    const negative = throws(() => baseFitModule.validateHistogramInput(
-      Array.from({ length: 10 }, (_, index) => index),
-      [1, 1, 1, 1, -1, 1, 1, 1, 1, 1],
-    ), /nonnegative/);
-    return { pass: short && nonmonotonic && negative, detail: JSON.stringify({ short, nonmonotonic, negative }) };
-  });
-
-  run('Stage 6 edge: projection enforces locked ratio, CV bounds, and nonnegative amplitudes', () => {
-    const options = { ...baseFitModule.DEFAULT_OPTIONS, unlockRatio: false, ratioTarget: 2 };
-    const projected = baseFitModule.projectParameters(
-      [-100, 9, -1, 1e9, -1, -2, -3, 4, -5],
-      [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-      options,
-    );
-    const mu1 = projected[0];
-    const mu2 = projected[1] * mu1;
-    return {
-      pass: projected[1] === 2 && mu1 > 10 && mu2 < 100
-        && projected[2] >= options.cvMin * mu1 && projected[2] <= options.cvMax * mu1
-        && projected[3] >= options.cvMin * mu2 && projected[3] <= options.cvMax * mu2
-        && projected[4] === 0 && projected[5] === 0 && projected[6] === 0
-        && projected[7] === 4 && projected[8] === 0,
-      detail: JSON.stringify(projected),
-    };
-  });
-
-  run('Stage 6 edge: weighted residuals divide raw error by square-root count', () => {
-    const x = [10, 20];
-    const y = [4, 9];
-    const parameters = [10, 2, 1, 1, 0, 0, 0, 0, 0];
-    const unweighted = baseFitModule.computeResiduals(x, y, parameters, { weightedResiduals: false });
-    const weighted = baseFitModule.computeResiduals(x, y, parameters, { weightedResiduals: true });
-    return {
-      pass: unweighted.rawResiduals.join(',') === '-4,-9'
-        && weighted.residuals.join(',') === '-2,-3',
-      detail: JSON.stringify({ raw: unweighted.rawResiduals, weighted: weighted.residuals }),
-    };
-  });
-
-  run('Stage 6 edge: unlocked ratio projection clamps to configured bounds', () => {
-    const options = { ...baseFitModule.DEFAULT_OPTIONS, unlockRatio: true, ratioMin: 1.8, ratioMax: 2.1 };
-    const low = baseFitModule.projectParameters([50, 1, 5, 5, 1, 1, 1, 1, 1], [0, 200], options);
-    const high = baseFitModule.projectParameters([50, 3, 5, 5, 1, 1, 1, 1, 1], [0, 200], options);
-    return { pass: low[1] === 1.8 && high[1] === 2.1, detail: `${low[1]}, ${high[1]}` };
-  });
-
-  // ---- Stage 7 -----------------------------------------------------------
-  run('Stage 7 edge: positive template correlation handles identical and empty energy', () => {
-    const identical = contaminationFit.normalizedPositiveCorrelation([1, 2, 3], [1, 2, 3]);
-    const none = contaminationFit.normalizedPositiveCorrelation([0, 0], [1, 2]);
-    return { pass: close(identical, 1, 1e-12) && none === 0, detail: `${identical}, ${none}` };
-  });
-
-  run('Stage 7 edge: BIC penalizes extra parameters at identical SSE', () => {
-    const simple = contaminationFit.calculateBic(100, 50, 8);
-    const complex = contaminationFit.calculateBic(100, 50, 11);
-    return { pass: complex > simple, detail: JSON.stringify({ simple, complex }) };
-  });
-
-  run('Stage 7 edge: model comparison requires all three improvement criteria', () => {
-    const base = {
-      sse: 100, bic: 50, aggregateResidualEnergy: 100, debrisResidualEnergy: 100,
-    };
-    const candidate = {
-      sse: 90, bic: 40, flags: { aggregate: true, debris: false },
-      aggregateResidualEnergy: 50, debrisResidualEnergy: 100,
-    };
-    const permissive = contaminationFit.compareWithBase(base, candidate, {
-      minRelativeSseImprovement: 0.05, minBicImprovement: 6, minTargetResidualImprovement: 0.2,
-    });
-    const strict = contaminationFit.compareWithBase(base, candidate, {
-      minRelativeSseImprovement: 0.05, minBicImprovement: 12, minTargetResidualImprovement: 0.2,
-    });
-    return {
-      pass: permissive.materiallyImproved && !strict.materiallyImproved
-        && close(permissive.relativeSseImprovement, 0.1)
-        && close(permissive.targetResidualImprovement, 0.5),
-      detail: JSON.stringify({ permissive, strict }),
-    };
-  });
-
-  run('Stage 7 edge: extension input requires a real previous fit', () => {
-    const x = Array.from({ length: 10 }, (_, index) => index + 1);
-    const y = new Array(10).fill(1);
-    const failed = throws(() => contaminationFit.validateInput(x, y, null), /previousFit/);
-    return { pass: failed, detail: `failed=${failed}` };
-  });
-
-  // ---- Stage 8 -----------------------------------------------------------
-  run('Stage 8 edge: inferred parameter count tracks ratio and contamination terms', () => {
-    const base = fitReport.inferParameterCount({ diagnostics: { options: { unlockRatio: false } } }, {});
-    const unlocked = fitReport.inferParameterCount({ diagnostics: { options: { unlockRatio: true } } }, {});
-    const extended = fitReport.inferParameterCount({
-      selectedModel: 'base+aggregate+debris', diagnostics: { options: { unlockRatio: false } },
-    }, {});
-    return { pass: base === 8 && unlocked === 9 && extended === 11, detail: `${base}, ${unlocked}, ${extended}` };
-  });
-
-  run('Stage 8 edge: residual autocorrelation and Durbin-Watson match an alternating sequence', () => {
-    const residuals = [1, -1, 1, -1];
-    const autocorrelation = fitReport.calculateLagOneAutocorrelation(residuals);
-    const durbinWatson = fitReport.calculateDurbinWatson(residuals);
-    return {
-      pass: close(autocorrelation, -0.75) && close(durbinWatson, 3),
-      detail: JSON.stringify({ autocorrelation, durbinWatson }),
-    };
-  });
-
-  run('Stage 8 edge: local residual bias identifies the injected three-bin window', () => {
-    const result = fitReport.calculateMaximumLocalBias([0, 0, 5, 5, 5, 0, 0], 3);
-    return {
-      pass: result.startIndex === 2 && result.endIndex === 4
-        && result.maximumAbsoluteZ > 1e6,
-      detail: JSON.stringify(result),
-    };
-  });
-
-  run('Stage 8 edge: pulse geometry can be inferred or explicitly overridden', () => {
-    const inferred = fitReport.detectPulseGeometry({
-      pulseGeometryAvailable: null, channelNames: ['DAPI-A', 'DAPI-H', 'FSC-A'],
-    });
-    const absent = fitReport.detectPulseGeometry({
-      pulseGeometryAvailable: null, channelNames: ['DAPI-A', 'FSC-A'],
-    });
-    const overridden = fitReport.detectPulseGeometry({
-      pulseGeometryAvailable: false, channelNames: ['DAPI-A', 'DAPI-H'],
-    });
-    return {
-      pass: inferred.available && inferred.source === 'channel-names'
-        && !absent.available && !overridden.available && overridden.source === 'explicit-option',
-      detail: JSON.stringify({ inferred, absent, overridden }),
-    };
-  });
-
-  run('Stage 8 edge: percentage formatting handles precision and nonfinite values', () => {
-    const percent = fitReport.fractionToPercent(0.1234, 2);
-    const missing = fitReport.fractionToPercent(NaN, 1);
-    return { pass: percent === '12.34' && missing === null, detail: JSON.stringify({ percent, missing }) };
-  });
-
-  run('Stage 8 edge: report validation rejects curve-length mismatches', () => {
-    const failed = throws(() => fitReport.validateFitResult({
-      curves: {
-        x: [0, 1], observed: [1, 1], g1: [1, 1], s: [0, 0], g2: [0, 0],
-        fitted: [1], residuals: [0, 0],
-      },
-    }), /does not match/);
-    return { pass: failed, detail: `failed=${failed}` };
-  });
-
   // ---- Orchestration -----------------------------------------------------
-  run('pipeline edge: an invalid operation index fails with a clear message', () => {
-    const failed = throws(() => pipeline.run_operation(99, {}), /operation 99 is not available/);
-    return { pass: failed, detail: `failed=${failed}` };
-  });
-
   run('pipeline edge: shared histogram range honors composed masks across samples', () => {
     const makeRow = (name, values, mask) => ({
       id: `${name}-id`, name,
@@ -743,7 +558,10 @@ _STAGE_EDGES = r"""() => {
     return { pass: range[0] === 1 && range[1] === 6, detail: JSON.stringify(range) };
   });
 
-  run('pipeline edge: Stage 4 batch runner applies one shared range to every row', () => {
+  // Mirrors the production batch path (pipeline_ui.js, modeling_ui.js): derive
+  // one range with shared_histogram_range(), then build each sample's histogram
+  // with it. There is no index-based batch runner any more.
+  run('pipeline edge: a shared range gives every row in a batch identical bins', () => {
     const makeRow = (name, values) => ({
       id: `${name}-id`, name,
       data: {
@@ -760,7 +578,10 @@ _STAGE_EDGES = r"""() => {
     const second = makeRow('batch-range-b', [10, 11, 12]);
     pipeline.apply_structural_qc(first);
     pipeline.apply_structural_qc(second);
-    const outputs = pipeline.run_operation_all(4, [first, second], { binCount: 4 });
+    const sharedRange = pipeline.shared_histogram_range([first, second]);
+    const outputs = [first, second].map(
+      (row) => pipeline.apply_dna_histogram(row, { binCount: 4, range: sharedRange })
+    );
     return {
       pass: outputs.length === 2
         && outputs[0].result.min === 1 && outputs[0].result.max === 12
