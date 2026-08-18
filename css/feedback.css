@@ -770,3 +770,69 @@
 .stats_progress__error .stats_progress_label {
   color: var(--danger);
 }
+
+/* UI-05: this file had zero focus-visible rules. base.css's global
+   `:where(...):focus-visible { outline: 3px solid var(--focus_ring)
+   !important; outline-offset: 2px; }` already rings every button/link/
+   input/select/textarea/[tabindex] in the app, including everything below
+   this line -- so most of this file needed nothing extra. The one real gap:
+   `.status_bar` (the fixed footer) sets `overflow: hidden` with only 2px of
+   vertical padding to truncate .status_bar_message, which clips the base
+   rule's outward 2px-offset ring for anything focused inside it -- the
+   diagnostics "Copy" button, and the help/copyright links. Flip the ring
+   inward there, same fix and same reasoning as css/table.css's
+   `th, td { overflow: hidden }` case. Needs !important to win over the
+   also-!important base.css rule. */
+.status_bar :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline-offset: -2px !important;
+}
+
+/* UI-04: forced-colors support previously stopped at the shell -- this file
+   had none. Pattern copied from css/help.css:582, plus fallbacks for the
+   colour-only state cues this file owns:
+   - `.status_bar.warning` / `.status_bar.error` distinguish severity only
+     via background/border-top-color, which forced-colors flattens.
+   - `.reconnect_status_pill` already carries a distinct text label per
+     status (js/session/reconnect.js), so colour is not the *only* cue --
+     but its background is how the pill reads as a pill at all; without a
+     border it disappears into plain text once forced-colors removes it.
+   - `.stats_progress__error` recolors the bar red and the label text is an
+     arbitrary caller-supplied message (js/analysis/stats.js:254) that is
+     not guaranteed to contain the word "error" -- colour is the only
+     structural cue that this run failed, so it needs a non-colour
+     replacement here specifically. */
+@media (forced-colors: active) {
+  :where(button, input, select, textarea, [role="button"], [role="checkbox"], [role="progressbar"]) {
+    border: 1px solid ButtonText;
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: Highlight !important;
+  }
+
+  /* Same escalation-by-border-width pattern as css/plot.css's
+     .time_qc_summary__high / __critical, so severity survives once the
+     background/border-top-color pair collapses to system colours. */
+  .status_bar.warning {
+    border-top-width: 5px;
+  }
+
+  .status_bar.error {
+    border-top-width: 7px;
+    border-top-style: double;
+  }
+
+  .reconnect_status_pill {
+    border: 1px solid ButtonText;
+  }
+
+  .reconnect_row__missing .reconnect_status_pill,
+  .reconnect_row__mismatch .reconnect_status_pill {
+    border-style: dashed;
+  }
+
+  .stats_progress__error .stats_progress_track {
+    border-width: 2px;
+    border-style: dashed;
+  }
+}

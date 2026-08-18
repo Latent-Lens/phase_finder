@@ -131,9 +131,19 @@ th {
   font: inherit;
 }
 
+/* UI-11: was 17x17, under WCAG 2.2 SC 2.5.8's 24px minimum. Verified with
+   Playwright (Chromium) before choosing this fix: `padding` on a native
+   input[type=checkbox] is dropped by the UA (computed padding stayed 0px
+   with the CSS box still 17x17, so the padding+negative-margin "expand the
+   hit target without resizing" trick that works for normal elements does
+   not work here) -- `width`/`height` are what this control actually
+   honors, same as the original 17px was set with. Row density is
+   preserved anyway: measured row height in the live table is 54px and is
+   already set by taller sibling cells (metadata inputs etc.), so growing
+   the checkbox from 17 to 24px does not change row height at all. */
 .file_table input[type="checkbox"] {
-  width: 17px;
-  height: 17px;
+  width: 24px;
+  height: 24px;
   min-width: 0;
   min-height: 0;
   border: 0;
@@ -735,4 +745,41 @@ th {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* UI-04: real focus-visible treatment for the table. base.css's global
+   `:where(...):focus-visible { outline: 3px solid var(--focus_ring)
+   !important; outline-offset: 2px; }` is what every other interactive
+   element in the app gets, but `th, td { overflow: hidden; }` (line 15,
+   needed for the ellipsis truncation) clips that outward-offset ring for
+   anything focused inside a cell -- checkboxes, the metadata header edit
+   input, the multi-select toggle. Flip the ring inward instead of adding
+   overflow: visible (which would break the truncation this table relies
+   on). Needs !important to win over the also-!important base.css rule. */
+.file_table :where(button, a, input, select, textarea, [tabindex]):focus-visible,
+.multi_select_toggle:focus-visible {
+  outline-offset: -2px !important;
+}
+
+/* UI-04: forced-colors support previously stopped at the shell -- table.css
+   had none. Pattern copied from css/help.css:582, plus non-colour
+   reinforcement for the table's colour-only states (an unlinked filename
+   currently reads only as "red text"). */
+@media (forced-colors: active) {
+  :where(button, input, select, textarea, [role="button"], [role="checkbox"]) {
+    border: 1px solid ButtonText;
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: Highlight;
+  }
+
+  .filename_cell_unlinked {
+    text-decoration: underline;
+    text-decoration-style: wavy;
+  }
+
+  .metadata_row_focused {
+    outline-style: solid;
+  }
 }

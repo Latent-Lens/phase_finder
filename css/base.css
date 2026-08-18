@@ -9,8 +9,19 @@
   --bg: #f7f8fb;
   --panel: #ffffff;
   --text: #172033;
-  --muted: #647086;
-  --border: #d9dee8;
+  /* UI-03: was #647086 (4.33:1 on --accent_soft -- under WCAG's 4.5:1 text
+     minimum; passed on --panel/--bg/--th_bg but --accent_soft is a real
+     surface --muted text sits on, e.g. .cell_cycle_model_field labels next
+     to CLOCCS mapping selects). Darkened until it clears 4.5:1 everywhere
+     (--panel 5.36, --bg 5.05, --th_bg 4.91, --accent_soft 4.64). */
+  --muted: #606b81;
+  /* UI-03: was #d9dee8 (1.35:1 against white -- fails WCAG 1.4.11's 3:1
+     non-text minimum for control boundaries). Darkened within the same blue-
+     grey hue/saturation family until it clears 3:1 against every surface it
+     actually sits on (--panel 3.67, --bg 3.46, --th_bg 3.36, --accent_soft
+     3.18 -- the tightest case). See
+     tests/ci/test_contrast_tokens.py::test_border_token_meets_nontext_contrast_on_every_surface. */
+  --border: #7386aa;
 
   /* Brand / accent (blue) */
   --accent: #2563eb;
@@ -24,7 +35,12 @@
   --danger: #b42318;
   --success: #047857;
   --success_strong: #047857;
-  --restart: #dc2626;
+  /* UI-03: was #dc2626 (4.83:1 on --panel -- passes there, but only 4.42:1 on
+     --th_bg and 4.18:1 on --accent_soft, both under WCAG's 4.5:1 text
+     minimum -- e.g. help.css's .callout.limit title). Darkened until it
+     clears 4.5:1 on every surface it renders text on (--panel 5.34, --bg
+     5.03, --th_bg 4.89, --accent_soft 4.62). */
+  --restart: #d02222;
   --restart_strong: #b91c1c;
 
   /* Focus rings */
@@ -33,10 +49,19 @@
   --focus_ring: #072c67;
 
   /* Component-specific surfaces */
-  --dropzone_border: #8ea0bd;
+  /* UI-03: was #8ea0bd (2.65:1 on --panel, where .drop_zone actually sits --
+     fails WCAG 1.4.11's 3:1 non-text minimum for a control boundary that is
+     the primary first-run call to action). Darkened within the same hue/
+     saturation until it clears 3:1 on every surface it could sit on (--panel
+     3.70, --bg 3.49, --th_bg 3.39, --accent_soft 3.21). See
+     tests/ci/test_contrast_tokens.py::test_border_token_meets_nontext_contrast_on_every_surface. */
+  --dropzone_border: #6f86ab;
   --th_bg: #f2f5fa;
   --progress_track_bg: #e5edf6;
-  --progress_track_border: #b8c5d6;
+  /* UI-03: was #b8c5d6 (1.75:1 on --panel, where .progress_card sits --
+     fails the same 3:1 non-text minimum). Darkened the same way (--panel
+     3.69, --bg 3.48, --th_bg 3.38, --accent_soft 3.20). */
+  --progress_track_border: #6c87aa;
   --progress_card_border: rgba(1, 165, 175, 0.45);
 
   /* Shadows */

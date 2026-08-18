@@ -512,3 +512,29 @@
     transition: none;
   }
 }
+
+/* UI-04: forced-colors support previously stopped at the shell (base.css,
+   help.css only) -- sidebar.css had none. Pattern copied from
+   css/help.css:582. Borders and focus rings first; then the sidebar's
+   colour-only error states, which otherwise vanish entirely once Windows
+   High Contrast flattens --danger to plain text colour. */
+@media (forced-colors: active) {
+  :where(button, input, select, textarea, [role="button"], [role="checkbox"], [role="slider"]) {
+    border: 1px solid ButtonText;
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: Highlight;
+  }
+
+  .status.error,
+  .channel_eligibility_status.error {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  .drop_zone,
+  .sidebar_collapsed_upload_target {
+    border-style: solid;
+  }
+}

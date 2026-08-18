@@ -813,3 +813,24 @@
   outline: 3px solid rgba(1, 165, 175, 0.35);
   outline-offset: 2px;
 }
+
+/* UI-04: forced-colors support previously stopped at the shell -- layout.css
+   had none. Pattern copied from css/help.css:582. The primary action
+   buttons here (.start_analysis_button, .cell_cycle_modeling_button,
+   .calculate_stats_button) already set `border`, but their :focus-visible
+   rules use semi-transparent rgba() outline colours rather than
+   var(--focus_ring), so explicitly remap those to the system Highlight
+   colour the way the other focus rings in the app already are. */
+@media (forced-colors: active) {
+  :where(button, input, select, textarea, [role="button"], [role="checkbox"], [role="slider"], [role="separator"]) {
+    border: 1px solid ButtonText;
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: Highlight !important;
+  }
+
+  .browser_compatibility_warning {
+    border-style: solid;
+  }
+}

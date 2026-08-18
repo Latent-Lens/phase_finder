@@ -8,8 +8,12 @@
   --bg: #f7f8fb;
   --panel: #ffffff;
   --text: #172033;
-  --muted: #647086;
-  --border: #d9dee8;
+  /* UI-03: kept in sync with css/base.css's --muted (see the comment there
+     for the contrast math). */
+  --muted: #606b81;
+  /* UI-03: kept in sync with css/base.css's --border (see the comment there
+     for the contrast math). */
+  --border: #7386aa;
   --accent: #2563eb;
   --accent_strong: #1d4ed8;
   --accent_soft: #e7efff;
@@ -17,7 +21,9 @@
   --teal_action: #007780;
   --logo_blue: #072c67;
   --success: #047857;
-  --restart: #dc2626;
+  /* UI-03: kept in sync with css/base.css's --restart (see the comment there
+     for the contrast math). */
+  --restart: #d02222;
   --code_bg: #eef1f8;
 }
 
