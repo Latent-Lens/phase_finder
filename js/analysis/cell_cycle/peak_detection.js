@@ -1,12 +1,11 @@
 // Multi-scale G1/G2 peak-pair detection and automatic region proposal.
 //
 // Ported (with adaptation to PhaseFinder's existing gaussianSmooth/clamp/
-// median utilities and its masked-histogram shape) from the MIT-licensed
+// median utilities and its masked-histogram shape) from the LatentLens
 // cell-cycle-modeling-handoff archive's src/peakDetection.js and
 // src/histogram.js findLocalMaxima/gaussianKernel. See
-// assets/misc/cell-cycle-modeling-handoff(2).zip and
-// AUTOMATIC_PEAK_DETECTION.md there for the full mathematical writeup this
-// implements: multi-scale Gaussian smoothing at [1, 2, 4] bins, prominence +
+// docs/references/AUTOMATIC_PEAK_DETECTION.md for the full mathematical
+// writeup this implements: multi-scale Gaussian smoothing at [1, 2, 4] bins, prominence +
 // half-prominence width + area evidence per scale, persistence/location
 // stability clustering across scales, one-bin-impulse downweighting via
 // deconvolved intrinsic width, and weighted G1/G2 pair scoring (ratio,
@@ -14,20 +13,14 @@
 // S-bridge evidence, edge support) with detected/low_confidence/inferred_g2
 // status and up to four ranked alternatives.
 //
-// MIT License
-// Copyright (c) 2026
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, subject to
-// including the above copyright notice and this permission notice in all
-// copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED
-// "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+// The source archive is LatentLens-authored internal work, so this port
+// carries no separate upstream licence: it is Copyright (c) 2026 LatentLens
+// and governed by the repository's PolyForm Noncommercial License 1.0.0
+// (see LICENSE) like every other file here.
 //
 // Confidence and pair scores are heuristic evidence in [0, 1], not
 // calibrated probabilities that a labeling is biologically correct (see
-// AUTOMATIC_PEAK_DETECTION.md §10, §13 "Failure boundaries").
+// docs/references/AUTOMATIC_PEAK_DETECTION.md §10, §13 "Failure boundaries").
 
 import { gaussianSmooth } from "../math/gaussian.js";
 import { clamp, median } from "../math/stats.js";

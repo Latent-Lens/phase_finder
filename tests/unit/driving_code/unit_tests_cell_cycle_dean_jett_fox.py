@@ -173,16 +173,31 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     // improving the peak estimate shows up here as a test that needs updating
     // rather than passing silently.
     //
-    // The clean-flank estimate is biased on this fixture (g1CV 0.084 for a true
-    // 0.060, g2 area over-estimated), and because the peaks are frozen the fit
-    // cannot correct it: the deviance lands ~25x the truth's own, and %S is
-    // starved by roughly 12pp. Freeing the peaks fixes the synthetic and BREAKS
-    // real data (all_pass 8/30 -> 0/30 on the 30-sample FlowJo set), so the fix
-    // is a better peak ESTIMATOR, not a joint fit. See
+    // The clean-flank estimate is still biased on this fixture -- g1CV 0.067
+    // for a true 0.060, g2CV 0.083 for a true 0.070, g2 mean 137.5 for a true
+    // 140 -- and because the peaks are frozen the fit cannot correct it: the
+    // deviance lands ~3.6x the truth's own and %S is starved by ~9.6pp.
+    // Freeing the peaks fixes the synthetic and BREAKS real data (all_pass
+    // 8/30 -> 0/30 on the 30-sample FlowJo set), so the fix is a better peak
+    // ESTIMATOR, not a joint fit. See
     // docs/audits/cell_cycle_model_investigation_handoff.md §8.1.
+    //
+    // PIN HISTORY -- the band below was `> 5 && < 60` around a measured ~25x,
+    // with %S starved by ~12pp. MODEL-03 (deconvolving the smoothing kernel in
+    // quadrature) and MODEL-04 (sub-bin parabolic peak interpolation, plus
+    // linear interpolation of the fractional flank crossing) improved the
+    // estimator enough to drop the gap to ~3.6x, which fell straight through
+    // the old floor of 5 and turned this test red. That red was the test doing
+    // its job, not a regression. The band was therefore RE-DERIVED from the new
+    // measurement -- deliberately not deleted, and not widened downward to
+    // swallow both the old and new values, either of which would have destroyed
+    // the tripwire this test exists to be. The seeded jitter (0xC311_c4c1)
+    // makes the measurement deterministic, so this band is tight on purpose:
+    // improve the estimator again and this test must go red again and be
+    // re-derived again, with the numbers in this comment updated to match.
     const ratio = waveFitted.diagnostics.deviance / trueWaveDeviance;
     return {
-      pass: ratio > 5 && ratio < 60,
+      pass: ratio > 2 && ratio < 6,
       detail: JSON.stringify({
         devianceRatio: +ratio.toFixed(1),
         fittedDeviance: waveFitted.diagnostics.deviance,

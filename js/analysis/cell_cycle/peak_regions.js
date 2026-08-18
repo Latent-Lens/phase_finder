@@ -6,15 +6,15 @@
 // internal helpers do the binning and one-sided width search.
 //
 // Ported (with adaptation to PhaseFinder's existing gaussianSmooth utility)
-// from the MIT-licensed cell-cycle-modeling-handoff archive's
-// src/peakRegions.js. See assets/misc/cell-cycle-modeling-handoff(2).zip and
-// PEAK_REGION_HANDLES.md there for the full semantics: the four G1/G2 region
+// from the LatentLens cell-cycle-modeling-handoff archive's
+// src/peakRegions.js. See docs/references/PEAK_REGION_HANDLES.md for the
+// full semantics: the four G1/G2 region
 // limits identify which visible peak is which -- they are not final
 // cell-cycle phase gates, and the optimizer may move a fitted center inside
 // its region but must never move the limits themselves.
 //
-// MIT License, Copyright (c) 2026 -- see js/analysis/cell_cycle/peak_detection.js
-// for the full license text (identical for this port).
+// Copyright (c) 2026 LatentLens, under the repository's PolyForm
+// Noncommercial License 1.0.0 (see LICENSE).
 //
 // Deliberately not ported here: estimatePeakFromRegion's fit-seeding
 // siblings (applyPeakRegionsToInitialization, buildPeakMeanParameterization,
@@ -26,6 +26,22 @@ import { gaussianSmooth } from "../math/gaussian.js";
 import { clamp } from "../math/stats.js";
 
 const EPS = 1e-12;
+
+// MODEL-03: widths are measured on a histogram Gaussian-smoothed at
+// `smoothingSigmaBins`, so every raw flank/second-moment estimate is
+// sqrt(sigma^2 + kernel^2), never sigma itself. Remove the kernel in
+// quadrature. A feature narrower than the kernel is unresolvable; floor it at
+// half a bin rather than returning NaN, which would drop the caller to the
+// much weaker second-moment (or region-span) fallback.
+const UNRESOLVED_SIGMA_BINS = 0.5;
+
+function deconvolveSmoothing(sigmaBins, smoothingSigmaBins) {
+  if (!Number.isFinite(sigmaBins) || !(sigmaBins > 0)) return sigmaBins;
+  const kernel = Math.max(0, smoothingSigmaBins);
+  if (!(kernel > 0)) return sigmaBins;
+  const variance = sigmaBins * sigmaBins - kernel * kernel;
+  return variance > UNRESOLVED_SIGMA_BINS ** 2 ? Math.sqrt(variance) : UNRESOLVED_SIGMA_BINS;
+}
 
 function sum(values) {
   let total = 0;
@@ -118,11 +134,18 @@ function estimateSigmaOneSidedWithinRegion(values, peakIndex, indexes, fraction,
   const first = indexes[0];
   const last = indexes[indexes.length - 1];
   let index = peakIndex;
+  let previous = peakIndex;
 
   if (side === "left") {
-    while (index > first && values[index] > threshold) index -= 1;
+    while (index > first && values[index] > threshold) {
+      previous = index;
+      index -= 1;
+    }
   } else if (side === "right") {
-    while (index < last && values[index] > threshold) index += 1;
+    while (index < last && values[index] > threshold) {
+      previous = index;
+      index += 1;
+    }
   } else {
     throw new Error("side must be 'left' or 'right'.");
   }
@@ -130,8 +153,44 @@ function estimateSigmaOneSidedWithinRegion(values, peakIndex, indexes, fraction,
   // The threshold must be crossed before the selected region edge. Otherwise
   // the handle window did not expose enough of that shoulder for this method.
   if (values[index] > threshold) return NaN;
-  const distanceBins = Math.abs(index - peakIndex);
+
+  // MODEL-03/checklist follow-up: linearly interpolate the fractional
+  // crossing point between the last bin still above threshold (`previous`)
+  // and the first bin at/under it (`index`), instead of rounding to the
+  // discrete bin index. Snapping to the integer bin can only round the
+  // crossing distance OUTWARD, never inward -- the walk stops the instant it
+  // first drops to/under threshold -- which systematically overestimates
+  // sigma. Measured on a 1200-bin synthetic two-peak fixture (bin width 0.25,
+  // heightFraction 0.6): G1 sigma error +5.33% -> +2.96%, G2 sigma error
+  // +0.82% -> +0.06% (docs/audits/cell_cycle_model_investigation_handoff.md).
+  const vHigh = values[previous];
+  const vLow = values[index];
+  const denominator = vHigh - vLow;
+  const frac = denominator > EPS ? clamp((vHigh - threshold) / denominator, 0, 1) : 0;
+  const distanceBins = Math.abs(previous - peakIndex) + frac;
   return distanceBins > 0 ? distanceBins / Math.sqrt(-2 * Math.log(fraction)) : NaN;
+}
+
+// MODEL-04: `mean: centers[peakIndex]` quantizes the peak centre to a bin
+// centre. A three-point parabolic fit through the peak and its two neighbours
+// recovers up to half a bin of sub-bin position -- but only when the offset
+// leans toward the clean flank. Applied symmetrically it was measured to make
+// G2 worse (docs/audits/cell_cycle_model_investigation_handoff.md): the
+// parabola leans toward the taller neighbour, and for both G1 and G2 the
+// taller neighbour is the S-phase side, so an unguarded correction pushes G2
+// further into the bias it was meant to remove. The clean-side guard below
+// accepts an offset only when it moves the centre away from the S bridge.
+function parabolicPeakOffset(values, peakIndex, indexes) {
+  const first = indexes[0];
+  const last = indexes[indexes.length - 1];
+  if (peakIndex <= first || peakIndex >= last) return 0;
+  const yMinus = values[peakIndex - 1];
+  const yZero = values[peakIndex];
+  const yPlus = values[peakIndex + 1];
+  const denominator = yMinus - 2 * yZero + yPlus;
+  if (!(Math.abs(denominator) > EPS)) return 0; // flat or inflected
+  const offset = 0.5 * (yMinus - yPlus) / denominator;
+  return Math.abs(offset) <= 0.5 ? offset : 0; // reject non-interior vertex
 }
 
 function localLinearBaseline(values, indexes) {
@@ -163,14 +222,29 @@ Input:
 	                  heightFraction (default 0.5; watson_pragmatic passes 0.6) }
 
 Output:
-	estimate [object]: { region, peakIndex, mean, sigma, cv, area, binIndexes }
+	estimate [object]: { region, peakIndex, mean, sigma, cv, area, binIndexes,
+	                    subBinOffset (MODEL-04: clean-side-guarded parabolic
+	                    offset in bins already folded into `mean`) }
 
 */
 export function estimatePeakFromRegion(edges, counts, regionInput, options = {}) {
   const region = normalizePeakRegion(regionInput, options.label ?? "peak");
   const centers = binCenters(edges);
   const binWidth = edges[1] - edges[0];
-  const smoothed = options.smoothed ?? gaussianSmooth(counts, options.smoothingSigmaBins ?? 2);
+  const smoothingSigmaBins = options.smoothingSigmaBins ?? 2;
+  // MODEL-03 guard: a caller-supplied pre-smoothed array must declare the
+  // kernel it was smoothed with, or deconvolution below would silently
+  // assume the default kernel and mis-correct the width. Every caller today
+  // (watson_classic.js, dean_jett.js, watson_pragmatic.js) uses the default
+  // smoothing computed here and never supplies options.smoothed.
+  if (options.smoothed != null && !Number.isFinite(options.smoothingSigmaBins)) {
+    throw new TypeError(
+      "estimatePeakFromRegion: options.smoothed requires options.smoothingSigmaBins " +
+        "naming the kernel it was smoothed with, so the width estimate deconvolves " +
+        "the kernel that was actually applied instead of assuming the default.",
+    );
+  }
+  const smoothed = options.smoothed ?? gaussianSmooth(counts, smoothingSigmaBins);
   const indexes = regionIndexes(centers, region);
 
   let peakIndex = indexes[0];
@@ -180,11 +254,24 @@ export function estimatePeakFromRegion(edges, counts, regionInput, options = {})
 
   const cleanSide = options.cleanSide ?? "left";
   const heightFraction = options.heightFraction ?? 0.5;
+
+  // MODEL-04: only accept a sub-bin offset that moves the centre AWAY from the
+  // S-phase bridge -- see parabolicPeakOffset's comment above for why the
+  // unguarded (symmetric) version regresses G2.
+  const rawOffset = parabolicPeakOffset(smoothed, peakIndex, indexes);
+  const towardCleanSide = cleanSide === "left" ? rawOffset <= 0 : rawOffset >= 0;
+  const subBinOffset = towardCleanSide ? rawOffset : 0;
+
   const sigmaBins = estimateSigmaOneSidedWithinRegion(smoothed, peakIndex, indexes, heightFraction, cleanSide);
-  let sigma = sigmaBins * binWidth;
+  // MODEL-03: deconvolve the smoothing kernel in quadrature (bin units) before
+  // converting to data units -- the flank estimate above is measured on
+  // `smoothed`, so it is sqrt(sigma^2 + smoothingSigmaBins^2), not sigma.
+  let sigma = deconvolveSmoothing(sigmaBins, smoothingSigmaBins) * binWidth;
 
   // If the one-sided estimate is unusable, fall back to a baseline-subtracted
   // second moment inside the region. The region span is only the last resort.
+  // This also runs on the same smoothed array, so it needs the same
+  // deconvolution -- here in data units, since `variance` already is one.
   if (!(sigma > 0) || !Number.isFinite(sigma)) {
     const baseline = localLinearBaseline(smoothed, indexes);
     const weights = indexes.map((index, i) => Math.max(0, smoothed[index] - baseline[i]));
@@ -192,7 +279,8 @@ export function estimatePeakFromRegion(edges, counts, regionInput, options = {})
     if (weightSum > EPS) {
       const centroid = sum(indexes.map((index, i) => weights[i] * centers[index])) / weightSum;
       const variance = sum(indexes.map((index, i) => weights[i] * (centers[index] - centroid) ** 2)) / weightSum;
-      sigma = Math.sqrt(Math.max(EPS, variance));
+      const kernel = smoothingSigmaBins * binWidth;
+      sigma = Math.sqrt(Math.max((UNRESOLVED_SIGMA_BINS * binWidth) ** 2, variance - kernel * kernel));
     }
   }
 
@@ -205,13 +293,20 @@ export function estimatePeakFromRegion(edges, counts, regionInput, options = {})
   const height = Math.max(0, smoothed[peakIndex] - edgeBaseline);
   const area = Math.max(1, height * Math.sqrt(2 * Math.PI) * sigma / Math.max(EPS, binWidth));
 
+  // MODEL-04: the reported mean is sub-bin-interpolated (see subBinOffset
+  // above); cv keeps using the bin-quantized centre it always has, since the
+  // checklist scopes this fix to the reported mean only and cv's own accuracy
+  // was not part of the measured G1/G2 mean-error win being landed here.
+  const mean = centers[peakIndex] + subBinOffset * binWidth;
+
   return {
     region,
     peakIndex,
-    mean: centers[peakIndex],
+    mean,
     sigma,
     cv: sigma / Math.max(EPS, centers[peakIndex]),
     area,
     binIndexes: indexes,
+    subBinOffset,
   };
 }

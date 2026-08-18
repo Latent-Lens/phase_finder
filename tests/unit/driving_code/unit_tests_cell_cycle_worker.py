@@ -31,35 +31,59 @@ _TESTS = r"""() => {
   };
 
   return (async () => {
-    const histogram = window.TestUtils.buildDJFHistogram(256);
+    const { peakComponents, convolvedSPhase } = window.CellCycleModelShared;
+    const TRUE = {
+      g1Area: 8000, g1Mean: 70, g1CV: 0.06,
+      g2Area: 3000, g2Mean: 140, g2CV: 0.07,
+      sArea: 4000, shape1: 0.5, shape2: -0.3,
+    };
+    // Canonical {edges, counts} fixture: every canonical model requires
+    // peakRegions, so the worker suite drives dean_jett the way the app does.
+    const buildHistogram = (bins) => {
+      const width = 300 / bins;
+      const edges = Array.from({ length: bins + 1 }, (_, i) => i * width);
+      const peaks = peakComponents(edges, TRUE);
+      const sCounts = convolvedSPhase(edges, {
+        sArea: TRUE.sArea, g1Mean: TRUE.g1Mean, g2Mean: TRUE.g2Mean,
+        broadeningCV: TRUE.g1CV, shape1: TRUE.shape1, shape2: TRUE.shape2,
+      }, 64);
+      const counts = peaks.g1.map((value, i) => Math.round(value + sCounts[i] + peaks.g2[i]));
+      return { edges, counts };
+    };
+    const histogram = buildHistogram(256);
+    const regions = { g1: { left: 55, right: 85 }, g2: { left: 120, right: 165 } };
+    const fitOptions = { peakRegions: regions };
 
     await runAsync('fit worker: a real fit matches the main-thread result within tolerance', async () => {
       registry.clear_registry();
       registry.register_default_models();
-      const entry = registry.get_model('legacy_bridge_v1');
-      const mainThread = entry.normalizeResult(entry.fit({ histogram, config: {} }));
+      const entry = registry.get_model('dean_jett');
+      const mainThread = entry.normalizeResult(
+        entry.fit({ histogram, peakRegions: regions, config: {} })
+      );
 
-      const { promise } = window.run_fit_in_worker('legacy_bridge_v1', histogram, {}, {});
+      const { promise } = window.run_fit_in_worker('dean_jett', histogram, {}, fitOptions);
       const worker = await promise;
 
       const closeEnough = (a, b, tol) => Math.abs(a - b) <= tol;
       return {
-        pass: worker.modelId === 'legacy_bridge_v1'
+        pass: worker.modelId === 'dean_jett'
           && worker.converged === mainThread.converged
-          && closeEnough(worker.parameters.mu1, mainThread.parameters.mu1, 1e-6)
-          && closeEnough(worker.parameters.R, mainThread.parameters.R, 1e-6)
+          && closeEnough(worker.parameters.g1Mean, mainThread.parameters.g1Mean, 1e-6)
+          && closeEnough(worker.parameters.g2Mean, mainThread.parameters.g2Mean, 1e-6)
           && worker.expectedCounts.length === mainThread.expectedCounts.length
           && worker.components.map((c) => c.id).join(',') === mainThread.components.map((c) => c.id).join(','),
         detail: JSON.stringify({
-          workerMu1: worker.parameters.mu1, mainMu1: mainThread.parameters.mu1,
-          workerR: worker.parameters.R, mainR: mainThread.parameters.R,
+          workerG1: worker.parameters.g1Mean, mainG1: mainThread.parameters.g1Mean,
+          workerG2: worker.parameters.g2Mean, mainG2: mainThread.parameters.g2Mean,
         }),
       };
     });
 
     await runAsync('fit worker: onProgress fires during a real worker fit', async () => {
       const events = [];
-      const { promise } = window.run_fit_in_worker('legacy_bridge_v1', histogram, {}, {
+      const { promise } = window.run_fit_in_worker('dean_jett', histogram, {}, {
+        ...fitOptions,
         onProgress: (event) => events.push(event),
       });
       await promise;
@@ -98,10 +122,10 @@ _TESTS = r"""() => {
     });
 
     await runAsync('fit worker: concurrent requests are routed back to the correct caller by request id', async () => {
-      const narrowHistogram = window.TestUtils.buildDJFHistogram(64);
-      const wideHistogram = window.TestUtils.buildDJFHistogram(512);
-      const a = window.run_fit_in_worker('legacy_bridge_v1', narrowHistogram, {}, {});
-      const b = window.run_fit_in_worker('legacy_bridge_v1', wideHistogram, {}, {});
+      const narrowHistogram = buildHistogram(64);
+      const wideHistogram = buildHistogram(512);
+      const a = window.run_fit_in_worker('dean_jett', narrowHistogram, {}, fitOptions);
+      const b = window.run_fit_in_worker('dean_jett', wideHistogram, {}, fitOptions);
       const [resultA, resultB] = await Promise.all([a.promise, b.promise]);
       return {
         pass: resultA.expectedCounts.length === 64 && resultB.expectedCounts.length === 512,
@@ -110,13 +134,13 @@ _TESTS = r"""() => {
     });
 
     await runAsync('fit worker: cancel() cannot interrupt an in-flight fit (documented limitation, not a bug)', async () => {
-      // legacy_bridge_v1's fit is fully synchronous with no yield points, and
-      // a worker processes one message to completion before it can even look
-      // at a queued "cancel" message -- so cancel() immediately after
-      // starting cannot stop this fit. If this test starts failing, the LM
-      // solver has gained real yield points and fit_client.js's docs (and
-      // this test) need to be updated to match the new behavior.
-      const { promise, cancel } = window.run_fit_in_worker('legacy_bridge_v1', histogram, {}, {});
+      // The fit is fully synchronous with no yield points, and a worker
+      // processes one message to completion before it can even look at a
+      // queued "cancel" message -- so cancel() immediately after starting
+      // cannot stop this fit. If this test starts failing, the LM solver has
+      // gained real yield points and fit_client.js's docs (and this test)
+      // need to be updated to match the new behavior.
+      const { promise, cancel } = window.run_fit_in_worker('dean_jett', histogram, {}, fitOptions);
       cancel();
       const result = await promise;
       return {

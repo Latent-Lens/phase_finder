@@ -32,8 +32,8 @@ import {
 import { plottable_rows, plot_bin_count, clamp_range_to_analysis_domain } from "../../plotting/data.js";
 import { focused_file_id } from "../../data_structs/table_state.js";
 import { set_status_bar } from "../../ui/status_channels.js";
-import { load_pipeline } from "../pipeline_loader.js";
-import { get_state } from "../pipeline_state.js";
+import { load_pipeline } from "../pipeline/pipeline_loader.js";
+import { get_state } from "../pipeline/pipeline_state.js";
 import {
   detect_peak_regions,
   update_peak_regions,
@@ -287,18 +287,31 @@ function refresh_panel() {
     // Several samples plotted with none singled out. Detection still applies --
     // it runs on all of them (see on_detect_peaks_click) -- but the four region
     // inputs edit exactly one sample, so those stay disabled until a row is
-    // clicked into focus.
+    // singled out. Clicking a table row does NOT do that (it only toggles
+    // selection/plotting) -- the only control that calls set_focused_file_id()
+    // is the Ridge view's per-sample "Manual Review" button
+    // (js/plotting/render.js's enter_ridge_review()). Both the pre-detection
+    // hint and the post-detection status name that control explicitly instead
+    // of the previous "click a row", which silently did nothing (UI-09).
     const bulk = rows.length > 1;
     if (peak_review_focus) {
       peak_review_focus.textContent = bulk
-        ? `${rows.length} samples checked — Detect Peaks runs on all of them; click a row to review or edit one.`
+        ? `${rows.length} samples checked — Detect Peaks runs on all of them; switch View to Ridge and use a sample's Manual Review button to review or edit one.`
         : "Plot a channel and check a sample in the table to identify peaks.";
     }
     if (detect_peaks_button) {
       detect_peaks_button.disabled = !bulk;
       detect_peaks_button.textContent = bulk ? "Detect Peaks (all samples)" : "Detect Peaks";
     }
-    if (peak_review_status) peak_review_status.hidden = true;
+    // Self-explain the disabled/blank fields below (UI-09) instead of leaving
+    // them looking like a blank failed form: reuse the existing status line
+    // rather than adding any new markup or CSS.
+    if (peak_review_status) {
+      peak_review_status.textContent = bulk
+        ? "No single sample selected, so these fields stay blank — switch View to Ridge and use a sample's Manual Review button to see or edit its regions."
+        : "";
+      peak_review_status.hidden = !bulk;
+    }
     set_region_inputs_disabled(true);
     show_region_error("");
     return;
@@ -400,7 +413,13 @@ async function on_detect_peaks_click() {
     } else if (targets.length === 1) {
       set_status_bar(`Peaks detected for ${targets[0].name}.`);
     } else {
-      set_status_bar(`Peaks detected for all ${targets.length} plotted samples. Click a row to review one.`);
+      // UI-09: "click a row" used to send the user to a control that does
+      // nothing -- clicking a table row never focuses a sample for review
+      // (see the refresh_panel() !row branch above). Name the control that
+      // actually does: the Ridge view's per-sample "Manual Review" button.
+      set_status_bar(
+        `Peaks detected for all ${targets.length} plotted samples. Switch View to Ridge and use a sample's Manual Review button to review one.`,
+      );
     }
   } catch (error) {
     set_status_bar(`Peak detection failed: ${error.message}`, true);

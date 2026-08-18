@@ -81,10 +81,60 @@ _TESTS = r"""() => {
     };
   });
 
+  run('AD-2/UI-01: build_fit_series_entry carries validForReporting/converged through, undefaulted', () => {
+    // The projection used to drop these two fields, so the SVG <desc> / "Plot
+    // data and analysis summary" table (render.js's analysis_text(), below)
+    // had no way to see trust state even though the source fit carried it.
+    const baseFit = {
+      modelId: 'dean_jett', modelLabel: 'Dean-Jett', phaseFractions: { g1: 0.5, s: 0.3, g2: 0.2 },
+      expectedCounts: [10, 10],
+      components: [{ id: 'g1', counts: [5, 5] }, { id: 's', counts: [3, 3] }, { id: 'g2', counts: [2, 2] }],
+    };
+    const seriesEntry = { row: {}, name: 's' };
+    const state = { histogram: { x: [1, 2] } };
+    const clean = window.PlotRender.build_fit_series_entry(seriesEntry, state, { ...baseFit, validForReporting: true, converged: true });
+    const unvalidated = window.PlotRender.build_fit_series_entry(seriesEntry, state, { ...baseFit, validForReporting: false, converged: false });
+    // A fit object that never sets these fields at all -- carrying `undefined`
+    // through must NOT read as "reportable"/"converged" to a downstream check.
+    const bare = window.PlotRender.build_fit_series_entry(seriesEntry, state, { ...baseFit });
+    return {
+      pass: clean.validForReporting === true && clean.converged === true
+        && unvalidated.validForReporting === false && unvalidated.converged === false
+        && bare.validForReporting === undefined && bare.converged === undefined,
+      detail: JSON.stringify({
+        clean: { v: clean.validForReporting, c: clean.converged },
+        unvalidated: { v: unvalidated.validForReporting, c: unvalidated.converged },
+        bare: { v: bare.validForReporting, c: bare.converged },
+      }),
+    };
+  });
+
+  run('AD-2/UI-01: analysis_text() (SVG desc / accessibility-summary table) states the SAME trust caveat format_fraction_cell() flags with a glyph, in words', () => {
+    const entry = { pipelineState: { lastRunIndex: 3 } };
+    const clean = { modelLabel: 'Dean-Jett', fractions: { g1: 50, s: 30, g2: 20 }, validForReporting: true, converged: true };
+    const unvalidated = { modelLabel: 'Dean-Jett', fractions: { g1: 50, s: 30, g2: 20 }, validForReporting: false, converged: true };
+    // The reachable real-world case per result_contract.js's FlowJo-style
+    // policy: a non-converged fit with a coherent finite distribution is
+    // STILL validForReporting: true (converged is a warning, not a
+    // withholding condition) -- so this is the case that was actually
+    // silently showing clean percentages before this fix, not a hypothetical.
+    const nonConverged = { modelLabel: 'Dean-Jett', fractions: { g1: 50, s: 30, g2: 20 }, validForReporting: true, converged: false };
+    const cleanText = window.PlotRender.analysis_text(entry, clean);
+    const unvalidatedText = window.PlotRender.analysis_text(entry, unvalidated);
+    const nonConvergedText = window.PlotRender.analysis_text(entry, nonConverged);
+    return {
+      pass: !/unvalidated result|fit did not converge/.test(cleanText)
+        && /\(unvalidated result\)/.test(unvalidatedText)
+        && /\(fit did not converge\)/.test(nonConvergedText)
+        && !/\(fit did not converge\)/.test(unvalidatedText), // precedence: validForReporting wins
+      detail: JSON.stringify({ cleanText, unvalidatedText, nonConvergedText }),
+    };
+  });
+
   run('SCI-14: legacy stage outputs cannot become the authoritative model result', () => {
     const legacyOnly = {
-      baseFit: { modelId: 'legacy_bridge_v1', phaseFractions: { g1: 1, s: 0, g2: 0 } },
-      extendedFit: { modelId: 'legacy_bridge_v1', phaseFractions: { g1: 0, s: 1, g2: 0 } },
+      baseFit: { modelId: 'dean_jett_fox', phaseFractions: { g1: 1, s: 0, g2: 0 } },
+      extendedFit: { modelId: 'dean_jett_fox', phaseFractions: { g1: 0, s: 1, g2: 0 } },
       report: { fractions: { biologicalSinglets: { oneC: 0, sPhase: 0, twoC: 1 } } },
       modeling: { activeResultKey: null, resultsByKey: {} },
     };
@@ -343,6 +393,42 @@ _TESTS = r"""() => {
         && summary.cancelled === 1 && summary.skipped === 1
         && summary.success + summary.failed + summary.skipped + summary.cancelled === summary.attempted
         && /computed but did not converge/.test(summary.message),
+      detail: JSON.stringify(summary),
+    };
+  });
+
+  run('UI-02: bulk-fit summary omits zero-valued terms from the message', () => {
+    const outcomes = new Map([
+      ['a', { status: 'converged_reportable' }],
+      ['b', { status: 'converged_reportable' }],
+    ]);
+    const summary = window.CellCycleModelingUI.summarize_bulk_fit_outcomes(outcomes);
+    return {
+      pass: summary.message === '2 converged/reportable'
+        && !/\b0 /.test(summary.message)
+        && !/cancelled|failed|skipped/.test(summary.message),
+      detail: JSON.stringify(summary),
+    };
+  });
+
+  run('UI-02: a QC-blocked bulk fit is never reported as user-cancelled', () => {
+    // A bulk fit where every sample is blocked by the result contract (e.g.
+    // model_preflight's QC gate, or apply_result_contract's
+    // validForReporting: false) lands every row on "fit_failed", never
+    // "cancelled" -- nothing here ever touched the Cancel button. The message
+    // sentence must not say "cancelled" either: before the zero-suppression
+    // fix, every bulk-fit summary sentence unconditionally printed "0
+    // cancelled", so a QC-blocked run's own status text falsely mentioned
+    // cancellation even though summary.cancelled was correctly 0.
+    const outcomes = new Map([
+      ['qc1', { status: 'fit_failed', reason: 'Result is not valid for reporting' }],
+      ['qc2', { status: 'fit_failed', reason: 'Result is not valid for reporting' }],
+    ]);
+    const summary = window.CellCycleModelingUI.summarize_bulk_fit_outcomes(outcomes);
+    return {
+      pass: summary.cancelled === 0
+        && !/cancelled/i.test(summary.message)
+        && /fit failed/.test(summary.message),
       detail: JSON.stringify(summary),
     };
   });

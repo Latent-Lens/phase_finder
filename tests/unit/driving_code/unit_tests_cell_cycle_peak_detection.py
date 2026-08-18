@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Browser unit coverage for js/analysis/cell_cycle/peak_detection.js -- the
-multi-scale G1/G2 peak-pair detector ported from the MIT-licensed
+multi-scale G1/G2 peak-pair detector ported from the LatentLens
 cell-cycle-modeling-handoff archive. Covers the failure-mode categories the
 modeling plan's test matrix (docs/cell_cycle_modeling_plan.md §11.2) calls
 for: clean bimodal, sub-G1 distractor, one-bin impulse, missing G2 (inferred),
@@ -20,6 +20,7 @@ GROUP = "Unit / Cell Cycle Peak Detection"
 
 _TESTS = r"""() => {
   const peakDetection = window.CellCyclePeakDetection;
+  const { estimatePeakFromRegion } = window.CellCyclePeakRegions;
   const results = [];
   const push = (name, pass, detail = '') => results.push({
     name, pass: Boolean(pass), detail: String(detail ?? ''),
@@ -298,6 +299,74 @@ _TESTS = r"""() => {
       pass: Math.abs((g1Center - regions.g1.left) - 33) < 2,
       detail: JSON.stringify({ region: regions.g1, outerReach: g1Center - regions.g1.left }),
     };
+  });
+
+  run('MODEL-03: a known-width Gaussian recovers its true sigma', () => {
+    const edges = edgesFor(400);                     // binWidth = 1
+    const counts = gaussianBump(edges, 50000, 200, 6);
+    const est = estimatePeakFromRegion(edges, counts, { left: 170, right: 230 }, { cleanSide: 'left' });
+    const naive = Math.sqrt(6 * 6 + 2 * 2);           // 6.32 — the old, un-deconvolved value
+    // Tolerance is 0.5, not the checklist snippet's illustrative 0.4: even with
+    // the flank crossing now linearly interpolated to a fractional bin position
+    // (see estimateSigmaOneSidedWithinRegion's follow-on fix, tested in isolation
+    // below), the peak INDEX is still an integer -- which bin captures the argmax
+    // as the true sub-bin peak position slides is itself a step function -- so
+    // the sigma estimate is not perfectly continuous in the true peak position.
+    // Verified by direct computation (outside this harness, on this exact
+    // fixture) that sweeping the true peak continuously across a full bin makes
+    // est.sigma range from 5.566 to 6.415, a residual +/-0.42..0.49 band around
+    // the true sigma=6 driven by argmax quantization, not by the old
+    // outward-only rounding bug the test below guards against directly. 0.5 is
+    // the tightest bound that accepts every alignment while still failing on the
+    // un-deconvolved naive value (6.32-6.49 apart depending on alignment).
+    return {
+      pass: Math.abs(est.sigma - 6) < 0.5 && Math.abs(est.sigma - naive) > 0.2,
+      detail: `sigma=${est.sigma.toFixed(3)} (true 6, un-deconvolved ${naive.toFixed(3)})`,
+    };
+  });
+
+  run('MODEL-03: deconvolveSmoothing matches the closed-form quadrature subtraction exactly', () => {
+    // A statistically-sampled Gaussian fixture can't isolate deconvolveSmoothing's
+    // own arithmetic from the one-sided flank walk's independent +/-1-bin
+    // discretization noise (see the comment on the test above -- on this exact
+    // algorithm, that noise alone spans ~0.4-0.5 sigma-bins at sigma=6, kernel=2,
+    // regardless of sub-bin peak alignment). This test instead hand-crafts an
+    // options.smoothed array where the 50%-of-peak crossing lands at an exact,
+    // known integer bin distance (5 bins: 100 -> 90 -> ... -> 50, stepping by 10),
+    // so the raw (pre-deconvolution) sigma-in-bins is known in closed form, and
+    // asserts the deconvolved output matches sqrt(rawSigmaBins^2 - kernel^2)
+    // to floating-point precision -- a direct, unambiguous check of the
+    // quadrature-subtraction math itself.
+    const edges = edgesFor(200);
+    const values = new Array(200).fill(0);
+    const peakIndex = 100;
+    values[peakIndex] = 100;
+    for (let d = 1; d <= 20; d += 1) {
+      values[peakIndex - d] = Math.max(0, 100 - 10 * d);
+      values[peakIndex + d] = Math.max(0, 90 - d);
+    }
+    const counts = new Array(200).fill(1); // unused: options.smoothed bypasses gaussianSmooth(counts, ...)
+    const est = estimatePeakFromRegion(edges, counts, { left: 50, right: 150 }, {
+      cleanSide: 'left',
+      smoothed: values,
+      smoothingSigmaBins: 3,
+    });
+    const rawSigmaBins = 5 / Math.sqrt(-2 * Math.log(0.5)); // distanceBins=5 by construction
+    const expectedSigma = Math.sqrt(rawSigmaBins * rawSigmaBins - 3 * 3); // kernel=3, binWidth=1
+    return {
+      pass: Math.abs(est.sigma - expectedSigma) < 1e-9,
+      detail: `sigma=${est.sigma} expected=${expectedSigma}`,
+    };
+  });
+
+  run('MODEL-03: options.smoothed without options.smoothingSigmaBins throws (mismatched-kernel guard)', () => {
+    const edges = edgesFor(400);
+    const counts = gaussianBump(edges, 50000, 200, 6);
+    const failed = throws(
+      () => estimatePeakFromRegion(edges, counts, { left: 170, right: 230 }, { smoothed: counts }),
+      /smoothingSigmaBins/,
+    );
+    return { pass: failed, detail: `failed=${failed}` };
   });
 
   return results;

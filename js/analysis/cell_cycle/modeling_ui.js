@@ -27,8 +27,8 @@ import {
 } from "../../plotting/data.js";
 import { render_density_plot } from "../../plotting/render.js";
 import { set_status_bar, show_progress, update_progress, hide_progress, show_progress_cancel } from "../../ui/status_channels.js";
-import { load_pipeline } from "../pipeline_loader.js";
-import { get_state, get_active_model_result } from "../pipeline_state.js";
+import { load_pipeline } from "../pipeline/pipeline_loader.js";
+import { get_state, get_active_model_result } from "../pipeline/pipeline_state.js";
 import { get_file_table } from "../../state/app_state.js";
 import { histogramFromEdgesCounts } from "./models/cloccs.js";
 import { run_cloccs_fit } from "./cloccs_client.js";
@@ -37,6 +37,10 @@ import { active_peak_review_row, peak_region_draft_valid } from "./peak_review_u
 import { deep_clone } from "../../util/clone.js";
 import { escape_html } from "../../util/html.js";
 import { result_reporting_summary } from "./result_contract.js";
+// UI-01: the same fraction formatter the metadata table/TSV route through
+// (js/ui/cell_cycle_columns.js), so the sidebar can never disagree with them
+// about whether a number is flagged (SCI-05).
+import { format_fraction_cell } from "../../ui/cell_cycle_columns.js";
 
 // CLOCCS metadata-column mapping controls (index.html). Queried once at module
 // load, like the rest of the sidebar's DOM refs -- the markup is parsed before
@@ -291,11 +295,28 @@ function has_model_selected() {
   return Boolean(selected_model_id());
 }
 
-function set_fit_status(message, isError = false) {
+// AD-2/SCI-05: #cell_cycle_fit_status (role="status", immediately above
+// #cell_cycle_fit_result in the DOM) and #cell_cycle_fit_result
+// (role="status" aria-live="polite") both live-announce. At the one call site
+// where a single fit event updates both for the same outcome
+// (on_fit_current_click), that is a duplicate announcement of the same event
+// to assistive tech -- annoying, not just redundant, since AT reads both in
+// full. `announce: false` suppresses just this element's announcement for
+// that update (the text/visual state still change normally, and the *next*
+// independent update to this element -- e.g. "Bin count changed" -- announces
+// as usual) by removing the role immediately before the mutation and
+// restoring it on a later task, after the mutation has already happened with
+// no live region present to announce it.
+function set_fit_status(message, isError = false, { announce = true } = {}) {
   if (!cell_cycle_fit_status) return;
+  const previousRole = cell_cycle_fit_status.getAttribute("role");
+  if (!announce && previousRole) cell_cycle_fit_status.removeAttribute("role");
   cell_cycle_fit_status.textContent = message || "";
   cell_cycle_fit_status.hidden = !message;
   cell_cycle_fit_status.classList.toggle("cell_cycle_fit_not_converged", Boolean(isError));
+  if (!announce && previousRole) {
+    window.setTimeout(() => cell_cycle_fit_status.setAttribute("role", previousRole), 0);
+  }
 }
 
 function set_controls_disabled(disabled) {
@@ -304,8 +325,15 @@ function set_controls_disabled(disabled) {
   if (cell_cycle_fit_all_button) cell_cycle_fit_all_button.disabled = disabled;
 }
 
-function percent(fraction) {
-  return Number.isFinite(fraction) ? `${(fraction * 100).toFixed(1)}%` : "—";
+// AD-2/UI-01: wraps format_fraction_cell()'s trailing " ⚠" (already the exact
+// text every other fraction-printing surface emits) in .cc_value_flag so the
+// sidebar's glyph gets the same non-colour, non-text-only affordance as the
+// metadata table -- the glyph itself stays in the text format_fraction_cell()
+// returns (SCI-05: identical text everywhere, incl. copy/paste), this only
+// adds a wrapping element where the surface renders markup.
+function render_fraction_value(result, fraction) {
+  const cell = format_fraction_cell(result, fraction);
+  return cell.endsWith(" ⚠") ? `${cell.slice(0, -2)}<span class="cc_value_flag">⚠</span>` : cell;
 }
 
 function render_result(result) {
@@ -319,6 +347,21 @@ function render_result(result) {
   const warnings = result.warnings ?? [];
   const reporting = result_reporting_summary(result);
   const convergenceText = result.converged ? "Converged" : `Not converged (${escape_html(result.convergenceReason ?? "unknown")})`;
+  // AD-2 (UI-01/SCI-03): the qualifier text is sized/weighted to match or
+  // exceed the phase-percentage text (.cc_qualifier, 0.78rem/600 == the
+  // fraction row's size) rather than the old 0.72rem/muted treatment, and
+  // never emits the legacy .cell_cycle_fit_not_converged /
+  // .cell_cycle_fit_has_warnings modifier classes on these elements: those are
+  // compound selectors (0,2,0) that would silently outrank the new single-class
+  // .cc_qualifier--warn/--fail (0,1,0) regardless of source order. "Not
+  // reportable" (no usable number at all -- cancelled, legacy, non-finite) is
+  // the fail state; "reportable but not converged" (still shown, per the
+  // FlowJo-style philosophy in result_contract.js) is the warn state.
+  const convergenceQualifier = !reporting.reportable
+    ? "cc_qualifier cc_qualifier--fail"
+    : result.converged === false
+      ? "cc_qualifier cc_qualifier--warn"
+      : "cc_qualifier";
   // Retained for any result that still carries a model comparison (older saved
   // sessions); the auto_dj_djf policy that produced them has been retired.
   const selectedNote = result.modelComparison
@@ -329,30 +372,41 @@ function render_result(result) {
     : "";
   const fractions = reporting.reportable
     ? `<dl class="cell_cycle_fit_fractions">
-        <div class="cell_cycle_fit_fraction_row"><dt>G1</dt><dd>${percent(reporting.phaseFractions?.g1)}</dd></div>
-        <div class="cell_cycle_fit_fraction_row"><dt>S</dt><dd>${percent(reporting.phaseFractions?.s)}</dd></div>
-        <div class="cell_cycle_fit_fraction_row"><dt>G2/M</dt><dd>${percent(reporting.phaseFractions?.g2)}</dd></div>
+        <div class="cell_cycle_fit_fraction_row"><dt>G1</dt><dd>${render_fraction_value(result, reporting.phaseFractions?.g1)}</dd></div>
+        <div class="cell_cycle_fit_fraction_row"><dt>S</dt><dd>${render_fraction_value(result, reporting.phaseFractions?.s)}</dd></div>
+        <div class="cell_cycle_fit_fraction_row"><dt>G2/M</dt><dd>${render_fraction_value(result, reporting.phaseFractions?.g2)}</dd></div>
       </dl>`
-    : `<p class="cell_cycle_fit_not_converged">No phase fractions: the fit did not produce a usable result${result.cancelled ? " (cancelled)" : ""}.</p>`;
+    : `<p class="cc_qualifier cc_qualifier--fail">No phase fractions: the fit did not produce a usable result${result.cancelled ? " (cancelled)" : ""}.</p>`;
   // Goodness of fit (reduced deviance, the chi-square analogue). ~1 is a good
   // fit; well above 1 means the model does not fully explain the counts. Shown
   // so the user -- not the tool -- judges whether to trust the fractions.
+  // AD-2: moved out of a title="" tooltip (keyboard/touch-unreachable) into a
+  // visible, focusable <details>/<summary> disclosure -- the summary carries
+  // the qualifier treatment and base.css's :where(...,[tabindex]):focus-visible
+  // ring needs the explicit tabindex="0" since <summary> isn't in that
+  // selector's tag list.
   const gof = result.goodnessOfFit;
   const gofPoor = Number.isFinite(gof) && gof > 2;
-  const goodnessText = Number.isFinite(gof)
-    ? `<span class="cell_cycle_fit_goodness${gofPoor ? " cell_cycle_fit_goodness_poor" : ""}" title="Reduced deviance (chi-square analogue): ~1 is a good fit, well above 1 means the model does not fully explain the counts.">Fit quality: ${gof.toFixed(2)}${gofPoor ? " (poor)" : ""}</span>`
+  const goodnessQualifier = gofPoor ? "cc_qualifier cc_qualifier--warn" : "cc_qualifier";
+  const goodnessBlock = Number.isFinite(gof)
+    ? `<details class="cell_cycle_fit_goodness_disclosure">
+        <summary class="cc_goodness_detail ${goodnessQualifier}" tabindex="0">Fit quality: ${gof.toFixed(2)}${gofPoor ? " (poor)" : ""}</summary>
+        <p class="cc_goodness_detail_body">Reduced deviance (chi-square analogue): ~1 is a good fit, well above 1 means the model does not fully explain the counts.</p>
+      </details>`
     : "";
+  const warningsQualifier = warnings.length ? "cc_qualifier cc_qualifier--warn" : "cc_qualifier";
 
   cell_cycle_fit_result.hidden = false;
   cell_cycle_fit_result.innerHTML = `
+    <h3 class="visually_hidden">Cell-cycle fit result</h3>
     <div class="cell_cycle_fit_result_header">
       <span>${escape_html(result.modelLabel ?? model_label(result.modelId))}</span>
-      <span class="cell_cycle_fit_convergence${result.converged ? "" : " cell_cycle_fit_not_converged"}">${convergenceText}</span>
-      ${goodnessText}
     </div>
+    <p class="cell_cycle_fit_convergence ${convergenceQualifier}">${convergenceText}</p>
+    ${goodnessBlock}
     ${fractions}
     ${selectedNote}
-    <p class="cell_cycle_fit_warnings${warnings.length ? " cell_cycle_fit_has_warnings" : ""}">${
+    <p class="cell_cycle_fit_warnings ${warningsQualifier}">${
       warnings.length ? `${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "No warnings."
     }</p>
     ${warningList}
@@ -442,9 +496,14 @@ async function on_fit_current_click() {
   try {
     const result = await fit_cell_cycle_model(row, modelId);
     render_result(result);
+    // announce: false -- #cell_cycle_fit_result just announced this same fit
+    // outcome (role="status" aria-live="polite" via render_result() above); a
+    // second role="status" region reporting the identical event would be a
+    // duplicate announcement, not new information.
     set_fit_status(
       `${model_label(modelId)} fit for ${row.name}: ${result.converged ? "converged" : "did not converge"}.`,
       !result.converged,
+      { announce: false },
     );
     set_status_bar(`Cell-cycle model fit for ${row.name}${degraded_qc_names([row]).length ? " with an approved QC waiver" : ""}.`, false, null, progress_operation);
   } catch (error) {
@@ -476,6 +535,10 @@ async function run_with_limit(items, limit, worker) {
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, runner));
 }
 
+// UI-02: a term is only worth a reader's attention when it actually happened
+// -- "0 cancelled" next to "3 converged" reads as if cancellation were part of
+// THIS run's story when nothing was ever cancelled. Zero-valued terms are
+// dropped from the sentence entirely rather than printed as "0 <label>".
 export function summarize_bulk_fit_outcomes(outcomes) {
   const values = [...outcomes.values()];
   const count = (status) => values.filter((outcome) => outcome.status === status).length;
@@ -486,16 +549,35 @@ export function summarize_bulk_fit_outcomes(outcomes) {
   const cancelled = count("cancelled");
   const skipped = count("skipped");
   const failed = nonconverged + detectionFailed + fitFailed;
+  const terms = [
+    [converged, "converged/reportable"],
+    [nonconverged, "computed but did not converge"],
+    [detectionFailed, "detection failed"],
+    [fitFailed, "fit failed"],
+    [cancelled, "cancelled"],
+    [skipped, "skipped"],
+  ];
+  const message = terms.filter(([term_count]) => term_count > 0)
+    .map(([term_count, label]) => `${term_count} ${label}`)
+    .join("; ") || "0 attempted";
   return {
     attempted: values.length,
     success: converged,
     failed,
     skipped,
     cancelled,
-    message: `${converged} converged/reportable; ${nonconverged} computed but did not converge; ` +
-      `${detectionFailed} detection failed; ${fitFailed} fit failed; ${cancelled} cancelled; ${skipped} skipped`,
+    message,
   };
 }
+
+// UI-02: the two phases below (peak detection, then model fitting) both check
+// the SAME AbortController -- wired only to the Cancel button
+// (show_progress_cancel) below, so "cancelled" here always means the user hit
+// Cancel -- but a single shared string for both would hide which phase a
+// bulk fit actually got through before the user stopped it, information the
+// per-row detail line (built from `outcome.reason`) exists to carry.
+const CANCEL_REASON_DETECTION = "User cancelled bulk fitting during peak detection";
+const CANCEL_REASON_FITTING = "User cancelled bulk fitting during model fitting";
 
 // Bulk auto-fit across every plotted sample. Trustworthy detections with proven
 // matching DNA calibration receive a robust shared proposal; every excluded or
@@ -580,7 +662,7 @@ async function on_fit_all_click() {
       }
     }
     if (controller.signal.aborted) {
-      rows.forEach((row) => finish(row, "cancelled", "User cancelled bulk fitting", "fit_cancelled"));
+      rows.forEach((row) => finish(row, "cancelled", CANCEL_REASON_DETECTION, "fit_cancelled"));
       const summary = summarize_bulk_fit_outcomes(outcomes);
       set_fit_status(`Auto-fit cancelled: ${summary.message}.`, true);
       set_status_bar(`Auto-fit cancelled: ${summary.message}.`, "warning", null, progress_operation);
@@ -660,7 +742,7 @@ async function on_fit_all_click() {
     let completed = 0;
     await run_with_limit(fit_list, fit_pool_size(), async ({ row, isShared }) => {
       if (controller.signal.aborted) {
-        finish(row, "cancelled", "User cancelled bulk fitting", "fit_cancelled");
+        finish(row, "cancelled", CANCEL_REASON_FITTING, "fit_cancelled");
         return;
       }
       try {
@@ -697,7 +779,7 @@ async function on_fit_all_click() {
       if (outcome.status === "pending") {
         const row = rows.find((candidate) => candidate.name === name);
         finish(row, controller.signal.aborted ? "cancelled" : "skipped",
-          controller.signal.aborted ? "User cancelled bulk fitting" : "Sample did not reach the fit stage");
+          controller.signal.aborted ? CANCEL_REASON_FITTING : "Sample did not reach the fit stage");
       }
     });
     if (rows.length > 1) switch_to_ridge_view();
@@ -778,15 +860,29 @@ function render_cloccs_strain(outcome) {
     return `<p class="cell_cycle_cloccs_strain">${escape_html(outcome.strain)}: not fit (${escape_html(outcome.error)})</p>`;
   }
   const theta = outcome.result.theta;
+  // UI-01/LEGACY-01: CLOCCS never passes through apply_result_contract() --
+  // its output has no native .validForReporting -- but it is exactly the kind
+  // of unvalidated model that contract exists to flag (see the "Unverified
+  // model" note render_cloccs_result() already prints, right above this
+  // table). A synthetic wrapper with validForReporting: false routes every
+  // CLOCCS timepoint fraction through the SAME format_fraction_cell() every
+  // other surface uses, so every number here always carries the ⚠ -- not just
+  // the ones from a non-converged strain.
+  const cloccsResult = { validForReporting: false, converged: outcome.result.diagnostics.converged };
   const rows = outcome.result.timepointResults
-    .map((tp) => `<tr><td>${escape_html(String(tp.timeMinutes))}</td><td>${percent(tp.phaseFractions.g1)}</td><td>${percent(tp.phaseFractions.s)}</td><td>${percent(tp.phaseFractions.g2)}</td></tr>`)
+    .map((tp) => `<tr><td>${escape_html(String(tp.timeMinutes))}</td>` +
+      `<td>${render_fraction_value(cloccsResult, tp.phaseFractions.g1)}</td>` +
+      `<td>${render_fraction_value(cloccsResult, tp.phaseFractions.s)}</td>` +
+      `<td>${render_fraction_value(cloccsResult, tp.phaseFractions.g2)}</td></tr>`)
     .join("");
   const dispersion = outcome.result.diagnostics.dispersion;
   const dispersionLine = dispersion && dispersion.starts > 1
     ? `<p class="cell_cycle_cloccs_params">Multi-start: ${dispersion.starts} starts · ${(dispersion.agreementFraction * 100).toFixed(0)}% agree on the optimum · λ spread cv ${dispersion.lambda.cv.toFixed(2)}${dispersion.agreementFraction < 0.6 ? " ⚠ weakly identified" : ""}</p>`
     : "";
+  const convergenceQualifier = cloccsResult.converged ? "cc_qualifier" : "cc_qualifier cc_qualifier--warn";
   return (
-    `<p class="cell_cycle_cloccs_strain">${escape_html(outcome.strain)} — ${outcome.result.diagnostics.converged ? "converged" : "did not converge"}</p>` +
+    `<p class="cell_cycle_cloccs_strain">${escape_html(outcome.strain)} — ` +
+    `<span class="${convergenceQualifier}">${cloccsResult.converged ? "converged" : "did not converge"}</span></p>` +
     `<table class="cell_cycle_cloccs_table"><thead><tr><th>t</th><th>%G1</th><th>%S</th><th>%G2/M</th></tr></thead><tbody>${rows}</tbody></table>` +
     `<p class="cell_cycle_cloccs_params">λ ${theta.lambda.toFixed(1)} min · μ0 ${theta.mu0.toFixed(1)} · δ ${theta.delta.toFixed(1)} · ` +
     `γ1 ${theta.gamma1.toFixed(3)} · γ2 ${theta.gamma2.toFixed(3)} · σV ${theta.sigmaV.toFixed(3)}</p>` +

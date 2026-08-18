@@ -45,7 +45,7 @@ import {
 import { load_files } from "../io/metadata_io.js";
 import { set_status_bar, show_progress, update_progress, hide_progress } from "../ui/status_channels.js";
 import { save_filename_metadata_template } from "../ui/metadata_wizard.js";
-import { get_stats_plan, restore_stats_plan } from "../analysis/stats.js";
+import { get_stats_plan, restore_stats_plan } from "../ui/table_summary_stats.js";
 import { get_file_table, get_file_map } from "../state/app_state.js";
 import { get_parsed_files } from "../state/files.js";
 import { plot_bin_count, set_plot_bins, axis_range_override, analysis_domain_override } from "../plotting/data.js";
@@ -54,13 +54,13 @@ import { get_modeling_session_state, apply_modeling_session } from "./modeling_s
 import {
   get_time_qc_session_config,
   apply_time_qc_session_config,
-} from "../analysis/time_qc_settings.js";
+} from "../analysis/qc/time_qc_settings.js";
 import {
   get_structural_qc_session_config,
   apply_structural_qc_session_config,
-} from "../analysis/structural_qc_settings.js";
-import { start_analysis } from "../analysis/start.js";
-import { apply_saved_qc_filters } from "../analysis/pipeline_ui.js";
+} from "../analysis/qc/structural_qc_settings.js";
+import { start_analysis } from "../analysis/pipeline/start.js";
+import { apply_saved_qc_filters } from "../analysis/pipeline/pipeline_ui.js";
 import { render_density_plot } from "../plotting/render.js";
 import { suppress_next_unload_warning } from "./unload_guard.js";
 import { init_cache_manager } from "./cache_manager.js";
@@ -819,6 +819,16 @@ async function try_autoload() {
   try {
     const resp = await fetch('./sessions/phasefinder_local.json', { cache: 'no-store' });
     if (!resp.ok) return; // file absent — normal, nothing to do
+    // A static host can answer a missing path with a 200-with-HTML fallback
+    // (e.g. an SPA catch-all page) instead of a real 404. res.ok would be
+    // true and JSON.parse would throw straight into the catch below, so the
+    // failure would be silently swallowed. Surface a misconfigured host
+    // instead of hiding it.
+    const content_type = resp.headers.get('content-type') || '';
+    if (!/\bjson\b/i.test(content_type)) {
+      set_status_bar(`Auto-load: "./sessions/phasefinder_local.json" returned ${resp.status} with content-type "${content_type || 'unknown'}" instead of JSON; the host may be serving a fallback page for missing files. Skipping auto-load.`, true);
+      return;
+    }
     config = await resp.json();
   } catch (_) {
     return; // fetch or parse failed — silent

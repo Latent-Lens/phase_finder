@@ -446,7 +446,29 @@ export function reset_filename_metadata_columns() {
   set_status_bar("Metadata table reset to Filename only.");
 }
 
+/*
+
+Purpose:
+	UI-06: after the first file load, points the user at the filename-metadata
+	wizard without opening it. This used to force-open the wizard modal 750ms
+	after the first load (`window.setTimeout(() => open_metadata_wizard(), 750)`),
+	stealing focus mid-orientation and interrupting whatever the user was doing.
+	The wizard stays reachable at any time through the "Configure filename
+	metadata columns" toolbar button (metadata_parse_button, wired in main.js) --
+	that is the visible, dismissible affordance the user chooses to activate; this
+	only surfaces a non-blocking status-bar hint pointing at it, once per session.
+
+Input:
+	(none)
+
+Output:
+	(none) [void]
+
+*/
 export function schedule_metadata_wizard_after_file_load() {
   if (metadata_wizard_seen_this_session || TABLE_COLUMNS.length > 1) return;
-  window.setTimeout(() => open_metadata_wizard(), 750);
+  metadata_wizard_seen_this_session = true;
+  set_status_bar(
+    'Filenames can be split into metadata columns — use "Configure filename metadata columns" above the table when ready.',
+  );
 }
