@@ -64,13 +64,19 @@ import {
 } from "./data.js";
 import { set_focused_file_id } from "../data_structs/table_state.js";
 import { update_plot_title, render_fit_results_table } from "./modeling.js";
-import { get_state as get_pipeline_state, get_active_model_result, state_matches_row } from "../analysis/pipeline_state.js";
-import { is_legacy_model_id } from "../analysis/cell_cycle/result_contract.js";
+import { get_state as get_pipeline_state, get_active_model_result, state_matches_row } from "../analysis/pipeline/pipeline_state.js";
+import { fraction_trust_reason } from "../analysis/cell_cycle/result_contract.js";
 import { update_peak_regions, fit_cell_cycle_model } from "../analysis/cell_cycle/modeling_state.js";
 import { show_curve_tooltip, hide_curve_tooltip } from "./curve_tooltip.js";
 import { render_peak_region_overlay } from "./peak_region_overlay.js";
 import { install_plot_interactions, set_plot_renderer } from "./plot_viewport.js";
 import { set_status_bar } from "../ui/status_channels.js";
+// AD-2/UI-01 follow-up: js/plotting -> js/ui is an existing import direction
+// in this same file (set_status_bar above, and plot_toolbar.js's plot_tool_axes
+// from ui/dom.js), so importing the shared trust-precedence check here is not
+// a new layering violation -- it keeps analysis_text() in sync with
+// format_fraction_cell() instead of duplicating the "unvalidated result" /
+// "fit did not converge" strings a second time.
 
 // Last non-empty x-range and y-max, reused to keep the axes drawn (not collapsed)
 // when no samples are selected. Only this render pass reads or writes them.
@@ -108,7 +114,19 @@ function replace_plot_caches(entries) {
   });
 }
 
-function analysis_text(entry, fit) {
+// AD-2/UI-01 follow-up: this feeds two plain-text/screen-reader surfaces (the
+// SVG <title>/<desc> at make_plot_accessible() and the visible "Plot data and
+// analysis summary" <details> table at render_plot_accessibility_summary()),
+// neither of which can carry a CSS class or the sighted qualifier styling --
+// so the same trust caveat format_fraction_cell() flags with a "⚠" glyph is
+// spelled out here in words instead, via the SAME precedence check
+// (fraction_trust_reason(), validForReporting===false before
+// converged===false) so the two kinds of surface cannot silently drift apart.
+// Exported (rather than kept module-private like most helpers here) so the
+// unit harness can exercise the trust-qualifier wording directly, the same
+// way build_fit_series_entry() below is already exported and tested -- both
+// are pure functions of their arguments, no DOM access.
+export function analysis_text(entry, fit) {
   if (!fit) {
     const qc_steps = entry.pipelineState?.lastRunIndex;
     return qc_steps == null ? "QC not run; no model fit" : `QC through stage ${qc_steps + 1}; no model fit`;
@@ -116,7 +134,8 @@ function analysis_text(entry, fit) {
   const phases = ["g1", "s", "g2"]
     .map((key) => `${key === "g2" ? "G2/M" : key.toUpperCase()} ${Number(fit.fractions[key]).toFixed(1)}%`)
     .join(", ");
-  return `${fit.modelLabel || fit.modelId || "Cell-cycle model"}: ${phases}`;
+  const reason = fraction_trust_reason(fit);
+  return `${fit.modelLabel || fit.modelId || "Cell-cycle model"}: ${phases}${reason ? ` (${reason})` : ""}`;
 }
 
 // LEGACY-01: canonical warnings only. The legacy stage-8 report's warnings used
@@ -390,6 +409,16 @@ export function build_fit_series_entry(series_entry, state, fit) {
     modelId: fit.modelId,
     modelLabel: fit.modelLabel,
     warnings: fit.warnings ?? [],
+    // AD-2/UI-01 follow-up: carried straight through from the source `fit`
+    // (the contracted result -- see result_contract.js's apply_result_contract,
+    // which stamps both), NOT defaulted -- absence of evidence is not
+    // validation. Without these two fields, analysis_text() below has no way
+    // to know a result is unvalidated or unconverged, so the SVG <desc> and
+    // the visible "Plot data and analysis summary" table were announcing bare
+    // percentages with zero trust signal for exactly the results the sidebar
+    // and metadata table flag with a qualifier/⚠ (format_fraction_cell()).
+    validForReporting: fit.validForReporting,
+    converged: fit.converged,
   };
 }
 
@@ -1228,8 +1257,7 @@ export function render_density_plot() {
   // table -- previously it did, as soon as a sample had completed the legacy
   // stage-8 report. A canonical result needs no separate report step:
   // fit_cell_cycle_model()'s result is already final.
-  const report_fits = fits.filter((fit) => !is_legacy_model_id(fit.modelId));
-  render_fit_results_table(report_fits, {
+  render_fit_results_table(fits, {
     // Sit below the floating top-right controls so they don't overlap.
     top: Math.max(margin.top, plot_controls_offset()),
     right: 8,

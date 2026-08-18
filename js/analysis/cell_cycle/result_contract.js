@@ -25,39 +25,7 @@ export const RESULT_REASON = Object.freeze({
   RESULT_NONFINITE: "result_nonfinite",
   FRACTIONS_INVALID: "fractions_invalid",
   FIT_PEAK_DEGENERATE: "fit_peak_degenerate",
-  MODEL_UNVALIDATED: "model_unvalidated",
 });
-
-// LEGACY-01. The pre-canonical stage 5-8 fit reached the app through one
-// registered model id. It is retained only so an old session or a direct
-// debug/API call still resolves to *something* with the generic result shape --
-// it is NOT a canonical model: it uses a different likelihood, a different
-// contamination parameterization, publishes no phase fractions of its own, and
-// has never been through the SCI/VALID gates the canonical models passed. Every
-// canonical surface asks this predicate rather than string-matching an id, so
-// there is one place to change if the bridge is ever retired outright.
-//
-// Naming note (LEGACY-01): this path has historically been *called* "DJF" in
-// places even though it is not the canonical Dean-Jett-Fox model. Its label is
-// deliberately "Legacy Bridge (exploratory, unvalidated)" so no surface can
-// present it as DJF.
-export const LEGACY_MODEL_IDS = Object.freeze(["legacy_bridge_v1"]);
-
-/*
-
-Purpose:
-	Whether a model id refers to the unvalidated legacy compatibility path.
-
-Input:
-	modelId [string]: a registered model id
-
-Output:
-	legacy [boolean]: true for the legacy bridge
-
-*/
-export function is_legacy_model_id(modelId) {
-  return LEGACY_MODEL_IDS.includes(modelId);
-}
 
 // GATE-01. apply_result_contract() is the ONLY function that stamps a result
 // with this version, and it refuses to run without a preflight bundle. A result
@@ -423,18 +391,7 @@ export function apply_result_contract(rawResult, preflight) {
     { parameter: degeneratePeakCv, value: result.parameters?.[degeneratePeakCv], bound: result.bounds?.[degeneratePeakCv] ?? null },
   ));
 
-  // LEGACY-01: the legacy bridge is never reportable, whatever it computed. It
-  // is an exploratory compatibility path, so its output stays a diagnostic
-  // preview and can never populate an authoritative column, label, or export --
-  // this is enforced at the contract, not left to each consumer to remember.
-  const legacyModel = is_legacy_model_id(result.modelId);
-  if (legacyModel) reasons.push(issue(
-    RESULT_REASON.MODEL_UNVALIDATED,
-    `${result.modelLabel ?? result.modelId} is an exploratory, unvalidated compatibility model; its output is not reportable. Fit a canonical model (Dean–Jett, Dean–Jett–Fox, or Watson) to report phase fractions.`,
-    { modelId: result.modelId },
-  ));
-
-  const scientificallyValid = !legacyModel && !cancelled && finite && diagnosticsFinite
+  const scientificallyValid = !cancelled && finite && diagnosticsFinite
     && valid_fractions(result.phaseFractions) && optimizerConverged !== false;
   const limitedReliability = Boolean(degeneratePeakCv);
 
@@ -447,7 +404,7 @@ export function apply_result_contract(rawResult, preflight) {
   // output, or fractions that do not form a valid distribution -- leaves nothing
   // to report. (scientificallyValid / limitedReliability are still computed for
   // the detailed diagnostic view and for callers that want the stricter signal.)
-  const hasReportableNumber = !legacyModel && !cancelled && finite && diagnosticsFinite
+  const hasReportableNumber = !cancelled && finite && diagnosticsFinite
     && valid_fractions(result.phaseFractions);
   const goodnessOfFit = Number.isFinite(diagnostics.reducedDeviance) ? diagnostics.reducedDeviance : null;
 
@@ -504,4 +461,39 @@ export function result_reporting_summary(result) {
     reason,
     phaseFractions: reportable ? result.phaseFractions : null,
   };
+}
+
+/*
+
+Purpose:
+	UI-01: the single source of truth for WHY a phase fraction should not be
+	read as authoritative. Lives here, in the DOM-free result contract, rather
+	than in js/ui/ because three different layers need it -- the metadata table
+	and sidebar (js/ui/cell_cycle_columns.js), the accessible plot summary and
+	SVG <desc> (js/plotting/render.js), and the HTML/PDF report
+	(js/plotting/plot_export.js). Importing it from js/ui/ closed a real
+	import cycle (render.js -> cell_cycle_columns.js -> table_render.js ->
+	render.js), and duplicating the precedence in each layer is how the two
+	checks silently drift apart.
+
+	The precedence is deliberate and must not be reordered: validForReporting
+	is checked BEFORE converged, because a converged fit can still be
+	unreportable and that is the stronger claim to surface.
+
+	Do NOT widen either check to "!== true". A result missing the field
+	entirely (no fit yet) is not the same claim as one explicitly marked
+	invalid, and absence of validation must never be reported as validation.
+
+Input:
+	result [object|null|undefined]: a normalized cell-cycle result
+
+Output:
+	reason [string]: a short human-readable reason, or "" when the fraction
+	carries no trust caveat
+
+*/
+export function fraction_trust_reason(result) {
+  if (result?.validForReporting === false) return "unvalidated result";
+  if (result?.converged === false) return "fit did not converge";
+  return "";
 }

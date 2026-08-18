@@ -17,6 +17,9 @@ import {
   plot_export_modal,
   plot_area,
 } from "./data.js";
+// plot_tool_axes is deliberately registered in ui/dom.js, not here -- see AD-1
+// in js/ui/dom.js's comment above the export.
+import { plot_tool_axes } from "../ui/dom.js";
 import {
   plot_interaction_mode,
   set_plot_interaction_mode,
@@ -28,6 +31,7 @@ import {
   close_plot_export_modal,
   submit_plot_export,
 } from "./plot_export.js";
+import { open_axis_range_modal } from "./axis_modal.js";
 
 const MODE_BUTTONS = () => [
   [plot_tool_pan, "pan"],
@@ -81,6 +85,9 @@ export function init_plot_toolbar() {
   if (plot_tool_camera) plot_tool_camera.addEventListener("click", open_plot_export_modal);
   if (plot_tool_autoscale) plot_tool_autoscale.addEventListener("click", autoscale_plot_viewport);
   if (plot_tool_home) plot_tool_home.addEventListener("click", reset_plot_viewport_to_base);
+  // The double-click-on-plot shortcut (see init_plot_listeners() in
+  // axis_modal.js) stays as-is; this is the discoverable toolbar entry point.
+  if (plot_tool_axes) plot_tool_axes.addEventListener("click", () => open_axis_range_modal());
 
   document.addEventListener("pf-plot-mode-changed", sync_toolbar_modes);
   sync_toolbar_modes();

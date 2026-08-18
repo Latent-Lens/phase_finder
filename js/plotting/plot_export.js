@@ -24,9 +24,10 @@ import {
 import { svg_to_pdf_blob } from "./svg_to_pdf.js";
 import { filename_timestamp } from "../util/names.js";
 import { get_file_table } from "../state/app_state.js";
-import { get_state } from "../analysis/pipeline_state.js";
+import { get_state } from "../analysis/pipeline/pipeline_state.js";
 import { escape_html } from "../util/html.js";
-import { result_reporting_summary } from "../analysis/cell_cycle/result_contract.js";
+import { result_reporting_summary, fraction_trust_reason } from "../analysis/cell_cycle/result_contract.js";
+import { build_fit_export, build_fit_csv } from "../analysis/cell_cycle/export.js";
 import {
   PHASEFINDER_SOURCE_COMMIT,
   PHASEFINDER_VERSION,
@@ -299,7 +300,24 @@ function report_table_html() {
 // so they read at a glance. Samples with neither a region nor a fit are skipped.
 function report_fit_summary_html() {
   const fmt = (value) => (Number.isFinite(value) ? Number(value.toFixed(2)) : "—");
-  const pct = (value) => (Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—");
+  // UI-01: this report is the surface most likely to be pasted into a paper,
+  // a slide, or sent to a collaborator, so an unvalidated percentage cannot
+  // read as clean here even though `status`/`reason` are already shown in
+  // their own columns -- a reader scanning the numbers can miss a separate
+  // column, and a copied/pasted number loses it entirely. The marker has to
+  // be fused into the cell's own text (not a CSS ::before) so it survives
+  // copy/paste and PDF rendering. Precedence mirrors
+  // fraction_trust_reason() from the DOM-free result contract -- the same
+  // helper js/ui/cell_cycle_columns.js and js/plotting/render.js use, so the
+  // report cannot silently drift from the on-screen surfaces. It previously
+  // duplicated the precedence inline because the only copy lived in js/ui/
+  // and js/plotting/ must not depend on js/ui/; the helper has since been
+  // extracted so all three layers share one implementation.
+  const pct = (value, result) => {
+    if (!Number.isFinite(value)) return "—";
+    const text = `${(value * 100).toFixed(1)}%`;
+    return fraction_trust_reason(result) ? `${text} ⚠` : text;
+  };
   const region = (r) => (r && Number.isFinite(r.left) && Number.isFinite(r.right) ? `${fmt(r.left)} – ${fmt(r.right)}` : "—");
 
   const rows = [];
@@ -326,7 +344,7 @@ function report_fit_summary_html() {
       `<tr><td>${escape_html(row.name)}</td><td>${model}</td><td>${converged}</td><td>${status}</td><td>${reason}</td>` +
         `<td>${transform}</td><td>${compensation}</td>` +
         `<td>${region(regions?.g1)}</td><td>${region(regions?.g2)}</td>` +
-        `<td>${pct(pf?.g1)}</td><td>${pct(pf?.s)}</td><td>${pct(pf?.g2)}</td></tr>`,
+        `<td>${pct(pf?.g1, result)}</td><td>${pct(pf?.s, result)}</td><td>${pct(pf?.g2, result)}</td></tr>`,
     );
   }
   if (!rows.length) return "";
@@ -366,6 +384,43 @@ ${(() => { const summary = report_fit_summary_html(); return summary ? `<h2>Sele
 function export_analysis_report() {
   const html = build_analysis_report_html();
   download_blob(new Blob([html], { type: "text/html;charset=utf-8" }), `${export_filename_stem()}_report.html`);
+}
+
+// FEAT-02: the machine-readable fit export. build_fit_export()/build_fit_csv()
+// (js/analysis/cell_cycle/export.js) are pure and take one (row, result) pair;
+// this is the DOM-facing half that picks each plotted row's active result,
+// serializes every row into one download, and triggers it.
+function active_result_for_row(row) {
+  const modeling = get_state(row.name)?.modeling;
+  const key = modeling?.activeResultKey || modeling?.lastDiagnosticResultKey || null;
+  return key ? modeling?.resultsByKey?.[key] : null;
+}
+
+function fittable_rows() {
+  return plottable_rows()
+    .map((row) => ({ row, result: active_result_for_row(row) }))
+    .filter((entry) => entry.result);
+}
+
+function export_fit_json() {
+  const entries = fittable_rows();
+  if (!entries.length) throw new Error("No fit results are available to export yet.");
+  const exports = entries.map(({ row, result }) => build_fit_export(row, result));
+  const text = JSON.stringify(exports.length === 1 ? exports[0] : exports, null, 2);
+  download_blob(new Blob([text], { type: "application/json;charset=utf-8" }), `${export_filename_stem()}_fit.json`);
+}
+
+function export_fit_csv() {
+  const entries = fittable_rows();
+  if (!entries.length) throw new Error("No fit results are available to export yet.");
+  let header = null;
+  const body = [];
+  for (const { row, result } of entries) {
+    const [head, ...rows] = build_fit_csv(row, result).split("\n");
+    header = header ?? head;
+    body.push(...rows);
+  }
+  download_blob(new Blob([[header, ...body].join("\n")], { type: "text/csv;charset=utf-8" }), `${export_filename_stem()}_fit.csv`);
 }
 
 /*
@@ -448,12 +503,12 @@ function rasterize(svg_clone, format, scale, signal = null) {
 /*
 
 Purpose:
-	Exports the plot currently on screen in one of the four supported formats
-	and triggers the download.
+	Exports the plot (or, for "json"/"csv", the modeled fit data) currently on
+	screen in one of the supported formats and triggers the download.
 
 Input:
-	format [string]: "svg", "pdf", "png" or "jpeg"
-	scale [number]: pixel scale for the raster formats (ignored for svg/pdf)
+	format [string]: "svg", "pdf", "png", "jpeg", "html", "json", or "csv"
+	scale [number]: pixel scale for the raster formats (ignored otherwise)
 
 Output:
 	(none) [Promise<void>]: resolves once the download has been started;
@@ -464,6 +519,14 @@ export async function export_plot_image(format, scale = 2, signal = null) {
   throw_if_cancelled(signal);
   if (format === "html") {
     export_analysis_report();
+    return;
+  }
+  if (format === "json") {
+    export_fit_json();
+    return;
+  }
+  if (format === "csv") {
+    export_fit_csv();
     return;
   }
   const clone = exportable_plot_svg();

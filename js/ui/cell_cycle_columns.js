@@ -12,10 +12,10 @@
 // anything changed; init_cell_cycle_columns() wires the refresh events.
 
 import { plottable_rows } from "../plotting/data.js";
-import { get_state, get_active_model_result } from "../analysis/pipeline_state.js";
+import { get_state, get_active_model_result } from "../analysis/pipeline/pipeline_state.js";
 import { get_file_table } from "../state/app_state.js";
 import { render_file_table } from "./table_render.js";
-import { result_reporting_summary } from "../analysis/cell_cycle/result_contract.js";
+import { result_reporting_summary, fraction_trust_reason } from "../analysis/cell_cycle/result_contract.js";
 import {
   CELL_CYCLE_COLUMN_PREFIX,
   CELL_CYCLE_STATUS_COLUMN,
@@ -57,6 +57,59 @@ Output:
 */
 function format_bound(value) {
   return Number.isFinite(value) ? String(Number(value.toFixed(2))) : "";
+}
+
+/*
+
+Purpose:
+	UI-01: the single trust-precedence check every fraction-printing surface
+	agrees on, regardless of whether that surface can render a glyph
+	(format_fraction_cell() below: table/sidebar/TSV) or needs words for a
+	plain-text/screen-reader-only surface (js/plotting/render.js's SVG <desc>
+	and "Plot data and analysis summary" table). `validForReporting === false`
+	outranks `converged === false`: a result with no reportable number at all
+	is a stronger caveat than a reportable-but-unconverged one. Never defaults
+	a missing/undefined validForReporting or converged to a trusting value --
+	absence of evidence is not validation, so only an explicit `=== false`
+	trips a reason.
+
+Input:
+	result [object]: the normalized fit result (only `.validForReporting` and
+		`.converged` are read)
+
+Output:
+	reason ["unvalidated result"|"fit did not converge"|""]: "" means clean
+
+*/
+// Moved to js/analysis/cell_cycle/result_contract.js (DOM-free) so js/plotting/
+// can share it without importing js/ui/, which closed an import cycle. Re-exported
+// here so this module's existing public surface is unchanged.
+export { fraction_trust_reason };
+
+/*
+
+Purpose:
+	UI-01: the single formatter every glyph-capable phase-fraction-printing
+	surface (metadata table, TSV export, sidebar, CLOCCS strain table) routes
+	through, so a bare percentage never reads as authoritative when the fit
+	didn't earn that trust. Verbatim from docs/audits/master_checklist.md's
+	UI-01 item -- do not redesign. The `⚠` glyph lives in the returned text
+	content itself (not a CSS ::before), so it survives copy/paste into the
+	table, TSV, and screen readers.
+
+Input:
+	result [object]: the normalized fit result the fraction came from (passed
+		through to fraction_trust_reason())
+	fraction [number]: the raw 0..1 phase fraction
+
+Output:
+	text [string]: the formatted cell text, or "" when the fraction isn't finite
+
+*/
+export function format_fraction_cell(result, fraction) {
+  if (!Number.isFinite(fraction)) return format_cell_cycle_value(null, "");
+  const text = `${(fraction * 100).toFixed(1)}%`;
+  return fraction_trust_reason(result) ? format_cell_cycle_value(`${text} ⚠`) : format_cell_cycle_value(text);
 }
 
 /*
@@ -130,10 +183,9 @@ export function update_cell_cycle_fraction_columns() {
       const values = names.map((name) => {
         const result = byName.get(name);
         const fraction = result && result.modelId === modelId ? result.phaseFractions[phase] : null;
-        return format_cell_cycle_value(
-          Number.isFinite(fraction) ? `${(fraction * 100).toFixed(1)}%` : null,
-          "",
-        );
+        return result && result.modelId === modelId
+          ? format_fraction_cell(result, fraction)
+          : format_cell_cycle_value(null, "");
       });
       desired.set(`${CELL_CYCLE_COLUMN_PREFIX}${modelId}:${phase}`, values);
     }
