@@ -77,6 +77,47 @@ build for a non-root deployment.
 | `tests/e2e/results/`, `tests/validation/results/` | generated local test output | ignored and absent from deployments |
 | `tests/validation/validation_test_data/external_fcs/` | explicitly reviewed validation material | source-test only; never copied to `dist/` |
 
+### Ingesting non-synthetic validation data (TEST-02 box 3)
+
+`tests/validation/validation_test_data/external_fcs/` is where any real
+(non-synthetic) FCS file or published reference dataset is allowed to live.
+Only `manifest.json`, `LICENSES/`, `verify.py`, and
+`verify_phasefinder_parser.mjs` are tracked in Git; `.gitignore` excludes
+`files/`, `datasets/`, and `results/` under that directory, so the actual
+binary/data payloads never enter the public repository or `dist/` —
+`check:privacy` enforces the tracked side of that split on every run.
+
+Adding a new fixture here follows the process the two entries already in
+`manifest.json` demonstrate:
+
+1. **Record upstream provenance** — source repository/DOI, commit or archive
+   hash, and the exact upstream path, so the file can be re-acquired
+   independently of this repo.
+2. **Confirm and record the license** — SPDX id, an `evidence_url` pointing at
+   the upstream license text, and a `redistribution_basis` sentence
+   explaining why redistributing it here as test data is permitted; copy the
+   license text itself into `LICENSES/`.
+3. **Do a privacy review and write down what it found** — note any
+   identifying metadata the file's own TEXT segment or filename carries
+   (operator name, instrument serial, submitter name, etc.), and state
+   explicitly that no patient/donor/human-subject identifier was found. If
+   one were found, the fixture does not get added.
+4. **Record a `sha256` and, where practical, an independent-reader `oracle`**
+   (FlowIO-decoded header offsets / first values) so the fixture's integrity
+   and the project's own parser output can both be checked against a
+   second, non-PhaseFinder source of truth (`verify.py`,
+   `verify_phasefinder_parser.mjs`).
+
+This is a human-reviewed process, not an automated gate: the "reviewed" claim
+in the inventory table above is only as good as the review that was actually
+done for each entry. Any *new* addition needs the same explicit upstream
+provenance, license, and privacy-review write-up before it is added — not
+just a hash. Because the payload files are gitignored, CI cannot re-verify
+these hashes/oracles itself (it does not have the files); `verify.py` and
+`verify_phasefinder_parser.mjs` exist for a human to re-run locally after
+reacquiring the data, the same way `check:fixtures` re-verifies the
+synthetic corpus that *is* tracked in Git.
+
 ### Why a session-shaped filename appears in `dist/` (REL-02)
 
 Auditing this project will surface `dist/sessions/phasefinder_local.json` in the
@@ -122,3 +163,6 @@ artifact and verify its `SHA256SUMS` first.
 than 260 CSS pixels wide (over 6 source pixels per CSS pixel). Resizing it to a
 2× display asset would save transfer size, but that binary change is deferred
 until a screenshot comparison can prove there is no visual regression.
+
+
+Private payload paths (`docs/tmp/` and `external_fcs/{datasets,files,results}/`) are denied by both ignore rules and the tracked-path guard. Manifests, licenses and reconstruction scripts outside those payload directories remain eligible for review. A redistributable fixture requires documented license/consent and provenance review, placement in a dedicated public fixture location, and a narrow tested policy change if necessary; do not bypass the guard with forced staging or blanket exceptions.

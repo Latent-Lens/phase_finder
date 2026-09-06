@@ -80,3 +80,10 @@ pnpm-debug.log*
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Local downloaded references; never part of the distributable source.
+docs/tmp/
+
+# Third-party agency audit reports; not part of the project's own docs.
+docs/audits/agency/
+docs/archive/audits/agency/

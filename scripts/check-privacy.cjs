@@ -3,13 +3,14 @@ const path = require("node:path");
 
 const tracked = fs.readFileSync(0, "utf8").split(/\0|\r?\n/).filter(Boolean);
 if (!tracked.length) throw new Error("No tracked-file inventory received; run through npm run check:privacy.");
-const forbiddenTracked = tracked.filter((file) => fs.existsSync(file) && (
+const privatePayload = /^(?:docs\/tmp(?:\/|$)|tests\/validation\/validation_test_data\/external_fcs\/(?:datasets|files|results)(?:\/|$))/;
+const forbiddenTracked = tracked.filter((file) => privatePayload.test(file) || (fs.existsSync(file) && (
   /^(?:\.codex|\.claude)(?:\/|$)/.test(file)
   || /^sessions\/(?![^/]+\.example\.(?:json|toml)$)/.test(file)
   || /^release-notes-preview\.html$/.test(file)
   || /^(?:playwright-report|coverage)(?:\/|$)/.test(file)
   || /^tests\/(?:e2e|validation)\/results\/(?!\.gitignore$)/.test(file)
-));
+)));
 if (forbiddenTracked.length) throw new Error(`Private/generated files are tracked:\n${forbiddenTracked.join("\n")}`);
 
 const root = path.resolve(process.env.DIST_DIR || "dist");

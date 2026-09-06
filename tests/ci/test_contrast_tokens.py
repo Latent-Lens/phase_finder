@@ -220,8 +220,13 @@ class ContrastTokenTests(unittest.TestCase):
             red, green, blue = colorsys.hls_to_rgb(hue / 360, 0.34, 0.70)
             color = "#" + "".join(f"{round(channel * 255):02x}" for channel in (red, green, blue))
             self.assertGreaterEqual(contrast(color, "#ffffff"), 3.0, f"generated chart hue {hue}")
+        # AUDIT-008 split the ridge small-multiples renderer out of render.js
+        # into ridge_review.js, so the two AXIS_LABEL_COLOR strokes (overlay
+        # component lines, ridge component lines) now live one per file.
         render = (ROOT / "js/plotting/render.js").read_text()
-        self.assertGreaterEqual(render.count('.attr("stroke", AXIS_LABEL_COLOR)'), 2)
+        ridge = (ROOT / "js/plotting/ridge_review.js").read_text()
+        total = render.count('.attr("stroke", AXIS_LABEL_COLOR)') + ridge.count('.attr("stroke", AXIS_LABEL_COLOR)')
+        self.assertGreaterEqual(total, 2)
 
 
 if __name__ == "__main__":
