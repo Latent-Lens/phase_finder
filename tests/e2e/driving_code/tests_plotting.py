@@ -328,9 +328,13 @@ def test_plot_toolbar(ctx: TestContext):
 
     buttons = page.evaluate(
         "() => [...document.querySelectorAll('#plot_toolbar .plot_tool')].map(b => b.id)")
-    ctx.check(group, "Toolbar renders the six plot tools in order",
+    # UI-07 added a seventh toolbar button, plot_tool_axes (opens the
+    # axis-range dialog that a hidden double-click used to be the only way to
+    # reach), appended after Reset axes/home.
+    ctx.check(group, "Toolbar renders the seven plot tools in order",
               buttons == ["plot_tool_camera", "plot_tool_pan", "plot_tool_zoom_in",
-                          "plot_tool_zoom_out", "plot_tool_autoscale", "plot_tool_home"],
+                          "plot_tool_zoom_out", "plot_tool_autoscale", "plot_tool_home",
+                          "plot_tool_axes"],
               str(buttons))
 
     ctx.check(group, "Pan is the armed mode by default",

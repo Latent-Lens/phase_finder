@@ -421,22 +421,29 @@ def dismiss_metadata_wizard_if_open(page, timeout_ms=1500):
 
 
 def configure_default_metadata_wizard_columns(page, timeout_ms=3000):
-    """Configure and apply the filename metadata wizard's default Strain /
+    """Open (via the "Configure filename metadata columns" toolbar button),
+    configure and apply the filename metadata wizard's default Strain /
     Replicate / Nocodazole Arrest / Timepoint columns, matching the naming
     convention used by write_synthetic_fcs() (and the app's own sample
     session): "<strain digits><replicate letter><arrest letter> t<timepoint>".
 
-    Annotation guessing from filenames is no longer automatic (that logic is
-    dead code kept in js/ui/table_support.js) — the wizard is now the only way these
+    UI-06 removed the wizard's old 750ms auto-open-after-first-load behavior
+    (js/ui/metadata_wizard.js's schedule_metadata_wizard_after_file_load() now
+    only posts a non-blocking status-bar hint) -- opening it is a deliberate
+    user action now, via #metadata_parse_button (wired in main.js). Annotation
+    guessing from filenames is not automatic either (that logic is dead code
+    kept in js/ui/table_support.js) -- the wizard is the only way these
     columns get populated. Downstream tests (sorting/filtering by
     strain/replicate/timepoint, coloring plots by strain, per-sample
     annotations in the DJF fit table) all depend on these columns existing,
     so this is called once, right after the very first file load of a run.
 
-    Returns True if the wizard was found and configured, False if it never
-    auto-opened (callers should treat that as a soft failure).
+    Returns True if the wizard was opened and configured, False if the
+    toolbar button never became available (callers should treat that as a
+    soft failure).
     """
     try:
+        page.click("#metadata_parse_button", timeout=timeout_ms)
         page.wait_for_selector("#metadata_wizard_modal:not([hidden])", timeout=timeout_ms)
     except Exception:
         return False

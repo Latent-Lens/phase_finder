@@ -2,9 +2,9 @@
 """Filename metadata wizard tests: delimiter/fixed-width/regex split steps,
 column hiding, the live preview, Apply/"Filename Only"/Cancel, and TSV export.
 
-The wizard auto-opens once per run (handled/dismissed in tests_io.py); here it
-is reopened manually via the table's title-bar icon, matching how a user would
-reconfigure columns later in a session.
+The wizard is opened once per run via the table's title-bar icon in
+tests_io.py (UI-06: it no longer auto-opens); here it is reopened the same
+way, matching how a user would reconfigure columns later in a session.
 """
 
 import re

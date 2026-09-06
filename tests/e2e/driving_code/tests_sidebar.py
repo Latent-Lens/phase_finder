@@ -176,7 +176,7 @@ def test_responsive_reachability(ctx: TestContext):
                                         workspace_resizer.get_attribute("aria-orientation")],
                        "tree": resizer_tree, "touch": touch_resize}))
 
-        for width, height in ((320, 568), (375, 600), (390, 844), (844, 390), (768, 600), (820, 1180), (1280, 500)):
+        for width, height in ((320, 568), (375, 600), (390, 844), (844, 390), (768, 600), (820, 1180), (1024, 768), (1280, 500)):
             page.set_viewport_size({"width": width, "height": height})
             page.evaluate("() => window.scrollTo(0, 0)")
             reachable = True
@@ -194,6 +194,32 @@ def test_responsive_reachability(ctx: TestContext):
             ctx.check(group, f"UI-03: major controls remain reachable at {width}×{height}",
                       reachable and no_horizontal_overflow,
                       f"reachable={reachable}, no_horizontal_overflow={no_horizontal_overflow}", screenshot=False)
+
+        # UI-05: emulate real browser page zoom (not just larger text) via the
+        # CSS `zoom` property on the root element, which halves the effective
+        # layout viewport the same way Chromium's native 200% zoom does. A
+        # narrower effective viewport reflowing to a stacked layout is
+        # expected and fine; clipping, unreachable controls, or an
+        # unintended horizontal scrollbar would be the defect.
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.evaluate("() => window.scrollTo(0, 0)")
+        page.evaluate("() => { document.documentElement.style.zoom = '2'; }")
+        zoom_reachable = True
+        for selector in selectors:
+            locator = page.locator(selector)
+            locator.scroll_into_view_if_needed()
+            box = locator.bounding_box()
+            zoom_reachable = zoom_reachable and box is not None and box["x"] >= -1 and box["x"] + box["width"] <= 1280 + 1
+            if locator.evaluate("e => e.matches('button, a, input, select, textarea, [tabindex]')"):
+                locator.focus()
+                zoom_reachable = zoom_reachable and locator.evaluate("e => document.activeElement === e")
+        zoom_no_horizontal_overflow = page.evaluate(
+            "() => document.documentElement.scrollWidth <= window.innerWidth + 1"
+        )
+        ctx.check(group, "UI-05: major controls remain reachable and unclipped at 200% zoom",
+                  zoom_reachable and zoom_no_horizontal_overflow,
+                  f"reachable={zoom_reachable}, no_horizontal_overflow={zoom_no_horizontal_overflow}", screenshot=False)
+        page.evaluate("() => { document.documentElement.style.zoom = ''; }")
 
         page.set_viewport_size({"width": 390, "height": 844})
         page.evaluate("() => document.documentElement.style.fontSize = '200%'")
@@ -339,5 +365,8 @@ def test_responsive_reachability(ctx: TestContext):
         ctx.check(group, "UI-03 responsive reachability matrix", False, str(error), screenshot=False)
     finally:
         page.emulate_media(reduced_motion="no-preference", forced_colors="none")
-        page.evaluate("() => { document.documentElement.style.fontSize = ''; window.scrollTo(0, 0); }")
+        page.evaluate(
+            "() => { document.documentElement.style.fontSize = ''; "
+            "document.documentElement.style.zoom = ''; window.scrollTo(0, 0); }"
+        )
         page.set_viewport_size(original or {"width": 1920, "height": 1080})
