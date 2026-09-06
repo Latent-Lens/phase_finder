@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/audits/archive/todo.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # Do this first
 - [ ] Can you prevent panning or zooming to show space below 0 on the y-axis?
 

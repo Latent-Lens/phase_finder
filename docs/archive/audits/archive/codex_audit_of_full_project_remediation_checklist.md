@@ -1,6 +1,8 @@
+> Archived 2026-09-05 from docs/audits/archive/codex_audit_of_full_project_remediation_checklist.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # PhaseFinder full project audit — remediation and optimization checklist
 
-This is the implementation amendment to [the full Codex HTML audit](./codex_audit_of_full_project.html). It converts the audit findings into work items that another engineering agent can implement and verify.
+This is the implementation amendment to [the full Codex HTML audit](../codex_audit_of_full_project.html). It converts the audit findings into work items that another engineering agent can implement and verify.
 
 Audit snapshot: **2026-07-24**, branch **`cell-cycle-modeling-sidebar`**, base commit **`2af7969`**, including the uncommitted peak-tracking Time QC work that was present during the review.
 

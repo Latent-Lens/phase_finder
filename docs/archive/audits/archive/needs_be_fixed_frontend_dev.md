@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/audits/archive/needs_be_fixed_frontend_dev.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # PhaseFinder frontend engineering remediation audit
 
 Audit date: 2026-07-17

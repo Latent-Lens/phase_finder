@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/js_restruct.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../audits/master_checklist.md).
+
 # PhaseFinder — JavaScript Restructuring to ES Modules (self-contained execution plan)
 
 > **For the implementing agent:** This document is a complete, standalone spec.

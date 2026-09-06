@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/plans/working_tree_commit_plan.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../audits/master_checklist.md).
+
 # Working Tree Commit Plan
 
 This plan divides the changes made since commit `2af7969` into small,
@@ -121,7 +123,7 @@ those Markdown documents as their sources.
   and must not be committed.
 - `todo.md`, `needs_be_fixed_frontend_dev.md`, and
   `needs_to_be_fixed_ux.md` — **superseded 2026-08-15.** Merged into
-  `docs/audits/master_checklist.md` and moved to `docs/audits/archive/`.
+  `docs/audits/master_checklist.md` and moved to `docs/archive/audits/archive/`.
   `needs_to_be_fixed_ux.md` was tracked and was moved with `git mv`; the other
   two were untracked and the archive holds the only copies.
 - Documentation guidance, audit reports, audit baselines, the remediation

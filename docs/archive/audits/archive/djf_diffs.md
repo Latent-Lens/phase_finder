@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/audits/archive/djf_diffs.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # Dean–Jett–Fox: legacy vs. staged implementation
 
 > Audit date: 2026-07-14
@@ -7,16 +9,16 @@
 > Staged audit base: current working tree based on
 > `70e52f4783572ba52617702ab067ba5ab4815f7a`
 >
-> Fox primary source: [`fox_1980_djf_model.pdf`, equations on PDF page 2](../../../assets/misc/fox_1980_djf_model.pdf#page=2)
+> Fox primary source: [`fox_1980_djf_model.pdf`, equations on PDF page 2](../../../../assets/misc/fox_1980_djf_model.pdf#page=2)
 
 **Historical document.** Both implementations compared here have since been
 deleted: the legacy bridge and its debris/aggregate extension and report modules
 were retired on 2026-08-17 (see
-[`plans/cell_cycle_modeling_plan.md`](../../plans/cell_cycle_modeling_plan.md) §13),
+[`plans/cell_cycle_modeling_plan.md`](../../../plans/cell_cycle_modeling_plan.md) §13),
 and the staged `js/analysis/djf/` tree went with them. The module names below
 are therefore unlinked — read them at the audit-base commits cited above. The
 canonical models that replaced both live in
-[`../js/analysis/cell_cycle/models/`](../../../js/analysis/cell_cycle/models/).
+[`../js/analysis/cell_cycle/models/`](../../../../js/analysis/cell_cycle/models/).
 
 ## Bottom line
 
@@ -93,7 +95,7 @@ to that interval.
 ### Fox (1980)
 
 The attached primary paper gives the complete model on article page 72
-([PDF page 2](../../../assets/misc/fox_1980_djf_model.pdf#page=2)). Fox retains the
+([PDF page 2](../../../../assets/misc/fox_1980_djf_model.pdf#page=2)). Fox retains the
 three-component total
 
 \[
@@ -326,7 +328,7 @@ Consequences:
   The staged `A1` and `A2` are peak heights. Peak parameters cannot be compared
   directly between implementations even when their plotted curves look alike.
 - The current theoretical prose still describes a broadened S integral in
-  [`dean_jett_fox_implementation.md`](dean_jett_fox_implementation.md), while
+  [`dean_jett_fox_implementation.md`](../../../dean_jett_fox_implementation.md), while
   the shipped code uses the direct bridge. The implementation plan explicitly
   acknowledges that the staged phase model differs from and replaces the old
   one in [`djf_impl_plan.md`](djf_impl_plan.md).
@@ -466,7 +468,7 @@ export function run_stage6(row, options = {}) {
 </tbody>
 </table>
 
-Source: current [`index.js`](../../../js/analysis/pipeline/cell_cycle_pipeline.js), `run_stage5` and
+Source: current [`index.js`](../../../../js/analysis/pipeline/cell_cycle_pipeline.js), `run_stage5` and
 `run_stage6`.
 
 Stage 6 detects its own candidates inside `initializeParameters()` and never
@@ -530,7 +532,7 @@ return [minimum, maximum];</code></pre></td>
 
 Sources: legacy `7b5bed9:js/plotting/data.js`,
 `shared_range_for_values`; current
-[`index.js`](../../../js/analysis/pipeline/cell_cycle_pipeline.js), `shared_histogram_range`.
+[`index.js`](../../../../js/analysis/pipeline/cell_cycle_pipeline.js), `shared_histogram_range`.
 
 On the normal legacy linear DNA axis, the effective range was
 `[0, sampled p99.5]`, recomputed with the histogram during rendering. In the
@@ -605,7 +607,7 @@ const threshold = kMAD * ridge.distanceMAD;
 </table>
 
 Sources: legacy `robust_ratio_mask` and `apply_aggregate_mask`; current
-[`stage3_singlet_gate.js`](../../../js/analysis/gating/pulse_geometry_gate.js).
+[`stage3_singlet_gate.js`](../../../../js/analysis/gating/pulse_geometry_gate.js).
 
 Precisely, the legacy code used a log A/H band and a log-width band. When both
 companions were usable, both masks were intersected. It required at least 64
@@ -761,7 +763,7 @@ model/fitting/reporting differences rather than event QC or histogram building.
 ### Repository deterministic histogram
 
 The fixture is
-[`tests/unit/test_harness.html`](../../../tests/unit/test_harness.html)'s 256-bin
+[`tests/unit/test_harness.html`](../../../../tests/unit/test_harness.html)'s 256-bin
 histogram over 20,000–200,000:
 
 ```js
@@ -891,7 +893,7 @@ implementation.
    [DOI 10.1083/jcb.60.2.523](https://doi.org/10.1083/jcb.60.2.523).
 2. Michael H. Fox, “A Model for the Computer Analysis of Synchronous DNA
    Distributions Obtained by Flow Cytometry,” *Cytometry* 1(1), 71–77 (1980):
-   [attached primary paper, equations on article page 72 / PDF page 2](../../../assets/misc/fox_1980_djf_model.pdf#page=2),
+   [attached primary paper, equations on article page 72 / PDF page 2](../../../../assets/misc/fox_1980_djf_model.pdf#page=2),
    [indexed record](https://europepmc.org/article/MED/7023881), and
    [DOI 10.1002/cyto.990010114](https://doi.org/10.1002/cyto.990010114).
 3. FlowJo, “Cell Cycle: Univariate”:

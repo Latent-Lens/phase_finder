@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/audits/archive/current_status_of_project.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # PhaseFinder — current status and completion plan
 
 **Written:** 2026-08-14
@@ -108,9 +110,9 @@ Three defects, all verified present in the source today. Each is independently t
 
 | # | Defect | Location | Fix |
 |---|---|---|---|
-| 1 | **No baseline subtraction in the width estimate.** Walks out from the peak until smoothed count drops below `0.6 × peak` using the *absolute* height. A peak sitting on the S-phase pedestal stays above that threshold further out, so σ is inflated. | [peak_regions.js:114](js/analysis/cell_cycle/peak_regions.js#L114) `estimateSigmaOneSidedWithinRegion()` | Threshold should be `baseline + 0.6 × (peak − baseline)`. Note the *fallback* path at [peak_regions.js:189](js/analysis/cell_cycle/peak_regions.js#L189) already computes `localLinearBaseline` — the primary path just doesn't use it. |
-| 2 | **Smoothing width never removed.** σ is measured on a histogram Gaussian-smoothed at `smoothingSigmaBins: 2`, so it measures √(σ² + 2²), not σ. | [peak_regions.js:173](js/analysis/cell_cycle/peak_regions.js#L173) | Deconvolve in quadrature — a one-line correction. This is the same arithmetic the handoff already uses to explain the detector's limits; it simply is not applied here. |
-| 3 | **Mean quantized to a bin centre.** `mean: centers[peakIndex]` — no sub-bin interpolation. | [peak_regions.js:211](js/analysis/cell_cycle/peak_regions.js#L211) | Three-point parabolic fit around the smoothed argmax. Removes up to half a bin. |
+| 1 | **No baseline subtraction in the width estimate.** Walks out from the peak until smoothed count drops below `0.6 × peak` using the *absolute* height. A peak sitting on the S-phase pedestal stays above that threshold further out, so σ is inflated. | [peak_regions.js:114](../../../../js/analysis/cell_cycle/peak_regions.js#L114) `estimateSigmaOneSidedWithinRegion()` | Threshold should be `baseline + 0.6 × (peak − baseline)`. Note the *fallback* path at [peak_regions.js:189](../../../../js/analysis/cell_cycle/peak_regions.js#L189) already computes `localLinearBaseline` — the primary path just doesn't use it. |
+| 2 | **Smoothing width never removed.** σ is measured on a histogram Gaussian-smoothed at `smoothingSigmaBins: 2`, so it measures √(σ² + 2²), not σ. | [peak_regions.js:173](../../../../js/analysis/cell_cycle/peak_regions.js#L173) | Deconvolve in quadrature — a one-line correction. This is the same arithmetic the handoff already uses to explain the detector's limits; it simply is not applied here. |
+| 3 | **Mean quantized to a bin centre.** `mean: centers[peakIndex]` — no sub-bin interpolation. | [peak_regions.js:211](../../../../js/analysis/cell_cycle/peak_regions.js#L211) | Three-point parabolic fit around the smoothed argmax. Removes up to half a bin. |
 
 **Prior measurement** (from the handoff §8.1, on a synthetic fixture — diagnostic of mechanism, *not* proof of benefit): all three together close roughly a third of the deviance gap and recover ~2pp of %S.
 
@@ -120,7 +122,7 @@ Three defects, all verified present in the source today. Each is independently t
 
 ### 3.2 Step 2 — Re-check the area bias *after* G2 moves
 
-[watson_pragmatic.js:117](js/analysis/cell_cycle/models/watson_pragmatic.js#L117) `refine_local_area()` sums raw counts across the window with no pedestal subtraction, so a G2 window overlapping S absorbs S mass.
+[watson_pragmatic.js:117](../../../../js/analysis/cell_cycle/models/watson_pragmatic.js#L117) `refine_local_area()` sums raw counts across the window with no pedestal subtraction, so a G2 window overlapping S absorbs S mass.
 
 **Do not fix this at the same time as §3.1.** With G2 correctly placed the overlap shrinks, and the correct size of this fix changes. Doing both blind makes neither attributable.
 
@@ -162,7 +164,7 @@ Per-sample visual review (histogram, region bands, filled components, detector c
 
 ### 4.1 What is already built and good
 
-[`js/analysis/cell_cycle_fit_report.js`](js/analysis/cell_cycle_fit_report.js) (850 lines), consumed by the live pipeline at [cell_cycle_pipeline.js:25](js/analysis/cell_cycle_pipeline.js#L25), already computes:
+`js/analysis/cell_cycle_fit_report.js` (historical source: `js/analysis/cell_cycle_fit_report.js`; no longer present) (850 lines), consumed by the live pipeline at cell_cycle_pipeline.js:25 (historical source: `js/analysis/cell_cycle_pipeline.js#L25`; no longer present), already computes:
 
 - component integration, singlet and contamination fractions, parameter counts
 - goodness of fit; residual structure via **lag-1 autocorrelation, Durbin–Watson, maximum local bias**
@@ -170,7 +172,7 @@ Per-sample visual review (histogram, region bands, filled components, detector c
 - pulse-geometry detection, peak-visibility inspection, constraint extraction
 - a structured warning system with severities, and a display summary layer
 
-Supporting surfaces also exist: the metadata table writes per-model %G1/%S/%G2 columns ([cell_cycle_columns.js:109](js/ui/cell_cycle_columns.js#L109)), and the validation harness renders per-sample HTML review pages.
+Supporting surfaces also exist: the metadata table writes per-model %G1/%S/%G2 columns ([cell_cycle_columns.js:109](../../../../js/ui/cell_cycle_columns.js#L109)), and the validation harness renders per-sample HTML review pages.
 
 ### 4.2 What is missing
 
@@ -260,7 +262,7 @@ One genuinely nice piece of engineering worth not breaking: the CSP pins the inl
 
 **On Pages this is a non-issue** — everything is HTTPS, so OPFS works in production. It matters only for **local preview shared over a LAN**, where it fails *silently*: the app boots with zero console errors and the cache is simply gone.
 
-Still worth a small fix, now low priority: `browser_capabilities()` in [compatibility.js](js/ui/compatibility.js#L19) classifies `opfs` as *optional*, and `init_compatibility()` warns only for `missingRequired`, so `missingOptional` is recorded on `window.PhaseFinderCompatibility` and surfaced nowhere. A one-line notice turns a confusing dev-time mystery into an explanation.
+Still worth a small fix, now low priority: `browser_capabilities()` in [compatibility.js](../../../../js/ui/compatibility.js#L19) classifies `opfs` as *optional*, and `init_compatibility()` warns only for `missingRequired`, so `missingOptional` is recorded on `window.PhaseFinderCompatibility` and surfaced nowhere. A one-line notice turns a confusing dev-time mystery into an explanation.
 
 #### Two real defects in the built artifact
 
@@ -320,7 +322,7 @@ Plus PRIV-02's check that the deployed artifact contains none of the removed pri
 - **UX-06** — axis-range editing is still reachable only by double-clicking invisible SVG hit areas. The plot toolbar has six buttons and none of them opens the dialog. This one matters because the axis range can be promoted to the scientific analysis domain.
 - **UX-09** — still light-only. `color-scheme: light` is forced and there is zero `prefers-color-scheme` handling in any app stylesheet.
 
-> **Full UI list with code fixes: [`docs/audits/ui_issues_report.md`](./ui_issues_report.md)**, which also covers items these two files never raised — chiefly that a fit result can display as an authoritative percentage without its convergence or reportability state, which is a UI problem with scientific consequences.
+> **Full UI list with code fixes: [`docs/audits/ui_issues_report.md`](ui_issues_report.md)**, which also covers items these two files never raised — chiefly that a fit result can display as an authoritative percentage without its convergence or reportability state, which is a UI problem with scientific consequences.
 
 **Action:** these two files should be reconciled and folded into the main checklist, then deleted. Keeping a third and fourth parallel issue list is how items get lost — as `todo.md` already demonstrates.
 
@@ -346,7 +348,7 @@ The S-phase quadrature is a proper Gauss-Legendre integration over latent DNA oc
 
 | Finding | Where | Risk |
 |---|---|---|
-| **`counts.map()` on histogram counts** | [watson_pragmatic.js:243](js/analysis/cell_cycle/models/watson_pragmatic.js#L243) | Safe **today** only because `dna_histogram.js` builds counts with `new Array(n)`. If anyone switches to a typed array for performance — a plausible optimization, and PERF-MODEL-01 invites exactly that — `.map()` returns the same typed array and **silently truncates S-phase counts to integers**. This is the identical bug class already fixed once in `poisson.js`. Convert to `Array.from(counts, …)` and the trap is gone permanently. |
+| **`counts.map()` on histogram counts** | [watson_pragmatic.js:243](../../../../js/analysis/cell_cycle/models/watson_pragmatic.js#L243) | Safe **today** only because `dna_histogram.js` builds counts with `new Array(n)`. If anyone switches to a typed array for performance — a plausible optimization, and PERF-MODEL-01 invites exactly that — `.map()` returns the same typed array and **silently truncates S-phase counts to integers**. This is the identical bug class already fixed once in `poisson.js`. Convert to `Array.from(counts, …)` and the trap is gone permanently. |
 | **Two different default bin counts** | `dna_histogram.js` `DEFAULT_BIN_COUNT = 512` vs `plotting/data.js` `DEFAULT_BINS = 256` | Different defaults in two modules for the same concept. Whichever wins depends on the call path. Should be one exported constant. |
 | **`"type": "commonjs"` with an all-ESM source tree** | `package.json` | Harmless in the browser and handled by Vite, but it means Node treats every `.js` as CJS, so any Node-side tooling must use `.mjs`/`.cjs`. Worth a comment so the next person does not lose twenty minutes to it. |
 
@@ -391,21 +393,21 @@ Fix these as you go; each one will otherwise cost someone an hour.
 
 `docs/audits/codex_audit_of_full_project_remediation_checklist.md` has not been updated since the cell-cycle investigation landed. Verified examples:
 
-- **STAT-01** shows **5 of 5 open** — but `PoissonInputError` exists in [poisson.js:30](js/analysis/math/poisson.js#L30), and `constraint_audit.js` derives bounds from each model's published `bounds`. The handoff lists it as landed *with tests*.
-- **LEGACY-01** shows **7 of 7 open** — but [legacy_bridge.js:79-80](js/analysis/cell_cycle/models/legacy_bridge.js#L79) declares `modelLabel: "Legacy Bridge (exploratory, unvalidated)"` and `exploratory: true`, the contract refuses it, it is absent from the model dropdown, and `unit_tests_legacy_quarantine.py` exists.
+- **STAT-01** shows **5 of 5 open** — but `PoissonInputError` exists in [poisson.js:30](../../../../js/analysis/math/poisson.js#L30), and `constraint_audit.js` derives bounds from each model's published `bounds`. The handoff lists it as landed *with tests*.
+- **LEGACY-01** shows **7 of 7 open** — but legacy_bridge.js:79-80 (historical source: `js/analysis/cell_cycle/models/legacy_bridge.js#L79`; no longer present) declares `modelLabel: "Legacy Bridge (exploratory, unvalidated)"` and `exploratory: true`, the contract refuses it, it is absent from the model dropdown, and `unit_tests_legacy_quarantine.py` exists.
 
 **Action:** reconcile the checklist against the tree before using its counts to plan. The true remaining count is lower than 139, and knowing by how much changes what "nearly done" means.
 
 ### 6.2 `todo.md` — two items are already done
 
-- *"Prevent panning or zooming below 0 on the y-axis"* — **done**. [plot_viewport.js:133](js/plotting/plot_viewport.js#L133) `clamp_y_floor()` slides the domain up to pin the floor at 0 while preserving the gesture's span. `clamp_x_floor()` does the same for x.
-- *"Phase 2 acquisition-order diagnostic plot"* — **done and wired**. [time_qc_diagnostic_plot.js](js/analysis/time_qc_diagnostic_plot.js) (306 lines) with a channel picker, consumed by `pipeline_ui.js` at lines 573–654, plus `unit_tests_time_qc_diagnostic_plot.py`. Three of the four spec layers are drawn; the event-scatter layer is *deliberately* omitted with a documented reason (raw per-event values aren't retained past Stage 1), and the spec itself says tracked peaks are more informative for this mode.
+- *"Prevent panning or zooming below 0 on the y-axis"* — **done**. [plot_viewport.js:133](../../../../js/plotting/plot_viewport.js#L133) `clamp_y_floor()` slides the domain up to pin the floor at 0 while preserving the gesture's span. `clamp_x_floor()` does the same for x.
+- *"Phase 2 acquisition-order diagnostic plot"* — **done and wired**. time_qc_diagnostic_plot.js (historical source: `js/analysis/time_qc_diagnostic_plot.js`; no longer present) (306 lines) with a channel picker, consumed by `pipeline_ui.js` at lines 573–654, plus `unit_tests_time_qc_diagnostic_plot.py`. Three of the four spec layers are drawn; the event-scatter layer is *deliberately* omitted with a documented reason (raw per-event values aren't retained past Stage 1), and the spec itself says tracked peaks are more informative for this mode.
 
-- *"Auto-Fit All doesn't add values to the table"* — **probably already fixed; verify rather than re-fix.** The path is complete: `on_fit_all_click` ([modeling_ui.js:503](js/analysis/cell_cycle/modeling_ui.js#L503)) fits every sample, then dispatches `cell-cycle-fit-changed`, which `update_cell_cycle_fraction_columns` listens for. But the column only fills when `result.phaseFractions` exists on a **reportable** result — and before the `w`-bound fix, only 3/30 fits were reportable, which would produce exactly the symptom you saw. It is now 30/30. **Load a few samples and check the table before spending time here.**
+- *"Auto-Fit All doesn't add values to the table"* — **probably already fixed; verify rather than re-fix.** The path is complete: `on_fit_all_click` ([modeling_ui.js:503](../../../../js/analysis/cell_cycle/modeling_ui.js#L503)) fits every sample, then dispatches `cell-cycle-fit-changed`, which `update_cell_cycle_fraction_columns` listens for. But the column only fills when `result.phaseFractions` exists on a **reportable** result — and before the `w`-bound fix, only 3/30 fits were reportable, which would produce exactly the symptom you saw. It is now 30/30. **Load a few samples and check the table before spending time here.**
 
 ### 6.3 `README.md` claims a model that no longer exists
 
-Lines 18–19 and 274 offer *"Automatic model selection."* The dropdown ([index.html:222](index.html#L222)) has Dean–Jett, Dean–Jett–Fox, Watson Pragmatic, Watson Classic, and CLOCCS — **no Auto**. `auto_dj_djf` was retired at user request and `model_selection.js` was deleted. Line 274 also omits Watson Classic and CLOCCS.
+Lines 18–19 and 274 offer *"Automatic model selection."* The dropdown ([index.html:222](../../../../index.html#L222)) has Dean–Jett, Dean–Jett–Fox, Watson Pragmatic, Watson Classic, and CLOCCS — **no Auto**. `auto_dj_djf` was retired at user request and `model_selection.js` was deleted. Line 274 also omits Watson Classic and CLOCCS.
 
 Worth knowing *why* this matters beyond tidiness: retiring Auto removed the only consumer of the joint estimator and the BIC comparison the reference implementation prescribes. That was a deliberate call, but it means the architecture in §7 of the reference is currently unimplemented — relevant background for §3.3.
 
@@ -632,8 +634,8 @@ Point 3 is the one to take seriously: **the sign flip between synthetic and real
 The four changes below are the *original* plan. Items are still individually correct as code; their **priority and expected benefit are superseded by WP-1.0**. **Land them as separate commits and validate separately** — §3.0 exists because bundled changes have already produced unattributable results here twice.
 
 All four live in two files:
-- [`js/analysis/cell_cycle/peak_regions.js`](js/analysis/cell_cycle/peak_regions.js)
-- [`js/analysis/cell_cycle/models/watson_pragmatic.js`](js/analysis/cell_cycle/models/watson_pragmatic.js)
+- [`js/analysis/cell_cycle/peak_regions.js`](../../../../js/analysis/cell_cycle/peak_regions.js)
+- [`js/analysis/cell_cycle/models/watson_pragmatic.js`](../../../../js/analysis/cell_cycle/models/watson_pragmatic.js)
 
 ### WP-1.1 — Baseline-subtracted width threshold
 
@@ -1272,7 +1274,7 @@ Low risk, high clarity. Ideal work to run alongside a validation job.
 
 ```bash
 git rm -r js/analysis/djf/          # 21 files, 6,630 lines, zero external imports
-git mv djf-pipeline_report.md docs/audits/archive/djf-pipeline_report.md
+git mv djf-pipeline_report.md docs/archive/audits/archive/djf-pipeline_report.md
 npm run check:imports && npm run test:unit
 ```
 

@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/audits/archive/ui_issues_report.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # PhaseFinder — UI issues that should be fixed
 
 **Date:** 2026-08-14
@@ -179,7 +181,7 @@ So the most detailed, most current evidence that the tool's numbers can be trust
 
 ## Findings from the visual audit that this document missed
 
-The companion screenshot audit — [`docs/audits/ui_ux_audit_2026-08.md`](./ui_ux_audit_2026-08.md), 1,892 lines, 54 screenshots in `ui_screenshots/` — drove the real app and found several things a source read could not. **I verified each of the following against the source before including it here.**
+The companion screenshot audit — [`docs/audits/ui_ux_audit_2026-08.md`](ui_ux_audit_2026-08.md), 1,892 lines, 54 screenshots in `ui_screenshots/` — drove the real app and found several things a source read could not. **I verified each of the following against the source before including it here.**
 
 ### A. The trust hierarchy is inverted — this supersedes item 1 above
 

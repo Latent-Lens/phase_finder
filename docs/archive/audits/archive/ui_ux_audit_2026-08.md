@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/audits/archive/ui_ux_audit_2026-08.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # PhaseFinder UI/UX Audit — August 2026
 
 **Auditor:** UI Designer

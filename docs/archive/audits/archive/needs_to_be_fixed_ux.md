@@ -1,3 +1,5 @@
+> Archived 2026-09-05 from docs/audits/archive/needs_to_be_fixed_ux.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # PhaseFinder UX issues that still need to be fixed
 
 Last reviewed: 2026-07-17

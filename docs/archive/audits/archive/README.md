@@ -1,10 +1,12 @@
+> Archived 2026-09-05 from docs/audits/archive/README.md. Historical findings are reconciled in the master checklist; unchecked boxes here are not an active work queue. [Current register](../../../audits/master_checklist.md).
+
 # Archived audits and issue lists
 
 **Archived:** 2026-08-15
 
-Everything in this directory has been **merged into [`docs/audits/master_checklist.md`](../master_checklist.md)**. It is kept for provenance — to show where a finding came from and what was already tried — not as a work queue.
+Everything in this directory has been **merged into [`docs/audits/master_checklist.md`](../../../audits/master_checklist.md)**. It is kept for provenance — to show where a finding came from and what was already tried — not as a work queue.
 
-> **Do not add items here, and do not work from these files.** Open work lives in the master checklist. Design and architecture live in [`docs/plans/phasefinder_design.md`](../../plans/phasefinder_design.md).
+> **Do not add items here, and do not work from these files.** Open work lives in the master checklist. Design and architecture live in [`docs/plans/phasefinder_design.md`](../../../plans/phasefinder_design.md).
 
 ## What is here and what happened to it
 
@@ -18,12 +20,12 @@ Everything in this directory has been **merged into [`docs/audits/master_checkli
 | `needs_to_be_fixed_ux.md` | 9 UX items from 2026-07-17. | **6 verified resolved.** 3 survivors → UI-07 (UX-06), UI-12 (UX-09), UI-04 (UI-19). |
 | `todo.md` | Loose task list. | 2 items verified already done (y-axis zero clamp, Phase 2 diagnostic plot); the rest folded in. |
 | `djf-pipeline_report.md` | Code review of `js/analysis/djf/`. | **Reviews dead code.** That directory had zero external imports and was deleted under CLEAN-01 on 2026-08-17. The review is accurate about code nobody ran. |
-| `djf_impl_plan.md` | 46 KB implementation plan for the staged `js/analysis/djf/` pipeline. | **Plans deleted code.** Archived 2026-08-17 with CLEAN-01; the five inbound links were repointed here. Superseded by [`../../plans/cell_cycle_modeling_plan.md`](../../plans/cell_cycle_modeling_plan.md). |
+| `djf_impl_plan.md` | 46 KB implementation plan for the staged `js/analysis/djf/` pipeline. | **Plans deleted code.** Archived 2026-08-17 with CLEAN-01; the five inbound links were repointed here. Superseded by [`../../plans/cell_cycle_modeling_plan.md`](../../../plans/cell_cycle_modeling_plan.md). |
 | `djf_diffs.md` | 2026-07-14 audit comparing the legacy bridge against the staged DJF implementation, against the Fox 1980 primary source. | **Compares two implementations that both now exist only in git history.** Archived 2026-08-17. Its module links were converted to plain code spans — read them at the audit-base commits named in its header. |
 
 ## Still live, deliberately not archived
 
-- **[`../cell_cycle_model_investigation_handoff.md`](../cell_cycle_model_investigation_handoff.md)** — a research log, not a task list. It records five model changes that were attempted and measured, four of which made results worse, and *why*. It is the reason the joint estimator will not be re-attempted by accident. **Keep it current.**
+- **[`../cell_cycle_model_investigation_handoff.md`](../../../audits/cell_cycle_model_investigation_handoff.md)** — a research log, not a task list. It records five model changes that were attempted and measured, four of which made results worse, and *why*. It is the reason the joint estimator will not be re-attempted by accident. **Keep it current.**
 - `../codex_audit_of_full_project.html` — the original HTML audit that the archived checklist was derived from. Left in place as the primary source; archive it too if the checklist reconciliation (CLEAN-03) is completed and the source is no longer needed.
 - `../baselines/` — recorded test and numeric baselines, still referenced.
 
