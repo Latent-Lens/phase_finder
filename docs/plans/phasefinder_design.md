@@ -50,12 +50,11 @@ js/
 │   ├── scatter_gmm_gate.js    gate 3 — FSC/SSC cell cloud
 │   ├── pulse_geometry_gate.js gate 4 — singlet discrimination
 │   ├── dna_histogram.js       masked histogram construction
-│   ├── cell_cycle_fit_report.js  goodness of fit, residual structure, warnings
 │   ├── math/                  gaussian, poisson, quadrature, lm_solver, linalg2d, stats
 │   └── cell_cycle/
 │       ├── model_registry.js  explicit registration; no import-time side effects
 │       ├── models/            dean_jett, dean_jett_fox, watson_pragmatic,
-│       │                      watson_classic, cloccs, legacy_bridge, shared
+│       │                      watson_classic, cloccs, shared
 │       ├── peak_detection.js  multi-scale detection
 │       ├── peak_regions.js    region validation + local peak estimation
 │       ├── fit_client.js      worker pool
@@ -71,7 +70,7 @@ js/
 
 **`js/ui/dom.js` centralises every `document.querySelector`.** `npm run check:dom` fails the build if markup and bindings drift (currently 225 static ids, 4 generated).
 
-> **Dead code:** `js/analysis/djf/` (21 files, 6,630 lines) is an unreachable duplicate of the live pipeline with **identically named files** (`pipeline_ui.js`, `pipeline_state.js`, `scatter_modal.js`, `stage8_report.js`). Nothing imports it. Tracked for deletion as CLEAN-01.
+`js/analysis/djf/` (21 files, 6,630 lines) — an unreachable duplicate of the live pipeline with identically named files (`pipeline_ui.js`, `pipeline_state.js`, `scatter_modal.js`, `stage8_report.js`) that nothing imported — was deleted in `5ac4956` (2026-08-17), along with the legacy bridge fit, its debris/aggregate extension, its report module, and the `legacy_bridge_v1` registry entry. See LEGACY-01.
 
 ### 2.2 Data flow
 
@@ -184,7 +183,8 @@ Nonnegative **by construction** — which is the point. The previous direct `a +
 | `watson_pragmatic` | per-sample | canonical | Decomposition, not a fit — see below |
 | `watson_classic` | per-sample | canonical | Original Watson formulation, for comparison with published results |
 | `cloccs` | **joint_series** | `0.1.0-unverified` | Fits shared timing parameters across a strain's timepoints together |
-| `legacy_bridge_v1` | per-sample | **quarantined** | Pre-canonical implementation; `exploratory: true`, refused by the contract, absent from the dropdown |
+
+`legacy_bridge_v1`, the pre-canonical implementation, is no longer registered at all — `5ac4956` deleted it outright rather than leaving it quarantined. See LEGACY-01.
 
 **There is no "Automatic" model.** One existed and was removed: it chose between DJ and DJF by an information criterion, but that comparison is **unidentifiable while the peaks are frozen**. Measured on a wave-free fixture it selected "synchronous" at ΔBIC −102.9; frozen at the *true* peaks the same code correctly selected asynchronous at ΔBIC +16.7. The code was right; the peaks were not. Retiring it also removed the BIC architecture the reference prescribes — tracked for return as MODEL-07.
 

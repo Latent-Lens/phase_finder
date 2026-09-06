@@ -2,7 +2,7 @@
 
 This module proposes the initial G1 and G2/M peak regions shown in the UI. It does **not** make irreversible biological assignments. The user may move the proposed left/right handles before fitting. Once fitting begins, the accepted handles remain fixed and constrain the corresponding fitted center.
 
-Implementation: [`src/peakDetection.js`](src/peakDetection.js) and [`src/initialization.js`](src/initialization.js).
+Current implementation: [`peak_detection.js`](../../js/analysis/cell_cycle/peak_detection.js) and [`peak_regions.js`](../../js/analysis/cell_cycle/peak_regions.js). The specification below retains some illustrative names; the linked production modules are authoritative.
 
 ## 1. Inputs and outputs
 

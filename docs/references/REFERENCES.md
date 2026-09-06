@@ -8,19 +8,19 @@ The code is an engineering synthesis of historical models, official software doc
 
 Dean PN, Jett JH. Mathematical analysis of DNA distributions from flow microfluorometry. *Journal of Cell Biology*. 1974;60:523–527. DOI: https://doi.org/10.1083/jcb.60.2.523
 
-Supports the Gaussian G1/G2 peaks, quadratic latent S-phase distribution, and convolutional broadening that became the Dean–Jett model.
+Supports the Gaussian G1/G2 peaks, quadratic latent S-phase distribution, and convolutional broadening that became the Dean–Jett model. The paper contains no numbered equations — its single displayed complete-distribution function and its inline S-phase polynomial `P(X) = α + βX + γX²` are both unnumbered in the original text, so code citing this source cites it by description, not by equation number (DOC-01 box 1).
 
 ### Fox, 1980 — DJF
 
 Fox MH. A model for the computer analysis of synchronous DNA distributions obtained by flow cytometry. *Cytometry*. 1980;1(1):71–77. DOI: https://doi.org/10.1002/cyto.990010114
 
-Supports the added floating Gaussian in the latent S-phase profile, constant-CV broadening, nonlinear fitting, and use with synchronized populations.
+Supports the added floating Gaussian in the latent S-phase profile, constant-CV broadening, nonlinear fitting, and use with synchronized populations. Eq. (4) (`f(xj)=A+Bxj+Cxj²`, stated by Fox as "identical to the Dean and Jett model") is the asynchronous S-phase polynomial implemented as `sPhaseProfile()` (`js/analysis/cell_cycle/models/shared.js:110`); eq. (5) (the same polynomial plus a floating Gaussian) is the synchronous blended profile implemented as `combined_profile()` (`dean_jett_fox.js:213`). Eq. (1)/(2)/(3) (`F1`, the S-phase broadening convolution `Fs`, `F2`) correspond to the G1/G2 Gaussian peak integrals and broadened-S convolution (`peakComponents()`/`convolvedSPhase()`, `shared.js:235`/`:314`).
 
 ### Watson, Chambers, and Smith, 1987 — Watson Pragmatic
 
 Watson JV, Chambers SH, Smith PJ. A pragmatic approach to the analysis of DNA histograms with a definable G1 peak. *Cytometry*. 1987;8(1):1–8. DOI: https://doi.org/10.1002/cyto.990080101
 
-Supports the pragmatic local-Gaussian peak approach and residual estimation of S phase.
+Supports the pragmatic local-Gaussian peak approach and residual estimation of S phase. The paper numbers 4 equations: eq. (1) defines the windowed S-phase probability distribution `Ps(x)` from ERF-truncated G1/G2 halves — the conceptual ancestor of `build_asymmetric_window()`/`fit_local_peak()` (`js/analysis/cell_cycle/models/watson_pragmatic.js:92`/`:253`). Eq. (2)-(4) — the iterative `kG1`/`kG2` window-boundary solve and the resulting bias-corrected true mean/variance recomputation — are **not** what this codebase implements: `watson_pragmatic.js` uses a fixed-sigma-multiple asymmetric window and a background-pedestal floor (MODEL-06) instead of Watson's iterative correction, so eq. (2)-(4) are cited here for provenance only, not as a code source (DOC-01 box 1).
 
 ### Orlando et al., 2009 — CLOCCS
 

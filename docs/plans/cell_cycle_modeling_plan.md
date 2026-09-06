@@ -16,7 +16,7 @@
 > the core per-sample models.
 
 This plan supersedes the Stage 5–8 scientific/modeling portion of
-`docs/audits/archive/djf_impl_plan.md`. That older document remains useful history for the
+`docs/archive/audits/archive/djf_impl_plan.md`. That older document remains useful history for the
 nine-stage scaffold, but it intentionally ported the current simplified bridge
 model and deferred equation fidelity.
 
@@ -611,6 +611,43 @@ S_i=\max(0,y_i-G_{1,i}-G_{2,i}).
 Return `kind: "decomposition"` and `comparisonGroup: null`. Watson may report
 residual diagnostics, but the UI and export must never present it as an
 AIC/BIC winner or loser against DJ/DJF.
+
+### 5.5a Equation-to-code traceability (VALID-01 box 1)
+
+Sections 5.2–5.5 above give the published equations and citations but, on
+their own, contain no links into the implementation — this table is that
+mapping, added because VALID-01 asked for a *traceable* equation-to-code
+mapping, not just a re-statement of the references. Line numbers are as of
+`0193dc8`/this revision and will drift; re-grep the symbol names below rather
+than trusting the numbers blindly on a much later revision.
+
+The `(5.x)` tags below are this plan's *own* section numbers, not the primary
+papers' internal equation numbers — DOC-01 box 1 tracked down the latter
+separately, having obtained all three primary papers directly. Result, added
+as a note on the affected rows rather than a rewrite: Dean & Jett 1974 has no
+numbered equations anywhere in the paper, so `(5.2)`/`(5.3)`'s Gaussian-peak
+and quadratic-S-profile rows below cite it by description only. Fox 1980
+numbers 5 equations and two map directly: eq. (4) is `(5.3)`'s `q(z)`
+polynomial (stated in Fox's own text as "identical to the Dean and Jett
+model"), and eq. (5) is `(5.4)`'s blended profile `q_F(z)`. Watson 1987 numbers
+4 equations, but they describe an iterative ERF-based window/bias-correction
+algorithm that `(5.5)`'s `watson_pragmatic.js` does not implement — see the
+note on that row.
+
+| Symbol / equation | Meaning, units | Code |
+|---|---|---|
+| `G_{k,i}` (5.2) | Integrated Gaussian peak mass in bin `i`, counts | `peakComponents()` — `js/analysis/cell_cycle/models/shared.js:235` |
+| `Φ(...)` (5.2, 5.3) | Standard normal CDF | `normalCdf()` — `js/analysis/math/gaussian_bin_mass.js` (called from `shared.js` via `gaussianBinMass`, and directly in `dean_jett_fox.js:196`) |
+| `N_k`, `mu_k`, `CV_k` (5.2) | Peak area (counts), mean (channel units), coefficient of variation (dimensionless) | `dean_jett.js` `PARAMETER_INDEX`: `G1_AREA:0`/`G1_MEAN:1`/`G1_CV:2`, `G2_AREA:3`/`G2_MEAN:4`/`G2_CV:5` — `dean_jett.js:69-77`; identical layout in `dean_jett_fox.js:111-113` |
+| `q(z) = a + bz + cz^2` (5.3), Bernstein-reparameterized | Latent quadratic S-phase occupancy density, normalized to integrate to 1 on `[0,1]` | `sPhaseProfile(z, shape1, shape2)` — `shared.js:110`, weights via `sPhaseProfileWeights(shape1, shape2)` — `shared.js:78`. `shape1`/`shape2` are the stored parameters (`PARAMETER_INDEX.SHAPE1:7`/`SHAPE2:8`, dimensionless logits), not `b`/`c` directly — the plan's `a,b,c` form is the mathematical description; the code parameterizes the same curve to keep it non-negative by construction (see 5.3's own note on the analytic-minimum rejection, now unnecessary because of this reparameterization: `sPhaseProfileMinimum()` — `shared.js:132`, still used by `constraint_audit.js`) |
+| `S_i` (5.3) | Broadened S-phase bin count, counts, `CV_1`-scaled kernel per §5.3 | `convolvedSPhase()` — `shared.js:314`, called from `dean_jett.js`'s `expected_counts_from_parameters()` — `dean_jett.js:126-134` |
+| `u(z) = mu_1 + z(mu_2-mu_1)` (5.3) | Latent DNA position along S phase, channel units | inline in `convolvedSPhaseWithProfile()` — `shared.js:268` (the `u` local, shared by both DJ's and DJF's S integral since `convolvedSPhase` is `convolvedSPhaseWithProfile` specialized to `q`) |
+| `q_F(z) = (1-w)q(z) + wT(z;m_W,s_W)` (5.4) | Fox's blended profile | `combined_profile(z, named)` — `dean_jett_fox.js:213`; `T` is `wave_profile(z, waveMean, waveSigma)` — `dean_jett_fox.js:192` |
+| `w`, `m_W`, `s_W` (5.4) | Wave fraction (dimensionless, `[0,1)`), wave mean/sigma in latent `z` units (dimensionless, `[0,1]`) | `PARAMETER_INDEX.W:9`, `WAVE_MEAN:10`, `WAVE_SIGMA:11` — `dean_jett_fox.js:114-116` |
+| `w=0` nesting guarantee (5.4) | `q_F(0-weighted) = q(z)` exactly, `T` never evaluated | `combined_profile()`'s early return when `!(named.w > 0)` — `dean_jett_fox.js:214-215`; regression-guarded by the grid test `S-phase component curve ... nests exactly at w=0` in `tests/unit/driving_code/unit_tests_cell_cycle_dean_jett_fox.py` (VALID-01 box 2) |
+| G1 width at 60% height, asymmetric-window local fit (5.5 step 1-2) | Channel units | `build_asymmetric_window()` — `watson_pragmatic.js:92`, `fit_local_peak()` — `watson_pragmatic.js:253`. Conceptually descends from Watson 1987 eq. (1) (the windowed S-phase probability distribution), but uses a fixed-sigma-multiple window and a background-pedestal floor (MODEL-06) rather than Watson's own eq. (2)-(4) iterative `kG1`/`kG2` solve and bias-corrected mean/variance recomputation — those are **not** implemented here (DOC-01 box 1) |
+| `S_i = max(0, y_i - G_{1,i} - G_{2,i})` (5.5 step 4) | Residual S, counts, never a parametric density | `component_from_counts()` — `watson_pragmatic.js:287`; assembled in the `watson_pragmatic` object — `watson_pragmatic.js:299` |
+| `kind: "decomposition"`, `comparisonGroup: null` (5.5) | Watson Pragmatic is structurally exempt from AIC/BIC model selection, never from optimizer-restart identifiability review (5.5 doesn't use a multistart optimizer, so `uncertainty.js`'s `multistartAgreement`/`identifiabilityWarnings` don't apply to it — see VALID-01 box 7 below) | `watson_pragmatic.js:299` object literal fields |
 
 ### 5.6 CLOCCS joint time-series model
 
