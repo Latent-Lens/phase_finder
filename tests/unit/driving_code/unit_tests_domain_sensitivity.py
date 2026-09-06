@@ -302,6 +302,87 @@ _DOMAIN_TESTS = r"""async () => {
     });
   });
 
+  // ---- production wiring: assess_domain_sensitivity() against a real fit ----
+
+  const buildDomainSensitivityRow = () => {
+    const count = 4000;
+    const dna = new Float64Array(count);
+    let seed = 20260731;
+    const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const normal = () => Math.sqrt(-2 * Math.log(Math.max(random(), 1e-9))) * Math.cos(2 * Math.PI * random());
+    for (let i = 0; i < count; i += 1) {
+      dna[i] = i < 2400 ? 70 + 4 * normal() : i < 3000 ? 70 + (70 * (i - 2400)) / 600 : 140 + 6 * normal();
+    }
+    const row = {
+      id: 'domain-01-sensitivity-row', name: 'domain-01-sensitivity.fcs',
+      data: { eventCount: count, channel_key: 'DNA_A', dna_a: dna, channels: { DNA_A: dna }, pnr: {} },
+    };
+    const pipeline = window.PhaseFinder.pipeline;
+    const modelingState = window.CellCycleModelingState;
+    pipeline.clear_state(row.name);
+    pipeline.apply_structural_qc(row);
+    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
+    modelingState.detect_peak_regions(row);
+    modelingState.update_peak_regions(row, { g1: { left: 55, right: 85 }, g2: { left: 120, right: 160 } });
+    return row;
+  };
+
+  await run('DOMAIN-01: assess_domain_sensitivity() runs the real sweep and folds its verdict into the fit result', async () => {
+    const modelingState = window.CellCycleModelingState;
+    const row = buildDomainSensitivityRow();
+    const result = await modelingState.fit_cell_cycle_model(row, 'dean_jett');
+    const updated = await modelingState.assess_domain_sensitivity(row, result);
+    const analysis = updated.domainSensitivity;
+
+    // Whichever branch a real (not mocked) sweep actually landed in, the
+    // qualify/block wiring must be self-consistent with domainCoverageAudit's
+    // own established convention: "invalid" hard-blocks and appends matching
+    // validityReasons, anything else only ever appends matching warnings.
+    const invalidLinked = analysis.status !== 'invalid' || (
+      updated.validForReporting === false && updated.invalid === true && updated.scientificallyValid === false
+      && analysis.warnings.every((w) => updated.validityReasons.some((reason) => reason.code === w.code))
+    );
+    const warningsLinked = analysis.warnings.every((w) => updated.warnings.some((rw) => rw.code === w.code));
+
+    return {
+      pass: updated === result
+        && !!analysis
+        && analysis.variants.length === 12
+        && analysis.tolerances.fractionWarningPercentagePoints === domain.FRACTION_SENSITIVITY_WARNING_PP
+        && analysis.tolerances.fractionInvalidPercentagePoints === domain.FRACTION_SENSITIVITY_INVALID_PP
+        && Number.isFinite(analysis.maxShiftPercentagePoints)
+        && ['ok', 'warning', 'invalid'].includes(analysis.status)
+        && !!analysis.baseline && analysis.baseline.modelId === 'dean_jett'
+        && invalidLinked && warningsLinked,
+      detail: JSON.stringify({
+        status: analysis?.status, shift: analysis?.maxShiftPercentagePoints,
+        validForReporting: updated.validForReporting, warnings: updated.warnings?.map((w) => w.code),
+      }),
+    };
+  });
+
+  await run('DOMAIN-01: a concurrent newer fit invalidates an in-flight sensitivity assessment', async () => {
+    const modelingState = window.CellCycleModelingState;
+    const row = buildDomainSensitivityRow();
+    const result = await modelingState.fit_cell_cycle_model(row, 'dean_jett');
+
+    const pending = modelingState.assess_domain_sensitivity(row, result);
+    // A single fit is far cheaper than the 12-fit sweep just dispatched, so this
+    // real refit reliably lands on the row before the sweep's promise settles.
+    await modelingState.fit_cell_cycle_model(row, 'dean_jett');
+
+    let caught = null;
+    try {
+      await pending;
+    } catch (error) {
+      caught = error;
+    }
+    return {
+      pass: !!caught && caught.code === 'FIT_INPUTS_CHANGED' && !result.domainSensitivity,
+      detail: caught ? `${caught.name}: ${caught.message}` : 'resolved despite a concurrent newer fit',
+    };
+  });
+
   await run('DOMAIN-01: an invalid coverage verdict withholds the result from reporting', () => {
     // Applied directly to a contracted result, so the assertion is about the
     // qualification rule and not about coaxing a real fit into a bad domain.

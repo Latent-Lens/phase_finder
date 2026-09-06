@@ -74,6 +74,10 @@ export const cell_cycle_fit_current_button = document.querySelector("#cell_cycle
 export const cell_cycle_fit_all_button = document.querySelector("#cell_cycle_fit_all_button");
 export const cell_cycle_fit_status = document.querySelector("#cell_cycle_fit_status");
 export const cell_cycle_fit_result = document.querySelector("#cell_cycle_fit_result");
+export const cell_cycle_domain_sensitivity_button = document.querySelector("#cell_cycle_domain_sensitivity_button");
+export const cell_cycle_domain_sensitivity_status = document.querySelector("#cell_cycle_domain_sensitivity_status");
+export const cell_cycle_resampling_button = document.querySelector("#cell_cycle_resampling_button");
+export const cell_cycle_resampling_status = document.querySelector("#cell_cycle_resampling_status");
 
 // ── Plot toolbar axis-range button ───────────────────────────────────────────
 // AD-1: this button lives in dom.js (not plotting/data.js, which WS-1 owns for

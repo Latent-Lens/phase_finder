@@ -16,6 +16,10 @@ import {
   cell_cycle_fit_all_button,
   cell_cycle_fit_status,
   cell_cycle_fit_result,
+  cell_cycle_domain_sensitivity_button,
+  cell_cycle_domain_sensitivity_status,
+  cell_cycle_resampling_button,
+  cell_cycle_resampling_status,
   peak_regions_apply_all_button,
 } from "../../ui/dom.js";
 import {
@@ -33,6 +37,7 @@ import { get_file_table } from "../../state/app_state.js";
 import { histogramFromEdgesCounts } from "./models/cloccs.js";
 import { run_cloccs_fit } from "./cloccs_client.js";
 import { fit_pool_size } from "./fit_client.js";
+import { get_model } from "./model_registry.js";
 import { active_peak_review_row, peak_region_draft_valid } from "./peak_review_ui.js";
 import { deep_clone } from "../../util/clone.js";
 import { escape_html } from "../../util/html.js";
@@ -54,6 +59,8 @@ const cloccs_strain_column = document.querySelector("#cloccs_strain_column");
 import {
   get_modeling_state,
   fit_cell_cycle_model,
+  assess_domain_sensitivity,
+  assess_resampling_uncertainty,
   peak_detection_requires_review,
   set_model_settings,
   detect_peak_regions,
@@ -326,6 +333,28 @@ function set_controls_disabled(disabled) {
   if (cell_cycle_model_select) cell_cycle_model_select.disabled = disabled;
   if (cell_cycle_fit_current_button) cell_cycle_fit_current_button.disabled = disabled;
   if (cell_cycle_fit_all_button) cell_cycle_fit_all_button.disabled = disabled;
+  if (cell_cycle_domain_sensitivity_button) cell_cycle_domain_sensitivity_button.disabled = disabled;
+  if (cell_cycle_resampling_button) cell_cycle_resampling_button.disabled = disabled;
+}
+
+// DOMAIN-01: mirrors set_fit_status() above, but for the "Check domain
+// sensitivity" action's own status line -- kept separate rather than sharing
+// #cell_cycle_fit_status so running a sensitivity check never overwrites (or
+// gets overwritten by) the most recent fit's own convergence message.
+function set_domain_sensitivity_status(message, isError = false) {
+  if (!cell_cycle_domain_sensitivity_status) return;
+  cell_cycle_domain_sensitivity_status.textContent = message || "";
+  cell_cycle_domain_sensitivity_status.hidden = !message;
+  cell_cycle_domain_sensitivity_status.classList.toggle("cell_cycle_fit_not_converged", Boolean(isError));
+}
+
+// UNC-01: mirrors set_domain_sensitivity_status() above, for the "Check
+// resampling uncertainty" action's own status line.
+function set_resampling_status(message, isError = false) {
+  if (!cell_cycle_resampling_status) return;
+  cell_cycle_resampling_status.textContent = message || "";
+  cell_cycle_resampling_status.hidden = !message;
+  cell_cycle_resampling_status.classList.toggle("cell_cycle_fit_not_converged", Boolean(isError));
 }
 
 // AD-2/UI-01: wraps format_fraction_cell()'s trailing " ⚠" (already the exact
@@ -443,6 +472,8 @@ function refresh_panel() {
 
   if (!row) {
     if (cell_cycle_fit_current_button) cell_cycle_fit_current_button.disabled = true;
+    if (cell_cycle_domain_sensitivity_button) cell_cycle_domain_sensitivity_button.hidden = true;
+    if (cell_cycle_resampling_button) cell_cycle_resampling_button.hidden = true;
     render_result(null);
     return;
   }
@@ -474,6 +505,28 @@ function refresh_panel() {
 
   const activeResult = get_active_model_result(get_state(row.name));
   render_result(activeResult);
+  // DOMAIN-01: only offered once there is a reportable result to check --
+  // the same result render_result() just displayed. assess_domain_sensitivity()
+  // requires a contracted fit result, so there is nothing for the action to do
+  // before that exists. Also clears the disabled state set_controls_disabled(true)
+  // leaves behind after any other sidebar action finishes -- unlike the other
+  // controls above, this button has no extra precondition once a result exists,
+  // so "visible" and "enabled" are the same condition here.
+  if (cell_cycle_domain_sensitivity_button) {
+    cell_cycle_domain_sensitivity_button.hidden = !activeResult;
+    cell_cycle_domain_sensitivity_button.disabled = !activeResult;
+  }
+  // UNC-01: same "visible" == "enabled" condition as domain sensitivity above,
+  // plus excluding joint-series models (CLOCCS): resampleUncertainty()'s fitFn
+  // calls a model's per-sample fit({histogram, peakRegions, config}), which a
+  // joint_series model does not implement (it fits a whole strain's timepoints
+  // via fitSeries() instead), so offering the check on one would only produce
+  // a guaranteed error.
+  if (cell_cycle_resampling_button) {
+    const resamplable = Boolean(activeResult) && get_model(activeResult.modelId)?.fitScope === "per_sample";
+    cell_cycle_resampling_button.hidden = !resamplable;
+    cell_cycle_resampling_button.disabled = !resamplable;
+  }
 }
 
 async function on_fit_current_click() {
@@ -523,6 +576,56 @@ async function on_fit_current_click() {
     refresh_panel();
     render_density_plot();
     document.dispatchEvent(new CustomEvent("cell-cycle-fit-changed"));
+  }
+}
+
+// DOMAIN-01: the opt-in caller for assess_domain_sensitivity() (modeling_state.js).
+// Deliberately a separate, explicit action rather than anything Fit Current/Fit
+// All trigger themselves -- the sweep re-fits the sample per bin count x domain
+// perturbation (~12 fits by default), so folding it into the hot fit path would
+// multiply every interactive fit's latency by roughly that factor. This runs
+// only when the user asks for it, against the result already on screen.
+async function on_check_domain_sensitivity_click() {
+  if (busy) return;
+  const row = active_peak_review_row();
+  if (!row) return;
+  const state = get_state(row.name);
+  const result = get_active_model_result(state);
+  if (!result) {
+    // The button is hidden whenever there's no active result to check (see
+    // refresh_panel()); this is only reachable if the result was invalidated
+    // between the click and this handler running.
+    set_domain_sensitivity_status("No current fit result to check — fit this sample first.", true);
+    return;
+  }
+
+  busy = true;
+  set_controls_disabled(true);
+  const progress_operation = show_progress(`Checking domain sensitivity for ${row.name}`);
+  try {
+    const updated = await assess_domain_sensitivity(row, result);
+    // Render the mutated result directly rather than re-reading
+    // get_active_model_result(): an "invalid" verdict demotes activeResultKey
+    // (see assess_domain_sensitivity()'s header), and the demoted result --
+    // now failing validForReporting -- is exactly the thing this action needs
+    // to surface, the same way a blocking domainCoverageAudit() already does
+    // on a fresh fit.
+    render_result(updated);
+    const verdict = updated.domainSensitivity?.status ?? "unknown";
+    const verdictNote = verdict === "invalid"
+      ? " — result is no longer valid for reporting."
+      : verdict === "warning"
+        ? " — see the warnings below."
+        : "";
+    set_domain_sensitivity_status(`Domain sensitivity: ${verdict}${verdictNote}`, verdict !== "ok");
+    set_status_bar(`Domain sensitivity checked for ${row.name}: ${verdict}.`, verdict === "invalid", null, progress_operation);
+  } catch (error) {
+    set_domain_sensitivity_status(error.message, true);
+    set_status_bar(`Domain sensitivity check failed: ${error.message}`, true, null, progress_operation, error);
+  } finally {
+    hide_progress(300, progress_operation);
+    busy = false;
+    refresh_panel();
   }
 }
 
@@ -1239,6 +1342,8 @@ export function init_modeling_ui() {
   if (cell_cycle_fit_current_button) cell_cycle_fit_current_button.addEventListener("click", on_fit_current_click);
   if (cell_cycle_fit_all_button) cell_cycle_fit_all_button.addEventListener("click", on_fit_all_click);
   if (peak_regions_apply_all_button) peak_regions_apply_all_button.addEventListener("click", on_apply_all_click);
+  if (cell_cycle_domain_sensitivity_button) cell_cycle_domain_sensitivity_button.addEventListener("click", on_check_domain_sensitivity_click);
+
   init_qc_critical_review({
     active_row: active_peak_review_row,
     // Re-running the fit is left to the user rather than fired automatically:

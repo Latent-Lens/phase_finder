@@ -12,10 +12,11 @@
 import { get_or_create_state, invalidate_model_results } from "../pipeline/pipeline_state.js";
 import { detectCellCyclePeakPair, proposeAutomaticPeakRegions } from "./peak_detection.js";
 import { validatePeakRegions } from "./peak_regions.js";
-import { get_model } from "./model_registry.js";
-import { run_fit_in_worker } from "./fit_client.js";
+import { get_model, list_models } from "./model_registry.js";
+import { run_fit_in_worker, run_domain_sensitivity_in_worker, run_resample_uncertainty_in_worker } from "./fit_client.js";
 import { apply_result_contract, model_preflight } from "./result_contract.js";
-import { domainCoverageAudit } from "./domain_sensitivity.js";
+import { domainCoverageAudit, analyzeDomainSensitivity } from "./domain_sensitivity.js";
+import { resampleUncertainty } from "./resampling.js";
 import { deep_clone } from "../../util/clone.js";
 
 /*
@@ -547,7 +548,9 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
   }
   if (signal?.aborted) rawResult = { ...rawResult, cancelled: true };
   const result = apply_result_contract(rawResult, preflight);
-  result.appliedConfiguration = config;
+  result.appliedConfiguration = deep_clone(config);
+  result.peakRegions = deep_clone(peakRegions);
+  result.configHash = digest(config);
   result.channelEligibility = state.channelEligibility ? deep_clone(state.channelEligibility) : null;
   // DOMAIN-01: the analysis domain and bin grid are scientific inputs, so the
   // exact grid the fit ran on -- and how much of the sample and of the fitted
@@ -603,5 +606,339 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
   modeling.lastDiagnosticResultKey = result.validForReporting ? null : resultKey;
   modeling.settings.modelId = modelId;
   modeling.revision += 1;
+  return result;
+}
+
+/*
+
+Purpose:
+	DOMAIN-01 sensitivity sub-item: actually runs analyzeDomainSensitivity()
+	(domain_sensitivity.js) against a completed fit result and folds its verdict
+	into that result, using the exact qualify/block convention
+	fit_cell_cycle_model() already applies for domainCoverageAudit() above --
+	a "warning"/"unknown" status only appends to result.warnings, an "invalid"
+	status also flips validForReporting/invalid/scientificallyValid to false and
+	appends to validityReasons, and demotes the row's activeResultKey the same
+	way a failed coverage audit does.
+
+	Deliberately NOT called from fit_cell_cycle_model()'s hot path: the sweep
+	refits the sample once per bin count x domain perturbation (12 fits with the
+	defaults), so wiring it into every interactive fit would make Fit Current /
+	Fit All Samples multiply their own latency by roughly that factor. Instead
+	this is a separate, opt-in call a caller makes on a result it already has --
+	e.g. once before an export or a "final" review, not on every peak-region
+	tweak -- exactly like analyzeDomainSensitivity()'s own header describes its
+	intended usage. It runs the whole sweep inside the shared fit worker pool
+	(run_domain_sensitivity_in_worker(), fit_worker.js's "domain_sensitivity"
+	message) so that cost lands off the UI thread the same way a single fit does,
+	falling back to a synchronous main-thread sweep (blocking the UI for the
+	sweep's full duration) only in fit_client.js's documented no-worker case.
+
+Input:
+	row [object]: the sample row the result was fit against
+	result [object]: a result previously returned by fit_cell_cycle_model() for
+	                 this row (mutated in place and also returned)
+	options [object]: optional { binCounts, perturbations (forwarded to
+	                  analyzeDomainSensitivity(), default when omitted),
+	                  onProgress, signal (AbortSignal) }
+
+Output:
+	result [Promise<object>]: the same result object, with domainSensitivity set
+	                          and warnings/validity updated per the verdict
+	                          (throws if the row's fit inputs changed underneath
+	                          this call, or if `result` isn't a real fit result)
+
+*/
+export async function assess_domain_sensitivity(row, result, options = {}) {
+  if (!result?.modelId) {
+    throw new TypeError("assess_domain_sensitivity requires a contracted fit result (with modelId).");
+  }
+  const entry = get_model(result.modelId);
+  if (!entry) {
+    throw new Error(`Unknown cell-cycle model "${result.modelId}".`);
+  }
+  const domain = result.histogramProvenance?.domain;
+  if (!Number.isFinite(domain?.min) || !Number.isFinite(domain?.max)) {
+    throw new TypeError(
+      "assess_domain_sensitivity requires a result with a stored histogramProvenance.domain (min/max).",
+    );
+  }
+  // The retained DNA values this result's histogram was binned from. Read
+  // directly off row.data.filtered rather than recomputing via
+  // build_filtered_view(row): that helper bumps data.filteredViewRevision as a
+  // side effect, which would desync ensure_histogram_current()'s freshness
+  // check and force a spurious histogram rebuild (and downstream invalidation)
+  // on the next stage call. build_filtered_view() already ran as part of
+  // producing this result's histogram, so the filtered view is already here.
+  const values = Array.from(row?.data?.filtered?.channels?.DNA_A ?? []);
+  if (!values.length) {
+    throw new TypeError("assess_domain_sensitivity requires the row's filtered DNA_A channel (fit the row first).");
+  }
+
+  const state = get_or_create_state(row);
+  const modeling = state.modeling;
+  const { binCounts, perturbations, onProgress, signal } = options;
+
+  // Same staleness guard fit_cell_cycle_model() uses around its own await: the
+  // sweep can take several fit-durations, long enough for a newer fit (or a
+  // gating change that rebuilds the histogram) to land on this row first.
+  const inputRevision = modeling.revision;
+  const inputHistogram = state.histogram;
+
+  const spec = {
+    modelId: result.modelId,
+    values,
+    domain,
+    peakRegions: result.peakRegions,
+    config: result.appliedConfiguration,
+    binCounts,
+    perturbations,
+  };
+  const worker = run_domain_sensitivity_in_worker(spec, { onProgress });
+  if (signal?.aborted) worker?.cancel();
+  const abort = () => worker?.cancel();
+  signal?.addEventListener?.("abort", abort, { once: true });
+  const analysis = worker
+    ? await worker.promise
+    : analyzeDomainSensitivity({
+      values,
+      domain,
+      binCounts,
+      perturbations,
+      fitFn: (histogram) => {
+        const rawVariantResult = entry.fit({ histogram, peakRegions: result.peakRegions, config: result.appliedConfiguration });
+        const normalized = entry.normalizeResult(rawVariantResult);
+        return { phaseFractions: normalized.phaseFractions, modelId: normalized.modelId ?? result.modelId };
+      },
+    });
+  signal?.removeEventListener?.("abort", abort);
+
+  if (modeling.revision !== inputRevision || state.histogram !== inputHistogram) {
+    const error = new Error(
+      "Fit inputs changed before this sensitivity analysis completed; the stale result was discarded.",
+    );
+    error.code = "FIT_INPUTS_CHANGED";
+    throw error;
+  }
+
+  result.domainSensitivity = analysis;
+  if (analysis.warnings.length) result.warnings = [...(result.warnings ?? []), ...analysis.warnings];
+  // Same hard-block convention as domainCoverageAudit() above: fractions that
+  // moved past the documented invalid tolerance are not a reportable
+  // measurement OF THE SAMPLE, regardless of how clean the fit itself looked.
+  if (analysis.status === "invalid") {
+    result.validForReporting = false;
+    result.invalid = true;
+    result.scientificallyValid = false;
+    result.validityReasons = [
+      ...(result.validityReasons ?? []),
+      ...analysis.warnings.map((warning) => ({ code: warning.code, message: warning.message, detail: analysis })),
+    ];
+    const resultKey = Object.keys(modeling.resultsByKey).find((key) => modeling.resultsByKey[key] === result);
+    if (resultKey && modeling.activeResultKey === resultKey) {
+      modeling.activeResultKey = null;
+      modeling.lastDiagnosticResultKey = resultKey;
+    }
+  }
+  return result;
+}
+
+// Duplicated (not shared) from fit_worker.js's own build_resampling_fit_fn:
+// this is the no-worker fallback used only when fit_client.js could not
+// create a worker at all, and it needs the SAME per-model closure the worker
+// builds -- one call per replicate, returning one { modelId, comparisonGroup,
+// phaseFractions, bic, converged, parameters } outcome per supplied model, with
+// a model that throws on a perturbed variant reported as non-converged for
+// that model only rather than losing every other model's outcome for the
+// replicate. Kept private and duplicated rather than imported from
+// fit_worker.js because that module registers a "message" listener on `self`
+// at load time, which would attach to the main thread's `window` instead of a
+// worker's scope if imported here.
+function resampling_fit_fn(models) {
+  const entries = (models ?? []).map(({ modelId, config }) => {
+    const entry = get_model(modelId);
+    if (!entry) throw new Error(`Unknown model "${modelId}".`);
+    return { modelId, config, entry };
+  });
+  return ({ histogram, peakRegions }) => entries.map(({ modelId, config, entry }) => {
+    try {
+      const rawVariantResult = entry.fit({ histogram, peakRegions, config });
+      const normalized = entry.normalizeResult(rawVariantResult);
+      return {
+        modelId: normalized.modelId ?? modelId,
+        comparisonGroup: normalized.comparisonGroup ?? entry.comparisonGroup ?? null,
+        phaseFractions: normalized.phaseFractions ?? null,
+        bic: Number.isFinite(normalized.diagnostics?.bic) ? normalized.diagnostics.bic : null,
+        converged: normalized.converged === true,
+        parameters: normalized.parameters ?? null,
+      };
+    } catch (thrown) {
+      return {
+        modelId, comparisonGroup: entry.comparisonGroup ?? null,
+        phaseFractions: null, bic: null, converged: false, parameters: null,
+      };
+    }
+  });
+}
+
+// A resampling warning that must withhold the number, using the exact same
+// predicate result_contract.js's apply_result_contract() applies to its own
+// warnings -- so a critical resampling warning demotes a result the same way
+// a critical fit-quality warning already does, rather than inventing a second
+// notion of "critical" for this one caller.
+function resampling_warning_critical(warning) {
+  return warning?.nonreportable === true || warning?.severity === "critical" || warning?.severity === "error";
+}
+
+/*
+
+Purpose:
+	UNC-01: actually runs resampleUncertainty() (resampling.js) against a
+	completed fit result and folds its bundle into that result, using the same
+	qualify/block convention assess_domain_sensitivity() above already applies
+	-- the bundle's warnings are merged into result.warnings via the same
+	{id/code, severity, nonreportable, message} vocabulary GATE-02 qualifies
+	everywhere else, and a critical/nonreportable warning also flips
+	validForReporting/invalid/scientificallyValid to false and demotes the
+	row's activeResultKey, exactly like a failed domain-sensitivity or coverage
+	verdict does.
+
+	Resamples the active model's whole comparisonGroup (not just the active
+	model alone) when the model has one: resampleUncertainty()'s `selection`
+	box (model-selection frequency/instability) is degenerate -- always
+	frequency 1.0 -- for a single model, and rankableOutcomes() in
+	resampling.js already restricts BIC ranking to one non-null comparisonGroup,
+	so resampling exactly that group is what makes `selection` a real
+	measurement instead of a formality. A null comparisonGroup (e.g.
+	watson_pragmatic) is never AIC/BIC-ranked against anything, so it resamples
+	alone. cloccs is excluded up front: it is fitScope "joint_series" and does
+	not accept the {histogram, peakRegions, config} call shape every per-sample
+	model here does.
+
+	Deliberately NOT called from fit_cell_cycle_model()'s hot path, for the same
+	reason assess_domain_sensitivity() is not: resampleUncertainty() is far more
+	expensive than a single fit (one refit per model per replicate; the
+	register measures whole-bundle costs in minutes for the cheaper models and
+	tens of minutes when Dean-Jett-Fox is in the comparison group), so this is a
+	separate, opt-in call a caller makes deliberately (an export, a validation
+	run, a reviewer's request) on a result it already has.
+
+Input:
+	row [object]: the sample row the result was fit against
+	result [object]: a result previously returned by fit_cell_cycle_model() for
+	                 this row (mutated in place and also returned)
+	options [object]: optional { replicates, seed, intervalLevel,
+	                  intervalMethod, perturbations (all forwarded to
+	                  resampleUncertainty(), defaulting when omitted),
+	                  onProgress, signal (AbortSignal) }
+
+Output:
+	result [Promise<object>]: the same result object, with result.resampling set
+	                          to the bundle and warnings/validity updated per its
+	                          contents (throws if the row's fit inputs changed
+	                          underneath this call, if `result` isn't a real fit
+	                          result, or if the model is a joint-series model)
+
+*/
+export async function assess_resampling_uncertainty(row, result, options = {}) {
+  if (!result?.modelId) {
+    throw new TypeError("assess_resampling_uncertainty requires a contracted fit result (with modelId).");
+  }
+  const entry = get_model(result.modelId);
+  if (!entry) {
+    throw new Error(`Unknown cell-cycle model "${result.modelId}".`);
+  }
+  if (entry.fitScope !== "per_sample") {
+    throw new Error(
+      `"${entry.label ?? result.modelId}" is a joint time-series model — it cannot be resampled per sample.`,
+    );
+  }
+  const domain = result.histogramProvenance?.domain;
+  if (!Number.isFinite(domain?.min) || !Number.isFinite(domain?.max)) {
+    throw new TypeError(
+      "assess_resampling_uncertainty requires a result with a stored histogramProvenance.domain (min/max).",
+    );
+  }
+  // Same rationale as assess_domain_sensitivity(): read the retained values
+  // directly off the already-filtered view rather than recomputing it, so
+  // this call does not desync ensure_histogram_current()'s freshness check.
+  const values = Array.from(row?.data?.filtered?.channels?.DNA_A ?? []);
+  if (!values.length) {
+    throw new TypeError("assess_resampling_uncertainty requires the row's filtered DNA_A channel (fit the row first).");
+  }
+
+  const state = get_or_create_state(row);
+  const modeling = state.modeling;
+  const { replicates, seed, intervalLevel, intervalMethod, perturbations, onProgress, signal } = options;
+
+  // Same staleness guard fit_cell_cycle_model() and assess_domain_sensitivity()
+  // use around their own awaits: a resampling sweep is by far the slowest
+  // operation this module runs, giving a newer fit or a gating change every
+  // opportunity to land on this row first.
+  const inputRevision = modeling.revision;
+  const inputHistogram = state.histogram;
+
+  const peers = entry.comparisonGroup
+    ? list_models().filter((candidate) => candidate.fitScope === "per_sample" && candidate.comparisonGroup === entry.comparisonGroup)
+    : [entry];
+  const models = peers.map((candidate) => ({
+    modelId: candidate.id,
+    // Reuse the already-resolved configuration for the active model itself
+    // (identical to what it was actually fit with); resolve every peer's
+    // configuration the same way fit_cell_cycle_model() does, from the row's
+    // current settings.
+    config: candidate.id === result.modelId
+      ? result.appliedConfiguration
+      : resolve_model_configuration(candidate.id, modeling.settings),
+  }));
+
+  const spec = {
+    models, values, domain, binCount: result.histogramProvenance?.binCount ?? null,
+    peakRegions: result.peakRegions, replicates, seed, intervalLevel, intervalMethod, perturbations,
+  };
+  const worker = run_resample_uncertainty_in_worker(spec, { onProgress });
+  if (signal?.aborted) worker?.cancel();
+  const abort = () => worker?.cancel();
+  signal?.addEventListener?.("abort", abort, { once: true });
+  const bundle = worker
+    ? await worker.promise
+    : resampleUncertainty({
+      ...spec,
+      fitFn: resampling_fit_fn(models),
+      shouldCancel: () => signal?.aborted === true,
+      onProgress,
+    });
+  signal?.removeEventListener?.("abort", abort);
+
+  if (modeling.revision !== inputRevision || state.histogram !== inputHistogram) {
+    const error = new Error(
+      "Fit inputs changed before this resampling analysis completed; the stale result was discarded.",
+    );
+    error.code = "FIT_INPUTS_CHANGED";
+    throw error;
+  }
+
+  result.resampling = bundle;
+  if (bundle.warnings.length) result.warnings = [...(result.warnings ?? []), ...bundle.warnings];
+  // Same hard-block convention as domainCoverageAudit()/assess_domain_sensitivity()
+  // above: a resampling warning marked critical/nonreportable (too few usable
+  // replicates, too high a failure rate, an interval that could not be
+  // computed, or a fraction too uncertain to report) means the number is not
+  // reportable OF THE SAMPLE, regardless of how clean the point estimate looked.
+  if (bundle.warnings.some(resampling_warning_critical)) {
+    result.validForReporting = false;
+    result.invalid = true;
+    result.scientificallyValid = false;
+    result.validityReasons = [
+      ...(result.validityReasons ?? []),
+      ...bundle.warnings.filter(resampling_warning_critical)
+        .map((warning) => ({ code: warning.id, message: warning.message, detail: bundle })),
+    ];
+    const resultKey = Object.keys(modeling.resultsByKey).find((key) => modeling.resultsByKey[key] === result);
+    if (resultKey && modeling.activeResultKey === resultKey) {
+      modeling.activeResultKey = null;
+      modeling.lastDiagnosticResultKey = resultKey;
+    }
+  }
   return result;
 }

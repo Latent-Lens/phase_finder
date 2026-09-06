@@ -5,24 +5,92 @@
 //
 // Message protocol:
 //   in:  { type: "fit", request_id, modelId, histogram, peakRegions, config }
+//        { type: "domain_sensitivity", request_id, modelId, values, domain,
+//                peakRegions, config, binCounts, perturbations }
+//        { type: "resample_uncertainty", request_id, models: [{modelId, config}],
+//                values, histogram, domain, binCount, peakRegions, replicates,
+//                seed, intervalLevel, intervalMethod, perturbations }
 //        { type: "cancel", request_id }
 //   out: { type: "progress", request_id, iteration, maxIterations, sse }
+//        { type: "progress", request_id, completed, total, succeeded, failed }
 //        { type: "result", request_id, ok: true, result }
 //        { type: "result", request_id, ok: false, error }
 //
 // Every canonical model requires peakRegions alongside the histogram.
+//
+// DOMAIN-01: "domain_sensitivity" runs analyzeDomainSensitivity() -- which
+// refits the sample across every supported bin count and domain perturbation
+// (DEFAULT_SENSITIVITY_BIN_COUNTS x DEFAULT_DOMAIN_PERTURBATIONS is 12 fits) --
+// entirely inside this worker thread. analyzeDomainSensitivity()'s fitFn
+// contract is synchronous by design (see domain_sensitivity.js), so the sweep
+// blocks THIS worker for the sum of those fits (seconds, not milliseconds, for
+// the slower models); running it here rather than on the main thread is what
+// keeps that blocking off the UI thread instead of freezing it.
+//
+// UNC-01: "resample_uncertainty" runs resampleUncertainty() (resampling.js)
+// the same way -- one full refit per model per replicate, entirely inside this
+// worker thread, for exactly the same reason: resampleUncertainty() is
+// synchronous by design (see its header), so the whole sweep (up to
+// DEFAULT_REPLICATES x however many models share the active model's
+// comparisonGroup) would otherwise block the UI thread instead of just this
+// worker. resampleUncertainty() is model-agnostic and never imports the
+// registry itself, so this handler is what actually resolves each `models[]`
+// entry's modelId to its fit()/normalizeResult() and builds the multi-model
+// fitFn it calls per replicate.
 
 import { register_default_models, get_model } from "./model_registry.js";
+import { analyzeDomainSensitivity } from "./domain_sensitivity.js";
+import { resampleUncertainty } from "./resampling.js";
 import { is_worker_message, worker_message } from "../../util/worker_protocol.js";
 
 register_default_models();
 
 const cancelled_requests = new Set();
 
+// Used by the "resample_uncertainty" handler below. Resolves each `models[]`
+// entry to its registered fit()/normalizeResult(), and returns
+// resampleUncertainty()'s required fitFn -- one call per replicate, returning
+// one outcome per model. A model that throws on a perturbed variant is
+// reported as a non-converged outcome for THAT model only, rather than losing
+// every other model's outcome for the same replicate.
+//
+// Not exported: this module's top level registers a "message" listener on
+// `self`, which is the worker's global scope in here but would be the main
+// thread's `window` if this file were ever imported outside a worker. The
+// same fitFn-building logic is duplicated (not shared) in modeling_state.js's
+// no-worker fallback -- exactly how domain_sensitivity's analogous fitFn is
+// already duplicated between the two files, for the same reason.
+function build_resampling_fit_fn(models) {
+  const entries = (models ?? []).map(({ modelId, config }) => {
+    const entry = get_model(modelId);
+    if (!entry) throw new Error(`Unknown model "${modelId}".`);
+    return { modelId, config, entry };
+  });
+  return ({ histogram, peakRegions }) => entries.map(({ modelId, config, entry }) => {
+    try {
+      const rawVariantResult = entry.fit({ histogram, peakRegions, config });
+      const normalized = entry.normalizeResult(rawVariantResult);
+      return {
+        modelId: normalized.modelId ?? modelId,
+        comparisonGroup: normalized.comparisonGroup ?? entry.comparisonGroup ?? null,
+        phaseFractions: normalized.phaseFractions ?? null,
+        bic: Number.isFinite(normalized.diagnostics?.bic) ? normalized.diagnostics.bic : null,
+        converged: normalized.converged === true,
+        parameters: normalized.parameters ?? null,
+      };
+    } catch (thrown) {
+      return {
+        modelId, comparisonGroup: entry.comparisonGroup ?? null,
+        phaseFractions: null, bic: null, converged: false, parameters: null,
+      };
+    }
+  });
+}
+
 self.addEventListener("message", (event) => {
   const message = event.data || {};
 
-  if (!is_worker_message(message, ["fit", "cancel"])) {
+  if (!is_worker_message(message, ["fit", "cancel", "domain_sensitivity", "resample_uncertainty"])) {
     self.postMessage(worker_message("result", Number.isInteger(message.request_id) ? message.request_id : -1, {
       ok: false,
       code: "WORKER_PROTOCOL_MISMATCH",
@@ -33,6 +101,60 @@ self.addEventListener("message", (event) => {
 
   if (message.type === "cancel") {
     cancelled_requests.add(message.request_id);
+    return;
+  }
+
+  if (message.type === "domain_sensitivity") {
+    const { request_id, modelId, values, domain, peakRegions, config, binCounts, perturbations } = message;
+    try {
+      const entry = get_model(modelId);
+      if (!entry) {
+        throw new Error(`Unknown model "${modelId}".`);
+      }
+      // fitFn's contract (domain_sensitivity.js) is synchronous and returns just
+      // enough of a normalized result for analyzeDomainSensitivity() to compare
+      // phase fractions and model choice across variants.
+      const fitFn = (histogram) => {
+        const rawVariantResult = entry.fit({ histogram, peakRegions, config });
+        const normalized = entry.normalizeResult(rawVariantResult);
+        return { phaseFractions: normalized.phaseFractions, modelId: normalized.modelId ?? modelId };
+      };
+      const analysis = analyzeDomainSensitivity({ values, domain, fitFn, binCounts, perturbations });
+      self.postMessage(worker_message("result", request_id, { ok: true, result: analysis }));
+    } catch (error) {
+      self.postMessage(worker_message("result", request_id, {
+        ok: false,
+        code: error.code || "DOMAIN_SENSITIVITY_WORKER_FAILED",
+        error: error.message || String(error),
+      }));
+    }
+    return;
+  }
+
+  if (message.type === "resample_uncertainty") {
+    const {
+      request_id, models, values, histogram, domain, binCount, peakRegions,
+      replicates, seed, intervalLevel, intervalMethod, perturbations,
+    } = message;
+    try {
+      const fitFn = build_resampling_fit_fn(models);
+      const bundle = resampleUncertainty({
+        fitFn, peakRegions, values, histogram, domain, binCount, replicates, seed, intervalLevel, intervalMethod, perturbations,
+        shouldCancel: () => cancelled_requests.has(request_id),
+        onProgress: ({ completed, total, succeeded, failed }) => {
+          self.postMessage(worker_message("progress", request_id, { completed, total, succeeded, failed }));
+        },
+      });
+      cancelled_requests.delete(request_id);
+      self.postMessage(worker_message("result", request_id, { ok: true, result: bundle }));
+    } catch (error) {
+      cancelled_requests.delete(request_id);
+      self.postMessage(worker_message("result", request_id, {
+        ok: false,
+        code: error.code || "RESAMPLE_UNCERTAINTY_WORKER_FAILED",
+        error: error.message || String(error),
+      }));
+    }
     return;
   }
 

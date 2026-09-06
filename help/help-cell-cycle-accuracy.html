@@ -159,8 +159,95 @@
           </p>
         </section>
 
+        <section id="peaks" class="help_section">
+          <h2>6. Where the peaks sit &mdash; and why we don&rsquo;t nudge them to match</h2>
+          <p>
+            Everything above is about <em>fractions</em> (how much G1, S, G2). There is a second
+            number worth understanding: <strong>where PhaseFinder puts the peaks</strong> on the
+            DNA axis. On the same 30 samples, our G1 peak lands about <strong>1.6% lower</strong>
+            than FlowJo&rsquo;s and our G2 peak about <strong>3.2% lower</strong>. Both are well
+            inside the tolerance we test against, but they are consistent enough to explain.
+          </p>
+          <p>
+            They are not two problems. They are one small difference plus one deliberate choice:
+          </p>
+          <table class="help_table">
+            <thead>
+              <tr><th>Component</th><th>Size</th><th>What it is</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>G1 peak position</td>
+                <td>&minus;1.6%</td>
+                <td>A <strong>peak-width</strong> difference, not a position error &mdash; see below</td>
+              </tr>
+              <tr>
+                <td>G2:G1 ratio</td>
+                <td>&minus;1.6%</td>
+                <td>A <strong>deliberate scientific choice</strong> &mdash; see below</td>
+              </tr>
+              <tr>
+                <td><strong>G2 peak position</strong></td>
+                <td><strong>&minus;3.2%</strong></td>
+                <td>Just the two above added together &mdash; G1 shifts, and the ratio shifts it again</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>The ratio: we let the data choose, and it says 1.98, not 2.00</h3>
+          <p>
+            A G2 cell has exactly twice the DNA of a G1 cell, so it is tempting to insist the G2
+            peak sit at exactly <strong>2.00&times;</strong> the G1 peak. Real stained cells don&rsquo;t
+            quite do that. During G2/M the chromatin condenses, which makes it physically harder
+            for the dye to reach the DNA, so G2/M cells glow slightly <em>less</em> than twice as
+            bright. That is a real, documented effect, not a measurement artifact.
+          </p>
+          <p>
+            PhaseFinder fits the ratio <strong>freely</strong> and gets a median of
+            <strong>1.977</strong> &mdash; right where that effect predicts. FlowJo&rsquo;s reference
+            numbers cluster on <strong>2.009</strong>, essentially the textbook 2.00, because
+            FlowJo can <em>constrain</em> the ratio during fitting. So the &ldquo;disagreement&rdquo;
+            here is a difference of convention: we report what the sample did, they report it
+            pinned to theory.
+          </p>
+          <div class="callout warn">
+            <p class="callout_title">We will not tune this to match</p>
+            <p>
+              Pulling our G2 peak up to 2.00&times; G1 would make our numbers look closer to
+              FlowJo&rsquo;s while making them <em>less</em> faithful to the sample. If you need
+              FlowJo-convention numbers for a comparison, note the ~1.6% ratio difference and
+              apply it &mdash; don&rsquo;t expect the fit to reproduce it.
+            </p>
+          </div>
+
+          <h3>The G1 offset: our peaks are narrower, so they centre lower</h3>
+          <p>
+            The G1 difference turned out not to be about <em>position</em> at all. FlowJo reports
+            G1 peaks roughly <strong>1.5&times; wider</strong> than we fit (CV ~9.2 vs ~6.2), and
+            real G1 peaks lean to the right &mdash; the tail on the high-DNA side is heavier. Fit a
+            wider bell curve to a right-leaning peak and its centre is dragged up the heavy side;
+            fit a narrower one and it settles lower, closer to the true summit.
+          </p>
+          <p>
+            We confirmed this directly: take our own histogram, keep everything the same, and only
+            force FlowJo&rsquo;s peak width &mdash; the gap closes by about
+            <strong>three quarters</strong> on its own. Which width is the <em>right</em> one is an
+            open question we are still measuring, so for now we report the narrower fit and tell
+            you the offset exists rather than quietly closing it.
+          </p>
+          <div class="callout tip">
+            <p class="callout_title">Practical upshot</p>
+            <p>
+              If you are comparing peak <em>channels</em> with a FlowJo user, expect ours to run
+              ~1.6% low at G1 and ~3.2% low at G2. If you are comparing phase <em>fractions</em>
+              &mdash; what most people actually report &mdash; this barely matters, because both
+              peaks move together.
+            </p>
+          </div>
+        </section>
+
         <section id="pick" class="help_section">
-          <h2>6. So which model should I pick?</h2>
+          <h2>7. So which model should I pick?</h2>
           <ul>
             <li><strong>Want to match FlowJo (or ModFit) numbers?</strong> Use
               <strong>Dean-Jett-Fox</strong>. It's the same model family and matched FlowJo best on 27

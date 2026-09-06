@@ -108,10 +108,21 @@ function make_worker_entry() {
     }
 
     if (message.type === "progress") {
+      // Two progress shapes ride this one message type: a single fit's
+      // iteration/maxIterations/sse (run_fit_in_worker), and a replicate
+      // sweep's completed/total/succeeded/failed (UNC-01's
+      // run_resample_uncertainty_in_worker). Forwarding both sets of fields
+      // unconditionally costs nothing -- the fields a caller didn't ask about
+      // are simply undefined -- and keeps this handler from needing to know
+      // which request type is in flight.
       request.onProgress?.({
         iteration: message.iteration,
         maxIterations: message.maxIterations,
         sse: message.sse,
+        completed: message.completed,
+        total: message.total,
+        succeeded: message.succeeded,
+        failed: message.failed,
       });
       return;
     }
@@ -220,6 +231,139 @@ export function run_fit_in_worker(modelId, histogram, config, { onProgress, peak
   try {
     entry.inFlight += 1;
     entry.worker.postMessage(worker_message("fit", request_id, { modelId, histogram, peakRegions, config }));
+  } catch (_) {
+    fit_worker_requests.delete(request_id);
+    entry.inFlight = Math.max(0, entry.inFlight - 1);
+    return null;
+  }
+
+  const cancel = () => {
+    try {
+      entry.worker.postMessage(worker_message("cancel", request_id));
+    } catch (_) {
+      // Worker already gone; nothing to cancel.
+    }
+  };
+
+  return { promise, cancel };
+}
+
+/*
+
+Purpose:
+	DOMAIN-01: runs analyzeDomainSensitivity() (js/analysis/cell_cycle/
+	domain_sensitivity.js) in the worker pool instead of on the main thread.
+	analyzeDomainSensitivity() refits the sample once per supported bin count x
+	domain perturbation (12 fits with the defaults) and its fitFn contract is
+	synchronous by design, so the whole sweep would otherwise block the UI
+	thread for several fit-durations at once; running it in a worker keeps that
+	cost off the critical path the same way run_fit_in_worker() does for a
+	single fit.
+
+	Cancellation has the same caveat as run_fit_in_worker(): the sweep is one
+	synchronous message handler in the worker with no yield points, so cancel()
+	cannot interrupt a sweep already in progress -- it only prevents acting on a
+	result that arrives after the caller has stopped caring.
+
+Input:
+	spec [object]: { modelId, values, domain: {min,max}, peakRegions, config,
+	                 binCounts, perturbations } -- binCounts/perturbations may be
+	                 omitted to use analyzeDomainSensitivity()'s own defaults
+	options [object]: optional { onProgress } -- accepted for symmetry with
+	                  run_fit_in_worker(); analyzeDomainSensitivity() has no
+	                  per-variant progress hook, so it is otherwise unused today
+
+Output:
+	handle [object|null]: { promise, cancel } -- promise resolves to
+	                      analyzeDomainSensitivity()'s result object -- or null
+	                      when no worker is available (caller should run the
+	                      sweep on the main thread instead)
+
+*/
+export function run_domain_sensitivity_in_worker(spec, { onProgress } = {}) {
+  const entry = acquire_worker();
+  if (!entry) return null;
+
+  const request_id = ++fit_worker_request_id;
+  const promise = new Promise((resolve, reject) => {
+    fit_worker_requests.set(request_id, { resolve, reject, onProgress, entry });
+  });
+
+  const { modelId, values, domain, peakRegions, config, binCounts, perturbations } = spec;
+  try {
+    entry.inFlight += 1;
+    entry.worker.postMessage(worker_message("domain_sensitivity", request_id, {
+      modelId, values, domain, peakRegions, config, binCounts, perturbations,
+    }));
+  } catch (_) {
+    fit_worker_requests.delete(request_id);
+    entry.inFlight = Math.max(0, entry.inFlight - 1);
+    return null;
+  }
+
+  const cancel = () => {
+    try {
+      entry.worker.postMessage(worker_message("cancel", request_id));
+    } catch (_) {
+      // Worker already gone; nothing to cancel.
+    }
+  };
+
+  return { promise, cancel };
+}
+
+/*
+
+Purpose:
+	UNC-01: runs resampleUncertainty() (js/analysis/cell_cycle/resampling.js) in
+	the worker pool instead of on the main thread. resampleUncertainty() refits
+	every supplied model once per replicate (DEFAULT_REPLICATES=200 by default)
+	and its fitFn contract is synchronous by design (see resampling.js's
+	header), so the whole sweep would otherwise block the UI thread for however
+	many replicates x models x seconds-per-fit that is; running it in a worker
+	keeps that cost off the critical path the same way run_fit_in_worker() and
+	run_domain_sensitivity_in_worker() do.
+
+	Cancellation has the same caveat as those two: the sweep is one synchronous
+	message handler in the worker with no yield points, so cancel() cannot
+	interrupt a replicate already being fit -- it only prevents acting on a
+	result that arrives after the caller has stopped caring. A cancelled sweep
+	still returns whatever it completed (resampleUncertainty()'s own
+	`cancelled`/replicatesSucceeded fields say how much).
+
+Input:
+	spec [object]: { models: [{modelId, config}, ...], values, histogram,
+	                 domain: {min,max}, binCount, peakRegions, replicates, seed,
+	                 intervalLevel, intervalMethod, perturbations } -- fields may
+	                 be omitted to use resampleUncertainty()'s own defaults
+	options [object]: optional { onProgress({completed,total,succeeded,failed}) }
+
+Output:
+	handle [object|null]: { promise, cancel } -- promise resolves to
+	                      resampleUncertainty()'s bundle -- or null when no
+	                      worker is available (caller should run the sweep on
+	                      the main thread instead)
+
+*/
+export function run_resample_uncertainty_in_worker(spec, { onProgress } = {}) {
+  const entry = acquire_worker();
+  if (!entry) return null;
+
+  const request_id = ++fit_worker_request_id;
+  const promise = new Promise((resolve, reject) => {
+    fit_worker_requests.set(request_id, { resolve, reject, onProgress, entry });
+  });
+
+  const {
+    models, values, histogram, domain, binCount, peakRegions,
+    replicates, seed, intervalLevel, intervalMethod, perturbations,
+  } = spec;
+  try {
+    entry.inFlight += 1;
+    entry.worker.postMessage(worker_message("resample_uncertainty", request_id, {
+      models, values, histogram, domain, binCount, peakRegions,
+      replicates, seed, intervalLevel, intervalMethod, perturbations,
+    }));
   } catch (_) {
     fit_worker_requests.delete(request_id);
     entry.inFlight = Math.max(0, entry.inFlight - 1);

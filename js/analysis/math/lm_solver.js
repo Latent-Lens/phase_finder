@@ -193,12 +193,21 @@ export function buildNormalEquations(jacobian, residuals, lambda) {
   };
 }
 
-// 2-norm condition estimate from the eigenvalues of J'J. The cell-cycle
-// models have at most twelve parameters, so a small symmetric Jacobi sweep is
-// simpler and more reliable than inferring conditioning from solver failures.
-export function estimateJacobianCondition(jacobian) {
-  if (!jacobian.length || !jacobian[0]?.length) return 1;
-  const columns = jacobian[0].length;
+/*
+
+Purpose:
+	Gram matrix J'J. Small (at most a dozen model parameters), so the explicit
+	symmetric product is cheaper and clearer than any factorization.
+
+Input:
+	jacobian [array]: rows = residuals, columns = parameters
+
+Output:
+	gram [array]: the columns x columns symmetric matrix J'J
+
+*/
+export function gramMatrix(jacobian) {
+  const columns = jacobian[0]?.length ?? 0;
   const gram = Array.from({ length: columns }, () => new Array(columns).fill(0));
   for (const row of jacobian) {
     for (let left = 0; left < columns; left += 1) {
@@ -208,39 +217,107 @@ export function estimateJacobianCondition(jacobian) {
       }
     }
   }
-  for (let sweep = 0; sweep < 50 * columns * columns; sweep += 1) {
+  return gram;
+}
+
+/*
+
+Purpose:
+	Cyclic Jacobi eigendecomposition of a small symmetric matrix, eigenvalues in
+	descending order with their eigenvectors. The cell-cycle models have at most
+	twelve parameters, so a Jacobi sweep is both simpler and more numerically
+	dependable here than inferring spectral information from solver behaviour --
+	and unlike a factorization it degrades gracefully on the rank-deficient
+	J'J that a weakly identified fit produces, which is exactly the case
+	UNC-01's identifiability reporting has to describe rather than crash on.
+
+	The input is not modified.
+
+Input:
+	matrix [array]: a symmetric n x n matrix
+
+Output:
+	decomposition [object]: {
+	  values [array]:  eigenvalues, descending
+	  vectors [array]: vectors[k] is the unit eigenvector for values[k]
+	}
+
+*/
+export function symmetricEigenDecomposition(matrix) {
+  const size = matrix.length;
+  if (!size) return { values: [], vectors: [] };
+  const a = matrix.map((row) => [...row]);
+  // Eigenvector accumulator, built as the identity and rotated alongside `a`.
+  const v = Array.from({ length: size }, (_, row) => Array.from(
+    { length: size }, (_, column) => (row === column ? 1 : 0),
+  ));
+
+  for (let sweep = 0; sweep < 50 * size * size; sweep += 1) {
     let p = 0;
     let q = 0;
     let largest = 0;
-    for (let row = 0; row < columns; row += 1) {
-      for (let column = row + 1; column < columns; column += 1) {
-        if (Math.abs(gram[row][column]) > largest) {
-          largest = Math.abs(gram[row][column]);
+    for (let row = 0; row < size; row += 1) {
+      for (let column = row + 1; column < size; column += 1) {
+        if (Math.abs(a[row][column]) > largest) {
+          largest = Math.abs(a[row][column]);
           p = row;
           q = column;
         }
       }
     }
-    if (largest <= 1e-12 * Math.max(1, ...gram.map((row, index) => Math.abs(row[index])))) break;
-    const angle = 0.5 * Math.atan2(2 * gram[p][q], gram[q][q] - gram[p][p]);
+    if (largest <= 1e-12 * Math.max(1, ...a.map((row, index) => Math.abs(row[index])))) break;
+    const angle = 0.5 * Math.atan2(2 * a[p][q], a[q][q] - a[p][p]);
     const cosine = Math.cos(angle);
     const sine = Math.sin(angle);
-    const app = gram[p][p];
-    const aqq = gram[q][q];
-    const apq = gram[p][q];
-    gram[p][p] = cosine * cosine * app - 2 * sine * cosine * apq + sine * sine * aqq;
-    gram[q][q] = sine * sine * app + 2 * sine * cosine * apq + cosine * cosine * aqq;
-    gram[p][q] = 0;
-    gram[q][p] = 0;
-    for (let index = 0; index < columns; index += 1) {
+    const app = a[p][p];
+    const aqq = a[q][q];
+    const apq = a[p][q];
+    a[p][p] = cosine * cosine * app - 2 * sine * cosine * apq + sine * sine * aqq;
+    a[q][q] = sine * sine * app + 2 * sine * cosine * apq + cosine * cosine * aqq;
+    a[p][q] = 0;
+    a[q][p] = 0;
+    for (let index = 0; index < size; index += 1) {
       if (index === p || index === q) continue;
-      const aip = gram[index][p];
-      const aiq = gram[index][q];
-      gram[index][p] = gram[p][index] = cosine * aip - sine * aiq;
-      gram[index][q] = gram[q][index] = sine * aip + cosine * aiq;
+      const aip = a[index][p];
+      const aiq = a[index][q];
+      a[index][p] = a[p][index] = cosine * aip - sine * aiq;
+      a[index][q] = a[q][index] = sine * aip + cosine * aiq;
+    }
+    for (let index = 0; index < size; index += 1) {
+      const vip = v[index][p];
+      const viq = v[index][q];
+      v[index][p] = cosine * vip - sine * viq;
+      v[index][q] = sine * vip + cosine * viq;
     }
   }
-  const eigenvalues = gram.map((row, index) => Math.max(0, row[index]));
+
+  const order = Array.from({ length: size }, (_, index) => index)
+    .sort((left, right) => a[right][right] - a[left][left]);
+  return {
+    values: order.map((index) => a[index][index]),
+    vectors: order.map((column) => v.map((row) => row[column])),
+  };
+}
+
+/*
+
+Purpose:
+	2-norm condition estimate of J, as sqrt(lambda_max / lambda_min) over the
+	eigenvalues of J'J. Infinity when the smallest eigenvalue is numerically
+	indistinguishable from zero -- a rank-deficient Jacobian has no finite
+	condition number, and reporting a large-but-finite one would understate it.
+
+Input:
+	jacobian [array]: rows = residuals, columns = parameters
+
+Output:
+	condition [number]: sqrt(lambda_max / lambda_min), or Infinity
+
+*/
+export function estimateJacobianCondition(jacobian) {
+  if (!jacobian.length || !jacobian[0]?.length) return 1;
+  const eigenvalues = symmetricEigenDecomposition(gramMatrix(jacobian))
+    .values.map((value) => Math.max(0, value));
   const largest = Math.max(...eigenvalues);
   const smallest = Math.min(...eigenvalues);
   if (!(largest > 0) || smallest <= largest * 1e-14) return Infinity;

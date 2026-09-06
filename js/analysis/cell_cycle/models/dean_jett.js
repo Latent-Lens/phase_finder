@@ -52,6 +52,12 @@
 // ============================================================================
 
 import { peakComponents, convolvedSPhase, projectMeansToFeasible, sPhaseProfileMinimum, DEFAULT_S_QUADRATURE_NODES } from "./shared.js";
+import {
+  parameterUncertainty,
+  phaseFractionIntervals,
+  multistartAgreement,
+  identifiabilityWarnings,
+} from "../uncertainty.js";
 import { createParameterTransform, fitPoissonModel } from "../fit_engine.js";
 import { buildPoissonFitDiagnostics, fitQualityWarnings, tailMassWarning } from "../diagnostics.js";
 import { buildConstraintAudit, constraintAuditWarnings } from "../constraint_audit.js";
@@ -348,6 +354,99 @@ function component_from_counts(id, label, counts, areaParameter, role = "biologi
   };
 }
 
+// UNC-01: parameter names for the covariance/correlation matrices, in the exact
+// order free_indices() lists them, so a reader of the correlation matrix never
+// has to map a row back to a theta slot by hand.
+const PARAMETER_LABEL = Object.freeze({
+  [PARAMETER_INDEX.G1_AREA]: "g1Area",
+  [PARAMETER_INDEX.G1_MEAN]: "g1Mean",
+  [PARAMETER_INDEX.G1_CV]: "g1CV",
+  [PARAMETER_INDEX.G2_AREA]: "g2Area",
+  [PARAMETER_INDEX.G2_MEAN]: "g2Mean",
+  [PARAMETER_INDEX.G2_CV]: "g2CV",
+  [PARAMETER_INDEX.S_AREA]: "sArea",
+  [PARAMETER_INDEX.SHAPE1]: "shape1",
+  [PARAMETER_INDEX.SHAPE2]: "shape2",
+});
+
+/*
+
+Purpose:
+	UNC-01's uncertainty bundle for a finished fit: identifiability evidence
+	(rank, conditioning, parameter correlations) plus delta-method intervals on
+	the three phase fractions, which is the only place in the result where a
+	reported percentage acquires an interval.
+
+	Returns null -- never a fabricated bundle -- when the engine could not build
+	a Jacobian at the solution, so a consumer can tell "no uncertainty was
+	computed" apart from "uncertainty was computed and is small".
+
+Input:
+	fit [object]: the fitPoissonModel result (needs solutionJacobian, parameters,
+	              and attempts -- the multi-start audit trail multimodality is
+	              read from)
+	config [object]: the merged model config, for free_indices()
+	constraintAudit [object]: buildConstraintAudit's bundle; its active entries
+	                          say which free parameters ended on a bound, where
+	                          the interior-solution assumption behind an
+	                          asymptotic interval does not hold
+
+Output:
+	uncertainty [object|null]: the parameterUncertainty() bundle plus
+	                        { phaseFractions, multistart, boundaryParameters,
+	                          warnings }
+
+*/
+function build_uncertainty(fit, config, constraintAudit) {
+  if (!Array.isArray(fit.solutionJacobian) || !fit.solutionJacobian.length) return null;
+  const freeIndices = free_indices(config);
+  const parameterNames = freeIndices.map((index) => PARAMETER_LABEL[index] ?? `theta[${index}]`);
+  try {
+    const uncertainty = parameterUncertainty({
+      jacobian: fit.solutionJacobian,
+      freeIndices,
+      parameterNames,
+    });
+    const intervals = phaseFractionIntervals({
+      parameters: fit.parameters,
+      covariance: uncertainty.covariance,
+      freeIndices,
+      areaIndices: {
+        g1: PARAMETER_INDEX.G1_AREA,
+        s: PARAMETER_INDEX.S_AREA,
+        g2: PARAMETER_INDEX.G2_AREA,
+      },
+    });
+    // Only bounds on parameters the optimizer was actually free to move matter
+    // here: a bound on a frozen parameter says nothing about the interval,
+    // because there is no interval to invalidate.
+    const freeNames = new Set(parameterNames);
+    const boundaryParameters = (constraintAudit?.active ?? [])
+      .map((entry) => entry.parameter)
+      .filter((parameter) => parameter && freeNames.has(parameter));
+    const multistart = multistartAgreement(fit.attempts, { freeIndices, parameterNames });
+    return {
+      ...uncertainty,
+      method: "asymptotic_deviance_curvature",
+      intervalLevel: 0.95,
+      phaseFractions: intervals,
+      multistart,
+      boundaryParameters,
+      warnings: identifiabilityWarnings(uncertainty, intervals, {
+        multistart,
+        boundaryParameters,
+        fractionParameters: [
+          PARAMETER_LABEL[PARAMETER_INDEX.G1_AREA],
+          PARAMETER_LABEL[PARAMETER_INDEX.S_AREA],
+          PARAMETER_LABEL[PARAMETER_INDEX.G2_AREA],
+        ],
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const dean_jett = {
   id: "dean_jett",
   version: "1.0.0",
@@ -513,6 +612,8 @@ export const dean_jett = {
       profileMinimumFn: sPhaseProfileMinimum,
     });
 
+    const uncertainty = build_uncertainty(fit, config, constraintAudit);
+
     const warnings = [
       ...fitQualityWarnings(diagnostics),
       ...components
@@ -524,6 +625,7 @@ export const dean_jett = {
         }))
         .filter(Boolean),
       ...constraintAuditWarnings(constraintAudit),
+      ...(uncertainty?.warnings ?? []),
     ];
 
     return {
@@ -562,6 +664,7 @@ export const dean_jett = {
         })),
       },
       warnings,
+      uncertainty,
       provenance: { rawResult },
       targetResults: [],
     };

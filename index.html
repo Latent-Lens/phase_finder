@@ -257,6 +257,21 @@
                 <p id="qc_critical_review_status" class="qc_critical_review_status" role="status" aria-live="polite" hidden></p>
               </div>
               <div id="cell_cycle_fit_result" class="cell_cycle_fit_result" role="status" aria-live="polite" hidden></div>
+              <!-- DOMAIN-01: on-demand only -- the sweep re-fits the sample per
+                   bin count x domain perturbation (~12 fits), so it never runs
+                   automatically. Shown once a reportable fit exists. -->
+              <div class="cell_cycle_domain_sensitivity_actions">
+                <button type="button" id="cell_cycle_domain_sensitivity_button" class="peak_review_button quick_tooltip" data-tooltip-key="checkDomainSensitivity" hidden>Check domain sensitivity</button>
+              </div>
+              <p id="cell_cycle_domain_sensitivity_status" class="peak_review_status" role="status" aria-live="polite" hidden></p>
+              <!-- UNC-01: on-demand only -- a resampling sweep is a full refit
+                   per model per replicate (up to a couple hundred), so it
+                   never runs automatically. Shown once a reportable fit
+                   exists. -->
+              <div class="cell_cycle_resampling_actions">
+                <button type="button" id="cell_cycle_resampling_button" class="peak_review_button quick_tooltip" data-tooltip-key="checkResamplingUncertainty" hidden>Check resampling uncertainty</button>
+              </div>
+              <p id="cell_cycle_resampling_status" class="peak_review_status" role="status" aria-live="polite" hidden></p>
             </fieldset>
           </section>
           <section class="sidebar_section sidebar_actions">

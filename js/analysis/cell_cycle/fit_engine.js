@@ -6,7 +6,7 @@
 // of several deterministic restarts. Its single export, fitPoissonModel, owns
 // none of a model's equations or parameterization -- the model modules do.
 
-import { runLevenbergMarquardt } from "../math/lm_solver.js";
+import { runLevenbergMarquardt, buildFiniteDiffJacobian } from "../math/lm_solver.js";
 import { poissonDeviance, poissonDevianceResiduals } from "../math/poisson.js";
 
 const TRANSFORM_EPSILON = 1e-12;
@@ -146,8 +146,36 @@ export function fitPoissonModel({
     if (attempt.deviance < best.deviance) best = attempt;
   }
 
+  // UNC-01: the Jacobian of the deviance residuals at the solution, in NATURAL
+  // parameter units. The optimizer's own Jacobians are in transformed
+  // coordinates and are discarded each iteration, and a covariance built from
+  // those would describe the uncertainty of logits and log-areas rather than of
+  // the quantities anyone reports. Re-differentiating once here, through the
+  // same projectFn the fit obeyed, costs one iteration's worth of model
+  // evaluations and gives every model a covariance in the units its parameters
+  // are published in. `null` when the residuals at the solution are not
+  // differentiable (a cancelled or degenerate fit), never a fabricated matrix.
+  let solutionJacobian = null;
+  if (!best.cancelled && freeIndices.length) {
+    try {
+      const naturalResidualFn = (theta) =>
+        poissonDevianceResiduals(observedCounts, expectedCountsFn(projectFn(theta)));
+      solutionJacobian = buildFiniteDiffJacobian({
+        parameters: best.parameters,
+        baseResiduals: naturalResidualFn(best.parameters),
+        freeIndices,
+        residualFn: naturalResidualFn,
+        projectFn,
+        finiteDifferenceStep: options.finiteDifferenceStep,
+      });
+    } catch {
+      solutionJacobian = null;
+    }
+  }
+
   return {
     parameters: best.parameters,
+    solutionJacobian,
     optimizerParameters: best.optimizerParameters,
     expectedCounts: best.expectedCounts,
     deviance: best.deviance,
