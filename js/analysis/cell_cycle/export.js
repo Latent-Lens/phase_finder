@@ -14,7 +14,29 @@
 
 import { PHASEFINDER_VERSION, PHASEFINDER_SOURCE_COMMIT } from "../../util/build_info.js";
 
-export const EXPORT_FORMAT_VERSION = "1.0.0";
+import { fraction_trust_reason } from "./result_contract.js";
+
+export const EXPORT_FORMAT_VERSION = "1.1.0";
+
+function export_curves(result) {
+  const histogram = result?.histogramProvenance;
+  if (!histogram) return result?.curves ?? null;
+  const edges = histogram.binEdges;
+  const fitted = result.expectedCounts;
+  if (!edges?.length || edges.length !== fitted?.length + 1
+      || histogram.counts?.length !== fitted.length) throw new Error("Fit histogram and curve lengths do not match.");
+  const curves = {
+    x: Array.from(fitted, (_, i) => (edges[i] + edges[i + 1]) / 2),
+    observed: Array.from(histogram.counts), fitted: Array.from(fitted),
+    residuals: Array.from(fitted, (value, i) => histogram.counts[i] - value),
+  };
+  for (const id of ["g1", "s", "g2"]) {
+    const counts = result.components?.find(component => component.id === id)?.counts;
+    if (counts?.length !== fitted.length) throw new Error(`Missing or mismatched ${id} component counts.`);
+    curves[id] = Array.from(counts);
+  }
+  return curves;
+}
 
 /*
 
@@ -53,17 +75,18 @@ export function build_fit_export(row, result, { includeCurves = true } = {}) {
     model: {
       id: result.modelId ?? null,
       version: result.modelVersion ?? null,
-      settings: result.settings ?? null,
+      settings: result.appliedConfiguration ?? result.settings ?? null,
       settingsApplicability: result.settingsApplicability ?? null,
       configHash: result.configHash ?? null,
     },
     domain: {
-      range: result.analysisDomain ?? null,
-      binCount: result.binCount ?? null,
-      underflow: result.domainCoverage?.underflow ?? null,
-      overflow: result.domainCoverage?.overflow ?? null,
+      range: result.histogramProvenance ? [result.histogramProvenance.domain.min, result.histogramProvenance.domain.max] : result.analysisDomain ?? null,
+      binCount: result.histogramProvenance?.binCount ?? result.binCount ?? null,
+      underflow: result.histogramProvenance?.underflow ?? result.domainCoverage?.underflow ?? null,
+      overflow: result.histogramProvenance?.overflow ?? result.domainCoverage?.overflow ?? null,
       componentTailCoverage: result.componentTailCoverage ?? result.domainCoverage?.componentTailCoverage ?? null,
     },
+    histogramProvenance: result.histogramProvenance ?? null,
     peakRegions: result.peakRegions ?? null,
     qc: result.preflight?.qc ?? null,
     bulkRegionProvenance: result.bulkRegionProvenance ?? null,
@@ -73,13 +96,15 @@ export function build_fit_export(row, result, { includeCurves = true } = {}) {
       converged: result.converged ?? null,
       convergenceReason: result.convergenceReason ?? result.terminationReason ?? null,
       validForReporting: result.validForReporting ?? null,
+      scientificallyValid: result.scientificallyValid ?? null,
+      limitedReliability: result.limitedReliability ?? null,
       validityReasons: result.validityReasons ?? [],
       warnings: result.warnings ?? [],
       goodnessOfFit: result.goodnessOfFit ?? null,
-      optimizerDiagnostics: result.optimizerDiagnostics ?? null,
+      optimizerDiagnostics: result.diagnostics ?? result.optimizerDiagnostics ?? null,
       contractVersion: result.contractVersion ?? null,
     },
-    curves: includeCurves ? result.curves ?? null : null,
+    curves: includeCurves ? export_curves(result) : null,
   };
 }
 
@@ -117,14 +142,15 @@ Output:
 
 */
 export function build_fit_csv(row, result) {
-  const c = result?.curves;
+  const c = export_curves(result);
   if (!c?.x?.length) throw new Error("This fit has no curves to export.");
-  const lines = [["sample", "model", "bin_center", "observed", "fitted", "g1", "s", "g2", "residual"].join(",")];
+  const lines = [["sample", "model", "bin_center", "observed", "fitted", "g1", "s", "g2", "residual", "qualification", "warnings"].join(",")];
   for (let i = 0; i < c.x.length; i += 1) {
     lines.push([
       csvCell(row?.name),
       csvCell(result.modelId),
       c.x[i], c.observed[i], c.fitted[i], c.g1[i], c.s[i], c.g2[i], c.residuals[i],
+      csvCell(fraction_trust_reason(result)), csvCell(JSON.stringify(result.warnings ?? [])),
     ].join(","));
   }
   return lines.join("\n");

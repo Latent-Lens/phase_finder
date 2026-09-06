@@ -70,15 +70,14 @@ Purpose:
 	outranks `converged === false`: a result with no reportable number at all
 	is a stronger caveat than a reportable-but-unconverged one. Never defaults
 	a missing/undefined validForReporting or converged to a trusting value --
-	absence of evidence is not validation, so only an explicit `=== false`
-	trips a reason.
+	absence of evidence is not validation, so missing fields alone do not invent a verdict. Material quality warnings
+	and explicit limited/scientifically-invalid flags also require a caveat.
 
 Input:
-	result [object]: the normalized fit result (only `.validForReporting` and
-		`.converged` are read)
+	result [object]: the normalized fit result, including quality warnings and trust flags
 
 Output:
-	reason ["unvalidated result"|"fit did not converge"|""]: "" means clean
+	reason [string]: a trust caveat, or "" when none is recorded
 
 */
 // Moved to js/analysis/cell_cycle/result_contract.js (DOM-free) so js/plotting/

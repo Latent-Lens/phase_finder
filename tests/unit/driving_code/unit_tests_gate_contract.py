@@ -159,6 +159,39 @@ _GATE_TESTS = r"""async () => {
     };
   });
 
+  await run('AMBIG-01/D9: an inferred_g2 (single-peak) selection is preflighted through and qualified with a warning, not silently accepted', () => {
+    const state = {
+      histogram: { fingerprint: 'fp-amb', edges: [0, 1, 2], counts: [1, 1] },
+      modeling: {
+        histogramFingerprint: 'fp-amb',
+        peakDetection: { status: 'inferred_g2', confidence: 0.4, reasons: ['NO_PLAUSIBLE_DETECTED_PAIR'] },
+        peakSelection: {
+          regions: { g1: { left: 0, right: 1 }, g2: { left: 1, right: 2 } },
+          reviewed: true, stale: false, revision: 1,
+        },
+      },
+      channelKey: 'DNA_A',
+    };
+    const preflight = contract.model_preflight(state);
+    const applied = contract.apply_result_contract(rawResult(), preflight);
+    const detectedPreflight = contract.model_preflight({
+      ...state,
+      modeling: { ...state.modeling, peakDetection: { status: 'detected', confidence: 0.9, reasons: [] } },
+    });
+    const detectedApplied = contract.apply_result_contract(rawResult(), detectedPreflight);
+    return {
+      pass: preflight.peakDetectionStatus === 'inferred_g2'
+        && applied.warnings.some((w) => w.code === contract.RESULT_REASON.REGIONS_AMBIGUOUS_SINGLE_PEAK)
+        && applied.validForReporting === true
+        && !detectedApplied.warnings.some((w) => w.code === contract.RESULT_REASON.REGIONS_AMBIGUOUS_SINGLE_PEAK),
+      detail: JSON.stringify({
+        status: preflight.peakDetectionStatus,
+        warnings: applied.warnings.map((w) => w.code),
+        detectedWarnings: detectedApplied.warnings.map((w) => w.code),
+      }),
+    };
+  });
+
   await run('GATE-01: the per-sample fit entry point produces a contracted result', async () => {
     // fit_cell_cycle_model() is the single per-sample entry point every UI,
     // bulk, ridge-edit, and session-restore path funnels through; proving IT

@@ -170,11 +170,31 @@ _TESTS = r"""() => {
     const dataRows = lines.slice(1);
     const secondRowFields = dataRows[1].split(',');
     return {
-      pass: header === 'sample,model,bin_center,observed,fitted,g1,s,g2,residual'
+      pass: header === 'sample,model,bin_center,observed,fitted,g1,s,g2,residual,qualification,warnings'
         && dataRows.length === 3
         // fields: "sample_A","dean_jett_fox",20,200,202,10,180,12,-2
         && secondRowFields[2] === '20' && secondRowFields[3] === '200' && secondRowFields[8] === '-2',
       detail: csv,
+    };
+  });
+
+  run('build_fit_csv: qualification and warnings columns carry the fit\'s actual trust caveat and warning content (GATE-02/UI-01), not just a header label', () => {
+    // The header-shape test above never inspects these two columns' values, so
+    // a regression that wired them to the wrong field (or always blank) would
+    // pass it silently. fullResult carries one non-info warning, which is
+    // exactly the case fraction_trust_reason() (the same function table,
+    // sidebar and TSV route through) treats as material.
+    const reason = window.CellCycleResultContract.fraction_trust_reason(fullResult);
+    const warned = mod.build_fit_csv(row, fullResult).split('\n')[1];
+    const cleanResult = { ...fullResult, warnings: [] };
+    const cleanReason = window.CellCycleResultContract.fraction_trust_reason(cleanResult);
+    const clean = mod.build_fit_csv(row, cleanResult).split('\n')[1];
+    return {
+      pass: reason === 'fit has reliability warnings'
+        && warned.endsWith(`"${reason}","[""S-phase estimate near a QC boundary""]"`)
+        && cleanReason === ''
+        && clean.endsWith('"",""[]""') === false && clean.endsWith('"","[]"'),
+      detail: JSON.stringify({ reason, warned, cleanReason, clean }),
     };
   });
 
