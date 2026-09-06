@@ -506,9 +506,20 @@ export async function fit_cell_cycle_model(row, modelId, options = {}) {
     binCount: histogram?.binCount ?? null,
   };
   const peakRegions = modeling.peakSelection.regions;
-  const { onProgress, signal, qcWaivers = state.qcWaivers ?? {}, requiredQc, minimumRetainedEvents, ...overrides } = options;
+  // QC-01: qcAcknowledgements rides the same route as qcWaivers -- read off the
+  // pipeline state for this sample unless the caller overrides. Without this the
+  // contract's critical-removal gate was a dead end: it read the field and
+  // nothing on any path ever supplied it.
+  const {
+    onProgress, signal,
+    qcWaivers = state.qcWaivers ?? {},
+    qcAcknowledgements = state.qcAcknowledgements ?? {},
+    requiredQc, minimumRetainedEvents, ...overrides
+  } = options;
   const config = resolve_model_configuration(modelId, modeling.settings, overrides);
-  const preflight = model_preflight(state, { minimumRetainedEvents, qcWaivers, requiredQc, configuration: config });
+  const preflight = model_preflight(state, {
+    minimumRetainedEvents, qcWaivers, qcAcknowledgements, requiredQc, configuration: config,
+  });
   if (!preflight.passed) {
     const error = new Error(preflight.reasons[0].message);
     error.code = preflight.reasons[0].code;

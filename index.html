@@ -244,6 +244,18 @@
                 <button type="button" id="cell_cycle_fit_all_button" class="peak_review_button quick_tooltip" data-tooltip-key="fitAllReviewed" disabled>Fit All Samples</button>
               </div>
               <p id="cell_cycle_fit_status" class="peak_review_status" role="status" hidden></p>
+              <!-- QC-01: inline, not a modal. Acknowledging a critical event loss is a
+                   review decision the user should be able to sit with alongside the QC
+                   numbers and the plot, not an interruption that has to be dismissed
+                   before the app is usable again. -->
+              <div id="qc_critical_review" class="qc_critical_review" role="group"
+                   aria-labelledby="qc_critical_review_heading" hidden>
+                <h4 id="qc_critical_review_heading" class="qc_critical_review_heading">Critical QC event loss — review required</h4>
+                <p class="qc_critical_review_intro">A QC stage removed more than half the events. The fit is blocked until you confirm you have reviewed what was discarded.</p>
+                <ul id="qc_critical_review_list" class="qc_critical_review_list"></ul>
+                <button type="button" id="qc_critical_review_acknowledge" class="peak_review_button">I have reviewed this</button>
+                <p id="qc_critical_review_status" class="qc_critical_review_status" role="status" aria-live="polite" hidden></p>
+              </div>
               <div id="cell_cycle_fit_result" class="cell_cycle_fit_result" role="status" aria-live="polite" hidden></div>
             </fieldset>
           </section>
@@ -771,6 +783,11 @@
             <label class="plot_export_option">
               <input type="radio" name="plot_export_format" value="csv" />
               <span><strong>CSV</strong> — per-bin fitted curves (observed, fitted, G1/S/G2-M, residuals) for every plotted sample</span>
+            </label>
+            <!-- QC-01: covers every LOADED sample, not only the plotted ones. -->
+            <label class="plot_export_option">
+              <input type="radio" name="plot_export_format" value="qcmatrix" />
+              <span><strong>QC matrix (TSV)</strong> — what every QC stage did to every loaded sample, plus the provenance of the mask each analysis actually used</span>
             </label>
           </fieldset>
           <fieldset class="plot_export_group">

@@ -37,6 +37,9 @@ import { active_peak_review_row, peak_region_draft_valid } from "./peak_review_u
 import { deep_clone } from "../../util/clone.js";
 import { escape_html } from "../../util/html.js";
 import { result_reporting_summary } from "./result_contract.js";
+// QC-01: the critical-event-loss review panel. Kept in its own module so the
+// acknowledgement rules stay testable without this file's orchestration.
+import { render_qc_critical_review, init_qc_critical_review } from "./qc_review_ui.js";
 // UI-01: the same fraction formatter the metadata table/TSV route through
 // (js/ui/cell_cycle_columns.js), so the sidebar can never disagree with them
 // about whether a number is flagged (SCI-05).
@@ -415,6 +418,11 @@ function render_result(result) {
 
 function refresh_panel() {
   const row = active_peak_review_row();
+  // QC-01: a critical event loss blocks the fit, so the review that unblocks it
+  // belongs on every refresh -- not only after a failed fit attempt. Showing it
+  // before the user clicks Fit is the difference between an explained
+  // precondition and an unexplained refusal.
+  render_qc_critical_review(row);
   // Fit All is a bulk auto-fit over every plotted sample (auto-detect + average
   // + fit), so it's enabled whenever anything is plotted -- even with several
   // samples checked and none singled out as the active review row. The model
@@ -722,11 +730,13 @@ async function on_fit_all_click() {
             g2: { left: shared.g2.left, right: shared.g2.right },
           }, { source: "shared-median", minimumGap: -0.01 });
         }
-        const reviewRequired = peak_detection_requires_review(
-          get_modeling_state(row).peakDetection,
-          get_modeling_state(row).peakSelection.regions,
-        ).required;
-        if (isShared || !reviewRequired) accept_peak_regions(row);
+        // Bulk fitting is fully automated -- there is no reviewer to defer
+        // to, so every proposal gets accepted regardless of detection
+        // confidence. A low-confidence detection (ambiguous/inferred/
+        // fallback-width) still surfaces as a warning on its own result via
+        // model_preflight()/apply_result_contract() (see AMBIG-01/D9)
+        // instead of silently blocking the fit.
+        accept_peak_regions(row);
         fit_list.push({ row, isShared });
       } catch (error) {
         const stored = {
@@ -1229,6 +1239,13 @@ export function init_modeling_ui() {
   if (cell_cycle_fit_current_button) cell_cycle_fit_current_button.addEventListener("click", on_fit_current_click);
   if (cell_cycle_fit_all_button) cell_cycle_fit_all_button.addEventListener("click", on_fit_all_click);
   if (peak_regions_apply_all_button) peak_regions_apply_all_button.addEventListener("click", on_apply_all_click);
+  init_qc_critical_review({
+    active_row: active_peak_review_row,
+    // Re-running the fit is left to the user rather than fired automatically:
+    // acknowledging a 50%+ event loss is a decision, and following it with an
+    // immediate unattended fit would blur the acknowledgement into the result.
+    on_acknowledged: () => refresh_panel(),
+  });
 
   document.addEventListener("fcs-selection-change", refresh_panel);
   document.addEventListener("cell-cycle-focus-change", refresh_panel);

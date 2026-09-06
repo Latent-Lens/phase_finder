@@ -25,6 +25,7 @@ export const RESULT_REASON = Object.freeze({
   RESULT_NONFINITE: "result_nonfinite",
   FRACTIONS_INVALID: "fractions_invalid",
   FIT_PEAK_DEGENERATE: "fit_peak_degenerate",
+  REGIONS_AMBIGUOUS_SINGLE_PEAK: "regions_ambiguous_single_peak",
 });
 
 // GATE-01. apply_result_contract() is the ONLY function that stamps a result
@@ -33,7 +34,7 @@ export const RESULT_REASON = Object.freeze({
 // contract, so a consumer can positively verify that -- rather than relying on
 // `validForReporting` being absent-and-therefore-falsy on a raw model output,
 // which is indistinguishable from a result whose validator simply never ran.
-export const RESULT_CONTRACT_VERSION = 1;
+export const RESULT_CONTRACT_VERSION = 2;
 
 /*
 
@@ -105,7 +106,7 @@ const MAX_INELIGIBLE_DNA_FRACTION = 0.25;
 // this fraction of events on any stage is a critical event loss that must be
 // acknowledged before the result can be reported.
 export const QC_ACCEPTABLE_STATUSES = Object.freeze(["applied", "passed_no_loss", "waived"]);
-const QC_CRITICAL_REMOVAL_PERCENT = 50;
+export const QC_CRITICAL_REMOVAL_PERCENT = 50;
 
 function finite_histogram(histogram) {
   const counts = histogram?.counts ?? histogram?.y;
@@ -170,6 +171,83 @@ function has_nan_number(value) {
   if (Array.isArray(value)) return value.some(has_nan_number);
   if (value && typeof value === "object") return Object.values(value).some(has_nan_number);
   return false;
+}
+
+/*
+
+Purpose:
+	QC-01 step 4, the one the checklist singles out as "the one to get right":
+	an acknowledgement that survives a configuration change silently
+	re-authorizes a different analysis.
+
+	Rather than trying to enumerate every event that ought to invalidate an
+	acknowledgement (a QC option toggled, a threshold moved, a different file
+	reconnected to the same row, a stage re-run on a different upstream mask),
+	this binds the acknowledgement to the *outcome it acknowledged*. The key
+	below is derived from the stage product itself: its config hash where the
+	stage records one, and the event counts it actually produced. Change the QC
+	configuration or the file bytes and the stage re-runs, its counts move, its
+	key changes, and the stored acknowledgement no longer matches -- so it stops
+	authorizing without anything having to remember to revoke it.
+
+	That is deliberately the inverse of a revocation list. A revocation list is
+	only as complete as the last person to think of a new invalidation trigger;
+	a match on identity fails closed by construction, because an acknowledgement
+	that does not name the current outcome simply is not an acknowledgement of it.
+
+	What the key covers: the stage's own configuration (via `configHash`, which
+	the pipeline already computes for the cached stages) and the evaluated /
+	rejected / retained counts, which are a function of the file bytes, every
+	upstream mask, and the stage's own thresholds. What it does NOT cover: a
+	change that leaves all three counts and the config hash identical. Two
+	different configurations that reject exactly the same number of exactly the
+	same events are the same removal decision for the purpose of this
+	acknowledgement, so treating them as interchangeable is correct, not a gap.
+
+Input:
+	name [string]: the QC stage name ("structural" | "time" | "scatter" | "singlet")
+	product [object|null]: the raw stage product from pipeline state
+
+Output:
+	key [string|null]: a stable identity for this stage outcome, or null when
+	                   there is no product to acknowledge
+
+*/
+export function qc_acknowledgement_key(name, product) {
+  if (!product || typeof product !== "object") return null;
+  const count = (value) => (Number.isFinite(Number(value)) ? String(Number(value)) : "?");
+  return [
+    name,
+    product.configHash ?? "-",
+    count(product.evaluatedEventCount),
+    count(product.rejectedEventCount),
+    count(product.retainedEventCount),
+  ].join("|");
+}
+
+/*
+
+Purpose:
+	QC-01: decides whether a stored acknowledgement actually authorizes the
+	critical event loss the current stage outcome represents. Accepts only an
+	acknowledgement that names this exact outcome (see qc_acknowledgement_key).
+
+	A bare truthy value is deliberately NOT accepted. Before QC-01 the contract
+	tested `!qcAcknowledgements[name]`, so any truthy placeholder -- `true`, an
+	empty object, a leftover from a previous configuration -- would have opened
+	the gate. Requiring the key makes an acknowledgement unforgeable by accident.
+
+Input:
+	acknowledgement [object|null]: the stored record for this stage
+	key [string|null]: the current outcome's identity
+
+Output:
+	authorized [boolean]: true only when the record acknowledges THIS outcome
+
+*/
+export function qc_acknowledgement_authorizes(acknowledgement, key) {
+  if (!acknowledgement || typeof acknowledgement !== "object" || !key) return false;
+  return acknowledgement.key === key && Boolean(acknowledgement.acknowledgedAt);
 }
 
 export function model_preflight(state, {
@@ -269,11 +347,21 @@ export function model_preflight(state, {
     }
   }
 
+  // QC-01: keep the raw stage products alongside their derived outcomes. The
+  // acknowledgement key is computed from the product (config hash + event
+  // counts), not from the outcome, because qc_outcome() deliberately discards
+  // the counts once it has turned them into a percentage.
+  const QC_PRODUCTS = {
+    structural: state?.structuralQC ?? null,
+    time: state?.timeQC ?? null,
+    scatter: state?.scatterGate ?? null,
+    singlet: state?.singletResult ?? null,
+  };
   const qc = {
-    structural: qc_outcome(state?.structuralQC, qcWaivers.structural),
-    time: qc_outcome(state?.timeQC, qcWaivers.time),
-    scatter: qc_outcome(state?.scatterGate, qcWaivers.scatter),
-    singlet: qc_outcome(state?.singletResult, qcWaivers.singlet),
+    structural: qc_outcome(QC_PRODUCTS.structural, qcWaivers.structural),
+    time: qc_outcome(QC_PRODUCTS.time, qcWaivers.time),
+    scatter: qc_outcome(QC_PRODUCTS.scatter, qcWaivers.scatter),
+    singlet: qc_outcome(QC_PRODUCTS.singlet, qcWaivers.singlet),
   };
   for (const [name, outcome] of Object.entries(qc)) {
     const required = requiredStages.includes(name);
@@ -291,13 +379,24 @@ export function model_preflight(state, {
       reasons.push(issue(RESULT_REASON.QC_NOT_PASSED, `${name} QC ${outcome.status} — its event mask cannot be trusted.`, { name, outcome }));
     }
     // Critical event loss on ANY stage must be acknowledged before reporting,
-    // rather than passing with only a transient warning.
-    if (Number.isFinite(outcome.percentRemoved) && outcome.percentRemoved > QC_CRITICAL_REMOVAL_PERCENT && !qcAcknowledgements[name]) {
-      reasons.push(issue(
-        RESULT_REASON.QC_CRITICAL_REMOVAL,
-        `${name} QC removed ${Math.round(outcome.percentRemoved)}% of events — acknowledge this critical loss before reporting.`,
-        { name, percentRemoved: outcome.percentRemoved },
-      ));
+    // rather than passing with only a transient warning. QC-01: the
+    // acknowledgement must name THIS outcome -- see qc_acknowledgement_key()
+    // above for why identity-matching is used instead of a revocation list.
+    // The blocking reason carries `acknowledgementKey` so the review UI can
+    // write a record that will actually match, without re-deriving the key.
+    if (Number.isFinite(outcome.percentRemoved) && outcome.percentRemoved > QC_CRITICAL_REMOVAL_PERCENT) {
+      const key = qc_acknowledgement_key(name, QC_PRODUCTS[name]);
+      if (!qc_acknowledgement_authorizes(qcAcknowledgements[name], key)) {
+        const stale = Boolean(qcAcknowledgements[name]?.acknowledgedAt) && key
+          && qcAcknowledgements[name].key !== key;
+        reasons.push(issue(
+          RESULT_REASON.QC_CRITICAL_REMOVAL,
+          stale
+            ? `${name} QC removed ${Math.round(outcome.percentRemoved)}% of events — the previous acknowledgement was for a different QC configuration or a different file and no longer applies. Review and acknowledge this loss again before reporting.`
+            : `${name} QC removed ${Math.round(outcome.percentRemoved)}% of events — acknowledge this critical loss before reporting.`,
+          { name, percentRemoved: outcome.percentRemoved, acknowledgementKey: key, staleAcknowledgement: stale },
+        ));
+      }
     }
   }
   if (!configuration || typeof configuration !== "object" || Array.isArray(configuration) || has_nonfinite_number(configuration)) {
@@ -307,6 +406,12 @@ export function model_preflight(state, {
   return {
     passed: reasons.length === 0,
     reasons,
+    // AMBIG-01/D9: carried through (not a blocking reason -- a human already
+    // reviewed and accepted these regions, possibly deliberately, e.g. a
+    // Nocodazole-arrested single-population sample) so apply_result_contract()
+    // can qualify the resulting fit with a warning rather than silently losing
+    // the fact that G1 was assumed from a single visible peak.
+    peakDetectionStatus: modeling?.peakDetection?.status ?? null,
     histogramFingerprint: histogram?.fingerprint ?? null,
     regionRevision: selection?.revision ?? null,
     retainedEventCount: retained,
@@ -340,6 +445,14 @@ function peak_cv_at_upper_bound(result) {
     }
   }
   return null;
+}
+
+function critical_warning(warning) {
+  return warning?.nonreportable === true || warning?.severity === "critical" || warning?.severity === "error";
+}
+
+function material_warning(warning) {
+  return Boolean(warning) && (critical_warning(warning) || warning.severity !== "info");
 }
 
 export function apply_result_contract(rawResult, preflight) {
@@ -381,19 +494,14 @@ export function apply_result_contract(rawResult, preflight) {
   // SCI-03/GATE-01 honesty (fix for the VALID-01 DJF S-overfit): a fit that
   // converged to a boundary-degenerate optimum -- a biological peak whose CV was
   // driven to its upper bound -- is computed and "converged" but its phase
-  // fractions are not trustworthy. Mark it limited-reliability so it is NOT
-  // valid for reporting (it stays a diagnostic preview, not an authoritative
-  // result), rather than silently presenting the degenerate numbers.
+  // fractions are not trustworthy. Keep the coherent numbers available, but
+  // mark them scientifically invalid and carry the caveat with every fraction.
   const degeneratePeakCv = optimizerConverged === null ? null : peak_cv_at_upper_bound(result);
   if (degeneratePeakCv) reasons.push(issue(
     RESULT_REASON.FIT_PEAK_DEGENERATE,
     `The ${degeneratePeakCv === "g1CV" ? "G1" : "G2"} peak width hit its upper CV bound — the component is a broad slab, not a resolved peak, so the phase fractions are unreliable.`,
     { parameter: degeneratePeakCv, value: result.parameters?.[degeneratePeakCv], bound: result.bounds?.[degeneratePeakCv] ?? null },
   ));
-
-  const scientificallyValid = !cancelled && finite && diagnosticsFinite
-    && valid_fractions(result.phaseFractions) && optimizerConverged !== false;
-  const limitedReliability = Boolean(degeneratePeakCv);
 
   // FlowJo-style reporting: whether to TRUST a fit is ultimately the user's call,
   // so we always present the fractions we actually computed -- whenever they are
@@ -412,6 +520,20 @@ export function apply_result_contract(rawResult, preflight) {
   // the reported fractions (the fit's fitQualityWarnings -- reduced deviance,
   // autocorrelation, weak identifiability -- are already in result.warnings).
   const warnings = [...(result.warnings ?? [])];
+  // Keep the uncertainty producer's policy fields, including when a caller
+  // supplied a flattened warning without `nonreportable`. Distinct parameter
+  // or phase messages sharing an ID remain separate warnings.
+  for (const warning of result.uncertainty?.warnings ?? []) {
+    const index = warnings.findIndex((entry) => (entry.id ?? entry.code) === (warning.id ?? warning.code)
+      && entry.message === warning.message);
+    if (index < 0) warnings.push(warning);
+    else warnings[index] = { ...warnings[index], ...warning };
+  }
+  if (result.constraintAudit?.violationCount > 0) {
+    const message = "The fit violates its declared parameter or phase constraints; the fractions are unreliable.";
+    reasons.push(issue(RESULT_REASON.CONSTRAINT_INVALID, message, result.constraintAudit.violations));
+    warnings.push({ code: RESULT_REASON.CONSTRAINT_INVALID, severity: "error", message });
+  }
   if (optimizerConverged === false) warnings.push({
     code: RESULT_REASON.OPTIMIZER_NOT_CONVERGED, severity: "warning",
     message: `The optimizer did not converge (${terminationReason ?? "unknown"}); treat the fractions with caution.`,
@@ -420,6 +542,24 @@ export function apply_result_contract(rawResult, preflight) {
     code: RESULT_REASON.FIT_PEAK_DEGENERATE, severity: "warning",
     message: `The ${degeneratePeakCv === "g1CV" ? "G1" : "G2"} peak width hit its upper CV bound — the component is a broad slab, not a resolved peak, so its phase fractions may be unreliable.`,
   });
+  // AMBIG-01: reviewing and accepting an inferred_g2 selection does not resolve
+  // the underlying ambiguity -- it only means a human looked at the same guess
+  // (single peak -> assumed G1, G2/M placed by expected ratio) and chose to
+  // proceed. Qualify rather than refuse: this may be the correct call (e.g. a
+  // deliberately arrested sample), so the contract does not block it, but a
+  // consumer reading only warnings should not lose the fact that G1 was assumed.
+  if (preflight?.peakDetectionStatus === "inferred_g2") warnings.push({
+    code: RESULT_REASON.REGIONS_AMBIGUOUS_SINGLE_PEAK, severity: "warning",
+    message: "Only one peak was detected for this sample; G1 was assumed and G2/M was inferred from the expected ratio — confirm the regions are correct, since the sample could be G2-arrested instead.",
+  });
+
+  // Quality warnings qualify rather than hide coherent numbers. Critical or
+  // nonreportable uncertainty does rule out the stronger scientific-validity
+  // claim; an informational settings note alone does neither.
+  const scientificallyValid = !cancelled && finite && diagnosticsFinite
+    && valid_fractions(result.phaseFractions) && optimizerConverged !== false
+    && !degeneratePeakCv && !warnings.some(critical_warning);
+  const limitedReliability = optimizerConverged === false || warnings.some(material_warning);
 
   return {
     ...result,
@@ -452,12 +592,15 @@ export function result_reporting_summary(result) {
   // build a bare summary object deliberately, and they should read honestly
   // rather than throw.
   const reportable = is_reportable_result(result);
+  const caveat = fraction_trust_reason(result);
   const reason = result.validityReasons?.map((entry) => entry.message || entry.code).join("; ")
+    || (reportable ? caveat : "")
     || result.convergenceReason
+    || caveat
     || "No reason recorded";
   return {
     reportable,
-    status: reportable ? "Reportable" : result.cancelled ? "Cancelled" : result.converged ? "Not reportable" : "Not converged",
+    status: reportable ? (caveat ? "Reportable with warnings" : "Reportable") : result.cancelled ? "Cancelled" : result.converged ? "Not reportable" : "Not converged",
     reason,
     phaseFractions: reportable ? result.phaseFractions : null,
   };
@@ -473,14 +616,13 @@ Purpose:
 	SVG <desc> (js/plotting/render.js), and the HTML/PDF report
 	(js/plotting/plot_export.js). Importing it from js/ui/ closed a real
 	import cycle (render.js -> cell_cycle_columns.js -> table_render.js ->
-	render.js), and duplicating the precedence in each layer is how the two
-	checks silently drift apart.
+	render.js). Sharing the warning policy keeps these surfaces consistent.
 
-	The precedence is deliberate and must not be reordered: validForReporting
-	is checked BEFORE converged, because a converged fit can still be
-	unreportable and that is the stronger claim to surface.
+	Reporting validity precedes convergence, then critical and material warnings,
+	then the scientific/reliability flags. Informational notes alone do not qualify
+	fractions.
 
-	Do NOT widen either check to "!== true". A result missing the field
+	Do NOT widen the explicit false checks to "!== true". A result missing the field
 	entirely (no fit yet) is not the same claim as one explicitly marked
 	invalid, and absence of validation must never be reported as validation.
 
@@ -495,5 +637,9 @@ Output:
 export function fraction_trust_reason(result) {
   if (result?.validForReporting === false) return "unvalidated result";
   if (result?.converged === false) return "fit did not converge";
+  if (result?.warnings?.some(critical_warning)) return "fit has critical reliability warnings";
+  if (result?.warnings?.some(material_warning)) return "fit has reliability warnings";
+  if (result?.limitedReliability === true) return "fit has limited reliability";
+  if (result?.scientificallyValid === false) return "fit is not scientifically valid";
   return "";
 }

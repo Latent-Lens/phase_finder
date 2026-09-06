@@ -513,6 +513,57 @@
   }
 }
 
+/* QC-01: the critical-QC-event-loss review panel. Inline in "Model & Fit",
+   not a modal -- acknowledging a >50% event loss is a review decision the user
+   should weigh against the QC numbers and the plot, not an interruption. Styled
+   as a warning surface rather than an error one on purpose: nothing has gone
+   wrong, the app is asking for a judgement it is not entitled to make. */
+.qc_critical_review {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.qc_critical_review_heading {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  color: var(--danger);
+}
+
+.qc_critical_review_intro {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.qc_critical_review_list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 0.85rem;
+}
+
+.qc_critical_review_list li + li {
+  margin-top: 4px;
+}
+
+.qc_critical_review_stale {
+  display: block;
+  margin-top: 2px;
+  color: var(--danger);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.qc_critical_review_status {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--success);
+}
+
 /* UI-04: forced-colors support previously stopped at the shell (base.css,
    help.css only) -- sidebar.css had none. Pattern copied from
    css/help.css:582. Borders and focus rings first; then the sidebar's
@@ -529,6 +580,21 @@
 
   .status.error,
   .channel_eligibility_status.error {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  /* QC-01: the review panel reads as "needs attention" only through its
+     --danger border and heading, both of which High Contrast flattens to
+     plain system colours. Restate the boundary structurally so the panel
+     does not dissolve into the sidebar for these users. */
+  .qc_critical_review {
+    border: 1px solid ButtonText;
+    border-left: 4px solid Highlight;
+  }
+
+  .qc_critical_review_heading,
+  .qc_critical_review_stale {
     font-weight: 700;
     text-decoration: underline;
   }

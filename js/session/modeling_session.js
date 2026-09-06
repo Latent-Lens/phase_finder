@@ -131,6 +131,11 @@ export function get_modeling_session_state() {
       transform_application_count: eligibility?.transform?.applicationCount ?? 0,
       compensation_application_count: eligibility?.compensation?.applicationCount ?? 0,
       qc_waivers: JSON.stringify(pipelineState?.qcWaivers ?? {}),
+      // QC-01: acknowledgements persist so a reviewed critical loss does not have
+      // to be re-reviewed on every reload. They carry the outcome key that earned
+      // them, so a restore into a changed QC config or a different file simply
+      // fails to match and blocks again -- see qc_acknowledgement_key().
+      qc_acknowledgements: JSON.stringify(pipelineState?.qcAcknowledgements ?? {}),
     });
   }
   return { qc_filters: checked_qc_filters(), scatter_gates, singlet_gates, samples };
@@ -207,6 +212,11 @@ export async function apply_modeling_session(config, { onProgress } = {}) {
         get_state(row.name).qcWaivers = JSON.parse(saved.qc_waivers || "{}");
       } catch (_) {
         get_state(row.name).qcWaivers = {};
+      }
+      try {
+        get_state(row.name).qcAcknowledgements = JSON.parse(saved.qc_acknowledgements || "{}");
+      } catch (_) {
+        get_state(row.name).qcAcknowledgements = {};
       }
 
       set_model_settings(row, {

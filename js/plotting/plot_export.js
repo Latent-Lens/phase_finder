@@ -23,8 +23,9 @@ import {
 } from "./data.js";
 import { svg_to_pdf_blob } from "./svg_to_pdf.js";
 import { filename_timestamp } from "../util/names.js";
-import { get_file_table } from "../state/app_state.js";
+import { get_file_table, get_file_map } from "../state/app_state.js";
 import { get_state } from "../analysis/pipeline/pipeline_state.js";
+import { build_qc_matrix, build_qc_matrix_tsv, qc_matrix_html } from "../analysis/pipeline/qc_matrix.js";
 import { escape_html } from "../util/html.js";
 import { result_reporting_summary, fraction_trust_reason } from "../analysis/cell_cycle/result_contract.js";
 import { build_fit_export, build_fit_csv } from "../analysis/cell_cycle/export.js";
@@ -355,6 +356,28 @@ function report_fit_summary_html() {
   );
 }
 
+// QC-01: the batch QC matrix covers every LOADED sample, not only the plotted
+// ones. QC is what decides whether a sample is analysable at all, so a matrix
+// that silently omitted the files the user left unplotted would answer the
+// wrong question -- "what did QC do to the samples I am looking at" instead of
+// "what did QC do to this batch".
+function qc_matrix_entries() {
+  return [...get_file_map().values()]
+    .filter((row) => row?.data)
+    .map((row) => ({ row, state: get_state(row.name) }));
+}
+
+function current_qc_matrix() {
+  return build_qc_matrix(qc_matrix_entries());
+}
+
+function export_qc_matrix_tsv() {
+  const matrix = current_qc_matrix();
+  if (!matrix.samples.length) throw new Error("No samples are loaded, so there is no QC matrix to export.");
+  const text = build_qc_matrix_tsv(matrix);
+  download_blob(new Blob([text], { type: "text/tab-separated-values;charset=utf-8" }), `${export_filename_stem()}_qc_matrix.tsv`);
+}
+
 function report_plot_html() {
   if (!plot_area?.querySelector("svg")) throw new Error("There is no plot to include in the report yet.");
   const clone = plot_area.cloneNode(true);
@@ -378,7 +401,7 @@ body{margin:32px;color:#172033;background:#fff;font:14px/1.45 Arial,sans-serif}h
 <script type="application/json" id="phasefinder-analysis-provenance">${provenance_json}</script>
 <h2>Plots and modeled areas</h2><div class="plot">${report_plot_html()}</div>
 ${(() => { const summary = report_fit_summary_html(); return summary ? `<h2>Selected regions and modeled fractions</h2>${summary}` : ""; })()}
-<h2>Metadata and results</h2>${report_table_html()}</body></html>`;
+<h2>QC matrix and final-mask provenance</h2>${qc_matrix_html(current_qc_matrix())}\n<h2>Metadata and results</h2>${report_table_html()}</body></html>`;
 }
 
 function export_analysis_report() {
@@ -503,11 +526,13 @@ function rasterize(svg_clone, format, scale, signal = null) {
 /*
 
 Purpose:
-	Exports the plot (or, for "json"/"csv", the modeled fit data) currently on
-	screen in one of the supported formats and triggers the download.
+	Exports the plot (or, for "json"/"csv", the modeled fit data; for
+	"qcmatrix", the batch QC matrix) currently on screen in one of the supported
+	formats and triggers the download.
 
 Input:
-	format [string]: "svg", "pdf", "png", "jpeg", "html", "json", or "csv"
+	format [string]: "svg", "pdf", "png", "jpeg", "html", "json", "csv", or
+	                 "qcmatrix"
 	scale [number]: pixel scale for the raster formats (ignored otherwise)
 
 Output:
@@ -527,6 +552,10 @@ export async function export_plot_image(format, scale = 2, signal = null) {
   }
   if (format === "csv") {
     export_fit_csv();
+    return;
+  }
+  if (format === "qcmatrix") {
+    export_qc_matrix_tsv();
     return;
   }
   const clone = exportable_plot_svg();
