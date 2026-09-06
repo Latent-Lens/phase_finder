@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PhaseFinder · Master checklist</title>
+<style>
+:root{color-scheme:light;--ink:#172b42;--muted:#465b70;--line:#8b9bac;--paper:#fff;--bg:#eff3f7;--accent:#174fa0}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,sans-serif}main{max-width:1240px;margin:auto;padding:36px 24px 70px}a{color:var(--accent)}h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.15;margin:8px 0 16px}h2{font-size:1.5rem;margin:38px 0 16px}h3{font-size:1.2rem;line-height:1.4;margin:14px 0}h4{margin:0 0 8px}.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:.8rem;font-weight:700}.intro{max-width:850px;color:var(--muted)}.counters{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:28px 0}.counter{background:var(--paper);border:1px solid var(--line);border-top:4px solid var(--accent);padding:16px;border-radius:8px}.counter strong{display:block;font-size:2.3rem;line-height:1.2}.counter span{color:var(--muted)}.filters{display:flex;flex-wrap:wrap;gap:14px;padding:20px;background:var(--paper);border:1px solid var(--line);border-radius:8px}.filters>label{min-width:0;display:flex;flex-direction:column;gap:5px;flex:1 1 170px;font-size:.85rem;font-weight:650}.filters>label:first-child{flex-basis:280px}input,select,button{font:inherit;color:inherit;border:1px solid var(--line);background:white;border-radius:5px;padding:10px;min-height:44px;max-width:100%}button{cursor:pointer;align-self:flex-end}input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px}article{margin:16px 0;padding:24px;border:1px solid var(--line);border-radius:10px;background:var(--paper);scroll-margin-top:24px;overflow-wrap:anywhere}.badges{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:.8rem;color:var(--muted)}.badges>a{font-weight:750}.badge{border:1px solid currentColor;border-radius:4px;padding:2px 8px;font-weight:650}.open,.P0{color:#972b24;background:#fff2ef}.partial,.P1{color:#795000;background:#fff8df}.closed{color:#24633a;background:#edf8ef}.columns{min-width:0;display:grid;grid-template-columns:3fr 2fr;gap:28px}.columns p{margin:6px 0 14px}.recommendation{border-left:3px solid #54769c;padding-left:20px}details{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}summary{cursor:pointer;font-weight:650;min-height:44px;align-content:center;color:var(--accent)}.details-body{overflow:auto;max-width:100%}pre{white-space:pre-wrap;background:#f1f4f8;padding:16px}code{font-size:.9em}table{border-collapse:collapse;display:block;overflow:auto;margin:16px 0;font-size:.9rem}th,td{border:1px solid var(--line);padding:8px;text-align:left}li{margin:5px 0}.cb input{min-height:0;width:16px;height:16px;vertical-align:middle}.cb.partial{background:none}.cb.partial::before{content:'Partial · ';font-weight:700}.cb.pending::before{content:'Needs evidence · ';font-weight:700}blockquote{border-left:3px solid var(--line);margin:16px 0;padding-left:16px}[hidden]{display:none!important}#visible-count{color:var(--muted)}footer{margin-top:40px;color:var(--muted)}
+#status{border:0;padding:0;margin:0;min-width:0;flex:1 1 180px}#status legend{font-size:.85rem;font-weight:650;margin-bottom:5px}#status label{display:flex;align-items:center;gap:8px;min-height:44px;font-size:.85rem;cursor:pointer}#status input{width:18px;height:18px;min-height:0;padding:0;accent-color:var(--accent)}
+@media(max-width:700px){main{padding:24px 14px}.counters{grid-template-columns:repeat(2,1fr)}.columns{grid-template-columns:1fr;gap:12px}article{padding:18px}.recommendation{padding-left:14px}.filters{padding:14px}}
+@media print{body{background:white}.filters,#visible-count{display:none}main{max-width:none;padding:0}article{break-inside:avoid}details:not([open])>.details-body{display:block}a{color:inherit}}
+@media(forced-colors:active){.counter,article,.filters{border:1px solid CanvasText}.badge,.recommendation{border-color:CanvasText}}
+.tracking-table{display:table;width:100%;margin:0}.tracking-scroll{overflow-x:auto}.tracking-table th:nth-child(-n+4),.tracking-table time{white-space:nowrap}.tracking-missing{text-align:center}
+</style>
+</head>
+<body><main>
+<header><div class="eyebrow">PhaseFinder · Engineering &amp; scientific readiness</div><h1>Master checklist</h1>
+<p class="intro">Reconciled against the working tree on September 5, 2026. Open, partial and closed are disjoint issue counts. Deferred work remains open or partial. Historical evidence is retained inside every card, including closed issues.</p>
+<p><a href="master_checklist.md">Markdown source</a> · <a href="review_2026_09_05.md">Review evidence &amp; document coverage</a> · <a href="../archive/README.md">Archive index</a></p>
+</header>
+<div class="counters" aria-label="All issue counts"><div class="counter"><strong id="count-total">$total</strong><span>Total issues</span></div><div class="counter"><strong id="count-open">$open</strong><span>Open</span></div><div class="counter"><strong id="count-partial">$partial</strong><span>Partially finished</span></div><div class="counter"><strong id="count-closed">$closed</strong><span>Closed</span></div></div>
+<form class="filters" role="search" onsubmit="return false">
+<label>Search IDs, issue text or recommendations<input id="search" type="search" placeholder="e.g. export, QC-05, session"></label>
+<fieldset id="status"><legend>Status</legend>
+<label><input type="checkbox" name="status" value="open" checked>Open</label>
+<label><input type="checkbox" name="status" value="partial" checked>Partially finished</label>
+<label><input type="checkbox" name="status" value="closed" checked>Closed</label>
+</fieldset>
+<label>Priority<select id="priority"><option value="">All priorities</option><option>P0</option><option>P1</option><option>P2</option><option>P3</option></select></label>
+<label>Section<select id="section"><option value="">All sections</option>$section_options</select></label>
+<button type="reset">Clear filters</button></form>
+<p id="visible-count" role="status" aria-live="polite">Showing $total of $total issues. Counters above always show the full register.</p>
+<section id="current-work" aria-labelledby="current-work-heading" style="margin:24px 0;padding:24px;border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow-wrap:anywhere">
+<h2 id="current-work-heading" style="margin-top:0">In Progress - newest first</h2>
+<p>Times are Eastern. Missing tracking data is shown as -.</p>
+<div class="tracking-scroll"><table class="tracking-table" aria-labelledby="current-work-heading"><thead><tr><th scope="col">Start DT</th><th scope="col">Complete DT</th><th scope="col">Model</th><th scope="col">Task ID</th><th scope="col">Task Title</th></tr></thead><tbody>$current_work</tbody></table></div>
+</section>
+<section id="completion-history" aria-labelledby="completion-heading" style="margin:24px 0;padding:24px;border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow-wrap:anywhere">
+<h2 id="completion-heading" style="margin-top:0">Recently Completed - newest first</h2>
+<p>Times are Eastern. Missing tracking data is shown as -. Entries without recorded completion dates appear last.</p>
+<div class="tracking-scroll"><table class="tracking-table" aria-labelledby="completion-heading"><thead><tr><th scope="col">Start DT</th><th scope="col">Complete DT</th><th scope="col">Model</th><th scope="col">Task ID</th><th scope="col">Task Title</th></tr></thead><tbody>$completion_history</tbody></table></div>
+</section>
+<div id="issues">$cards</div>
+<footer>Edit acceptance boxes in Markdown, then run <code>python3 scripts/build_checklist_status.py</code>. This page is a generated snapshot; it does not store a competing browser-local status list. Verify freshness with <code>--check</code>.</footer>
+</main>
+<script>
+const cards = [...document.querySelectorAll('article')];
+const sections = [...document.querySelectorAll('.issue-section')];
+const search = document.querySelector('#search');
+const statusOptions = [...document.querySelectorAll('#status input')];
+const priority = document.querySelector('#priority');
+const section = document.querySelector('#section');
+const texts = new Map(cards.map(card => [card, card.textContent.toLowerCase()]));
+function filter() {
+  const query = search.value.trim().toLowerCase();
+  const selectedStatuses = new Set(statusOptions.filter(option => option.checked).map(option => option.value));
+  let visible = 0;
+  for (const card of cards) {
+    card.hidden = !texts.get(card).includes(query) || !selectedStatuses.has(card.dataset.status) || (priority.value && card.dataset.priority !== priority.value) || (section.value && card.parentElement.dataset.section !== section.value);
+    if (!card.hidden) visible++;
+  }
+  for (const group of sections) group.hidden = ![...group.querySelectorAll('article')].some(card => !card.hidden);
+  document.querySelector('#visible-count').textContent = 'Showing ' + visible + ' of ' + cards.length + ' issues. Counters above always show the full register.';
+}
+document.querySelector('.filters').addEventListener('input', filter);
+document.querySelector('.filters').addEventListener('reset', () => setTimeout(filter, 0));
+function revealAnchor() {
+  const card = cards.find(card => '#' + card.id === location.hash);
+  if (!card) return;
+  document.querySelector('.filters').reset();
+  filter();
+  card.querySelector('details').open = true;
+  card.scrollIntoView();
+}
+window.addEventListener('hashchange', revealAnchor);
+document.querySelectorAll('#current-work a, #completion-history a').forEach(link => {
+  link.addEventListener('click', () => {
+    if (location.hash === link.hash) revealAnchor();
+  });
+});
+revealAnchor();
+</script>
+</body></html>
