@@ -28,6 +28,28 @@ export function set_plot_renderer(renderer) {
   render_plot = renderer;
 }
 
+/*
+
+Purpose:
+	Exposes the currently registered render callback so a module that needs to
+	trigger a full plot redraw (ridge_review.js's manual-review actions) can do
+	so without importing render_density_plot from render.js directly -- render.js
+	imports ridge_review.js for the ridge view, so a direct import back would be
+	an import cycle. Going through this indirection instead keeps the module
+	graph a DAG (see docs/module-import-graph.md).
+
+Input:
+	(none)
+
+Output:
+	renderer [function]: the callback last passed to set_plot_renderer, or a
+	                      no-op if none has been registered yet
+
+*/
+export function get_plot_renderer() {
+  return render_plot;
+}
+
 // A box-zoom drag shorter than this (in px, either axis) is treated as a click
 // rather than a rectangle, so a slightly-shaky click never zooms to a sliver.
 const MIN_BOX_ZOOM_PX = 6;
