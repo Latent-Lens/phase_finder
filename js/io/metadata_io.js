@@ -17,6 +17,7 @@ import {
   set_metadata_table_columns,
   set_preserve_metadata_row_order,
   should_preserve_metadata_row_order,
+  set_sort_state,
   metadata_row_is_linked,
   sync_file_annotations,
   table_base_field_set,
@@ -388,6 +389,13 @@ function import_metadata_records(parsed, source_name = "metadata file") {
   const result = build_metadata_frame_from_records(records, imported_columns, loaded_rows, { source: "import" });
 
   set_preserve_metadata_row_order(true);
+  // set_metadata_table_columns() below only clears a stale column sort when
+  // the sorted field is no longer among the new columns -- but "name"
+  // (Filename) is always present, so a Filename-column sort set by an
+  // earlier click survives forever and would silently re-sort this import's
+  // rows out of the order the imported file specified. An import is a fresh,
+  // authoritative row order; reset the view sort explicitly so it wins.
+  set_sort_state(null);
   clear_stats_plan();
   set_metadata_table_columns(result.columns);
   set_file_table(result.frame);
