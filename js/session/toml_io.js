@@ -199,6 +199,8 @@ export function serialize_session(s) {
       p('[[modeling.samples]]',
         `name = ${toml_str(sample.name)}`,
         `model = ${toml_str(sample.model)}`,
+        `model_version = ${toml_str(sample.model_version || "")}`,
+        `peak_detection_status = ${toml_str(sample.peak_detection_status || "")}`,
         `reviewed = ${Boolean(sample.reviewed)}`,
         `g1_left = ${sample.g1_left}`,
         `g1_right = ${sample.g1_right}`,
@@ -221,6 +223,7 @@ export function serialize_session(s) {
         `transform_application_count = ${sample.transform_application_count ?? 0}`,
         `compensation_application_count = ${sample.compensation_application_count ?? 0}`,
         `qc_waivers = ${toml_str(sample.qc_waivers || '{}')}`,
+        `qc_acknowledgements = ${toml_str(sample.qc_acknowledgements || '{}')}`,
         '');
     });
   }

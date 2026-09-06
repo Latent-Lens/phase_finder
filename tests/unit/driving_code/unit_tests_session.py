@@ -319,6 +319,50 @@ def run_session_tests(ctx: TestContext):
             opfs_path: 'sessions/cache-a/files/file-1.fcs',
           }] },
         };
+        const sample = {name:'A.fcs', model:'dean_jett', reviewed:true,
+          g1_left:50, g1_right:90, g2_left:110, g2_right:170};
+        for (const [label, modeling] of [
+          ['null sample', {samples:[null]}],
+          ['nonfinite region', {samples:[{...sample,g1_left:Infinity}]}],
+          ['reversed regions', {samples:[{...sample,g1_left:100}]}],
+          ['invalid setting enum', {samples:[{...sample,ratio_mode:'nonsense'}]}],
+          ['invalid waiver', {samples:[{...sample,qc_waivers:'{"time":null}'}]}],
+          ['invalid acknowledgement', {samples:[{...sample,qc_acknowledgements:'{"time":{"key":true}}'}]}],
+          ['invalid stage', {qc_filters:[4]}],
+          ['null scatter gate', {scatter_gates:[null]}],
+          ['bad singlet geometry', {singlet_gates:[{name:'A.fcs',area_scale:-1}]}],
+          ['duplicate sample', {samples:[sample,sample]}],
+        ]) {
+          let message='';
+          try { schema.validate_session_draft({...validLegacy,modeling}); } catch(error) { message=error.message; }
+          push(`STATE-03: reject ${label} before application`, message.includes('modeling.'), message);
+        }
+        const validModeling = schema.validate_session_draft({...validLegacy,modeling:{samples:[sample],qc_filters:[0,1]}});
+        push('STATE-03: legacy optional fields remain compatible', Object.isFrozen(validModeling.modeling.samples[0]));
+
+        // STATE-03 regression: drive a real import through core.js's own
+        // restore_session_transaction (not a reimplementation of its
+        // validation) and confirm a malformed nested modeling record is
+        // rejected before any restore stage runs, leaving the previously
+        // active session's restore summary completely untouched.
+        const summaryBeforeBadImport = sessionCore.get_restore_summary();
+        let badImportRejected = false;
+        let badImportMessage = '';
+        try {
+          await sessionCore.restore_session_transaction({
+            session: { created: '2026-02-02T00:00:00Z' },
+            files: { names: [], records: [] },
+            modeling: { samples: [null] },
+          });
+        } catch (error) {
+          badImportRejected = true;
+          badImportMessage = error.message || String(error);
+        }
+        const summaryAfterBadImport = sessionCore.get_restore_summary();
+        push('STATE-03: a real session import with a null nested modeling sample is rejected atomically, leaving the active session unchanged',
+          badImportRejected && badImportMessage.includes('modeling.samples[0]')
+          && JSON.stringify(summaryAfterBadImport) === JSON.stringify(summaryBeforeBadImport),
+          JSON.stringify({ badImportRejected, badImportMessage, summaryBeforeBadImport, summaryAfterBadImport }));
         const draft0 = schema.validate_session_draft(validLegacy);
         const draft1 = schema.validate_session_draft({
           ...validLegacy, session: { ...validLegacy.session, schema_version: 1, logical_id: 'logical-a' },
@@ -472,6 +516,131 @@ def run_session_tests(ctx: TestContext):
           push('SES-01: Reset-style release removes every sole-owned entry and tolerates already-missing files',
             cache.cache_entries_for_session(legacyImport).length === 0
             && cache.cache_entries_for_session('saved-owner').length === 0);
+
+          // STATE-04: run the real copy worker module (the exact code the
+          // production Worker runs, not a reimplementation) inside an actual
+          // dedicated Worker -- built from a Blob so a faked
+          // navigator.storage.getDirectory() can be installed before
+          // copy_worker.js is imported -- rather than importing
+          // copy_worker.js directly onto window. Importing it onto window
+          // was tried first and hangs the page: outside a real worker
+          // `self === window`, so copy_worker.js's own
+          // `self.addEventListener('message', ...)` reacts to every message
+          // on the shared window bus, including the responses it just posted
+          // to itself, spinning forever. A real Worker has its own isolated
+          // message channel, so its response messages never loop back into
+          // its own listener -- exactly like the production worker/main
+          // thread relationship this is meant to test.
+          // A blob: URL is not a special scheme, so a root-relative
+          // specifier like '/js/session/copy_worker.js' cannot be resolved
+          // against it as the worker's base URL -- it must be a fully
+          // qualified URL (scheme + host) built from this page's own origin.
+          // A *static* import of that URL is used rather than a dynamic
+          // import() -- ordering doesn't matter here (copy_worker.js only
+          // reads navigator.storage.getDirectory lazily, inside its message
+          // handler, well after both modules finish evaluating either way),
+          // but a dynamic import() of a real http(s) module from inside a
+          // blob-sourced module Worker was observed to hang indefinitely
+          // under this browser build, whereas a static import of the same
+          // absolute URL resolves immediately.
+          const copyWorkerUrl = new URL('/js/session/copy_worker.js', location.origin).href;
+          const closeFailWorkerSrc = `
+            const fakeWritable = {
+              write: async () => { self.postMessage({ __signal: 'write' }); },
+              close: async () => { self.postMessage({ __signal: 'close' }); throw new Error('Quota exceeded (injected)'); },
+              abort: async () => { self.postMessage({ __signal: 'abort' }); },
+            };
+            const fakeFileHandle = { createWritable: async () => fakeWritable };
+            const fakeDir = {
+              getDirectoryHandle: async () => fakeDir,
+              getFileHandle: async () => fakeFileHandle,
+              removeEntry: async () => { self.postMessage({ __signal: 'removeEntry' }); },
+            };
+            navigator.storage.getDirectory = async () => fakeDir;
+            import ${JSON.stringify(copyWorkerUrl)};
+          `;
+          const closeFailWorkerUrl = URL.createObjectURL(new Blob([closeFailWorkerSrc], { type: 'text/javascript' }));
+          const closeFailWorker = new Worker(closeFailWorkerUrl, { type: 'module' });
+          const signalsSeen = new Set();
+          let workerResponse;
+          try {
+            const requestId = `inject-close-fail-${Date.now()}`;
+            const responsePromise = new Promise((resolve) => {
+              closeFailWorker.addEventListener('message', (event) => {
+                const data = event.data || {};
+                if (data.__signal) { signalsSeen.add(data.__signal); return; }
+                // copy_worker.js also posts { request_id, progress } updates
+                // before its final { request_id, ok, error } response --
+                // only resolve on the final response, not a progress update.
+                if (data.request_id !== requestId || !('ok' in data)) return;
+                resolve(data);
+              });
+            });
+            const injectedFile = new File([new Uint8Array([9, 9, 9])], 'inject.fcs');
+            closeFailWorker.postMessage({ request_id: requestId, file: injectedFile, opfs_path: 'sessions/inject/files/inject.fcs' });
+            workerResponse = await responsePromise;
+          } finally {
+            closeFailWorker.terminate();
+            URL.revokeObjectURL(closeFailWorkerUrl);
+          }
+          push('STATE-04: a writable whose close() rejects after successful writes reports an error, never a cached success, and cleans up the partial file',
+            workerResponse.ok === false && String(workerResponse.error).includes('Quota exceeded')
+            && signalsSeen.has('write') && signalsSeen.has('close') && signalsSeen.has('abort') && signalsSeen.has('removeEntry'),
+            JSON.stringify({ workerResponse, signalsSeen: [...signalsSeen] }));
+
+          // STATE-05: queueing several files and immediately draining must
+          // stop every one of them before a destructive action (Reset,
+          // cache-manager clear) could race their writes against a deletion.
+          // The two still purely queued files are dropped deterministically
+          // (this script never yields control back to the queue's async
+          // driver before draining); the one already handed to the worker is
+          // either genuinely finished (real file, real catalogue entry) or
+          // cleanly cancelled (uncached, no catalogue entry, no partial file
+          // left on disk) -- never left in a half-written or falsely
+          // "cached" state either way.
+          const drainNames = ['drain-a.fcs', 'drain-b.fcs', 'drain-c.fcs'];
+          const drainFiles = drainNames.map((name, i) => new File([new Uint8Array(8 * 1024 * 1024).fill(i + 1)], name));
+          cache.register_loaded_files(drainFiles.map((file, i) => ({ id: `drain-${i}`, file })));
+          const droppedCount = cache.cancel_pending_cache_writes();
+          await cache.wait_for_cache_idle();
+          const drainRecords = drainNames.map((name) => cache.file_records.get(name));
+          const [firstRecord, ...neverStartedRecords] = drainRecords;
+          const neverStartedClean = neverStartedRecords.every((record) =>
+            record.status === 'uncached' && !cache.read_cache_index().entries[record.opfs_path]);
+          let firstRecordSafe;
+          if (firstRecord.status === 'uncached') {
+            firstRecordSafe = !cache.read_cache_index().entries[firstRecord.opfs_path];
+            if (firstRecordSafe) {
+              try { await opfs.read_file_from_opfs(firstRecord.opfs_path); firstRecordSafe = false; }
+              catch (_) { /* expected: the partial file was cleaned up */ }
+            }
+          } else {
+            firstRecordSafe = firstRecord.status === 'available'
+              && Boolean(cache.read_cache_index().entries[firstRecord.opfs_path]);
+          }
+          push('STATE-05: draining the cache queue stops every queued write before it can race a destructive delete',
+            droppedCount === 3 && neverStartedClean && firstRecordSafe,
+            JSON.stringify({ droppedCount, drainRecords, neverStartedClean, firstRecordSafe }));
+          for (const record of drainRecords) await opfs.delete_opfs_path(record.opfs_path);
+
+          // STATE-05: a real (not mocked) deletion failure -- a cache entry
+          // catalogued under this session whose OPFS file was never actually
+          // written -- must surface through core.js's real reset path rather
+          // than being reported as fully removed.
+          const phantomPath = `sessions/phantom-${Date.now()}/files/gone.fcs`;
+          cache.catalogue_cached_record({
+            id: 'phantom-1', opfs_path: phantomPath, size: 1, digest_algorithm: 'SHA-256', digest: 'deadbeef',
+          });
+          const resetSummary = await sessionCore.release_active_session_cache();
+          const phantomResult = resetSummary.results.find((r) => r.path === phantomPath);
+          const phantomEntryAfter = cache.read_cache_index().entries[phantomPath];
+          push('STATE-05: Reset cannot falsely report all owned data removed when a deletion is denied',
+            resetSummary.all_removed === false
+            && Boolean(phantomResult) && phantomResult.removed === false && phantomResult.shared === false
+            && resetSummary.failed.some((r) => r.path === phantomPath)
+            && Boolean(phantomEntryAfter) && phantomEntryAfter.owners.length === 0
+            && Boolean(phantomEntryAfter.cleanup_failed_at),
+            JSON.stringify({ resetSummary, phantomEntryAfter }));
         } finally {
           await opfs.delete_opfs_path(path);
           await opfs.delete_opfs_path(partialPath);

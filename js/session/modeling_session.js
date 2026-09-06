@@ -25,6 +25,7 @@ import {
   fit_cell_cycle_model,
 } from "../analysis/cell_cycle/modeling_state.js";
 import { get_model } from "../analysis/cell_cycle/model_registry.js";
+import { PHASEFINDER_SOURCE_COMMIT } from "../util/build_info.js";
 
 // The four pre-model QC toggle button ids, index 0-3 (Structural, Time QC,
 // Cell gate, Singlet gate). Read straight from the DOM pressed-state, which is
@@ -81,6 +82,9 @@ export function get_modeling_session_state() {
         rotation: manualGate.rotation ?? 0,
       });
     }
+    // Diagnostic snapshot only: the restore caller reruns saved QC filters,
+    // and pulse geometry is refit from the reconnected events. These derived
+    // centers/scales are not editable gate inputs and must not be reapplied.
     const singlet = pipelineState?.singletResult;
     if (singlet?.pulseGeometryTransform) {
       singlet_gates.push({
@@ -109,6 +113,7 @@ export function get_modeling_session_state() {
       // reproduction of the saved one -- and only a recorded version can tell
       // the two apart on restore.
       model_version: get_model(settings.modelId)?.version ?? "",
+      peak_detection_status: modeling.peakDetection?.status ?? "",
       reviewed: Boolean(modeling.peakSelection.reviewed),
       g1_left: regions.g1.left,
       g1_right: regions.g1.right,
@@ -152,13 +157,15 @@ Purpose:
 
 Input:
 	config [object]: the saved modeling section ({ samples, ... })
-	options [object]: { onProgress } progress callback
+	options [object]: { onProgress } progress callback; { savedSourceCommit }
+	the saved session envelope's PHASEFINDER_SOURCE_COMMIT (STATE-02 box 3),
+	null/undefined for a session saved before that field existed
 
 Output:
 	summary [Promise<object>]: { restored, failed, total }
 
 */
-export async function apply_modeling_session(config, { onProgress } = {}) {
+export async function apply_modeling_session(config, { onProgress, savedSourceCommit } = {}) {
   const samples = config?.samples || [];
   const plotted = new Map(plottable_rows().map((row) => [row.name, row]));
   const targets = samples.filter((sample) => plotted.has(sample.name));
@@ -207,7 +214,13 @@ export async function apply_modeling_session(config, { onProgress } = {}) {
       const regions = get_modeling_state(row).peakSelection.regions;
       if (saved.g1_source) regions.g1.source = saved.g1_source;
       if (saved.g2_source) regions.g2.source = saved.g2_source;
-      get_modeling_state(row).peakSelection.reviewed = saved.reviewed === true;
+      const modeling = get_modeling_state(row);
+      modeling.peakSelection.reviewed = saved.reviewed === true;
+      // Restore the assumption before preflight/refitting; never inherit a
+      // detection from the workspace being replaced by this session.
+      modeling.peakDetection = saved.peak_detection_status
+        ? { status: String(saved.peak_detection_status) }
+        : null;
       try {
         get_state(row.name).qcWaivers = JSON.parse(saved.qc_waivers || "{}");
       } catch (_) {
@@ -245,21 +258,53 @@ export async function apply_modeling_session(config, { onProgress } = {}) {
         // recomputed number reproduces the saved session exactly.
         const savedVersion = saved.model_version || null;
         const currentVersion = entry?.version ?? null;
-        const drifted = Boolean(savedVersion) && Boolean(currentVersion) && savedVersion !== currentVersion;
+        const versionDrifted = Boolean(savedVersion) && Boolean(currentVersion) && savedVersion !== currentVersion;
+        // STATE-02 box 3: a model's declared version string only moves when its
+        // author remembers to bump it, so an unchanged version does not prove an
+        // unchanged implementation. PHASEFINDER_SOURCE_COMMIT (build_info.js)
+        // identifies the actual app build instead, catching drift the version
+        // string missed -- and, symmetrically, a version bump with no real
+        // behavior change. Only compared when the saved session actually
+        // recorded a commit: a session saved before this field existed has
+        // nothing to compare against and must not spuriously report drift.
+        const currentSourceCommit = PHASEFINDER_SOURCE_COMMIT;
+        const implementationDrifted =
+          Boolean(savedSourceCommit) && Boolean(currentSourceCommit) && savedSourceCommit !== currentSourceCommit;
+        const drifted = versionDrifted || implementationDrifted;
         result.reproduction = {
           status: drifted ? "recomputed_new" : savedVersion ? "reproduced" : "unknown_saved_version",
           savedModelVersion: savedVersion,
           currentModelVersion: currentVersion,
+          savedSourceCommit: savedSourceCommit || null,
+          currentSourceCommit,
+          versionDrifted,
+          implementationDrifted,
           modelId: saved.model,
         };
         if (drifted) {
-          const message = `${entry?.label ?? saved.model} has changed since this session was saved `
-            + `(v${savedVersion} → v${currentVersion}); this is a NEW result computed with the current model, `
+          // Named distinctly per cause -- a version bump and a code change under
+          // an unchanged version are different situations, and either or both
+          // can be true at once.
+          const reasons = [];
+          if (versionDrifted) {
+            reasons.push(`${entry?.label ?? saved.model} has changed since this session was saved `
+              + `(v${savedVersion} → v${currentVersion})`);
+          }
+          if (implementationDrifted) {
+            reasons.push("PhaseFinder's analysis code has changed since this session was saved "
+              + `(build ${savedSourceCommit} → ${currentSourceCommit})`);
+          }
+          const message = `${reasons.join("; and ")}; this is a NEW result computed with the current code, `
             + "not a reproduction of the saved values.";
-          result.warnings = [...(result.warnings ?? []), {
-            code: "model_version_drift", severity: "warning", message,
-          }];
-          driftedSamples.push({ name: saved.name, model: saved.model, savedVersion, currentVersion });
+          const code = versionDrifted && implementationDrifted
+            ? "model_and_implementation_drift"
+            : implementationDrifted ? "implementation_drift" : "model_version_drift";
+          result.warnings = [...(result.warnings ?? []), { code, severity: "warning", message }];
+          driftedSamples.push({
+            name: saved.name, model: saved.model, savedVersion, currentVersion,
+            versionDrifted, implementationDrifted,
+            savedSourceCommit: savedSourceCommit || null, currentSourceCommit,
+          });
         }
       }
       restored += 1;

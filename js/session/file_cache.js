@@ -472,10 +472,41 @@ let cache_total = 0;
 let cache_done = 0;
 let cache_failed = 0;
 const cache_idle_waiters = [];
+// The record + AbortController for whichever queue entry run_cache_queue()
+// is currently awaiting -- lets cancel_pending_cache_writes() reach into an
+// in-flight worker copy, not just the queued-but-unstarted entries below it.
+let current_cache_item = null;
 
 export function wait_for_cache_idle() {
   if (!cache_running && !cache_queue.length) return Promise.resolve();
   return new Promise((resolve) => { cache_idle_waiters.push(resolve); });
+}
+
+// Stops the background cache queue before a destructive action (Reset,
+// cache-manager clear) deletes the same OPFS paths it might still be writing
+// to. Queued-but-unstarted entries are dropped immediately -- their files
+// stay loaded in memory, just uncached -- and the entry currently being
+// copied (if any) is marked uncached and told to abort; copy_worker.js's own
+// cleanup then removes its partial file. Returns the number of entries
+// dropped or interrupted.
+export function cancel_pending_cache_writes() {
+  const dropped = cache_queue.splice(0, cache_queue.length);
+  cache_total = Math.max(0, cache_total - dropped.length);
+  for (const { record } of dropped) record.status = 'uncached';
+  if (current_cache_item) {
+    current_cache_item.record.status = 'uncached';
+    current_cache_item.controller.abort();
+    return dropped.length + 1;
+  }
+  return dropped.length;
+}
+
+// Cancels pending/in-flight cache writes, then waits for the queue to
+// actually settle. Call this before any action that deletes OPFS paths the
+// queue might still be touching (STATE-05).
+export async function drain_cache_queue() {
+  cancel_pending_cache_writes();
+  await wait_for_cache_idle();
 }
 
 function enqueue_opfs_cache(items) {
@@ -488,37 +519,64 @@ function enqueue_opfs_cache(items) {
   if (!cache_running) run_cache_queue();
 }
 
+// set_status_bar() is purely informational UI feedback; if it ever throws
+// (e.g. the status bar isn't in the DOM -- a bare test harness, or a status
+// element removed mid-navigation), that must never break out of the loop
+// below. wait_for_cache_idle()/drain_cache_queue() -- relied on by Reset and
+// every cache-manager clear button (STATE-05) to know the queue has actually
+// stopped touching OPFS -- resolve only once this function reaches its
+// cache_running = false / cache_idle_waiters flush below; an uncaught throw
+// here used to skip straight past that and strand cache_running true
+// forever, hanging every future caller of those two functions.
+function report_cache_progress(message, is_error = false) {
+  try { set_status_bar(message, is_error); } catch (_) { /* best effort */ }
+}
+
 async function run_cache_queue() {
   cache_running = true;
-  while (cache_queue.length) {
-    const { record, file } = cache_queue.shift();
-    const pct = Math.round((cache_done / cache_total) * 100);
-    set_status_bar(`Caching file ${cache_done + 1} of ${cache_total} (${pct}%) for fast reload: ${file.name}`);
-    try {
-      const identity = await copy_file_to_opfs(file, record.opfs_path, {
-        on_progress: ({ bytes_done, bytes_total }) => {
-          const within = bytes_total ? bytes_done / bytes_total : 1;
-          const pct = Math.round(((cache_done + within) / cache_total) * 100);
-          set_status_bar(`Caching file ${cache_done + 1} of ${cache_total} (${pct}%) for fast reload: ${file.name}`);
-        },
-      });
-      Object.assign(record, identity);
-      record.status = 'available';
-      catalogue_cached_record(record);
-    } catch (_) {
-      record.status = 'error';
-      cache_failed += 1;
+  try {
+    while (cache_queue.length) {
+      const { record, file } = cache_queue.shift();
+      const pct = Math.round((cache_done / cache_total) * 100);
+      report_cache_progress(`Caching file ${cache_done + 1} of ${cache_total} (${pct}%) for fast reload: ${file.name}`);
+      const controller = new AbortController();
+      current_cache_item = { record, controller };
+      try {
+        const identity = await copy_file_to_opfs(file, record.opfs_path, {
+          signal: controller.signal,
+          on_progress: ({ bytes_done, bytes_total }) => {
+            const within = bytes_total ? bytes_done / bytes_total : 1;
+            const pct = Math.round(((cache_done + within) / cache_total) * 100);
+            report_cache_progress(`Caching file ${cache_done + 1} of ${cache_total} (${pct}%) for fast reload: ${file.name}`);
+          },
+        });
+        Object.assign(record, identity);
+        record.status = 'available';
+        catalogue_cached_record(record);
+      } catch (_) {
+        // A cancel_pending_cache_writes() call already marked this record
+        // 'uncached' (and aborted us) before this rejection landed -- leave
+        // that alone. Any other failure is a genuine copy error: it is never
+        // catalogued, so it can never be reported as a cached success.
+        if (record.status !== 'uncached') {
+          record.status = 'error';
+          cache_failed += 1;
+        }
+      }
+      current_cache_item = null;
+      cache_done += 1;
     }
-    cache_done += 1;
+    report_cache_progress(cache_failed
+      ? `Could not cache ${cache_failed} of ${cache_done} file${cache_done === 1 ? '' : 's'} (storage may be full or unavailable). Analysis remains available; review Storage settings.`
+      : `Cached ${cache_done} file${cache_done === 1 ? '' : 's'} for fast reload.`, cache_failed > 0);
+  } finally {
+    current_cache_item = null;
+    cache_running = false;
+    cache_total = 0;
+    cache_done = 0;
+    cache_failed = 0;
+    cache_idle_waiters.splice(0).forEach((resolve) => resolve());
   }
-  set_status_bar(cache_failed
-    ? `Could not cache ${cache_failed} of ${cache_done} file${cache_done === 1 ? '' : 's'} (storage may be full or unavailable). Analysis remains available; review Storage settings.`
-    : `Cached ${cache_done} file${cache_done === 1 ? '' : 's'} for fast reload.`, cache_failed > 0);
-  cache_running = false;
-  cache_total = 0;
-  cache_done = 0;
-  cache_failed = 0;
-  cache_idle_waiters.splice(0).forEach((resolve) => resolve());
 }
 
 // Called by metadata_io's load_files after files load: builds records for

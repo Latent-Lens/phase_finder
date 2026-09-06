@@ -65,10 +65,10 @@ _STATE_TESTS = r"""async () => {
     };
   };
 
-  const prepare = (row) => {
+  const prepare = (row, binCount = 128) => {
     pipeline.clear_state(row.name);
     pipeline.apply_structural_qc(row);
-    pipeline.apply_dna_histogram(row, { binCount: 128, range: [0, 220] });
+    pipeline.apply_dna_histogram(row, { binCount, range: [0, 220] });
     modelingState.detect_peak_regions(row);
     modelingState.update_peak_regions(row, { g1: { left: 55, right: 85 }, g2: { left: 120, right: 160 } });
     return pipeline.get_state(row.name);
@@ -288,30 +288,173 @@ _STATE_TESTS = r"""async () => {
     };
   });
 
-  await run('STATE-01: a session records the model version it was produced with', () => {
-    // The saved model_version is what lets restore tell "reproduced" from
-    // "recomputed with a different implementation".
-    const entry = registry.get_model('dean_jett_fox');
-    return {
-      pass: typeof entry.version === 'string' && /^\d+\.\d+\.\d+$/.test(entry.version),
-      detail: String(entry.version),
-    };
+  await run('STATE-02/SCI-05: actual TOML restore recomputes fractions and preserves inferred-G2 warnings and model version', async () => {
+    const app = await import('/js/state/app_state.js');
+    const table = await import('/js/data_structs/table_state.js');
+    const session = await import('/js/session/modeling_session.js');
+    // The unit harness has no progress-overlay DOM; preload the same pipeline.
+    await (await import('/js/analysis/pipeline/pipeline_loader.js')).load_pipeline_silently();
+    const toml = await import('/js/session/toml_io.js');
+    const plot = window.PlotData;
+    const row = buildRow('state-02-roundtrip.fcs');
+    const oldFrame = app.get_file_table();
+    const oldSelected = [...table.selected_file_ids];
+    const oldChannels = plot.plot_channels;
+    const oldBins = plot.plot_bin_count();
+    const oldDomain = { ...plot.analysis_domain_override };
+    try {
+      app.get_file_map().set(row.id, row);
+      app.set_file_table(new PhaseFinderFrame({ id: [row.id], name: [row.name] }, ['id', 'name']));
+      table.selected_file_ids.clear();
+      table.selected_file_ids.add(row.id);
+      plot.set_plot_channels({ dna_area: 'DNA_A' });
+      plot.set_plot_bins(128);
+      plot.set_analysis_domain_override(0, 220);
+      const state = prepare(row, plot.plot_bin_count());
+      state.modeling.peakDetection = { status: 'inferred_g2' };
+      modelingState.set_model_settings(row, { modelId: 'dean_jett' });
+      const before = await modelingState.fit_cell_cycle_model(row, 'dean_jett');
+      const exportModule = window.CellCycleExport;
+      const exportSnapshot = result => {
+        const json = exportModule.build_fit_export(row, result);
+        delete json.exportedAt;
+        return { json, csv: exportModule.build_fit_csv(row, result) };
+      };
+      const exportedBefore = exportSnapshot(before);
+      const curves = exportedBefore.json.curves;
+      const arithmetic = curves.x.length === before.histogramProvenance.binCount
+        && curves.residuals.every((value, i) => value === before.histogramProvenance.counts[i] - before.expectedCounts[i])
+        && ['g1', 's', 'g2'].every(id => JSON.stringify(curves[id]) === JSON.stringify(before.components.find(c => c.id === id).counts));
+      const saved = session.get_modeling_session_state();
+      const text = toml.serialize_session({
+        session: { created: '2026-09-05' }, files: { names: [row.name] },
+        metadata: { columns: [], rows: [] }, table: { selected_files: [row.name], filters: {} },
+        plot: { channel: 'DNA_A', color_by: '', bins: 128, remove_debris: false, remove_doublets: false, show_peak_threshold: false },
+        ui: { sidebar_collapsed: false, sidebar_width_px: 300, plot_panel_collapsed: false,
+          plot_panel_height_px: 400, metadata_panel_collapsed: false, metadata_panel_height_px: 200 },
+        modeling: saved,
+      });
+      const parsed = toml.parse_session_toml(text).modeling;
+      pipeline.clear_state(row.name);
+      pipeline.apply_structural_qc(row);
+      const summary = await session.apply_modeling_session(parsed);
+      const restored = pipeline.get_state(row.name);
+      const after = restored.modeling.resultsByKey[restored.modeling.activeResultKey];
+      const display = (result, state) => ({
+        cells: ['g1', 's', 'g2'].map(key => window.CellCycleColumns.format_fraction_cell(result, result.phaseFractions[key])),
+        plot: window.PlotRender.analysis_text(row, window.PlotRender.build_fit_series_entry(row, state, result)),
+      });
+      const same = JSON.stringify(display(before, state)) === JSON.stringify(display(after, restored));
+      const warningsMatch = JSON.stringify(before.warnings) === JSON.stringify(after.warnings);
+      const exportsMatch = JSON.stringify(exportedBefore) === JSON.stringify(exportSnapshot(after));
+      const snapshotsMatch = JSON.stringify(after.peakRegions) === JSON.stringify(restored.modeling.peakSelection.regions)
+        && JSON.stringify(exportedBefore.json.model.settings) === JSON.stringify(before.appliedConfiguration)
+        && exportedBefore.json.model.configHash === before.configHash;
+      // Mutating the live region must not rewrite the fit's accepted-input snapshot.
+      restored.modeling.peakSelection.regions.g1.left += 1;
+      const immutableRegion = after.peakRegions.g1.left !== restored.modeling.peakSelection.regions.g1.left;
+      restored.modeling.peakSelection.regions.g1.left -= 1;
+      const version = registry.get_model('dean_jett').version;
+      const reproduced = after.reproduction.status;
+      parsed.samples[0].model_version = '0.0.0';
+      const drift = await session.apply_modeling_session(parsed);
+      const driftResult = restored.modeling.resultsByKey[restored.modeling.activeResultKey];
+      return {
+        pass: summary.restored === 1 && summary.failed === 0 && before !== after && same && warningsMatch && exportsMatch && arithmetic && snapshotsMatch && immutableRegion
+          && parsed.samples[0].peak_detection_status === 'inferred_g2'
+          && restored.modeling.peakDetection.status === 'inferred_g2'
+          && after.warnings.some(w => /single|inferred/i.test(w.message))
+          && saved.samples[0].model_version === version && reproduced === 'reproduced'
+          && drift.drifted.length === 1 && driftResult.reproduction.status === 'recomputed_new',
+        detail: JSON.stringify({ summary, same, warningsMatch, exportsMatch, arithmetic, snapshotsMatch, immutableRegion, reproduced, drift, before: before.phaseFractions, after: after.phaseFractions }),
+      };
+    } finally {
+      pipeline.clear_state(row.name);
+      app.get_file_map().delete(row.id);
+      app.set_file_table(oldFrame);
+      table.selected_file_ids.clear();
+      oldSelected.forEach(id => table.selected_file_ids.add(id));
+      plot.set_plot_channels(oldChannels);
+      plot.set_plot_bins(oldBins);
+      plot.set_analysis_domain_override(oldDomain.x_min, oldDomain.x_max);
+    }
   });
 
-  await run('STATE-01: version drift is labelled recomputed_new, a match is labelled reproduced', () => {
-    // The classification rule the restore path applies, exercised directly so
-    // it is covered without driving a full session round trip (the e2e session
-    // suite covers the round trip itself).
-    const classify = (savedVersion, currentVersion) =>
-      savedVersion && currentVersion && savedVersion !== currentVersion
-        ? 'recomputed_new'
-        : savedVersion ? 'reproduced' : 'unknown_saved_version';
-    return {
-      pass: classify('1.0.0', '1.1.0') === 'recomputed_new'
-        && classify('1.0.0', '1.0.0') === 'reproduced'
-        && classify('', '1.0.0') === 'unknown_saved_version',
-      detail: JSON.stringify([classify('1.0.0', '1.1.0'), classify('1.0.0', '1.0.0'), classify('', '1.0.0')]),
-    };
+  await run('STATE-02 box 3: a saved-session source-commit mismatch on restore is flagged as implementation drift, distinct from a model_version bump', async () => {
+    const app = await import('/js/state/app_state.js');
+    const table = await import('/js/data_structs/table_state.js');
+    const session = await import('/js/session/modeling_session.js');
+    await (await import('/js/analysis/pipeline/pipeline_loader.js')).load_pipeline_silently();
+    const toml = await import('/js/session/toml_io.js');
+    const plot = window.PlotData;
+    const row = buildRow('state-02-commit-drift.fcs');
+    const oldFrame = app.get_file_table();
+    const oldSelected = [...table.selected_file_ids];
+    const oldChannels = plot.plot_channels;
+    const oldBins = plot.plot_bin_count();
+    const oldDomain = { ...plot.analysis_domain_override };
+    try {
+      app.get_file_map().set(row.id, row);
+      app.set_file_table(new PhaseFinderFrame({ id: [row.id], name: [row.name] }, ['id', 'name']));
+      table.selected_file_ids.clear();
+      table.selected_file_ids.add(row.id);
+      plot.set_plot_channels({ dna_area: 'DNA_A' });
+      plot.set_plot_bins(128);
+      plot.set_analysis_domain_override(0, 220);
+      prepare(row, plot.plot_bin_count());
+      modelingState.set_model_settings(row, { modelId: 'dean_jett' });
+      await modelingState.fit_cell_cycle_model(row, 'dean_jett');
+
+      // A real round trip through the actual TOML serializer/parser: the
+      // session envelope's source_commit (core.js:230, toml_io.js:32) is what
+      // a restore compares against, so serialize/parse it exactly as a saved
+      // session file would carry it rather than hand-building the option.
+      const savedModeling = session.get_modeling_session_state();
+      const text = toml.serialize_session({
+        session: { created: '2026-09-06', source_commit: 'deadbeef0000' },
+        files: { names: [row.name] },
+        metadata: { columns: [], rows: [] }, table: { selected_files: [row.name], filters: {} },
+        plot: { channel: 'DNA_A', color_by: '', bins: 128, remove_debris: false, remove_doublets: false, show_peak_threshold: false },
+        ui: { sidebar_collapsed: false, sidebar_width_px: 300, plot_panel_collapsed: false,
+          plot_panel_height_px: 400, metadata_panel_collapsed: false, metadata_panel_height_px: 200 },
+        modeling: savedModeling,
+      });
+      const parsed = toml.parse_session_toml(text);
+      const savedSourceCommit = parsed.session.source_commit;
+      // Same model version as when it was saved -- only the recorded commit
+      // differs -- so a version-only check would find nothing to report here.
+      const versionUnchanged = parsed.modeling.samples[0].model_version === registry.get_model('dean_jett').version;
+
+      const restoreSummary = await session.apply_modeling_session(parsed.modeling, { savedSourceCommit });
+      const afterState = pipeline.get_state(row.name);
+      const after = afterState.modeling.resultsByKey[afterState.modeling.activeResultKey];
+      const implementationWarning = after?.warnings.find(w => w.code === 'implementation_drift');
+
+      return {
+        pass: versionUnchanged
+          && savedSourceCommit === 'deadbeef0000'
+          && restoreSummary.restored === 1
+          && after?.reproduction?.status === 'recomputed_new'
+          && after?.reproduction?.versionDrifted === false
+          && after?.reproduction?.implementationDrifted === true
+          && after?.reproduction?.savedSourceCommit === 'deadbeef0000'
+          && Boolean(implementationWarning) && /analysis code has changed/i.test(implementationWarning?.message ?? '')
+          && !/model_version/i.test(implementationWarning?.message ?? '')
+          && restoreSummary.drifted.length === 1
+          && restoreSummary.drifted[0].versionDrifted === false
+          && restoreSummary.drifted[0].implementationDrifted === true,
+        detail: JSON.stringify({ versionUnchanged, savedSourceCommit, reproduction: after?.reproduction, implementationWarning, drift: restoreSummary.drifted }),
+      };
+    } finally {
+      pipeline.clear_state(row.name);
+      app.get_file_map().delete(row.id);
+      app.set_file_table(oldFrame);
+      table.selected_file_ids.clear();
+      oldSelected.forEach(id => table.selected_file_ids.add(id));
+      plot.set_plot_channels(oldChannels);
+      plot.set_plot_bins(oldBins);
+      plot.set_analysis_domain_override(oldDomain.x_min, oldDomain.x_max);
+    }
   });
 
   return results;

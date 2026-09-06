@@ -32,6 +32,7 @@ import {
   release_session_cache,
   catalogue_cached_record,
   wait_for_cache_idle,
+  drain_cache_queue,
   is_test_mode,
 } from "./file_cache.js";
 import {
@@ -298,6 +299,11 @@ let pending_session = null;
 // reconnect and the saved channel is available we auto-plot, then the one-shot
 // pf-plot-complete handler re-applies QC and re-fits from this config.
 let pending_modeling_restore = null;
+// STATE-02 box 3: the saved session envelope's source commit (build_info.js),
+// carried alongside pending_modeling_restore so run_modeling_restore() can
+// compare it against the running app's commit, not only the per-model
+// version string already carried inside pending_modeling_restore.samples.
+let pending_session_source_commit = null;
 let modeling_restore_started = false;
 
 /*
@@ -419,12 +425,15 @@ Purpose:
 
 Input:
 	config [object]: the saved modeling section
+	saved_source_commit [string|null]: the saved session envelope's
+	PHASEFINDER_SOURCE_COMMIT (STATE-02 box 3), for the implementation-drift
+	check inside apply_modeling_session()
 
 Output:
 	(none) [Promise<void>]
 
 */
-async function run_modeling_restore(config) {
+async function run_modeling_restore(config, saved_source_commit) {
   let progress_operation = null;
   try {
     if (config.qc_filters?.length) {
@@ -435,6 +444,7 @@ async function run_modeling_restore(config) {
     const result = await apply_modeling_session(config, {
       onProgress: (index, total, name) =>
         update_progress(total ? (100 * index) / total : 0, 'Restoring modeling', name, '', progress_operation),
+      savedSourceCommit: saved_source_commit,
     });
     document.dispatchEvent(new CustomEvent('cell-cycle-fit-changed'));
     if (last_restore_summary?.status === 'restored') {
@@ -484,6 +494,8 @@ function apply_session_configuration(session) {
     session.modeling && (session.modeling.samples?.length || session.modeling.scatter_gates?.length || session.modeling.qc_filters?.length)
       ? session.modeling
       : null;
+  // STATE-02 box 3: only meaningful alongside an actual modeling restore.
+  pending_session_source_commit = pending_modeling_restore ? (session.session?.source_commit || null) : null;
   modeling_restore_started = false;
 }
 
@@ -553,7 +565,14 @@ export function prepare_session_draft(parsed) {
   return { draft: validate_session_draft(parsed), migrated_fields };
 }
 
-async function restore_session_transaction(parsed, options = {}) {
+// Exported (in addition to being used by handle_load()/try_autoload() below)
+// so tests can drive a real import through the actual validate-then-apply
+// path: prepare_session_draft() runs validate_session_draft() before this
+// function's restore stages are even built, so a malformed nested record
+// (e.g. modeling.samples containing null) throws here before any stage --
+// and therefore the active session -- is touched. See STATE-03 in
+// tests/unit/driving_code/unit_tests_session.py.
+export async function restore_session_transaction(parsed, options = {}) {
   const { draft, migrated_fields } = prepare_session_draft(parsed);
   const previous_logical_session_id = logical_session_id;
   let file_resolution;
@@ -568,6 +587,7 @@ async function restore_session_transaction(parsed, options = {}) {
   await run_restore_stages(stages, ({ stage }) => {
     pending_session = null;
     pending_modeling_restore = null;
+    pending_session_source_commit = null;
     modeling_restore_started = false;
     set_active_logical_session_id(previous_logical_session_id);
     last_restore_summary = { status: 'failed', failed_stage: stage };
@@ -743,6 +763,47 @@ async function handle_load() {
 /*
 
 Purpose:
+	Drains this session's background cache queue (so Reset never races a
+	pending write against the deletion below), releases every cache entry it
+	solely owns, and best-effort removes its own OPFS working directory.
+	Exported so tests can drive the real release path -- including denied
+	deletions -- without also triggering handle_reset()'s confirm()/reload()
+	(STATE-05; mirrors restore_session_transaction's export for STATE-03).
+
+Input:
+	(none)
+
+Output:
+	summary [Promise<object>]: { results, sessions_dir_removed, failed, all_removed }
+	  results: release_session_cache()'s per-path outcomes
+	  failed: the subset of results this session solely owned but could not delete
+	  sessions_dir_removed: false only if the working directory exists and a
+	    real removal attempt on it failed (a missing directory is not a failure)
+	  all_removed: true only when both the cache entries and the working
+	    directory were actually removed -- never true on a partial failure
+
+*/
+export async function release_active_session_cache() {
+  await drain_cache_queue();
+  const results = await release_session_cache(logical_session_id, delete_opfs_path);
+  const failed = results.filter((r) => !r.removed && !r.shared);
+  let sessions_dir_removed = true;
+  try {
+    const root = await get_opfs_root();
+    const sessions_dir = await ensure_directory(root, ['sessions'], false);
+    await sessions_dir.removeEntry(runtime_session_id, { recursive: true });
+  } catch (error) {
+    // A missing directory means there was nothing cached yet -- expected and
+    // not a failure. Anything else (e.g. a denied removeEntry) means this
+    // session's own working copy may still hold data.
+    sessions_dir_removed = error?.name === 'NotFoundError';
+  }
+  return { results, failed, sessions_dir_removed, all_removed: sessions_dir_removed && failed.length === 0 };
+}
+
+/*
+
+Purpose:
 	Reset button handler: after confirmation, deletes this session's cached files
 	from OPFS and reloads the app.
 
@@ -755,12 +816,15 @@ Output:
 */
 async function handle_reset() {
   if (!window.confirm('Reset session? This deletes this session\'s cached files and cannot be undone.')) return;
-  await release_session_cache(logical_session_id, delete_opfs_path);
-  try {
-    const root = await get_opfs_root();
-    const sessions_dir = await ensure_directory(root, ['sessions'], false);
-    await sessions_dir.removeEntry(runtime_session_id, { recursive: true });
-  } catch (_) { /* nothing cached yet, or OPFS unavailable — non-fatal */ }
+  const { all_removed, failed, sessions_dir_removed } = await release_active_session_cache();
+  if (!all_removed) {
+    const missed = failed.length + (sessions_dir_removed ? 0 : 1);
+    set_status_bar(
+      `Reset could not remove ${missed} cached item${missed === 1 ? '' : 's'}; ` +
+      'they remain in browser storage as orphaned data. Continuing reset.',
+      true,
+    );
+  }
   set_active_logical_session_id(null);
   // The reload below is a real navigation, which would otherwise also trip
   // the beforeunload guard right after the confirm() above already asked.
@@ -898,8 +962,10 @@ export function init_session() {
   document.addEventListener('pf-plot-complete', () => {
     if (!pending_modeling_restore) return;
     const config = pending_modeling_restore;
+    const saved_source_commit = pending_session_source_commit;
     pending_modeling_restore = null;
-    run_modeling_restore(config);
+    pending_session_source_commit = null;
+    run_modeling_restore(config, saved_source_commit);
   });
 
   document.getElementById('reconnect_choose_folder')?.addEventListener('click', () => {

@@ -34,19 +34,18 @@ async function write_file_to_opfs(file, opfs_path, request_id) {
   // (createSyncAccessHandle) would be faster but is a later optimization.
   const writable = await handle.createWritable();
   try {
-    return await digest_file_chunks(file, {
+    const identity = await digest_file_chunks(file, {
       signal: { get aborted() { return cancelled_requests.has(request_id); } },
       consume_chunk: (buffer) => writable.write(buffer),
       on_progress: (progress) => self.postMessage({ request_id, progress }),
     });
+    if (cancelled_requests.has(request_id)) throw new Error("Cache copy cancelled.");
+    await writable.close();
+    return identity;
   } catch (error) {
     try { await writable.abort(); } catch (_) { /* best effort */ }
     try { await dir.removeEntry(file_name); } catch (_) { /* partial path may not exist */ }
     throw error;
-  } finally {
-    if (!cancelled_requests.has(request_id)) {
-      try { await writable.close(); } catch (_) { /* already aborted */ }
-    }
   }
 }
 

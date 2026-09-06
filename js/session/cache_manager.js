@@ -4,6 +4,7 @@ import {
   release_session_cache,
   release_orphaned_cache,
   clear_all_local_records,
+  drain_cache_queue,
   human_size,
   automatic_cache_enabled,
   set_automatic_cache_enabled,
@@ -15,6 +16,7 @@ import {
   list_opfs_session_directories,
 } from './opfs_fs.js';
 import { suppress_next_unload_warning } from './unload_guard.js';
+import { set_status_bar } from '../ui/status_channels.js';
 
 function button(id) { return document.getElementById(id); }
 
@@ -61,10 +63,25 @@ async function render_cache_manager() {
 }
 
 async function clear_orphans() {
-  await release_orphaned_cache(delete_opfs_path);
+  // A legacy/uncatalogued directory can be one this session is still
+  // background-copying into (not yet catalogued) -- drain first so this
+  // never deletes out from under an in-flight write (STATE-05).
+  await drain_cache_queue();
+  const entry_results = await release_orphaned_cache(delete_opfs_path);
   const { legacy_directories } = await cache_snapshot();
-  for (const name of legacy_directories) await delete_opfs_session_directory(name);
+  let dir_failures = 0;
+  for (const name of legacy_directories) {
+    if (!(await delete_opfs_session_directory(name))) dir_failures += 1;
+  }
   await render_cache_manager();
+  const entry_failures = entry_results.filter((r) => !r.removed).length;
+  const failures = entry_failures + dir_failures;
+  if (failures) {
+    set_status_bar(
+      `Could not remove ${failures} orphaned cache item${failures === 1 ? '' : 's'}; they remain in browser storage.`,
+      true,
+    );
+  }
 }
 
 export function init_cache_manager() {
@@ -83,8 +100,16 @@ export function init_cache_manager() {
   button('cache_manager_close')?.addEventListener('click', () => { modal.hidden = true; });
   button('cache_manager_clear_session')?.addEventListener('click', async () => {
     if (!window.confirm('Clear cached FCS copies owned only by this session? Shared copies will be kept.')) return;
-    await release_session_cache(logical_session_id, delete_opfs_path);
+    await drain_cache_queue();
+    const results = await release_session_cache(logical_session_id, delete_opfs_path);
     await render_cache_manager();
+    const failed = results.filter((r) => !r.removed && !r.shared).length;
+    if (failed) {
+      set_status_bar(
+        `Could not remove ${failed} cached file${failed === 1 ? '' : 's'}; they remain in browser storage as orphan candidates.`,
+        true,
+      );
+    }
   });
   button('cache_manager_clear_orphans')?.addEventListener('click', async () => {
     if (!window.confirm('Clear orphaned and uncatalogued legacy PhaseFinder cache entries?')) return;
@@ -92,10 +117,20 @@ export function init_cache_manager() {
   });
   button('cache_manager_clear_all')?.addEventListener('click', async () => {
     if (!window.confirm('Clear all PhaseFinder local data, including cached FCS copies and remembered directory access?')) return;
+    await drain_cache_queue();
     const directories = await list_opfs_session_directories();
-    for (const name of directories) await delete_opfs_session_directory(name);
+    let dir_failures = 0;
+    for (const name of directories) {
+      if (!(await delete_opfs_session_directory(name))) dir_failures += 1;
+    }
     await clear_all_local_records();
     modal.hidden = true;
+    if (dir_failures) {
+      set_status_bar(
+        `Could not remove ${dir_failures} cached director${dir_failures === 1 ? 'y' : 'ies'}; some data may remain in browser storage.`,
+        true,
+      );
+    }
     suppress_next_unload_warning();
     window.location.reload();
   });

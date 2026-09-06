@@ -238,7 +238,7 @@ _TESTS = r"""() => {
       // (limitedReliability) and surfaced as a warning, but the fractions are
       // reported so the user -- not the tool -- decides whether to trust them.
       pass: contracted.optimizerConverged === true
-        && contracted.scientificallyValid === true
+        && contracted.scientificallyValid === false
         && contracted.limitedReliability === true
         && contracted.validForReporting === true
         && contracted.warnings.some((w) => w.code === 'fit_peak_degenerate'),
@@ -727,7 +727,11 @@ _TESTS = r"""() => {
         && result.phaseFractions
         && result.computed === true
         && result.optimizerConverged === true
-        && result.scientificallyValid === true
+        // This two-peak fixture has effectively zero S area. Its critical
+        // boundary/identifiability warnings must qualify the usable numbers.
+        && result.scientificallyValid === false
+        && result.limitedReliability === true
+        && result.warnings.some((warning) => warning.nonreportable === true)
         && result.validForReporting === true
         && result.invalid === false
         && Number.isFinite(result.phaseFractions.g1)
@@ -738,7 +742,7 @@ _TESTS = r"""() => {
         && Number.isFinite(result.diagnostics?.optimizer?.finiteDifferenceRelativeStep)
         && Number.isInteger(result.diagnostics?.optimizer?.rankFailureCount)
         && modeling.settings.modelId === 'dean_jett';
-      return { pass, detail: JSON.stringify({ modelId: result.modelId, converged: result.converged, phaseFractions: result.phaseFractions, deterministic: repeated.diagnostics.deviance === result.diagnostics.deviance }) };
+      return { pass, detail: JSON.stringify({ modelId: result.modelId, converged: result.converged, scientificallyValid: result.scientificallyValid, warnings: result.warnings, phaseFractions: result.phaseFractions, deterministic: repeated.diagnostics.deviance === result.diagnostics.deviance }) };
     });
 
     await runAsync('STATE-01: stored constraints affect behavior and exact applied config is retained', async () => {
