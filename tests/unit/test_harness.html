@@ -53,13 +53,17 @@
     import { run_fit_in_worker, fit_pool_size, compute_pool_size } from "/js/analysis/cell_cycle/fit_client.js";
     import * as CellCyclePeakDetection from "/js/analysis/cell_cycle/peak_detection.js";
     import * as CellCyclePeakRegions from "/js/analysis/cell_cycle/peak_regions.js";
+    import * as CellCycleUncertainty from "/js/analysis/cell_cycle/uncertainty.js";
     import * as DnaHistogram from "/js/analysis/pipeline/dna_histogram.js";
     import * as CellCycleModelingState from "/js/analysis/cell_cycle/modeling_state.js";
     import * as CellCycleResultContract from "/js/analysis/cell_cycle/result_contract.js";
+    import * as QcReviewUi from "/js/analysis/cell_cycle/qc_review_ui.js";
+    import * as QcMatrix from "/js/analysis/pipeline/qc_matrix.js";
     import * as CellCycleFitEngine from "/js/analysis/cell_cycle/fit_engine.js";
     import * as CellCycleDiagnostics from "/js/analysis/cell_cycle/diagnostics.js";
     import * as CellCycleConstraintAudit from "/js/analysis/cell_cycle/constraint_audit.js";
     import * as CellCycleDomainSensitivity from "/js/analysis/cell_cycle/domain_sensitivity.js";
+    import * as CellCycleResampling from "/js/analysis/cell_cycle/resampling.js";
     import * as CellCycleDeanJett from "/js/analysis/cell_cycle/models/dean_jett.js";
     import * as CellCycleDeanJettFox from "/js/analysis/cell_cycle/models/dean_jett_fox.js";
     import * as CellCycleWatsonPragmatic from "/js/analysis/cell_cycle/models/watson_pragmatic.js";
@@ -77,6 +81,7 @@
     import * as BrowserCompatibility from "/js/ui/compatibility.js";
     import * as CellCycleModelingUI from "/js/analysis/cell_cycle/modeling_ui.js";
     import * as CellCycleExport from "/js/analysis/cell_cycle/export.js";
+    import * as CellCycleColumns from "/js/ui/cell_cycle_columns.js";
     import { format_cell_cycle_value } from "/js/data_structs/derived_columns.js";
 
     Object.assign(window, {
@@ -119,12 +124,16 @@
     window.FitClientPool = { fit_pool_size, compute_pool_size };
     window.CellCyclePeakDetection = CellCyclePeakDetection;
     window.CellCyclePeakRegions = CellCyclePeakRegions;
+    window.CellCycleUncertainty = CellCycleUncertainty;
     window.CellCycleModelingState = CellCycleModelingState;
     window.CellCycleResultContract = CellCycleResultContract;
+    window.QcReviewUi = QcReviewUi;
+    window.QcMatrix = QcMatrix;
     window.CellCycleFitEngine = CellCycleFitEngine;
     window.CellCycleDiagnostics = CellCycleDiagnostics;
     window.CellCycleConstraintAudit = CellCycleConstraintAudit;
     window.CellCycleDomainSensitivity = CellCycleDomainSensitivity;
+    window.CellCycleResampling = CellCycleResampling;
     window.CellCycleDeanJett = CellCycleDeanJett;
     window.CellCycleDeanJettFox = CellCycleDeanJettFox;
     window.CellCycleWatsonPragmatic = CellCycleWatsonPragmatic;
@@ -140,6 +149,7 @@
     window.PlotData = PlotData;
     window.CellCycleModelingUI = CellCycleModelingUI;
     window.CellCycleExport = CellCycleExport;
+    window.CellCycleColumns = CellCycleColumns;
     window.DnaHistogram = DnaHistogram;
     window.__libsReady = true;
   </script>

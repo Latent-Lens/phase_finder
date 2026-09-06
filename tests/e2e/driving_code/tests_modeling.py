@@ -381,6 +381,87 @@ def test_modeling(ctx: TestContext):
             status_after_fit,
         )
 
+        # DOMAIN-01: the on-demand "Check domain sensitivity" action. It calls
+        # assess_domain_sensitivity() (modeling_state.js) against the fit
+        # already on screen rather than fitting anything new, and only appears
+        # once a reportable result exists (refresh_panel() in modeling_ui.js),
+        # which the fit above just put in place.
+        ctx.check(
+            group,
+            "Check domain sensitivity appears once a fit result exists",
+            not page.eval_on_selector("#cell_cycle_domain_sensitivity_button", "e => e.hidden"),
+        )
+
+        page.click("#cell_cycle_domain_sensitivity_button")
+        # The sweep re-fits the sample ~12 times (bin count x domain
+        # perturbation), so give it a generous timeout rather than the plain
+        # fit's 30s.
+        page.wait_for_function(
+            "() => !document.querySelector('#cell_cycle_domain_sensitivity_status').hidden",
+            timeout=60000,
+        )
+        domain_sensitivity_status_text = page.eval_on_selector(
+            "#cell_cycle_domain_sensitivity_status", "e => e.textContent.trim()"
+        )
+        modeling_after_sensitivity = _modeling_state(page, sample_name)
+        # An "invalid" verdict demotes activeResultKey to lastDiagnosticResultKey
+        # (assess_domain_sensitivity()'s documented side effect), so the result
+        # carrying the verdict may be filed under either key depending on what
+        # this sample's real sweep found.
+        sensitivity_result = next(
+            (
+                modeling_after_sensitivity["resultsByKey"][key]
+                for key in (
+                    modeling_after_sensitivity["activeResultKey"],
+                    modeling_after_sensitivity["lastDiagnosticResultKey"],
+                )
+                if key and modeling_after_sensitivity["resultsByKey"].get(key, {}).get("domainSensitivity")
+            ),
+            None,
+        )
+        sensitivity_verdict = sensitivity_result["domainSensitivity"]["status"] if sensitivity_result else None
+        ctx.check(
+            group,
+            "Clicking Check domain sensitivity runs the real sweep and shows its verdict on the result",
+            sensitivity_result is not None
+            and sensitivity_verdict in ("ok", "warning", "invalid")
+            and domain_sensitivity_status_text.startswith("Domain sensitivity:")
+            and sensitivity_verdict in domain_sensitivity_status_text
+            and len(sensitivity_result["domainSensitivity"]["variants"]) == 12,
+            str({"status_text": domain_sensitivity_status_text, "verdict": sensitivity_verdict}),
+        )
+
+        status_after_sensitivity = status_bar_text(page)
+        ctx.check(
+            group,
+            "Checking domain sensitivity reports its outcome in the status bar",
+            "domain sensitivity" in status_after_sensitivity.lower(),
+            status_after_sensitivity,
+        )
+
+        # assess_domain_sensitivity() mutates the same result object it was
+        # given (appends warnings, may flip its reporting verdict) -- exactly
+        # the qualify/block behavior this action exists to exercise, but the
+        # several checks below this point capture their own "active_result"
+        # off the pre-sensitivity-check fit and expect it to still match what
+        # is on screen. Re-fitting with the same model and (unchanged) regions
+        # is deterministic and produces a fresh result with no
+        # domainSensitivity mutation, restoring that match for the rest of
+        # this sample's checks. build_result_key() (modeling_state.js) is a
+        # pure content-based cache key, so the key itself does not change
+        # across an identical re-fit -- wait on the mutation being gone
+        # instead of on the key.
+        page.click("#cell_cycle_fit_current_button")
+        page.wait_for_function(
+            """(name) => {
+              const modeling = window.PhaseFinder.pipeline.get_state(name).modeling;
+              const result = modeling.resultsByKey[modeling.activeResultKey];
+              return Boolean(result) && !result.domainSensitivity;
+            }""",
+            arg=sample_name,
+            timeout=30000,
+        )
+
         result_key_before_view = page.evaluate(
             "(name) => window.PhaseFinder.pipeline.get_state(name).modeling.activeResultKey",
             sample_name,
@@ -461,19 +542,27 @@ def test_modeling(ctx: TestContext):
 
         # The fit's phase fractions also populate the metadata table as a
         # per-model group: a "Watson Pragmatic" header over G1/S/G2-M sub-headers,
-        # with the fitted sample's row carrying the percentages (cell_cycle_columns.js).
+        # with the fitted sample's row carrying the percentages
+        # (cell_cycle_columns.js). UI-01: an unconverged (or otherwise
+        # untrusted) result's cell carries a trailing " ⚠" glyph
+        # (format_fraction_cell()/fraction_trust_reason() in
+        # cell_cycle_columns.js / result_contract.js) -- that glyph is
+        # deliberate, tested, documented behavior, not noise, so the expected
+        # text must allow for it rather than requiring a bare percentage.
+        g1pct = f"{active_result['phaseFractions']['g1'] * 100:.1f}%"
+        g1pct_untrusted = f"{g1pct} ⚠"
         columns_dom = page.wait_for_function(
-            """(g1pct) => {
+            """({ g1pct, g1pctUntrusted }) => {
               const groups = [...document.querySelectorAll('#file_table th.cell_cycle_group_th')].map((e) => e.textContent.trim());
               const subs = [...document.querySelectorAll('#file_table th.cell_cycle_sub_th')].map((e) => e.textContent.trim());
               const cells = [...document.querySelectorAll('#file_table td.cell_cycle_td')]
                 .map((e) => e.textContent.trim()).filter((t) => t.includes('%'));
               const ok = groups.includes('Watson Pragmatic')
                 && subs.slice(0, 3).join(',') === 'G1,S,G2/M'
-                && cells.some((c) => c === g1pct);
+                && cells.some((c) => c === g1pct || c === g1pctUntrusted);
               return ok ? { groups, subs, cells } : null;
             }""",
-            arg=f"{active_result['phaseFractions']['g1'] * 100:.1f}%",
+            arg={"g1pct": g1pct, "g1pctUntrusted": g1pct_untrusted},
             timeout=15000,
         )
         columns_info = columns_dom.json_value()
@@ -482,7 +571,7 @@ def test_modeling(ctx: TestContext):
             "Fit fractions populate a per-model G1/S/G2-M group in the metadata table",
             "Watson Pragmatic" in columns_info["groups"]
             and columns_info["subs"][:3] == ["G1", "S", "G2/M"]
-            and any(c.endswith("%") for c in columns_info["cells"]),
+            and any(c.endswith("%") or c.endswith("⚠") for c in columns_info["cells"]),
             str(columns_info),
         )
 
@@ -521,8 +610,18 @@ def test_modeling(ctx: TestContext):
         page.select_option("#plot_view_mode", "overlay")
         wait_for_render(page)
 
-        # Changing bins rebuilds the histogram and detector proposal, but must
-        # not silently accept/refit that new automatic proposal (PEAK-01).
+        # Changing bins rebuilds the histogram and detector proposal. PEAK-01
+        # only forbids silently PROMOTING a fresh *automatic* proposal to
+        # reviewed/active -- this sample's regions are "manual" and already
+        # "reviewed" (the Accept step above), and bin_settings_sync.js's
+        # recalculate_all() deliberately refits a reviewed manual selection
+        # against the rebuilt histogram rather than discarding it ("Reviewed
+        # manual regions remain active and may be refit; a fresh automatic
+        # proposal stays unreviewed and is never silently promoted by a
+        # bin-count change"). detect_peak_regions() only resets `reviewed`
+        # when it is REPLACING an automatic selection (peakSelection.source
+        # === "automatic"), so a manual selection's `reviewed` flag survives
+        # the bin change untouched, exactly as intended.
         bins_before = page.evaluate(
             "(name) => window.PhaseFinder.pipeline.get_state(name)?.histogram?.binCount",
             sample_name,
@@ -558,15 +657,18 @@ def test_modeling(ctx: TestContext):
         )
         ctx.check(
             group,
-            "Changing Bins rebuilds the histogram without auto-accepting or refitting the new proposal",
+            "Changing Bins rebuilds the histogram and refits a reviewed manual selection without resetting review",
             bins_before != 512
             and bins_after == 512
             and page.eval_on_selector("#plot_bins_value", "e => e.textContent") == "512"
-            and recalc_active is None
-            and recalc_modeling["peakSelection"]["reviewed"] is False
+            and recalc_active is not None
+            and recalc_modeling["peakSelection"]["source"] == "manual"
+            and recalc_modeling["peakSelection"]["reviewed"] is True
             and page.eval_on_selector("#bin_recalc_modal", "e => e.hidden") is True,
             str({"binsBefore": bins_before, "binsAfter": bins_after,
-                 "reviewed": recalc_modeling["peakSelection"]["reviewed"]}),
+                 "reviewed": recalc_modeling["peakSelection"]["reviewed"],
+                 "source": recalc_modeling["peakSelection"]["source"],
+                 "hasActive": recalc_active is not None}),
         )
 
         # The Undo button appears after a bin-size recalc; one click reverts the
@@ -596,33 +698,86 @@ def test_modeling(ctx: TestContext):
             f"undo_was_visible={undo_visible}",
         )
 
-        # Dean-Jett assumes a biological ~2:1 G2:G1 ratio by default. This
-        # sample's detected regions don't support any ratio in its configured
-        # range (an inferred_g2 fallback, not a confident detection) -- the
-        # plan requires that to surface as a clear inline error instead of
+        # Dean-Jett assumes a biological ~2:1 G2:G1 ratio by default
+        # (fitRatioRange [1.65, 2.25] -- dean_jett.js). The plan requires an
+        # infeasible ratio to surface as a clear inline error instead of
         # hanging or silently fitting something meaningless ("If a
-        # constraint is infeasible, disable Fit and explain it inline").
-        #
-        # That infeasibility is bin-count dependent for this sample: it holds at
-        # 512 bins but not at the 256 default. Pin the bin count to 512 (which
-        # re-detects + refits via the recalc flow) so this sub-test is
-        # deterministic regardless of the default.
-        page.evaluate(
-            """() => {
-              const slider = document.querySelector('#plot_bins');
-              slider.value = '2';  // BIN_STOPS index 2 -> 512 bins
-              slider.dispatchEvent(new Event('input', { bubbles: true }));
-              slider.dispatchEvent(new Event('change', { bubbles: true }));
-            }"""
+        # constraint is infeasible, disable Fit and explain it inline"),
+        # enforced by assert_ratio_feasible()/projectMeansToFeasible()
+        # throwing before the optimizer ever runs (shared.js). Relying on a
+        # specific real FCS sample's own detected regions to coincidentally
+        # land outside that band is fragile -- it drifts as peak-detection
+        # and pedestal-subtraction logic changes elsewhere (MODEL-06/
+        # MODEL-09 already moved this exact sample from "infeasible at 512
+        # bins" to "feasible, just slow to converge"). Instead, force the
+        # infeasibility directly and deterministically: keep the reviewed G1
+        # region as-is and edit G2 down to a narrow window immediately
+        # adjacent to G1's right edge (still a valid L1 < R1 <= L2 < R2
+        # ordering) so its ratio to G1 is pinned near 1x -- below the 1.65x
+        # floor for every (mu1, mu2) pair in the two regions, regardless of
+        # the sample's absolute channel scale.
+        # The window must also clear GATE-01's independent minimum-event-support
+        # precondition (result_contract.js: MINIMUM_PEAK_SUPPORT_EVENTS, checked
+        # in model_preflight() before the model ever runs) -- a window too
+        # narrow to contain real events fails for THAT reason first, masking
+        # the ratio check this test exists to exercise. Search outward from
+        # G1's right edge over the sample's real histogram bins, accumulating
+        # real event support one bin at a time, and stop at the first point
+        # that both clears the event-support floor and is still ratio-
+        # infeasible (there is plenty of room: for this geometry the ratio
+        # stays infeasible until G2's right edge reaches roughly 8-9x G1's
+        # span past G1's right edge, far beyond what a few real bins need).
+        # window.CellCycleResultContract/CellCycleModelRegistry are only
+        # attached on the unit-test harness page (tests/unit/test_harness.html)
+        # -- the real app page e2e drives deliberately omits the model
+        # registry from window.PhaseFinder (GATE-01's own enforced rule, see
+        # tests/ci/test_gate_entry_points.py). Mirror the two source
+        # constants directly instead: MINIMUM_PEAK_SUPPORT_EVENTS = 10
+        # (result_contract.js) and fitRatioRange [1.65, 2.25] (dean_jett.js
+        # DEFAULT_CONFIG), same as this test's own comment above already cites.
+        infeasible_search = page.evaluate(
+            """(name) => {
+              const minEvents = 10;
+              const [ratioMin, ratioMax] = [1.65, 2.25];
+              const state = window.PhaseFinder.pipeline.get_state(name);
+              const hist = state.histogram;
+              const centers = hist.centers ?? hist.x;
+              const counts = hist.counts ?? hist.y;
+              const g1 = state.modeling.peakSelection.regions.g1;
+              const g2Left = g1.right;
+              const tail = centers
+                .map((c, i) => ({ c, count: counts[i] }))
+                .filter((b) => b.c > g2Left)
+                .sort((a, b) => a.c - b.c);
+              let support = 0;
+              let g2Right = g2Left;
+              for (const bin of tail) {
+                support += bin.count;
+                g2Right = bin.c;
+                const mu1Lo = Math.max(g1.left, g2Left / ratioMax);
+                const mu1Hi = Math.min(g1.right, g2Right / ratioMin);
+                if (support >= minEvents) {
+                  return { g2Left, g2Right, support, infeasible: mu1Lo > mu1Hi, exhausted: false };
+                }
+              }
+              return { g2Left, g2Right, support, infeasible: false, exhausted: true };
+            }""",
+            sample_name,
         )
-        page.wait_for_function(
-            "(name) => window.PhaseFinder.pipeline.get_state(name)?.histogram?.binCount === 512"
-            " && document.querySelector('#bin_recalc_modal').hidden",
-            arg=sample_name,
-            timeout=30000,
-        )
-        page.click("#peak_regions_accept_button")
+        current_regions = _modeling_state(page, sample_name)["peakSelection"]["regions"]
+        infeasible_g2_left = infeasible_search["g2Left"]
+        infeasible_g2_right = infeasible_search["g2Right"]
         page.select_option("#cell_cycle_model_select", "dean_jett")
+        _set_region_input(page, "#peak_region_g2_left", infeasible_g2_left)
+        _set_region_input(page, "#peak_region_g2_right", infeasible_g2_right)
+        page.wait_for_function(
+            """([sampleName, expected]) => {
+              const selection = window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection;
+              return Math.abs((selection?.regions?.g2?.right ?? NaN) - expected) < 0.01;
+            }""",
+            arg=[sample_name, infeasible_g2_right],
+            timeout=5000,
+        )
         page.click("#cell_cycle_fit_current_button")
         # Wait for the *new* status text specifically, not just visibility --
         # the status element is already visible from the Watson fit above and
@@ -641,7 +796,36 @@ def test_modeling(ctx: TestContext):
             group,
             "An infeasible ratio constraint surfaces a clear inline error instead of hanging",
             "ratio" in status_text.lower() and "g2" in status_text.lower(),
-            status_text,
+            str({"status_text": status_text, "regions": {
+                "g1": current_regions["g1"],
+                "g2": {"left": infeasible_g2_left, "right": infeasible_g2_right},
+            }, "search": infeasible_search}),
+        )
+
+        # The sliver G2 region above was only meant to trip the ratio-feasibility
+        # gate -- it's too narrow to contain any histogram bin centers, so any
+        # model other than Dean-Jett (which throws before ever touching bin
+        # data) would fail differently on it. Reset back to the automatic
+        # proposal before the checks below reuse this sample.
+        page.click("#peak_regions_reset_button")
+        page.wait_for_function(
+            """(sampleName) => {
+              const selection = window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection;
+              return selection?.source === 'automatic';
+            }""",
+            arg=sample_name,
+            timeout=5000,
+        )
+        # Reset alone leaves the automatic proposal unreviewed --
+        # fit_cell_cycle_model() gates on review, so accept it before the
+        # Watson Pragmatic re-fit below.
+        page.click("#peak_regions_accept_button")
+        page.wait_for_function(
+            """(sampleName) => Boolean(
+              window.PhaseFinder.pipeline.get_state(sampleName)?.modeling?.peakSelection?.reviewed
+            )""",
+            arg=sample_name,
+            timeout=5000,
         )
 
         # Session modeling persistence (recompute-on-reload). Runs last so its
@@ -652,15 +836,42 @@ def test_modeling(ctx: TestContext):
         # saved regions/model -- no serialized results. (modeling_session.js)
         page.select_option("#cell_cycle_model_select", "watson_pragmatic")
         page.click("#cell_cycle_fit_current_button")
-        page.wait_for_function(
-            """(name) => {
-              const m = window.PhaseFinder.pipeline.get_state(name)?.modeling;
-              return Boolean(m?.activeResultKey)
-                && m.resultsByKey[m.activeResultKey]?.modelId === 'watson_pragmatic';
-            }""",
-            arg=sample_name,
-            timeout=30000,
-        )
+        try:
+            page.wait_for_function(
+                """(name) => {
+                  const m = window.PhaseFinder.pipeline.get_state(name)?.modeling;
+                  return Boolean(m?.activeResultKey)
+                    && m.resultsByKey[m.activeResultKey]?.modelId === 'watson_pragmatic';
+                }""",
+                arg=sample_name,
+                timeout=30000,
+            )
+        except Exception as error:
+            # Diagnose rather than let this surface as an opaque catch-all
+            # timeout: capture exactly what the modeling state, fit status,
+            # and fit button looked like at the moment the wait gave up.
+            diagnostic = page.evaluate(
+                """(name) => {
+                  const m = window.PhaseFinder.pipeline.get_state(name)?.modeling;
+                  const button = document.querySelector('#cell_cycle_fit_current_button');
+                  const select = document.querySelector('#cell_cycle_model_select');
+                  return {
+                    activeResultKey: m?.activeResultKey ?? null,
+                    resultKeys: m ? Object.keys(m.resultsByKey || {}) : null,
+                    activeModelId: m?.activeResultKey ? (m.resultsByKey[m.activeResultKey]?.modelId ?? null) : null,
+                    settingsModelId: m?.settings?.modelId ?? null,
+                    peakSelectionSource: m?.peakSelection?.source ?? null,
+                    peakSelectionStale: m?.peakSelection?.stale ?? null,
+                    fitStatusText: document.querySelector('#cell_cycle_fit_status')?.textContent ?? null,
+                    buttonDisabled: button ? button.disabled : null,
+                    selectValue: select ? select.value : null,
+                  };
+                }""",
+                sample_name,
+            )
+            raise AssertionError(
+                f"Watson Pragmatic re-fit after reset never reached activeResultKey: {diagnostic}"
+            ) from error
         restore_result = page.evaluate(
             """async (name) => {
               const config = window.PhaseFinder.session.collect_modeling();
@@ -689,6 +900,72 @@ def test_modeling(ctx: TestContext):
             and restore_result["activeModel"] == "watson_pragmatic"
             and isinstance(restore_result["g1"], (int, float)),
             str(restore_result),
+        )
+
+        # STATE-01 box 1: restoring an UNREVIEWED saved sample must restore the
+        # reviewed flag faithfully (stay false) and must not silently accept/refit
+        # the regions -- exercised against the real apply_modeling_session(), not
+        # a stand-in, since that is the actual restore path a reload takes.
+        unreviewed_restore_result = page.evaluate(
+            """async (name) => {
+              const config = window.PhaseFinder.session.collect_modeling();
+              const sample = config.samples.find((s) => s.name === name);
+              sample.reviewed = false;  // simulate a saved-but-never-reviewed session
+              const state = window.PhaseFinder.pipeline.get_state(name);
+              state.modeling.resultsByKey = {};
+              state.modeling.activeResultKey = null;
+              state.modeling.peakSelection.reviewed = false;
+              const summary = await window.PhaseFinder.session.apply_modeling(config);
+              const after = window.PhaseFinder.pipeline.get_state(name).modeling;
+              return {
+                summary,
+                reviewedAfter: after.peakSelection.reviewed,
+                resultCount: Object.keys(after.resultsByKey || {}).length,
+              };
+            }""",
+            sample_name,
+        )
+        ctx.check(
+            group,
+            "STATE-01: restoring an unreviewed saved sample leaves it unreviewed and does not refit",
+            unreviewed_restore_result["summary"]["restored"] == 1
+            and unreviewed_restore_result["reviewedAfter"] is not True
+            and unreviewed_restore_result["resultCount"] == 0,
+            str(unreviewed_restore_result),
+        )
+
+        # STATE-01 box 2: on restore, a saved model_version that no longer matches
+        # the current implementation's version must label the recomputed result as
+        # NEW, not as a reproduction of the saved values -- exercised through the
+        # real apply_modeling_session() restore path, not a copy of its logic.
+        drift_restore_result = page.evaluate(
+            """async (name) => {
+              const config = window.PhaseFinder.session.collect_modeling();
+              const sample = config.samples.find((s) => s.name === name);
+              sample.reviewed = true;
+              sample.model_version = '0.0.1-state01-drift-probe';
+              const state = window.PhaseFinder.pipeline.get_state(name);
+              state.modeling.resultsByKey = {};
+              state.modeling.activeResultKey = null;
+              state.modeling.peakSelection.reviewed = true;
+              await window.PhaseFinder.session.apply_modeling(config);
+              const after = window.PhaseFinder.pipeline.get_state(name).modeling;
+              const active = after.activeResultKey ? after.resultsByKey[after.activeResultKey] : null;
+              return {
+                reproduction: active ? active.reproduction : null,
+                warningCodes: active ? (active.warnings || []).map((w) => w.code) : [],
+              };
+            }""",
+            sample_name,
+        )
+        ctx.check(
+            group,
+            "STATE-01: restoring a version-drifted saved model labels the result recomputed_new, carrying a warning",
+            drift_restore_result["reproduction"] is not None
+            and drift_restore_result["reproduction"]["status"] == "recomputed_new"
+            and drift_restore_result["reproduction"]["savedModelVersion"] == "0.0.1-state01-drift-probe"
+            and "model_version_drift" in drift_restore_result["warningCodes"],
+            str(drift_restore_result),
         )
 
         # A deliberate scientific-domain change recomputes the modeling
@@ -809,22 +1086,67 @@ def test_modeling(ctx: TestContext):
         # each sample to the table"): a bulk fit dispatches cell-cycle-fit-changed
         # like a single fit, so cell_cycle_columns.js must populate the Watson
         # G1/S/G2-M cells for EVERY plotted sample's row, not just the active one.
-        table_fill = page.wait_for_function(
-            """(want) => {
-              const rows = [...document.querySelectorAll('#file_table tbody tr')];
-              const filled = rows.filter((tr) =>
-                [...tr.querySelectorAll('td.cell_cycle_td')].some((td) => td.textContent.trim().endsWith('%'))
-              ).length;
-              return filled >= want ? { filled } : null;
-            }""",
-            arg=len(bulk["modes"]),
-            timeout=15000,
-        )
+        try:
+            table_fill = page.wait_for_function(
+                """(want) => {
+                  const rows = [...document.querySelectorAll('#file_table tbody tr')];
+                  const filled = rows.filter((tr) =>
+                    [...tr.querySelectorAll('td.cell_cycle_td')].some((td) => td.textContent.includes('%'))
+                  ).length;
+                  return filled >= want ? { filled } : null;
+                }""",
+                arg=len(bulk["modes"]),
+                timeout=30000,
+            )
+            table_fill_detail = table_fill.json_value()
+        except Exception as error:
+            table_fill_detail = page.evaluate(
+                """async () => {
+                  const rows = [...document.querySelectorAll('#file_table tbody tr')];
+                  const filled = rows.filter((tr) =>
+                    [...tr.querySelectorAll('td.cell_cycle_td')].some((td) => td.textContent.includes('%'))
+                  ).length;
+                  const names = window.PhaseFinder.plot.series.map((s) => s.name);
+                  const pipelineStateModule = await import('./js/analysis/pipeline/pipeline_state.js');
+                  const perSample = names.map((name) => {
+                    const modeling = window.PhaseFinder.pipeline.get_state(name)?.modeling;
+                    const result = modeling?.activeResultKey ? modeling.resultsByKey[modeling.activeResultKey] : null;
+                    const gated = pipelineStateModule.get_active_model_result(pipelineStateModule.get_state(name));
+                    return {
+                      name,
+                      activeResultKey: modeling?.activeResultKey ?? null,
+                      hasPhaseFractions: Boolean(result?.phaseFractions),
+                      modelId: result?.modelId ?? null,
+                      validForReporting: result?.validForReporting ?? null,
+                      contractVersion: result?.contractVersion ?? null,
+                      gatedReportable: Boolean(gated),
+                    };
+                  });
+                  const frame = window.PhaseFinder.app.get_file_table();
+                  const frameCols = frame ? frame.columns.filter((c) => c.startsWith('cellCycleFit:') || c === 'Cell-Cycle Fit Status') : null;
+                  const rawCellTexts = [...document.querySelectorAll('#file_table tbody tr')]
+                    .map((tr) => ({
+                      name: tr.querySelector('.filename_cell')?.textContent?.trim() ?? null,
+                      cells: [...tr.querySelectorAll('td.cell_cycle_td')].map((td) => JSON.stringify(td.textContent)),
+                    }))
+                    .filter((r) => r.cells.length);
+                  const dataModule = await import('./js/plotting/data.js');
+                  const plottableNames = dataModule.plottable_rows().map((r) => r.name);
+                  const selectedNames = window.PhaseFinder.app.get_selected_files().map((f) => f.name);
+                  const columns = await import('./js/ui/cell_cycle_columns.js');
+                  columns.update_cell_cycle_fraction_columns();
+                  const filledAfterManualCall = [...document.querySelectorAll('#file_table tbody tr')].filter((tr) =>
+                    [...tr.querySelectorAll('td.cell_cycle_td')].some((td) => td.textContent.includes('%'))
+                  ).length;
+                  return { filled, error: true, perSample, frameCols, plottableNames, selectedNames, rawCellTexts, filledAfterManualCall };
+                }"""
+            )
+            table_fill_detail["exception"] = str(error)
         ctx.check(
             group,
             "Fit All Samples writes each fitted sample's fractions into its own table row",
-            table_fill.json_value()["filled"] >= len(bulk["modes"]),
-            str(table_fill.json_value()),
+            table_fill_detail.get("filled", 0) >= len(bulk["modes"]) and not table_fill_detail.get("error"),
+            str({"table_fill": table_fill_detail, "bulk": bulk}),
         )
 
         # A bulk fit auto-switches the plot to the Ridge view: one stacked

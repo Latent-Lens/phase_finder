@@ -80,6 +80,9 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_scatter_preview import run_scatter_preview_tests
     run_scatter_preview_tests(ctx)
 
+    from unit_tests_scatter_gate_calibration import run_scatter_gate_calibration_tests
+    run_scatter_gate_calibration_tests(ctx)
+
     from unit_tests_io import run_io_tests
     run_io_tests(ctx)
 
@@ -109,6 +112,12 @@ def execute_unit_tests(ctx: TestContext):
 
     from unit_tests_cell_cycle_math import run_cell_cycle_math_tests
     run_cell_cycle_math_tests(ctx)
+
+    from unit_tests_uncertainty import run_uncertainty_tests
+    run_uncertainty_tests(ctx)
+
+    from unit_tests_resampling import run_resampling_tests
+    run_resampling_tests(ctx)
 
     from unit_tests_cell_cycle_model_shared import run_cell_cycle_model_shared_tests
     run_cell_cycle_model_shared_tests(ctx)
@@ -146,6 +155,15 @@ def execute_unit_tests(ctx: TestContext):
     from unit_tests_peak_focus_range import run_peak_focus_range_tests
     run_peak_focus_range_tests(ctx)
 
+    from unit_tests_bin_settings import run_bin_settings_tests
+    run_bin_settings_tests(ctx)
+
+    from unit_tests_qc_acknowledgement import run_qc_acknowledgement_tests
+    run_qc_acknowledgement_tests(ctx)
+
+    from unit_tests_qc_matrix import run_qc_matrix_tests
+    run_qc_matrix_tests(ctx)
+
     from unit_tests_time_qc_peak_tracking import run_time_qc_peak_tracking_tests
     run_time_qc_peak_tracking_tests(ctx)
 
@@ -154,6 +172,9 @@ def execute_unit_tests(ctx: TestContext):
 
     from unit_tests_cloccs import run_cloccs_tests
     run_cloccs_tests(ctx)
+
+    from unit_tests_sci05_cross_surface import run_sci05_cross_surface_tests
+    run_sci05_cross_surface_tests(ctx)
 
     return require_unit_result_count(len(ctx.results) - before)
 
