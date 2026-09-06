@@ -1,0 +1,81 @@
+{
+  "export": {
+    "converged": true,
+    "resultKeys": [
+      "schemaVersion",
+      "modelId",
+      "modelVersion",
+      "modelLabel",
+      "kind",
+      "fitScope",
+      "comparisonGroup",
+      "converged",
+      "convergenceReason",
+      "parameters",
+      "bounds",
+      "constraintAudit",
+      "expectedCounts",
+      "components",
+      "phaseFractions",
+      "contaminantFractions",
+      "peakRegionMigration",
+      "diagnostics",
+      "warnings",
+      "uncertainty",
+      "provenance",
+      "targetResults",
+      "contractVersion",
+      "computed",
+      "optimizerConverged",
+      "scientificallyValid",
+      "limitedReliability",
+      "goodnessOfFit",
+      "validForReporting",
+      "cancelled",
+      "invalid",
+      "validityReasons",
+      "preflight",
+      "appliedConfiguration",
+      "channelEligibility",
+      "histogramProvenance",
+      "settingsApplicability",
+      "domainCoverage"
+    ],
+    "model": {
+      "id": "dean_jett",
+      "version": "1.0.0",
+      "settings": null,
+      "settingsApplicability": {
+        "applied": [
+          "ratioMode",
+          "ratioRange",
+          "lockedRatio",
+          "cvMode"
+        ],
+        "notApplied": [],
+        "reason": null
+      },
+      "configHash": null
+    },
+    "domain": {
+      "range": null,
+      "binCount": null,
+      "underflow": null,
+      "overflow": null,
+      "componentTailCoverage": {
+        "g1": 0.9999999999999998,
+        "s": 1,
+        "g2": 1
+      }
+    },
+    "peakRegions": null,
+    "curves": null,
+    "csv": "This fit has no curves to export."
+  },
+  "trust": {
+    "validForReporting": true,
+    "scientificallyValid": true,
+    "fractionTrustReason": ""
+  },
+  "invalidSessionAccepted": true
+}

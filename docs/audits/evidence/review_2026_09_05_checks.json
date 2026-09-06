@@ -1,0 +1,66 @@
+{
+  "review_date": "2026-09-05",
+  "base_commit": "fd74f10dcfc42a1281eb610bcc66c7c39a900268",
+  "scope": "existing dirty working tree; changes were not committed",
+  "node": "24.16.0",
+  "unit": {
+    "passed": 865,
+    "total": 865
+  },
+  "e2e": {
+    "passed": 1089,
+    "total": 1097,
+    "failed_test_numbers": [
+      4,
+      11,
+      21,
+      22,
+      23,
+      24,
+      50,
+      219
+    ]
+  },
+  "ci": {
+    "reported_tests": 41,
+    "skipped": 2,
+    "result": "OK"
+  },
+  "imports": {
+    "modules": 117,
+    "edges": 399,
+    "cycles": 0
+  },
+  "synthetic_fixture_check": {
+    "files": 93,
+    "manifest_cases": 62,
+    "result": "reproducible"
+  },
+  "qc_fixture_check": {
+    "files": 8,
+    "cases": 7,
+    "result": "reproducible"
+  },
+  "qc_verifier": "all seven cases match expected detector behavior, including debris-dominant failure",
+  "build": "passed",
+  "check_dist": {
+    "files": 44,
+    "result": "passed",
+    "image_bytes": 542417,
+    "image_budget": 550000
+  },
+  "check_base": "passed",
+  "production_dist_smoke": "passed",
+  "not_performed": [
+    "fresh-clone npm ci",
+    "current hosted browser/OS matrix",
+    "staging deployment or rollback",
+    "human domain review",
+    "rerun of historical external-data/coverage/parameter sweeps"
+  ],
+  "notes": [
+    "npm run check initially stopped on sandbox browser-server binding; unit/E2E/dist runs completed separately with escalation.",
+    "Passing unit and production smoke checks do not validate fit CSV contents; the direct production-fit probe fails.",
+    "Vite emitted a large-chunk warning; image budget is close to its limit."
+  ]
+}
