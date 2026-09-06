@@ -259,10 +259,25 @@ Output:
 */
 function status_text(peakDetection) {
   if (!peakDetection || peakDetection.status == null) return "";
-  const confidence = Math.round((peakDetection.confidence ?? 0) * 100);
+  // PEAK-01: this is a weighted heuristic score (ratio/prominence/area/width/
+  // persistence/separation/bridge/edge terms, see peak_detection.js), never
+  // calibrated against independently annotated histograms. "N% confidence"
+  // reads as a calibrated probability of correctness, which it is not --
+  // labelled "score" out of 100 instead, deliberately not a percent sign.
+  const score = Number.isFinite(peakDetection.confidence)
+    ? ` (heuristic score ${Math.round(peakDetection.confidence * 100)}/100, uncalibrated)`
+    : "";
   const label = PEAK_STATUS_LABELS[peakDetection.status] || peakDetection.status;
   const reasons = peakDetection.reasons?.length ? ` — ${peakDetection.reasons.join("; ")}` : "";
-  return `${label} (${confidence}% confidence)${reasons}`;
+  // AMBIG-01: only one peak was resolvable, so the fallback assumed it is G1 and
+  // placed G2/M from the expected ratio -- it could equally be a G2-arrested (or
+  // otherwise single-population) sample. Name that possibility explicitly rather
+  // than leaving it implied by the reason codes alone, since accepting these
+  // regions un-reviewed would silently commit to the G1 guess.
+  const ambiguityNote = peakDetection.status === "inferred_g2"
+    ? " Only one peak was found; the region below assumes it is G1 and estimates G2/M from it — verify before accepting, since it could be G2 instead."
+    : "";
+  return `${label}${score}${reasons}${ambiguityNote}`;
 }
 
 /*

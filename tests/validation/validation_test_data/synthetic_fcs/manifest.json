@@ -1,5 +1,5 @@
 {
-  "case_count": 60,
+  "case_count": 62,
   "cases": [
     {
       "analysis": {
@@ -7,13 +7,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -105,13 +105,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -202,13 +202,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1269,13 +1269,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1361,13 +1361,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1465,13 +1465,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1566,13 +1566,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1668,13 +1668,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1774,13 +1774,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1874,13 +1874,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -1975,13 +1975,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -2077,13 +2077,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -2179,13 +2179,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -2277,13 +2277,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -2378,13 +2378,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -2479,13 +2479,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -2575,13 +2575,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -2671,13 +2671,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -2767,16 +2767,15 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "expected_selected_model": "dean_jett_fox",
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
             "kind": "recovery",
             "minimum_wave_weight": 0.1
+          },
+          "watson_classic": {
+            "kind": "recovery"
           },
           "watson_pragmatic": {
             "kind": "diagnostic"
@@ -2865,16 +2864,15 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "expected_selected_model": "dean_jett_fox",
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
             "kind": "recovery",
             "minimum_wave_weight": 0.1
+          },
+          "watson_classic": {
+            "kind": "recovery"
           },
           "watson_pragmatic": {
             "kind": "diagnostic"
@@ -2963,13 +2961,114 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
+          "dean_jett": {
+            "kind": "diagnostic"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery",
+            "minimum_wave_weight": 0.4
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
+          "watson_pragmatic": {
+            "kind": "diagnostic"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 6.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-07"
+      ],
+      "category": "known_phase_truth",
+      "description": "Fox wave parameters planted near the optimizer's own bounded coordinate edges (SCI-07), not just a strong wave.",
+      "fcs": {
+        "bytes": 288722,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 12000,
+        "sha256": "fa644df6d70cf2bc9c480b496ec59fa416cad3492bb09e9b9deda95eb52dd0bd"
+      },
+      "file": "files/truth_djf_near_bound_wave_45_40_15.fcs",
+      "id": "truth_djf_near_bound_wave_45_40_15",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "dean-jett-fox",
+        "wave",
+        "known-truth",
+        "near-bound",
+        "conditioning"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 5400,
+            "g2": 1800,
+            "s": 4800
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.45,
+            "g2": 0.15,
+            "s": 0.4
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 5400,
+            "g2": 1800,
+            "s": 4800
+          },
+          "denominator": 12000,
+          "fractions": {
+            "g1": 0.45,
+            "g2": 0.15,
+            "s": 0.4
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_djf_near_bound_wave_45_40_15.truth.json",
+      "truth_sha256": "47da9604e5119914ad5b0fddf0a8ec5576af59debb5b8dd02d7106f61274427a"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -3059,13 +3158,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -3156,13 +3255,111 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
+            "kind": "recovery"
+          },
+          "watson_pragmatic": {
+            "kind": "recovery"
+          }
+        },
+        "histogram_range": null,
+        "peak_regions": {
+          "g1": {
+            "left": 53760.0,
+            "right": 74240.0
+          },
+          "g2": {
+            "left": 105472.0,
+            "right": 150528.0
+          }
+        },
+        "tolerance_percentage_points": 3.0,
+        "views": [
+          "raw"
+        ]
+      },
+      "audit_findings": [
+        "SCI-07"
+      ],
+      "category": "known_phase_truth",
+      "description": "High-count clean sample (SCI-07): the event-count end of the conditioning axis low_count_55_30_15 covers at the other end.",
+      "fcs": {
+        "bytes": 7200721,
+        "channels": [
+          "DNA-A",
+          "DNA-H",
+          "DNA-W",
+          "FSC-A",
+          "SSC-A",
+          "Time"
+        ],
+        "encoding": "FCS3.1/F32/little-endian/list/single-dataset",
+        "events": 300000,
+        "sha256": "59a10a2a9218f1f6deeba6bde2b740c58ea4a91ce120223b7aa65560ecdcf6f1"
+      },
+      "file": "files/truth_high_event_count_50_30_20.fcs",
+      "id": "truth_high_event_count_50_30_20",
+      "parser_expectation": {
+        "outcome": "LOAD_OK",
+        "phase": "data_load"
+      },
+      "qc": null,
+      "tags": [
+        "high-event-count",
+        "known-truth",
+        "conditioning"
+      ],
+      "truth": {
+        "after_oracle_qc": {
+          "counts": {
+            "g1": 150000,
+            "g2": 60000,
+            "s": 90000
+          },
+          "denominator": 300000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "all_biological": {
+          "counts": {
+            "g1": 150000,
+            "g2": 60000,
+            "s": 90000
+          },
+          "denominator": 300000,
+          "fractions": {
+            "g1": 0.5,
+            "g2": 0.2,
+            "s": 0.3
+          }
+        },
+        "contaminants": {}
+      },
+      "truth_file": "files/truth_high_event_count_50_30_20.truth.json",
+      "truth_sha256": "9d12cf6e417fce1f5116151fb2374698a0237c5c88e3af9dd9a6da90c140186d"
+    },
+    {
+      "analysis": {
+        "benchmark_models": true,
+        "bin_count": 384,
+        "dna_channel": "DNA-A",
+        "expected_by_model": {
+          "dean_jett": {
+            "kind": "recovery"
+          },
+          "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -3252,13 +3449,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -3347,13 +3544,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "recovery"
-          },
           "dean_jett": {
             "kind": "recovery"
           },
           "dean_jett_fox": {
+            "kind": "recovery"
+          },
+          "watson_classic": {
             "kind": "recovery"
           },
           "watson_pragmatic": {
@@ -3443,13 +3640,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -3546,13 +3743,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -3647,13 +3844,13 @@
         "bin_count": 384,
         "dna_channel": "DNA-A",
         "expected_by_model": {
-          "auto_dj_djf": {
-            "kind": "diagnostic"
-          },
           "dean_jett": {
             "kind": "diagnostic"
           },
           "dean_jett_fox": {
+            "kind": "diagnostic"
+          },
+          "watson_classic": {
             "kind": "diagnostic"
           },
           "watson_pragmatic": {
@@ -3776,7 +3973,9 @@
       ],
       "SCI-07": [
         "truth_high_cv_overlap_35_45_20",
-        "bulk_scale_x10"
+        "bulk_scale_x10",
+        "truth_high_event_count_50_30_20",
+        "truth_djf_near_bound_wave_45_40_15"
       ],
       "SCI-09": [
         "qc_scatter_high_fsc_artifact",

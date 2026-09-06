@@ -2,8 +2,9 @@
 // G1/G2 peak is an AREA parameter integrated over each histogram bin, not a
 // peak-height Gaussian sampled at bin centers, so bin width and placement can't
 // bias the reported component area. Provides erf (an Abramowitz-Stegun
-// approximation), the derived normalCdf and closed-form normalPdf, and
-// gaussianBinMass, which integrates a scaled Gaussian exactly over each bin.
+// approximation), the derived normalCdf, its inverse inverseStandardNormalCdf
+// (Acklam's probit), the closed-form normalPdf, and gaussianBinMass, which
+// integrates a scaled Gaussian exactly over each bin.
 
 const EPS = 1e-12;
 
@@ -52,6 +53,53 @@ Output:
 export function normalCdf(x, mu = 0, sigma = 1) {
   const s = Math.max(Math.abs(sigma), EPS);
   return 0.5 * (1 + erf((x - mu) / (s * Math.SQRT2)));
+}
+
+/*
+
+Purpose:
+	Inverse standard-normal CDF (the probit) via Acklam's rational
+	approximation, accurate to ~1.15e-9 in absolute value over the whole
+	open interval -- roughly two orders of magnitude tighter than the erf
+	approximation normalCdf above is built on, so round-tripping a probability
+	through normalCdf and back is limited by erf, not by this.
+
+	It lives beside normalCdf because it is that function's inverse: the two are
+	used together wherever a probability has to be turned into a z-score (a
+	bias-corrected bootstrap endpoint) or back (a truncated-normal draw).
+
+Input:
+	p [number]: a probability; p <= 0 returns -Infinity and p >= 1 returns
+	            +Infinity rather than throwing, so a saturated empirical
+	            proportion degrades to an infinite endpoint the caller can test
+	            for instead of a NaN it cannot
+
+Output:
+	z [number]: the standard-normal quantile at p
+
+*/
+export function inverseStandardNormalCdf(p) {
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628277459239];
+  const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
+  const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+  const pLow = 0.02425;
+  const pHigh = 1 - pLow;
+  let q;
+  let r;
+  if (p < pLow) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+  if (p <= pHigh) {
+    q = p - 0.5;
+    r = q * q;
+    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  }
+  q = Math.sqrt(-2 * Math.log(1 - p));
+  return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
 }
 
 /*

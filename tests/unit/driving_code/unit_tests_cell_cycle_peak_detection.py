@@ -359,6 +359,106 @@ _TESTS = r"""() => {
     };
   });
 
+  // ---- MODEL-05: baseline-subtracted flank threshold ----
+  //
+  // The checklist recorded this as "measured inert": the flank walk stopped at
+  // a discrete bin index, and subtracting the pedestal did not move which bin
+  // first fell below threshold. That observation predates MODEL-03's follow-on
+  // fix, which made the crossing a linearly INTERPOLATED position between two
+  // bins. Once the crossing is continuous, the threshold's absolute value
+  // feeds straight into the answer, so a pedestal biases sigma whether or not
+  // the bin index moves -- and above ~15% of peak height the bin moves too.
+  //
+  // These fixtures are a pure Gaussian on a FLAT pedestal, with the peak
+  // centred on a bin centre. Nothing else contributes to the flank, so any
+  // dependence of the recovered sigma on the pedestal height is the defect.
+
+  // A frozen copy of the pre-MODEL-05 walk, kept deliberately: it is what the
+  // "crossing bin does not move" claim was measured against, so the test can
+  // show directly that it does.
+  function crossingIndex(values, peakIndex, indexes, fraction, side, floor) {
+    const peak = values[peakIndex] - floor;
+    const threshold = floor + peak * fraction;
+    const first = indexes[0];
+    const last = indexes[indexes.length - 1];
+    let index = peakIndex;
+    if (side === 'left') { while (index > first && values[index] > threshold) index -= 1; }
+    else { while (index < last && values[index] > threshold) index += 1; }
+    return index;
+  }
+  // Peak on a bin CENTRE (edgesFor(n) makes centres i + 0.5), so the argmax bin
+  // is stable as the pedestal changes and cannot confound the comparison.
+  function pedestalFixture(pedestalFractionOfPeak) {
+    const edges = edgesFor(400);
+    const bump = gaussianBump(edges, 50000, 200.5, 6);
+    const peakHeight = Math.max(...bump);
+    const pedestal = pedestalFractionOfPeak * peakHeight;
+    return { edges, counts: bump.map((v) => v + pedestal), pedestal };
+  }
+
+  run('MODEL-05: recovered sigma is independent of the pedestal the peak sits on', () => {
+    // The load-bearing assertion. Before the fix the error grew in proportion
+    // to the pedestal: +0.01% at no pedestal, +7.65% at 10%, +23.18% at 30%.
+    const sigmas = [0, 0.10, 0.30].map((f) => {
+      const { edges, counts } = pedestalFixture(f);
+      return estimatePeakFromRegion(edges, counts, { left: 170, right: 230 }, { cleanSide: 'left' }).sigma;
+    });
+    const spread = Math.max(...sigmas) - Math.min(...sigmas);
+    const worstError = Math.max(...sigmas.map((s) => Math.abs(s - 6)));
+    return {
+      pass: spread < 0.05 && worstError < 0.1,
+      detail: `sigmas=${sigmas.map((s) => s.toFixed(4)).join(', ')} spread=${spread.toFixed(4)} worstError=${worstError.toFixed(4)}`,
+    };
+  });
+
+  run('MODEL-05: a steep pedestal moves the crossing bin, not only the interpolated position', () => {
+    // The fixture the checklist asked for, and the reason this item is not
+    // inert. At a pedestal of 15% of peak height the un-subtracted walk stops
+    // one bin further out than the subtracted one.
+    const { edges, counts, pedestal } = pedestalFixture(0.15);
+    const smoothed = window.DJFShared.gaussian.gaussianSmooth(counts, 2);
+    const centers = edges.slice(0, -1).map((e, i) => 0.5 * (e + edges[i + 1]));
+    const indexes = [];
+    for (let i = 0; i < centers.length; i += 1) {
+      if (centers[i] >= 170 && centers[i] <= 230) indexes.push(i);
+    }
+    let peakIndex = indexes[0];
+    for (const i of indexes) if (smoothed[i] > smoothed[peakIndex]) peakIndex = i;
+    // The PLANTED pedestal, not an estimate of it: this test is about whether
+    // the defect can move a bin at all, so it must not depend on how the
+    // implementation happens to locate the floor.
+    const legacy = crossingIndex(smoothed, peakIndex, indexes, 0.5, 'left', 0);
+    const fixed = crossingIndex(smoothed, peakIndex, indexes, 0.5, 'left', pedestal);
+    return {
+      pass: legacy !== fixed && fixed > legacy,
+      detail: `peakIndex=${peakIndex} legacyCrossing=${legacy} baselineSubtractedCrossing=${fixed} pedestal=${pedestal.toFixed(1)}`,
+    };
+  });
+
+  run('MODEL-05: with no pedestal the estimate is unchanged', () => {
+    // The fix must be a no-op on clean data, or it would be trading one bias
+    // for another rather than removing one.
+    const edges = edgesFor(400);
+    const counts = gaussianBump(edges, 50000, 200.5, 6);
+    const est = estimatePeakFromRegion(edges, counts, { left: 170, right: 230 }, { cleanSide: 'left' });
+    return { pass: Math.abs(est.sigma - 6) < 0.05, detail: `sigma=${est.sigma.toFixed(4)} (true 6)` };
+  });
+
+  run('MODEL-05: a region too tight to show a pedestal does not get one subtracted', () => {
+    // Subtracting a pedestal RAISES the threshold, so the walk stops sooner --
+    // the failure mode this fix could introduce is reading the peak's own flank
+    // as a floor and collapsing sigma. A region drawn inside 3 sigma never
+    // reaches the sample point, so no pedestal is subtracted and the estimate
+    // stays the un-subtracted one. This region spans +/- 11 units on a
+    // sigma = 6 peak, i.e. under 2 sigma, over a 30%-of-peak pedestal.
+    const { edges, counts } = pedestalFixture(0.30);
+    const est = estimatePeakFromRegion(edges, counts, { left: 190, right: 212 }, { cleanSide: 'left' });
+    return {
+      pass: Number.isFinite(est.sigma) && est.sigma > 1 && est.sigma < 12,
+      detail: `sigma=${est.sigma} on a sub-2-sigma region over a 30%-of-peak pedestal`,
+    };
+  });
+
   run('MODEL-03: options.smoothed without options.smoothingSigmaBins throws (mismatched-kernel guard)', () => {
     const edges = edgesFor(400);
     const counts = gaussianBump(edges, 50000, 200, 6);

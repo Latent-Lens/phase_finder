@@ -127,10 +127,21 @@ function regionIndexes(centers, region) {
   return indexes;
 }
 
-function estimateSigmaOneSidedWithinRegion(values, peakIndex, indexes, fraction, side) {
-  const peak = values[peakIndex];
+function estimateSigmaOneSidedWithinRegion(values, peakIndex, indexes, fraction, side, baseline = 0) {
+  // MODEL-05: the flank threshold is a fraction of the peak height measured
+  // FROM THE PEDESTAL the peak sits on, not from zero. Measuring from zero
+  // makes `fraction * peak` an absolute count that a peak riding on debris or
+  // on the S-phase bridge stays above further out, so sigma is overestimated
+  // in proportion to the pedestal.
+  //
+  // `baseline` is supplied by the caller, which reads it at a PEAK-RELATIVE
+  // distance rather than at the region edge -- see pedestalUnderPeak(). It is 0
+  // whenever the region is too tight to show a pedestal at all, which keeps
+  // this estimate independent of how generously the user drew the box.
+  const floor = Number.isFinite(baseline) && baseline > 0 ? baseline : 0;
+  const peak = values[peakIndex] - floor;
   if (!(peak > 0)) return NaN;
-  const threshold = peak * clamp(fraction, 0.05, 0.95);
+  const threshold = floor + peak * clamp(fraction, 0.05, 0.95);
   const first = indexes[0];
   const last = indexes[indexes.length - 1];
   let index = peakIndex;
@@ -169,6 +180,46 @@ function estimateSigmaOneSidedWithinRegion(values, peakIndex, indexes, fraction,
   const frac = denominator > EPS ? clamp((vHigh - threshold) / denominator, 0, 1) : 0;
   const distanceBins = Math.abs(previous - peakIndex) + frac;
   return distanceBins > 0 ? distanceBins / Math.sqrt(-2 * Math.log(fraction)) : NaN;
+}
+
+// MODEL-05: the floor a peak sits on, read at a distance set by the PEAK, not
+// by the region.
+//
+// The obvious estimate -- the value at the region edge -- is wrong, and wrong
+// in a way this codebase already has a test for: a peak region is a statement
+// about where the mean is and nothing else (see the region-width tests in
+// unit_tests_cell_cycle_dean_jett_fox.py). A box drawn tightly around a peak
+// has its edges partway down the peak's own flanks, so "the value at the edge"
+// is peak, not pedestal, and subtracting it would make the fitted width depend
+// on how carefully the user dragged the handle.
+//
+// So the floor is sampled at PEDESTAL_DISTANCE_SIGMAS out from the centre on
+// the clean side -- far enough that a Gaussian has fallen to ~1% of its peak,
+// so what remains there is essentially all pedestal. When the region does not
+// reach that far, the region simply has not exposed a pedestal and this
+// returns 0, leaving the un-subtracted behaviour in place. Both branches are
+// functions of the peak's own width, so neither leaks the region width.
+//
+// sigmaBins comes from an un-subtracted first pass, so on a tall pedestal it is
+// itself inflated -- which pushes the sample point further out, toward truer
+// background. The bootstrap error is in the conservative direction.
+const PEDESTAL_DISTANCE_SIGMAS = 3;
+const PEDESTAL_WINDOW_BINS = 2;
+
+function pedestalUnderPeak(values, peakIndex, indexes, sigmaBins, side) {
+  if (!(sigmaBins > 0) || !Number.isFinite(sigmaBins)) return 0;
+  const offset = Math.round(PEDESTAL_DISTANCE_SIGMAS * sigmaBins);
+  const sampleIndex = side === "left" ? peakIndex - offset : peakIndex + offset;
+  const first = indexes[0];
+  const last = indexes[indexes.length - 1];
+  if (sampleIndex < first || sampleIndex > last) return 0;
+
+  // Average out bin noise over a couple of bins, still peak-relative.
+  let floor = Infinity;
+  const from = Math.max(first, sampleIndex - PEDESTAL_WINDOW_BINS);
+  const to = Math.min(last, sampleIndex + PEDESTAL_WINDOW_BINS);
+  for (let i = from; i <= to; i += 1) floor = Math.min(floor, values[i]);
+  return Number.isFinite(floor) && floor > 0 ? floor : 0;
 }
 
 // MODEL-04: `mean: centers[peakIndex]` quantizes the peak centre to a bin
@@ -262,7 +313,17 @@ export function estimatePeakFromRegion(edges, counts, regionInput, options = {})
   const towardCleanSide = cleanSide === "left" ? rawOffset <= 0 : rawOffset >= 0;
   const subBinOffset = towardCleanSide ? rawOffset : 0;
 
-  const sigmaBins = estimateSigmaOneSidedWithinRegion(smoothed, peakIndex, indexes, heightFraction, cleanSide);
+  // MODEL-05: two passes. The first is the un-subtracted walk, used only to get
+  // a width with which to locate the pedestal; the second re-measures the flank
+  // against that pedestal. On clean data pedestalUnderPeak() returns 0 and the
+  // second pass reproduces the first exactly.
+  const provisionalSigmaBins = estimateSigmaOneSidedWithinRegion(
+    smoothed, peakIndex, indexes, heightFraction, cleanSide,
+  );
+  const pedestal = pedestalUnderPeak(smoothed, peakIndex, indexes, provisionalSigmaBins, cleanSide);
+  const sigmaBins = pedestal > 0
+    ? estimateSigmaOneSidedWithinRegion(smoothed, peakIndex, indexes, heightFraction, cleanSide, pedestal)
+    : provisionalSigmaBins;
   // MODEL-03: deconvolve the smoothing kernel in quadrature (bin units) before
   // converting to data units -- the flank estimate above is measured on
   // `smoothed`, so it is sqrt(sigma^2 + smoothingSigmaBins^2), not sigma.

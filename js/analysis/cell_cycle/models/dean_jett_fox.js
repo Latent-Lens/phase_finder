@@ -435,31 +435,44 @@ const WAVE_NOTICE_FRACTION = 0.2;
 // The reference (§13, Steps 6-9) fits an asynchronous variant (w = 0) and a
 // synchronous one (w free), then selects between them by BIC under four
 // safeguards. That was implemented here and REMOVED, because it is not
-// identifiable while the peaks are frozen. The measurement, on the wave-free
-// two-peak fixture in unit_tests_cell_cycle_dean_jett_fox.py (true w = 0):
+// identifiable while the peaks are frozen: the wave is the only flexible shape
+// left in the model, so it absorbs frozen-peak misfit and claims a synchronized
+// cohort on data that contains none.
 //
-//                      frozen clean-flank peaks   frozen at the TRUE peaks
-//   asynchronous dev            1289.6                      46.1
-//   synchronous  dev            1169.6                      45.7
-//   fitted w                    0.95 (its ceiling)          0.0135
-//   deltaBIC                    -102.9  -> "synchronous"    +16.7 -> asynchronous
+// RE-MEASURED 2026-08-19, after MODEL-03/04/05/06 all improved the clean-flank
+// estimator. On the wave-free two-peak fixture in
+// unit_tests_cell_cycle_dean_jett_fox.py (true w = 0):
 //
-// With the true peaks the selection is correct: the cohort earns nothing and
-// BIC rejects it. With the clean-flank peaks it is wrong, and wrong in the one
-// direction that matters -- the cohort is selected on data that contains no
-// cohort. The reason is that the clean-flank estimate is biased (it returns
-// g1CV 0.084 for a true 0.060, g2Mean 137.5 for a true 140), the frozen peaks
-// therefore leave a large systematic residual, and the wave -- the only
-// flexible shape left in the model -- absorbs that residual. It is fitting
-// PEAK MISFIT, not a synchronized population.
+//                         at REMOVAL   now      frozen at the TRUE peaks
+//   asynchronous dev        1289.6     167.9            46.1
+//   synchronous  dev        1169.6     137.8            45.7
+//   fitted w                0.95       0.5877           0.0135
+//                           (ceiling)
+//   deltaBIC               -102.9     -13.1            +16.7
+//   selects                 sync       sync             asynchronous
+//                           (WRONG)    (WRONG)          (correct)
 //
-// Because the fit runs against a hard w <= 0.95 clamp in that state, LM's
-// projected step never satisfies the step tolerance and the synchronous variant
-// reports converged: false. The `converged` guard then rejected the cohort for
-// an accidental reason, which is what made the selection look like it worked.
-// A guard that returns the right answer for the wrong reason is worse than no
-// guard: it would have started selecting spurious cohorts the moment the
-// optimizer's convergence behaviour changed.
+// The peaks got much better -- deviance fell by a factor of 7.7 -- and the
+// selection is STILL wrong. Worse, it is now wrong *quietly*. Both tells that
+// made the old failure recognisable are gone: w no longer pins to its 0.95
+// ceiling (0.5877), and the synchronous fit now CONVERGES, so the accidental
+// `converged` guard that used to reject the cohort no longer fires.
+//
+// Three of the reference's four safeguards pass on the wrong answer:
+// |deltaBIC| > 10 (13.1), bumpFraction >= 2% (58.8%), and the cohort sits
+// inside S phase (waveMean 0.401). Only RESTART STABILITY discriminates, and
+// it does so by a factor of 75: the synchronous fit's deviance across four
+// restarts spreads 30.18 with the estimated peaks versus 0.40 with the true
+// ones. Anyone re-attempting this should treat restart stability as the
+// primary guard, not the fourth one.
+//
+// What is left to fix is specific and known: g2Mean comes out 137.69 for a
+// true 140 (-1.65%) -- the same offset MODEL-01/MODEL-02 diagnosed and
+// deliberately left open, because widening sigma to close it would be tuning
+// the model to a reference rather than measuring. Correcting EITHER half of
+// the remaining bias is enough to restore the right answer: with true widths
+// deltaBIC is +4.8, with true means +5.6, both correctly asynchronous and both
+// below the 10-point threshold, so the selection abstains rather than guesses.
 //
 // This does NOT mean the reference is wrong. It means population-form selection
 // needs peaks that are unbiased enough for a cohort to be distinguishable from

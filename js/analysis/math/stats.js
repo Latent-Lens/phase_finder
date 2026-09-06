@@ -6,6 +6,12 @@
 // nearestIndex (closest-value lookup); and safeFraction (guarded division).
 // Empty samples return NaN rather than throwing, so a missing metric stays
 // explicit for the callers that select metrics dynamically (e.g. Time QC).
+//
+// It also owns makeRng, the one seeded PRNG the project uses. A single shared
+// generator is deliberate: every stochastic result here (synthetic CLOCCS
+// datasets, resampling replicates) has to be byte-reproducible from its
+// recorded seed, and two independent generators would make "seed 20260819"
+// mean different things in different modules.
 
 /*
 
@@ -264,4 +270,35 @@ Output:
 */
 export function safeFraction(numerator, denominator) {
   return denominator > 0 ? numerator / denominator : 0;
+}
+
+/*
+
+Purpose:
+	mulberry32 -- a small, fast, deterministic PRNG. Given a 32-bit seed it
+	returns a function producing uniforms in [0, 1). Every stochastic path in the
+	project draws from this one generator so a recorded seed reproduces a run
+	exactly, on any platform, with no dependence on Math.random's implementation.
+
+	Reproducibility, not cryptographic quality, is the requirement: mulberry32
+	passes gjrand's smallcrush-class tests and has a 2^32 period, which is far
+	more than a bootstrap of a few hundred replicates consumes. It must never be
+	used for anything security-bearing.
+
+Input:
+	seed [number]: any integer; coerced to 32 bits
+
+Output:
+	next [function]: () -> uniform in [0, 1)
+
+*/
+export function makeRng(seed) {
+  let state = seed >>> 0;
+  return function next() {
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }

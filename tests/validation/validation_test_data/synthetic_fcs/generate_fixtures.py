@@ -706,6 +706,31 @@ SCIENTIFIC_CASES: list[dict[str, Any]] = [
         "tags": ["low-count", "known-truth", "convergence"], "tolerance_pp": 6.0,
     },
     {
+        "id": "truth_high_event_count_50_30_20", "seed": 1011, "biological_events": 300_000,
+        "fractions": (0.50, 0.30, 0.20), "category": "known_phase_truth",
+        "description": "High-count clean sample (SCI-07): the event-count end of the "
+                        "conditioning axis low_count_55_30_15 covers at the other end.",
+        "tags": ["high-event-count", "known-truth", "conditioning"], "tolerance_pp": 3.0,
+        "audit_findings": ["SCI-07"],
+    },
+    {
+        "id": "truth_djf_near_bound_wave_45_40_15", "seed": 1012, "biological_events": 12_000,
+        "fractions": (0.45, 0.40, 0.15), "s_profile": (0.0, 0.0),
+        # w near wMax (0.95), waveMean near waveMeanMin (0.02), waveSigma near
+        # waveSigmaMin (0.02) -- dean_jett_fox.js DEFAULT_CONFIG. All three
+        # optimizer-bounded wave coordinates pinned near their edges at once.
+        "fox": (0.90, 0.04, 0.03), "category": "known_phase_truth",
+        "description": "Fox wave parameters planted near the optimizer's own bounded "
+                        "coordinate edges (SCI-07), not just a strong wave.",
+        "tags": ["dean-jett-fox", "wave", "known-truth", "near-bound", "conditioning"],
+        "tolerance_pp": 6.0, "audit_findings": ["SCI-07"],
+        "expected_by_model": {
+            "dean_jett": {"kind": "diagnostic"},
+            "watson_pragmatic": {"kind": "diagnostic"},
+            "dean_jett_fox": {"kind": "recovery", "minimum_wave_weight": 0.40},
+        },
+    },
+    {
         "id": "watson_subg1_contamination", "seed": 2001, "biological_events": 8_000,
         "fractions": (0.50, 0.30, 0.20), "contaminants": {"sub_g1": 2_000},
         "category": "scientific_adversarial",
@@ -1063,7 +1088,7 @@ def _coverage() -> dict[str, Any]:
         "fcs_triggerable": {
             "SCI-01": ["watson_subg1_contamination", "watson_postg2_contamination", "watson_mixed_contamination"],
             "SCI-02": ["ratio_nondiploid_1p50", "ratio_projector_regions_1_10_18_20"],
-            "SCI-07": ["truth_high_cv_overlap_35_45_20", "bulk_scale_x10"],
+            "SCI-07": ["truth_high_cv_overlap_35_45_20", "bulk_scale_x10", "truth_high_event_count_50_30_20", "truth_djf_near_bound_wave_45_40_15"],
             "SCI-09": ["qc_scatter_high_fsc_artifact", "qc_pulse_h_scale_reference", "qc_pulse_h_scale_x100", "qc_pulse_doublets", "qc_time_rate_drop", "qc_time_gain_drift", "qc_time_peak_disappearance"],
             "SCI-12": ["qc_time_rate_drop"],
             "DATA-01": ["parser_log_amplified_dna", "parser_nonunit_gain_dna", "parser_spillover_dna", "parser_non_list_mode", "parser_nextdata_nonzero"],

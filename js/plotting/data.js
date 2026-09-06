@@ -9,6 +9,7 @@
 // live. Rendering and modeling modules import this state but keep their drawing
 // and UI actions separate.
 
+import { DEFAULT_BIN_COUNT } from "../analysis/pipeline/dna_histogram.js";
 import { get_selected_files } from "../state/files.js";
 import { TABLE_COLUMNS } from "../data_structs/table_state.js";
 import { escape_html } from "../util/html.js";
@@ -44,7 +45,10 @@ export const axis_range_analysis_domain_input = document.querySelector("#axis_ra
 // native value is the index 0..BIN_STOPS.length-1; plot_bin_count() maps that
 // to the actual bin count so every consumer keeps reading a real bin count.
 export const BIN_STOPS = [128, 256, 512, 1024];
-export const DEFAULT_BINS = 256;
+// MODEL-09: re-exported from the histogram module rather than declared here, so
+// the plot default and the analysis fallback cannot disagree. Keeps the
+// DEFAULT_BINS name its existing importers already use.
+export const DEFAULT_BINS = DEFAULT_BIN_COUNT;
 const DEFAULT_BIN_INDEX = BIN_STOPS.indexOf(DEFAULT_BINS);
 
 // Nearest slider index for an arbitrary bin count (used to restore a saved
@@ -273,7 +277,7 @@ Input:
 	(none)
 
 Output:
-	bins [number]: the selected bin count from BIN_STOPS (default 512)
+	bins [number]: the selected bin count from BIN_STOPS (default DEFAULT_BINS)
 
 */
 export function plot_bin_count() {

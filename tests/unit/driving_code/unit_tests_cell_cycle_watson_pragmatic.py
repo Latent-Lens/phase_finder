@@ -221,6 +221,248 @@ _WATSON_TESTS = r"""() => {
     return { pass: at50.sigma !== at60.sigma, detail: JSON.stringify({ at50: at50.sigma, at60: at60.sigma }) };
   });
 
+  // ---- MODEL-08: integer typed-array counts must not truncate the residual S ----
+  //
+  // The trap: `.map()` on a typed array returns the SAME typed array type, so
+  // an Int32Array of counts mapped through the Gaussian-residual arithmetic
+  // (y - g1_i - g2_i, a float) writes each result back through an Int32 cast
+  // and silently floors every S-phase bin. `js/analysis/math/poisson.js` had
+  // exactly this bug. Nothing in the tree feeds watson_pragmatic a typed array
+  // today -- dna_histogram.js builds counts with `new Array(n)`, and fit()
+  // additionally normalizes with Array.from() on entry -- so this is a latent
+  // trap. The point of these tests is that it STAYS closed if a future
+  // performance change (PERF-01 invites precisely this) switches the histogram
+  // to a typed buffer and one of those two guards is dropped.
+  const typedBridgeCounts = Int32Array.from(bridgeCounts);
+
+  run('MODEL-08: Int32Array.prototype.map really does truncate this arithmetic (the hazard is real)', () => {
+    // Guards the tests below from becoming vacuous: if a future engine changed
+    // TypedArray#map's return type, the two assertions after this one would
+    // still pass while testing nothing. Demonstrate the truncation directly on
+    // the same data the fit path handles.
+    const truncated = typedBridgeCounts.map((y) => y + 0.5);
+    const plain = Array.from(typedBridgeCounts, (y) => y + 0.5);
+    const anyFractionalWhenTyped = Array.from(truncated).some((v) => !Number.isInteger(v));
+    const anyFractionalWhenPlain = plain.some((v) => !Number.isInteger(v));
+    return {
+      pass: ArrayBuffer.isView(truncated) && !anyFractionalWhenTyped && anyFractionalWhenPlain,
+      detail: JSON.stringify({
+        mapReturnsTypedArray: ArrayBuffer.isView(truncated),
+        anyFractionalWhenTyped, anyFractionalWhenPlain,
+      }),
+    };
+  });
+
+  run('MODEL-08: a typed-array histogram yields fractional residual S counts, not floored integers', () => {
+    const typedRaw = watson.fit({
+      histogram: { edges, counts: typedBridgeCounts }, peakRegions: regions, config: {},
+    });
+    // Every nonzero S bin is `y - g1_i - g2_i` with two Gaussian bin masses
+    // subtracted, so on this fixture essentially all of them are fractional.
+    // Requiring MOST rather than ALL keeps the assertion about truncation
+    // rather than about how many bins happen to land on a whole number.
+    const nonzero = typedRaw.sCounts.filter((v) => v > 0);
+    const fractional = nonzero.filter((v) => !Number.isInteger(v));
+    return {
+      pass: Array.isArray(typedRaw.sCounts) && nonzero.length > 10 && fractional.length > 0.9 * nonzero.length,
+      detail: JSON.stringify({
+        sCountsIsPlainArray: Array.isArray(typedRaw.sCounts),
+        nonzero: nonzero.length, fractional: fractional.length,
+      }),
+    };
+  });
+
+  run('MODEL-08: typed-array and plain-Array histograms produce identical fits', () => {
+    // The end-to-end property the item is really asking for: the counts
+    // buffer's REPRESENTATION must not change the science. Compares the whole
+    // normalized result, so a truncation anywhere in the path -- not only the
+    // one line the fix touched -- shows up here.
+    const typedFitted = watson.normalizeResult(watson.fit({
+      histogram: { edges, counts: typedBridgeCounts }, peakRegions: regions, config: {},
+    }));
+    const same = JSON.stringify(typedFitted.phaseFractions) === JSON.stringify(bridgeFitted.phaseFractions)
+      && JSON.stringify(typedFitted.parameters) === JSON.stringify(bridgeFitted.parameters);
+    return {
+      pass: same,
+      detail: JSON.stringify({
+        typed: { fractions: typedFitted.phaseFractions, parameters: typedFitted.parameters },
+        plain: { fractions: bridgeFitted.phaseFractions, parameters: bridgeFitted.parameters },
+      }),
+    };
+  });
+
+  // ---- MODEL-06: a background pedestal must not be scaled up into peak area ----
+  //
+  // refine_local_area() estimates N by dividing summed counts by summed
+  // template mass over the asymmetric window. That ratio has no notion of a
+  // floor, so every background count inside the window is divided by the same
+  // (sub-unity) template mass and re-reported as peak area. G2 is hit hardest:
+  // its window is wide relative to its area, so the inflation is multiplied.
+  //
+  // The fix reads the floor at the CLEAN window edge -- 3 sigma out, and
+  // clamped to the histogram rather than to the region, so the region invariant
+  // is untouched -- and discounts the peak's own Gaussian tail before calling
+  // what is left background. Two alternatives were measured and rejected; the
+  // tests below pin both the win and the rejections, because a future
+  // "simplification" back to either one would otherwise look harmless.
+  const BG_LEVELS = [0, 1, 3, 8];
+  const bgCounts = (level) => bridgePeaks.g1.map((v, i) => {
+    const center = 0.5 * (edges[i] + edges[i + 1]);
+    const bridge = center >= BRIDGE_START && center < BRIDGE_END ? BRIDGE_HEIGHT : 0;
+    return Math.round(v + bridgePeaks.g2[i] + bridge + level);
+  });
+
+  // Re-implements refine_local_area() over a fit's OWN reported window, mean and
+  // sigma, so the only thing that differs between the variants below is the
+  // baseline rule. Everything else -- peak location, width, window geometry --
+  // is taken from the real fit.
+  const { gaussianBinMass } = window.CellCycleGaussianBinMass;
+  const areaWithBaseline = (counts, win, mean, sigma, baseline) => {
+    const template = gaussianBinMass(edges, 1, mean, sigma);
+    let observed = 0;
+    let mass = 0;
+    for (let i = win.start; i <= win.end; i += 1) {
+      observed += Math.max(0, counts[i] - baseline);
+      mass += template[i];
+    }
+    return mass > 0 ? Math.max(0, observed / mass) : 0;
+  };
+  const rawFloorAt = (counts, index) => {
+    let floor = Infinity;
+    for (let i = Math.max(0, index - 2); i <= Math.min(counts.length - 1, index + 2); i += 1) {
+      floor = Math.min(floor, counts[i]);
+    }
+    return floor > 0 ? floor : 0;
+  };
+
+  const bgFits = BG_LEVELS.map((level) => {
+    const counts = bgCounts(level);
+    const raw = watson.fit({ histogram: { edges, counts }, peakRegions: regions, config: {} });
+    return {
+      level,
+      counts,
+      raw,
+      g1: raw.g1.area,
+      g2: raw.g2.area,
+      // The frozen pre-MODEL-06 estimator: identical in every respect except
+      // that it subtracts nothing.
+      preG1: areaWithBaseline(counts, raw.g1.window, raw.g1.mean, raw.g1.sigma, 0),
+      preG2: areaWithBaseline(counts, raw.g2.window, raw.g2.mean, raw.g2.sigma, 0),
+      // The rule originally proposed for this item: read the floor at the
+      // CONTAMINATED window edge (G1's right, G2's left).
+      rejG1: areaWithBaseline(counts, raw.g1.window, raw.g1.mean, raw.g1.sigma, rawFloorAt(counts, raw.g1.window.end)),
+      rejG2: areaWithBaseline(counts, raw.g2.window, raw.g2.mean, raw.g2.sigma, rawFloorAt(counts, raw.g2.window.start)),
+    };
+  });
+  const errPct = (value, truth) => 100 * (value - truth) / truth;
+  const spread = (values) => Math.max(...values) - Math.min(...values);
+
+  run('MODEL-06: the hazard is real -- without a pedestal, a flat background inflates N_G2 by tens of percent', () => {
+    // Guards every assertion below from becoming vacuous. If a future change
+    // made the ratio estimator background-insensitive by some other route,
+    // "the fix helps" would still pass while testing nothing, so demonstrate
+    // the inflation directly on the frozen pre-fix estimator.
+    const errors = bgFits.map((f) => errPct(f.preG2, TRUE_BRIDGE.g2Area));
+    return {
+      pass: Math.abs(errors[0]) < 1 && errors[errors.length - 1] > 50,
+      detail: JSON.stringify({ backgrounds: BG_LEVELS, preFixG2ErrorPct: errors }),
+    };
+  });
+
+  run('MODEL-06: subtracting the pedestal collapses N_G2 background sensitivity by at least 5x', () => {
+    // The headline of the item. Not "N_G2 is now correct" -- S-phase mass
+    // genuinely inside the window is not background and no flat subtraction can
+    // remove it -- but "N_G2 no longer tracks the background level".
+    const preSpread = spread(bgFits.map((f) => errPct(f.preG2, TRUE_BRIDGE.g2Area)));
+    const fixSpread = spread(bgFits.map((f) => errPct(f.g2, TRUE_BRIDGE.g2Area)));
+    return {
+      pass: fixSpread * 5 < preSpread,
+      detail: JSON.stringify({
+        preFixSpreadPct: preSpread, fixedSpreadPct: fixSpread, ratio: preSpread / fixSpread,
+        fixedG2ErrorPct: bgFits.map((f) => errPct(f.g2, TRUE_BRIDGE.g2Area)),
+      }),
+    };
+  });
+
+  run('MODEL-06: with no background the pedestal is exactly zero and the estimator is unchanged', () => {
+    // The correction must be inert where there is nothing to correct. This is
+    // what separates the landed rule from the simpler "read the raw floor at
+    // the clean edge": at 3 sigma a Gaussian is still at ~1.1% of peak height,
+    // so reading the raw floor there subtracts the peak's own tail and biases
+    // a perfectly clean histogram low. Discounting the tail first makes the
+    // zero-background case bit-for-bit identical to the pre-fix estimator.
+    const clean = bgFits[0];
+    const pass = clean.raw.g1.pedestal === 0 && clean.raw.g2.pedestal === 0
+      && clean.g1 === clean.preG1 && clean.g2 === clean.preG2;
+    return {
+      pass,
+      detail: JSON.stringify({
+        g1Pedestal: clean.raw.g1.pedestal, g2Pedestal: clean.raw.g2.pedestal,
+        fixed: { g1: clean.g1, g2: clean.g2 }, preFix: { g1: clean.preG1, g2: clean.preG2 },
+      }),
+    };
+  });
+
+  run('MODEL-06: the pedestal never exceeds the background actually present, so it under-subtracts rather than eating the peak', () => {
+    // The tail discount uses the UN-subtracted area, which is itself
+    // background-inflated, so the tail is over-estimated and the pedestal comes
+    // out low by construction. Asserting that direction is what keeps the
+    // failure mode benign: too little correction, never too much.
+    const violations = bgFits.filter((f) => f.raw.g1.pedestal > f.level + 1e-9 || f.raw.g2.pedestal > f.level + 1e-9);
+    return {
+      pass: violations.length === 0,
+      detail: JSON.stringify(bgFits.map((f) => ({
+        background: f.level, g1Pedestal: f.raw.g1.pedestal, g2Pedestal: f.raw.g2.pedestal,
+      }))),
+    };
+  });
+
+  run('MODEL-06: reading the pedestal at the CONTAMINATED window edge (the originally proposed rule) destroys both areas', () => {
+    // contaminatedWindowSigmas is 1, where a Gaussian is still at 61% of peak
+    // height, so that floor is mostly peak. Subtracting it removes most of the
+    // signal: measured -61% to -74% on every background here. Recorded as a
+    // test so the "obvious" symmetric version of this fix is not re-attempted.
+    const g1Errors = bgFits.map((f) => errPct(f.rejG1, TRUE_BRIDGE.g1Area));
+    const g2Errors = bgFits.map((f) => errPct(f.rejG2, TRUE_BRIDGE.g2Area));
+    return {
+      pass: g1Errors.every((e) => e < -50) && g2Errors.every((e) => e < -50),
+      detail: JSON.stringify({ contaminatedEdgeG1ErrorPct: g1Errors, contaminatedEdgeG2ErrorPct: g2Errors }),
+    };
+  });
+
+  run('MODEL-06: the pedestal is region-independent -- %S stays within 1.5pp across tight/default/wide regions under background', () => {
+    // The reason MODEL-05's pedestalUnderPeak() could not simply be reused: it
+    // returns 0 when its sample point falls outside the user's REGION, which
+    // makes the subtraction -- and therefore the phase fractions -- a function
+    // of how wide the handle was dragged. A peak region bounds the mean and
+    // nothing else. The window used here is clamped to the histogram, so the
+    // invariant holds; at 8/bin the pre-fix estimator actually breaches it
+    // (2.02pp) and the fix brings it back inside (1.17pp).
+    const variants = {
+      tight: { g1: { left: 62, right: 78 }, g2: { left: 128, right: 152 } },
+      default: regions,
+      wide: { g1: { left: 48, right: 92 }, g2: { left: 105, right: 175 } },
+    };
+    const counts = bgCounts(8);
+    const percentS = Object.values(variants).map((peakRegions) => {
+      const fitted = watson.normalizeResult(watson.fit({ histogram: { edges, counts }, peakRegions, config: {} }));
+      return 100 * fitted.phaseFractions.s;
+    });
+    const observed = spread(percentS);
+    return {
+      pass: observed < 1.5,
+      detail: JSON.stringify({ percentS, spreadPp: observed, tolerancePp: 1.5 }),
+    };
+  });
+
+  run('MODEL-06: the subtracted pedestal is reported in diagnostics, so the correction is auditable', () => {
+    const fitted = watson.normalizeResult(bgFits[3].raw);
+    const { g1Pedestal, g2Pedestal } = fitted.diagnostics;
+    const pass = Number.isFinite(g1Pedestal) && Number.isFinite(g2Pedestal)
+      && g1Pedestal > 0 && g2Pedestal > 0;
+    return { pass, detail: JSON.stringify({ g1Pedestal, g2Pedestal }) };
+  });
+
   return results;
 }"""
 

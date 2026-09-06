@@ -15,7 +15,13 @@
 // channel that is largely ineligible (e.g. a log/compensated channel picked by
 // mistake) rather than silently fitting whatever survived.
 
-const DEFAULT_BIN_COUNT = 512;
+// MODEL-09: the single source of truth for "default bins in a DNA histogram".
+// plotting/data.js re-exports this as DEFAULT_BINS rather than declaring its own
+// value, so the silent fallback here can never drift from the count the Bins
+// slider defaults to and the slider tooltip advertises. It lives in this module
+// (a pure leaf with no imports, safe inside a worker) rather than in the plotting
+// layer, which touches the DOM at import time.
+const DEFAULT_BIN_COUNT = 256;
 
 function isArrayLike(value) {
   return value != null &&

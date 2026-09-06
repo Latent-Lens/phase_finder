@@ -93,6 +93,99 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
     return { pass: maxDiff > 1, detail: maxDiff };
   });
 
+  // ---- VALID-01 box 2: component curves (G1/S/G2 separately), not just the
+  // combined total, over a genuine parameter grid -- not a single fixed point.
+  // dean_jett.js and dean_jett_fox.js both delegate G1/G2 (peakComponents) and
+  // the S-phase quadrature (convolvedSPhase / convolvedSPhaseWithProfile) to
+  // shared.js; this exercises those shared functions directly (already public,
+  // already production code -- no test-only export added) across a grid of
+  // (shape1, shape2, g1CV, g2Mean) to confirm the S-only curve, not merely the
+  // combined curve, nests exactly at w=0 and diverges only in S once w>0, with
+  // G1/G2 staying byte-identical (they call the exact same shared function).
+  const { peakComponents, convolvedSPhase, convolvedSPhaseWithProfile, sPhaseProfile } = window.CellCycleModelShared;
+
+  const COMPONENT_GRID = [];
+  for (const shape1 of [-0.3, 0, 0.4]) {
+    for (const shape2 of [-0.2, 0, 0.3]) {
+      for (const g1CV of [0.05, 0.09]) {
+        for (const g2Mean of [130, 150]) {
+          COMPONENT_GRID.push({ shape1, shape2, g1CV, g2Mean });
+        }
+      }
+    }
+  }
+
+  function gridNamed(point) {
+    return {
+      g1Area: 8000, g1Mean: 70, g1CV: point.g1CV,
+      g2Area: 3000, g2Mean: point.g2Mean, g2CV: 0.07,
+      sArea: 4000, shape1: point.shape1, shape2: point.shape2,
+    };
+  }
+
+  run('S-phase component curve (not just the combined total) nests exactly at w=0 across a 24-point parameter grid', () => {
+    let maxDiff = 0;
+    let worst = null;
+    for (const point of COMPONENT_GRID) {
+      const named = gridNamed(point);
+      const djS = convolvedSPhase(edges, { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, shape1: named.shape1, shape2: named.shape2 });
+      const djfS = convolvedSPhaseWithProfile(edges, { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, profileFn: (z) => sPhaseProfile(z, named.shape1, named.shape2) });
+      for (let i = 0; i < djS.length; i += 1) {
+        const diff = Math.abs(djS[i] - djfS[i]);
+        if (diff > maxDiff) { maxDiff = diff; worst = point; }
+      }
+    }
+    return { pass: maxDiff < 1e-9, detail: `maxDiff=${maxDiff} at ${JSON.stringify(worst)}` };
+  });
+
+  run('G1/S/G2 components sum to each model\'s own public expectedCounts, across the same parameter grid', () => {
+    let maxDiff = 0;
+    let worst = null;
+    for (const point of COMPONENT_GRID) {
+      const named = gridNamed(point);
+      const peaks = peakComponents(edges, named);
+      const djS = convolvedSPhase(edges, { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, shape1: named.shape1, shape2: named.shape2 });
+      const djExpected = dj.expectedCounts(edges, named);
+      const djfExpected = djf.expectedCounts(edges, { ...named, w: 0, waveMean: 0.5, waveSigma: 0.15 });
+      for (let i = 0; i < djExpected.length; i += 1) {
+        const reconstructed = peaks.g1[i] + djS[i] + peaks.g2[i];
+        const diff = Math.max(Math.abs(reconstructed - djExpected[i]), Math.abs(reconstructed - djfExpected[i]));
+        if (diff > maxDiff) { maxDiff = diff; worst = point; }
+      }
+    }
+    return { pass: maxDiff < 1e-9, detail: `maxDiff=${maxDiff} at ${JSON.stringify(worst)}` };
+  });
+
+  run('at w>0 the wave perturbs only the S component; G1/G2 stay byte-identical, across the same parameter grid', () => {
+    let minSDiff = Infinity;
+    let maxPeakDiff = 0;
+    let worst = null;
+    for (const point of COMPONENT_GRID) {
+      const named = gridNamed(point);
+      const peaksDj = peakComponents(edges, named);
+      const peaksDjf = peakComponents(edges, named); // same shared function DJF's own assembly calls
+      const djS = convolvedSPhase(edges, { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, shape1: named.shape1, shape2: named.shape2 });
+      const combinedProfile = (z) => {
+        const w = 0.3, waveMean = 0.4, waveSigma = 0.05;
+        const base = (1 - w) * sPhaseProfile(z, named.shape1, named.shape2);
+        return base + w * (Math.exp(-0.5 * ((z - waveMean) / waveSigma) ** 2));
+      };
+      const djfS = convolvedSPhaseWithProfile(edges, { sArea: named.sArea, g1Mean: named.g1Mean, g2Mean: named.g2Mean, broadeningCV: named.g1CV, profileFn: combinedProfile });
+      let sDiff = 0;
+      for (let i = 0; i < djS.length; i += 1) sDiff = Math.max(sDiff, Math.abs(djS[i] - djfS[i]));
+      let peakDiff = 0;
+      for (let i = 0; i < peaksDj.g1.length; i += 1) {
+        peakDiff = Math.max(peakDiff, Math.abs(peaksDj.g1[i] - peaksDjf.g1[i]), Math.abs(peaksDj.g2[i] - peaksDjf.g2[i]));
+      }
+      if (sDiff < minSDiff) minSDiff = sDiff;
+      if (peakDiff > maxPeakDiff) { maxPeakDiff = peakDiff; worst = point; }
+    }
+    // The S component must visibly diverge at every grid point (minSDiff, not just maxDiff,
+    // so no single grid point is silently exempt), while G1/G2 never move (exactly 0, since
+    // it's a literal call to the same shared function DJF's own assembly uses).
+    return { pass: minSDiff > 0.5 && maxPeakDiff === 0, detail: `minSDiff=${minSDiff} maxPeakDiff=${maxPeakDiff} at ${JSON.stringify(worst)}` };
+  });
+
   // ---- planted-wave recovery (dean_jett_fox on its own) -------------------
   // A moderate, off-center, comparatively tight wave (w=0.3, waveMean=0.4,
   // waveSigma=0.05) on a *flat* quadratic base (b=c=0). Off-center and
@@ -324,12 +417,60 @@ _DEAN_JETT_FOX_TESTS = r"""() => {
   //
   // The reference (§13, Steps 6-9) fits asynchronous and synchronous variants and
   // selects between them by BIC. That was implemented here and REMOVED, because
-  // with the peaks frozen it is not identifiable: on THIS wave-free fixture the
-  // BIC comparison preferred the cohort by 103 (it was absorbing frozen-peak
-  // misfit, w running to its 0.95 ceiling), while the same code given the true
-  // peaks correctly rejected it (ΔBIC +16.7, w = 0.0135). It only appeared to
-  // work because the synchronous fit never converged, so a `converged` guard
-  // rejected the cohort for an accidental reason.
+  // with the peaks frozen it is not identifiable: the wave is the only flexible
+  // shape left, so it absorbs frozen-peak misfit and claims a cohort on data
+  // that has none. Re-measured 2026-08-19 after MODEL-03/04/05/06 all improved
+  // the clean-flank estimator -- the peaks got much better and the selection is
+  // still wrong. MODEL-07 stays blocked; the two tests below are what enforce
+  // that, so nobody re-lands it on the strength of the improved peaks.
+
+  // MODEL-07: measures the blocker rather than asserting it. The asynchronous
+  // variant is the same model with w pinned to ~0 (its own wMin/wMax config),
+  // which reproduces the removed feature's two candidate fits exactly.
+  const asyncFit = djf.normalizeResult(djf.fit({
+    histogram: { edges, counts: twoPeakCounts }, peakRegions: regions,
+    config: { wMin: 0, wMax: 1e-6 },
+  }));
+  const bicOf = (deviance, freeParams) => deviance + freeParams * Math.log(twoPeakCounts.length);
+  // Asynchronous frees sArea/shape1/shape2; synchronous adds w/waveMean/waveSigma.
+  const deltaBic = bicOf(twoPeakFit.diagnostics.deviance, 6) - bicOf(asyncFit.diagnostics.deviance, 3);
+
+  run('MODEL-07 stays blocked: BIC still prefers a cohort on wave-free data (true w = 0)', () => {
+    // If this ever FAILS, that is the signal to re-land population-form
+    // selection -- it means the frozen peaks finally leave a small enough
+    // residual for a real cohort to be distinguishable from peak misfit.
+    // Measured 2026-08-19: async deviance 167.9, sync 137.8, deltaBIC -13.1.
+    // At removal the same comparison read 1289.6 / 1169.6 / -102.9, so the
+    // peaks improved by a factor of ~7.7 in deviance without fixing this.
+    // With the peaks frozen at their TRUE values the same comparison correctly
+    // rejects the cohort (46.1 / 45.7 / +16.7, w = 0.0135).
+    return {
+      pass: deltaBic < 0,
+      detail: JSON.stringify({
+        asynchronousDeviance: asyncFit.diagnostics.deviance,
+        synchronousDeviance: twoPeakFit.diagnostics.deviance,
+        deltaBic,
+        selects: deltaBic < 0 ? 'synchronous (wrong: true w = 0)' : 'asynchronous',
+      }),
+    };
+  });
+
+  run('MODEL-07: the two tells that made the old failure obvious are gone, so it would now fail silently', () => {
+    // At removal the wrong answer announced itself twice: w pinned to its 0.95
+    // ceiling, and the synchronous fit never converged (so an unrelated
+    // `converged` guard rejected the cohort by accident). Both are now false --
+    // w lands mid-range and the fit converges -- which makes re-landing the
+    // feature MORE dangerous than it was before, not less. Pinned here so the
+    // danger is a test result rather than a paragraph someone might skim.
+    const w = twoPeakFit.parameters.w;
+    return {
+      pass: w < 0.9 && twoPeakFit.converged === true,
+      detail: JSON.stringify({
+        w, atCeiling: w >= 0.9, converged: twoPeakFit.converged,
+        note: 'guards |dBIC|>10, w>=2%, cohort-inside-S all PASS on the wrong answer; only restart stability discriminates (deviance spread 30.18 vs 0.40 at true peaks)',
+      }),
+    };
+  });
 
   run('the model never claims a population form', () => {
     // Plan §1.1's Fox row: "report 'complex S-phase model'; do not infer

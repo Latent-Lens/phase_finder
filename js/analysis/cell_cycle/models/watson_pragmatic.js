@@ -26,7 +26,10 @@
 // side than the contaminated (right) side -- build_asymmetric_window() and
 // refine_local_area() below:
 //
-//   N_G1 = sum(y_i, i in window_G1) / sum(gaussianTemplate(mu_G1,sigma_G1)_i, i in window_G1)
+//   N_G1 = sum(y_i - b_G1, i in window_G1) / sum(gaussianTemplate(mu_G1,sigma_G1)_i, i in window_G1)
+//
+// where b is the background floor read at the window's clean edge (MODEL-06 --
+// see pedestal_at_clean_edge() below for why that edge and not another).
 //
 // Step 3 (plan step 3, "locally fit G2/M inside its assigned region"): the
 // mirror-image procedure using region G2 and the RIGHT (clean) flank --
@@ -97,6 +100,109 @@ function build_asymmetric_window(peakIndex, sigmaBins, cleanSide, config, binCou
   };
 }
 
+// MODEL-06: the floor the peak sits on, read at the CLEAN edge of the
+// asymmetric window.
+//
+// refine_local_area() below divides summed counts by summed template mass, so
+// every background count inside the window is scaled up and reported as peak
+// area. Measured on synthetic fixtures with known component areas, an 800/bin
+// flat background inflates N_G2 by +88% and N_G1 by +13% -- the pedestal is
+// not a rounding term.
+//
+// WHERE to read it is the whole difficulty, and two plausible-looking choices
+// are both wrong:
+//
+//   * The CONTAMINATED window edge (originally proposed for this item) sits
+//     only contaminatedWindowSigmas -- one sigma -- from the centre, where a
+//     Gaussian is still at 61% of its peak height. Subtracting that from every
+//     bin removes most of the peak itself: measured -52% to -70% area error on
+//     every fixture, turning a moderate over-count into a severe under-count.
+//
+//   * peak_regions.js's pedestalUnderPeak() (MODEL-05) reads the right place,
+//     but returns 0 when the sample point falls outside the user's REGION. In
+//     MODEL-05 that gate only reached sigma, where its effect stayed inside
+//     tolerance. Routed into the area it reaches the phase fractions, and the
+//     region-width invariant breaks outright: %S spread across region widths
+//     measured 8.28pp against a 1.5pp tolerance, stepping exactly where the
+//     gate flips. A peak region bounds the mean and nothing else -- see the
+//     region-width tests in unit_tests_cell_cycle_dean_jett_fox.py.
+//
+// The clean window edge is MODEL-05's rule without MODEL-05's gate. It already
+// sits at cleanWindowSigmas (3) from the centre -- far enough that a Gaussian
+// has fallen to ~1% of peak -- and build_asymmetric_window() clamps it to the
+// HISTOGRAM, never to the region, so it is available whatever the user
+// dragged.
+//
+// That ~1% is not negligible, though, and reading the raw floor there is the
+// third wrong answer: at 3 sigma a Gaussian is at exp(-4.5) = 1.11% of peak
+// height, which for a typical G1 is ~2 counts/bin. Subtracting it treats the
+// peak's own tail as background and biases every area low even in a histogram
+// with no background at all -- measured -1.7pp on both peaks in the clean
+// two-peak fixture, enough to push the SCI-01 bridge-free S-leakage bound
+// (unit_tests_cell_cycle_watson_pragmatic.py) from 45.5 events to 72.1
+// against a 66-event limit. So the tail is discounted first: the floor is
+// min(counts_i - tail_i) over the edge bins, where tail is the provisional
+// Gaussian evaluated with the un-subtracted area. That provisional area is
+// itself background-inflated, so the tail is over-estimated and the pedestal
+// errs LOW -- the estimator degrades toward doing nothing rather than toward
+// eating the peak.
+//
+// Measured on the bridged fixture at 0/1/3/8 background counts per bin:
+//
+//   N_G2 error  +0.07 / +7.00 / +21.60 / +63.64%  before
+//               +0.07 / +3.38 /  +4.84 /  +8.90%  after   (7.2x less drift)
+//   N_G1 error  +0.72 / -1.00 /  +0.99 /  +5.90%  before
+//               +0.72 / -1.96 /  -1.88 /  -1.74%  after
+//
+// At zero background the pedestal is exactly 0 and the estimator reduces to
+// its pre-MODEL-06 self, so nothing that was already right moves. It also
+// *improves* region invariance rather than costing it: %S spread across
+// tight/default/wide regions at 8/bin goes 2.020pp -> 1.173pp, moving a
+// pre-existing violation of the 1.5pp tolerance back inside it.
+//
+// The residual is S-phase mass inside the window, not background. No flat
+// subtraction can remove it -- S is a ramp, not a pedestal -- and limiting it
+// is precisely what the window's asymmetry is for. Restricting the window to
+// the clean half was measured too: it buys a further 1-6pp but makes
+// contaminatedWindowSigmas inert, so it is a window redesign rather than this
+// item, and was not taken.
+const PEDESTAL_EDGE_WINDOW_BINS = 2;
+
+/*
+
+Purpose:
+	Estimates the background floor beneath a peak by reading the histogram at
+	the uncontaminated edge of its asymmetric window -- a distance set by the
+	peak's own width, and clamped to the histogram rather than to the region.
+
+Input:
+	edges [array]: bin edges
+	counts [array]: per-bin counts
+	window [object]: the asymmetric { start, end } window
+	cleanSide [string]: which flank ("left"/"right") is uncontaminated
+	mean [number]: the peak mean
+	sigma [number]: the peak width
+	peakArea [number]: provisional (un-subtracted) area, used to size the tail
+
+Output:
+	pedestal [number]: the floor to subtract, or 0 when there is none
+
+*/
+function pedestal_at_clean_edge(edges, counts, window, cleanSide, mean, sigma, peakArea) {
+  const edgeIndex = cleanSide === "left" ? window.start : window.end;
+  // What the peak itself contributes at the edge, so only what is left over is
+  // called background.
+  const tail = gaussianBinMass(edges, peakArea, mean, sigma);
+  // Take the minimum over a couple of bins so one low-count bin of Poisson
+  // noise cannot set the floor high; the minimum also errs downward, which
+  // under-subtracts rather than eating into the peak.
+  let floor = Infinity;
+  const from = Math.max(0, edgeIndex - PEDESTAL_EDGE_WINDOW_BINS);
+  const to = Math.min(counts.length - 1, edgeIndex + PEDESTAL_EDGE_WINDOW_BINS);
+  for (let i = from; i <= to; i += 1) floor = Math.min(floor, counts[i] - tail[i]);
+  return Number.isFinite(floor) && floor > 0 ? floor : 0;
+}
+
 /*
 
 Purpose:
@@ -109,17 +215,18 @@ Input:
 	window [object]: the asymmetric { start, end } window
 	mean [number]: the peak mean
 	sigma [number]: the peak width
+	baseline [number]: the pedestal to subtract per bin (MODEL-06)
 
 Output:
 	area [number]: the estimated peak area
 
 */
-function refine_local_area(edges, counts, mean, sigma, window) {
+function refine_local_area(edges, counts, mean, sigma, window, baseline = 0) {
   const unitTemplate = gaussianBinMass(edges, 1, mean, sigma);
   let observedSum = 0;
   let templateSum = 0;
   for (let i = window.start; i <= window.end; i += 1) {
-    observedSum += counts[i];
+    observedSum += Math.max(0, counts[i] - baseline);
     templateSum += unitTemplate[i];
   }
   return templateSum > EPS ? Math.max(0, observedSum / templateSum) : 0;
@@ -152,7 +259,13 @@ export function fit_local_peak(edges, counts, region, cleanSide, config) {
   const binWidth = edges[1] - edges[0];
   const sigmaBins = local.sigma / Math.max(EPS, binWidth);
   const window = build_asymmetric_window(local.peakIndex, sigmaBins, cleanSide, config, counts.length);
-  const area = refine_local_area(edges, counts, local.mean, local.sigma, window);
+  // Two passes: the un-subtracted area sizes the peak's own tail, so the floor
+  // read at the clean edge can be reduced to background alone (MODEL-06).
+  const provisionalArea = refine_local_area(edges, counts, local.mean, local.sigma, window, 0);
+  const pedestal = pedestal_at_clean_edge(
+    edges, counts, window, cleanSide, local.mean, local.sigma, provisionalArea,
+  );
+  const area = refine_local_area(edges, counts, local.mean, local.sigma, window, pedestal);
 
   return {
     mean: local.mean,
@@ -161,6 +274,7 @@ export function fit_local_peak(edges, counts, region, cleanSide, config) {
     cv: local.sigma / Math.max(EPS, local.mean),
     peakIndex: local.peakIndex,
     window,
+    pedestal,
   };
 }
 
@@ -240,7 +354,14 @@ export const watson_pragmatic = {
     // must not be reclassified as S -- the modeling plan defines residual S over
     // [mu_G1, mu_G2], not the whole histogram domain. Bins whose center falls at
     // or outside a peak center contribute zero residual S.
-    const sCounts = counts.map((y, i) => {
+    // MODEL-08: Array.from(counts, fn) rather than counts.map(fn) -- .map() on a
+    // typed array returns the SAME typed array type, silently truncating this
+    // Gaussian-residual arithmetic to integers if counts is ever a typed array
+    // (safe today only because dna_histogram.js hands back a plain Array;
+    // PERF-01 would invite exactly that switch). Array.from always produces a
+    // plain Array regardless of the input's type, so the fix is future-proof
+    // rather than dependent on counts' current representation.
+    const sCounts = Array.from(counts, (y, i) => {
       const center = 0.5 * (edges[i] + edges[i + 1]);
       if (center <= g1.mean || center >= g2.mean) return 0;
       return Math.max(0, y - g1Counts[i] - g2Counts[i]);
@@ -356,7 +477,15 @@ export const watson_pragmatic = {
       phaseFractions,
       contaminantFractions: {},
       peakRegionMigration: {}, // no optimizer moved anything from an initial guess; there is only this one closed-form estimate
-      diagnostics: { ...diagnostics, g1Window: g1.window, g2Window: g2.window },
+      // MODEL-06: the per-bin background subtracted from each peak's area, so a
+      // reader can see how much of the correction was pedestal.
+      diagnostics: {
+        ...diagnostics,
+        g1Window: g1.window,
+        g2Window: g2.window,
+        g1Pedestal: g1.pedestal,
+        g2Pedestal: g2.pedestal,
+      },
       warnings,
       provenance: { rawResult },
       targetResults: [],

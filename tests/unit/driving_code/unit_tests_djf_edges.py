@@ -531,11 +531,20 @@ _STAGE_EDGES = r"""() => {
   });
 
   run('QC-01 critical removal: >50% event loss blocks until acknowledged; <50% does not', () => {
+    // An acknowledgement now has to NAME the outcome it authorizes: a bare
+    // truthy value used to open this gate, which meant any leftover flag
+    // authorized whatever the QC stage happened to be doing today. The
+    // identity-bound records are covered end to end in
+    // unit_tests_qc_acknowledgement.py; here we only pin that this gate reads
+    // them and still refuses a bare `true`.
     const heavy = { skipped: false, evaluatedEventCount: 1000, rejectedEventCount: 700, retainedEventCount: 300 };
+    const key = RC.qc_acknowledgement_key('time', heavy);
     const blocked = RC.model_preflight(qc01State({ time: heavy }), { requiredQc: [] });
-    const acked = RC.model_preflight(qc01State({ time: heavy }), { requiredQc: [], qcAcknowledgements: { time: true } });
+    const bare = RC.model_preflight(qc01State({ time: heavy }), { requiredQc: [], qcAcknowledgements: { time: true } });
+    const acked = RC.model_preflight(qc01State({ time: heavy }), { requiredQc: [], qcAcknowledgements: { time: { key, acknowledgedAt: '2026-08-18T00:00:00.000Z' } } });
     const moderate = RC.model_preflight(qc01State({ time: { skipped: false, evaluatedEventCount: 1000, rejectedEventCount: 300, retainedEventCount: 700 } }), { requiredQc: [] });
     return { pass: hasReason(blocked, RC.RESULT_REASON.QC_CRITICAL_REMOVAL)
+      && hasReason(bare, RC.RESULT_REASON.QC_CRITICAL_REMOVAL)
       && !hasReason(acked, RC.RESULT_REASON.QC_CRITICAL_REMOVAL)
       && !hasReason(moderate, RC.RESULT_REASON.QC_CRITICAL_REMOVAL)
       && moderate.qc.time.status === 'applied',
