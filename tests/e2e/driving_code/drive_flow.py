@@ -20,6 +20,16 @@ import sys
 import time
 from pathlib import Path
 
+# Test names/detail strings use non-ASCII characters (e.g. "->" rendered as an
+# arrow). On Windows, stdout/stderr default to the console's legacy codepage
+# (cp1252), not UTF-8, so printing them raises UnicodeEncodeError -- caught by
+# main()'s broad `except Exception`, which then reports the run as failed
+# (exit 1) even when every logged check passed. Force UTF-8 so the run's exit
+# code reflects actual test results, not the host's default console encoding.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 # Put this directory on sys.path so sibling helpers/test modules are importable
 _HERE = Path(__file__).resolve().parent
 _TESTS_ROOT = _HERE.parents[1]
