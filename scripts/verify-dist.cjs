@@ -77,7 +77,11 @@ function walk(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const target = path.join(directory, entry.name);
     if (entry.isDirectory()) walk(target);
-    else if (entry.isFile()) files.push(path.relative(root, target));
+    // Every downstream check treats these as POSIX paths (regexes anchored on
+    // "/", the artifact manifest, the required[]/forbidden[] lists above) --
+    // path.relative() returns "\\"-joined paths on Windows, which silently
+    // fails to match any of that, so normalize before recording.
+    else if (entry.isFile()) files.push(path.relative(root, target).split(path.sep).join("/"));
   }
 }
 walk(root);
